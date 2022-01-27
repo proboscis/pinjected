@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "pinject-design"
+version = "0.1.0"
+description = "immutable wrapper for pinject"
+authors = ["Kento Masui <nameissoap@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+makefun = "*"
+loguru = "*"
+pampy = "*"
+pinject = "*"
+returns = "*"
+expression = "*"
+cloudpickle = "*"
+tabulate = "*"
+cytoolz = "*"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
