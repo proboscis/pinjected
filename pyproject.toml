@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pinject-design"
-version = "0.1.0"
+version = "0.1.2"
 description = "immutable wrapper for pinject"
 authors = ["Kento Masui <nameissoap@gmail.com>"]
 

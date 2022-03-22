@@ -3,7 +3,7 @@ import functools
 import inspect
 import sys
 from dataclasses import dataclass
-from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set
+from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any
 
 import makefun
 from loguru import logger
@@ -142,6 +142,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def mzip(*srcs: "Injected"):
         return MZippedInjected(4, *srcs)
 
+    # this is ap of applicative functor.
     def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
         return self.zip(other).map(
             lambda t: t[1](t[0])
@@ -179,6 +180,29 @@ class MappedInjected(Injected):
         def impl(**kwargs):
             tmp = self.src.get_provider()(**kwargs)
             return self.f(tmp)
+
+        return create_function(self.get_signature(), func_impl=impl)
+
+class MapWithExtras(Injected):
+    src:Injected[T]
+    f:Callable[[T,Any],U]
+    extras:Set[str]
+
+    def __init__(self, stack, src, f,extras:Set[str]):
+        super(MappedInjected, self).__init__(stack)
+        self.src = src
+        self.f = f
+        self.extras=extras
+
+    def dependencies(self) -> Set[str]:
+        return self.src.dependencies() | self.extras
+
+    def get_provider(self):
+        def impl(**kwargs):
+            src_deps = {k:kwargs[k] for k in self.src.dependencies()}
+            extras = {k:kwargs[k] for k in self.extras}
+            tmp = self.src.get_provider()(**src_deps)
+            return self.f(tmp,**extras)
 
         return create_function(self.get_signature(), func_impl=impl)
 
@@ -268,7 +292,7 @@ class InjectedFunction(Injected[T]):
                 deps[mdep] = solve_injection(mdep, kwargs)
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
-            logger.info(f"calling function:{inspect.signature(self.target_function)}")
+            #logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             return self.target_function(**deps)
 
         # you have to add a prefix 'provider'""

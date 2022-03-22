@@ -229,11 +229,13 @@ class Design:
         return res
 
     def bind_provider_imm(self, key, f, all_except=None, arg_names=None, in_scope=None):
+        def raise_unhandled(any):
+            raise RuntimeError(f"unknown input type for bind_provider_imm! key:{key}, provider:{f}")
         bind = match(f,
                      Injected, lambda i: Design({key: InjectedProvider(i)}),
                      ProviderTrait, lambda pt: Design({key: pt}),
-                     callable, lambda c: Design(
-                {key: PinjectProviderBind(f, all_except=all_except, arg_names=arg_names, in_scope=in_scope)})
+                     callable, lambda c: Design({key: PinjectProviderBind(f, all_except=all_except, arg_names=arg_names, in_scope=in_scope)}),
+                     Any, raise_unhandled
                      )
         res = self + bind
         return res
@@ -255,7 +257,11 @@ class Design:
         x = self
         for k, v in kwargs.items():
             # logger.info(f"binding provider:{k}=>{v}")
-            x = x.bind(k).to_provider(v)
+            if isinstance(v,type):
+                logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
+                x = x.bind(k).to_class(v)
+            else:
+                x = x.bind(k).to_provider(v)
         return x
 
     def bind_class(self, **kwargs):
