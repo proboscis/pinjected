@@ -138,6 +138,7 @@ injected_c = Injected.bind(provide_c,
 
 # Injected is a Functor
 ```python
+Injected is an abstraction of data which require dependencies to be used inside DI.
 # you can map an Injected instance to return different value after its computation.
 a = Injected.pure("a") # gives "a" when used
 b = a.map(lambda x:x*2) # gives "aa" when used
@@ -231,6 +232,7 @@ Note that no classes defined above depend on specific configuration object. This
 This doesnt look useful if you have only one set of configuration, 
 but when you start playing with many configurations,
 this approach really helps like this.
+
 ```python
 conf = Design().bind_instance(
     learning_rate = 0.001,
