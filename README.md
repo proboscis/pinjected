@@ -173,7 +173,7 @@ design.bind_provider(
 ```
 This is useful when your mapping function requires many dependencies.
 
-# Real use cases
+# Use Case 
 So, how is that useful to machine learning experiments? Here's an example.
 ```python
 from dataclasses import dataclass
@@ -227,7 +227,7 @@ g.provide(Trainer).train()
 # lets evaluate
 g.provide(Evaluator).evaluate()
 ```
-Note that no classes defined above depends on specific configuration object. This means they are portable and can be reused.
+Note that no classes defined above depend on specific configuration object. This means they are portable and can be reused.
 This doesnt look useful if you have only one set of configuration, 
 but when you start playing with many configurations,
 this approach really helps like this.
@@ -243,13 +243,13 @@ conf = Design().bind_instance(
     loss_calculator = provide_loss_calculator
 )
 
-conf_lr_001 = conf.bind_instance(
+conf_lr_001 = conf.bind_instance(# lets change lr
     learning_rate=0.01
 )
 conf_lr_01 = conf.bind_instance(
     learning_rate=0.1
 )
-lstm_model = Design().bind_provider(
+lstm_model = Design().bind_provider( # lets try LSTM?
     model = lambda:LSTM()
 )
 conf_lr_001_lstm = conf_lr_001 + lstm_model # you can combine two Design!
@@ -257,3 +257,5 @@ for c in [conf,conf_lr_001,conf_lr_01,conf_lr_001_lstm]:
     g = c.to_graph()
     g.provide(Trainer).train()
 ```
+The good thing is that you can keep old configurations as variables. 
+And modifications on Design will not break old experiments.
