@@ -1,7 +1,160 @@
 # Pinject-Design
 
 Pinject-Design is a wrapper library for [pinject](https://github.com/google/pinject).
+# Use Case
+So, how is that useful to machine learning experiments? Here's an example.
+```python
+from dataclasses import dataclass
+def provide_optimizer(learning_rate):
+    return Adam(lr=learning_rate)
+def provide_dataset(batch_size,image_w):
+    return MyDataset(batch_size,image_w)
+def provide_model():
+    return Sequential()
+def provide_loss_calculator():
+    return MyLoss()
+from abc import ABC,abstractmethod
+class IoInterface(ABC): # interface for IO used by saver/loader
+    @abstractmethod
+    def save(self,object,identifier):
+        pass
+    @abstractmethod
+    def load(self,identifier):
+        pass
+class LocalIo(IoInterface):pass
+    # implement save/load locally
+class MongoDBIo(IoInterface):pass
+    # implement save/load with MongoDB
+class Saver(ABC):
+    io_interface : IoInterface
+    def save(self,model,identifier:str):
+        self.io_interface.save(model,identifier)
+    
+class Loader(ABC):
+    io_interface : IoInterface # try to only depend on interface so that actual implementation can be changed later
+    def load(self,identifier):
+        return self.io_interface.load(identifier)
 
+conf = Design().bind_instance(
+    learning_rate = 0.001,
+    batch_size = 128,
+    image_w = 256,
+).bind_provider(
+    optimizer = provide_optimizer,
+    dataset = provide_dataset,
+    model = provide_model,
+    loss_calculator = provide_loss_calculator
+).bind_class(
+    io_interface = LocalIo# use local file system by default
+)
+
+@dataclass
+class Trainer: # try to keep a class as small as possible to keep composability. 
+    model:Module
+    optimizer:Optimizer
+    loss_calculator:Callable
+    dataset:Dataset
+    saver:Saver
+    model_identifier:str
+    def train(self):
+        while True:
+            for batch in self.dataset:
+                self.optimizer.zero_grad()
+                loss = self.loss_calculator(self.model,batch)
+                loss.backward()
+                self.optimizer.step()
+                self.saver.save(self.model,self.model_identifier)
+
+@dataclass
+class Evaluator:
+    dataset:Dataset
+    model_identifier:str
+    loader:Loader
+    def evaluate(self):
+        model = self.loader.load(self.model_identifier)
+        # do evaluation using loaded model and dataset
+# create an object graph
+g = conf.to_graph()
+#lets see model structure
+print(g.provide("model"))
+# now lets do training
+g.provide(Trainer).train()
+# lets evaluate
+g.provide(Evaluator).evaluate()
+```
+Note that no classes defined above depend on specific configuration object. This means they are portable and can be reused.
+This doesnt look useful if you have only one set of configuration,
+but when you start playing with many configurations,
+this approach really helps like this.
+
+
+
+
+```python
+conf = Design().bind_instance(
+    learning_rate = 0.001,
+    batch_size = 128,
+    image_w = 256,
+).bind_provider(
+    optimizer = provide_optimizer,
+    dataset = provide_dataset,
+    model = provide_model,
+    loss_calculator = provide_loss_calculator
+).bind_class(
+    io_interface = LocalIo# use local file system by default
+)
+
+
+conf_lr_001 = conf.bind_instance(# lets change lr
+    learning_rate=0.01
+)
+conf_lr_01 = conf.bind_instance(
+    learning_rate=0.1
+)
+lstm_model = Design().bind_provider( # lets try LSTM?
+    model = lambda:LSTM()
+)
+save_at_mongo = Design.bind_class( # lets save at mongodb
+    io_interface = MongoDBIo
+)
+conf_lr_001_lstm = conf_lr_001 + lstm_model # you can combine two Design!
+conf_lr_01_mongo = conf_lr_01 + save_at_mongo
+for c in [conf,conf_lr_001,conf_lr_01,conf_lr_001_lstm,conf_lr_01_mongo]:
+    g = c.to_graph()
+    g.provide(Trainer).train()
+```
+The good thing is that you can keep old configurations as variables.
+And modifications on Design will not break old experiments.
+Use this Design and keeping classess as small as possible by obeying the Single Resposibility Principle.
+Doing so should prevent you from rewriting and breaking code when implmenting new feature.
+
+If you come up with a mind to extremely change the training procedure without breaking old experiments, you can create a new class and bind it as a "trainer".
+Suppose you come up with a brilliant new idea that making the model play atari_game during training might help training like so:
+```python
+class AtariTrainer:
+    model:Module
+    optimizer:Optimizer
+    dataset:Dataset
+    atari_game:AtariGame
+    loss_calculator:Callable
+    def train(self):
+        for batch in self.dataset:
+            # lets play atari_game so that model may learn something from it.
+            self.optimizer.zero_grad()
+            self.atari_game.play(self.model)
+            loss = self.loss_calculator(self.model,batch)
+            self.optimizer.step()
+            # do anything
+my_new_training_strategy = Design().bind_class(
+    trainer=AtariTrainer
+)
+conf_extreme=conf_lr_01_mongo + my_new_training_strategy
+g = conf_extreme.to_graph()
+g.provide("trainer").train()# note the argument to 'provide' method can be a type object or a string.
+```
+as you can see, now you can do training with new AtariTrainer without modifying the existing code at all.
+Furthermore, the old configurations are still completely valid to be used.
+If you dont like the fact some code pieces are repeated from original Trainer, you can introduce an abstraction for that using generator or reactive x or callback.
 ## Why wrap Pinject?
 
 Although pinject is a good library for dependency injection, the style it provides for specifying dependency binding was
@@ -174,90 +327,3 @@ design.bind_provider(
 ```
 This is useful when your mapping function requires many dependencies.
 
-# Use Case 
-So, how is that useful to machine learning experiments? Here's an example.
-```python
-from dataclasses import dataclass
-def provide_optimizer(learning_rate):
-    return Adam(lr=learning_rate)
-def provide_dataset(batch_size,image_w):
-    return MyDataset(batch_size,image_w)
-def provide_model():
-    return Sequential()
-def provide_loss_calculator():
-    return MyLoss()
-
-conf = Design().bind_instance(
-    learning_rate = 0.001,
-    batch_size = 128,
-    image_w = 256,
-).bind_provider(
-    optimizer = provide_optimizer,
-    dataset = provide_dataset,
-    model = provide_model,
-    loss_calculator = provide_loss_calculator
-)
-
-@dataclass
-class Trainer:
-    model:Module
-    optimizer:Optimizer
-    loss_calculator:Callable
-    dataset:Dataset
-    def train(self):
-        while True:
-            for batch in self.dataset:
-                self.optimizer.zero_grad()
-                loss = self.loss_calculator(self.model,batch)
-                loss.backward()
-                self.optimizer.step()
-
-@dataclass
-class Evaluator:
-    model:Module
-    dataset:Dataset
-    def evaluate(self):
-        # do evaluation using model and dataset
-        pass
-# create an object graph
-g = conf.to_graph()
-#lets see model structure
-print(g.provide("model"))
-# now lets do training
-g.provide(Trainer).train()
-# lets evaluate
-g.provide(Evaluator).evaluate()
-```
-Note that no classes defined above depend on specific configuration object. This means they are portable and can be reused.
-This doesnt look useful if you have only one set of configuration, 
-but when you start playing with many configurations,
-this approach really helps like this.
-
-```python
-conf = Design().bind_instance(
-    learning_rate = 0.001,
-    batch_size = 128,
-    image_w = 256,
-).bind_provider(
-    optimizer = provide_optimizer,
-    dataset = provide_dataset,
-    model = provide_model,
-    loss_calculator = provide_loss_calculator
-)
-
-conf_lr_001 = conf.bind_instance(# lets change lr
-    learning_rate=0.01
-)
-conf_lr_01 = conf.bind_instance(
-    learning_rate=0.1
-)
-lstm_model = Design().bind_provider( # lets try LSTM?
-    model = lambda:LSTM()
-)
-conf_lr_001_lstm = conf_lr_001 + lstm_model # you can combine two Design!
-for c in [conf,conf_lr_001,conf_lr_01,conf_lr_001_lstm]:
-    g = c.to_graph()
-    g.provide(Trainer).train()
-```
-The good thing is that you can keep old configurations as variables. 
-And modifications on Design will not break old experiments.
