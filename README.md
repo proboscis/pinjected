@@ -254,6 +254,27 @@ d3 = Design().bind_instance(
 (d1 + d2 + d3).provide("b") == 0
 ```
 
+# Object Graph
+Our `Design.to_graph()` creates pinject`s object graph. This object graph controlls all the lifecycle of injected variables. 
+Calling `g.provide("something")` asks the graph if "something" is already instantiated in the graph and retrieves it. 
+If "something" was not instantiated, then "something" is instantiated along with its dependencies.
+
+# Calling `provide` directly from Design
+This will create a temporary short-lived object graph just for this `provide` call and returns its injection result.
+Use this for debugging or factory purposes.
+If you bind a function that returns a random value as a binding, calling the same Graph's `provide` should always 
+return the same value, while Design's `provide` should return a random value for each invocation.
+```python
+import random
+d = Design().bind_provider(
+    r = lambda : random.uniform(0,1)
+)
+g = d.to_graph()
+g.provide("r") == g.provide("r")
+d.provide("r") != d.provide("r")# it is random. should rarely be the same.
+```
+
+
 ## Overriding Provider Function with Injected
 Suppose you have a provider function already as follows:
 ```python
@@ -271,11 +292,11 @@ You can do as follows:
 ```python
 from pinject_design.di.util import Injected
 overriden:Injected = Injected.bind(provide_c,a=Injected.pure("hello"))
-d.to_graph().provide("c") == "my world"
-d = d.bind_provider(
+d2 = d.bind_provider(
     c= overriden
 )
-d.to_graph().provide("c") == "hello world"
+d.provide("c") == "my world"
+d2.provide("c") == "hello world"
 ```
 so that a can be manually injected only for "c".
 Injected.bind takes a function and kwargs. kwargs will be used for overriding the parameter of given function.
