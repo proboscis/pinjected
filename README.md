@@ -1,6 +1,8 @@
 # Pinject-Design
 
 Pinject-Design is a wrapper library for [pinject](https://github.com/google/pinject).
+# Installation
+`pip install pinject-design`
 # Use Case
 So, how is that useful to machine learning experiments? Here's an example.
 ```python
@@ -87,9 +89,6 @@ This doesnt look useful if you have only one set of configuration,
 but when you start playing with many configurations,
 this approach really helps like this.
 
-
-
-
 ```python
 conf = Design().bind_instance(
     learning_rate = 0.001,
@@ -127,7 +126,7 @@ The good thing is that you can keep old configurations as variables.
 And modifications on Design will not break old experiments.
 Use this Design and keeping classess as small as possible by obeying the Single Resposibility Principle.
 Doing so should prevent you from rewriting and breaking code when implmenting new feature.
-
+## Adding Feature Without Rewriting
 If you come up with a mind to extremely change the training procedure without breaking old experiments, you can create a new class and bind it as a "trainer".
 Suppose you come up with a brilliant new idea that making the model play atari_game during training might help training like so:
 ```python
@@ -209,8 +208,7 @@ assert(b.foo == "b-foo")
 ```
 This library makes pinject's binding more portable and easy to extend.
 
-# Installation
-`pip install pinject-design`
+
 
 # Examples
 
