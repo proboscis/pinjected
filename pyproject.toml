@@ -2,7 +2,7 @@
 name = "pinject-design"
 version = "0.1.3"
 description = "immutable wrapper for pinject"
-authors = ["Kento Masui <nameissoap@gmail.com>"]
+authors = ["proboscis <nameissoap@gmail.com>"]
 license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.7"
