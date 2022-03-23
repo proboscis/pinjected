@@ -124,7 +124,7 @@ for c in [conf,conf_lr_001,conf_lr_01,conf_lr_001_lstm,conf_lr_01_mongo]:
 ```
 The good thing is that you can keep old configurations as variables.
 And modifications on Design will not break old experiments.
-Use this Design and keeping classess as small as possible by obeying the Single Resposibility Principle.
+Use this Design and keep classess as small as possible by obeying the Single Resposibility Principle.
 Doing so should prevent you from rewriting and breaking code when implmenting new feature.
 ## Adding Feature Without Rewriting
 If you come up with a mind to extremely change the training procedure without breaking old experiments, you can create a new class and bind it as a "trainer".
