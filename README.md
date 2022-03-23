@@ -346,3 +346,9 @@ design.bind_provider(
 ```
 This is useful when your mapping function requires many dependencies.
 
+# TODO
+- add mnist training example with keras
+- add 'modularization on the fly' example
+- post Reddit
+- post SHOW HN
+- add gif demo
