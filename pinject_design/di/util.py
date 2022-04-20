@@ -4,6 +4,7 @@ from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from itertools import chain
+from pickle import PicklingError
 from typing import Union, Type, TypeVar, Callable, Dict, Any
 
 import pinject
@@ -32,11 +33,14 @@ T = TypeVar("T")
 
 def check_picklable(tgt: dict):
     cloud_dumps_try = safe(cloudpickle.dumps)
-    if isinstance(cloud_dumps_try(tgt), Failure):
+    res = cloud_dumps_try(tgt)
+    if isinstance(res,Failure):
         target_check = Map.of(**valmap(cloud_dumps_try, tgt))
         logger.error(
             "failed pickling:\n" + tabulate(target_check.filter(lambda k, v: isinstance(v, Failure)).to_list()))
-        raise RuntimeError("this object is not picklable. check the error messages above")
+        logger.error(f"if the error message contains EncodedFile pickling error, "
+                     f"check whether the logging module is included in the target object or not.")
+        raise RuntimeError("this object is not picklable. check the error messages above.")
 
 
 def inject_proto(all_except=None, arg_names=None):
@@ -142,8 +146,8 @@ def get_dict_diff(a: dict, b: dict):
     Subject = try_import_subject()
     for k in all_keys:
 
-        ak = getitem_opt(a, k).map(to_readable_name).value
-        bk = getitem_opt(b, k).map(to_readable_name).value
+        ak = getitem_opt(a, k).map(to_readable_name).or_else(Some(None)).value
+        bk = getitem_opt(b, k).map(to_readable_name).or_else(Some(None)).value
         flag = match((ak, bk),
                      (Subject, Subject), lambda a, b: True,
                      # (np.ndarray, np.ndarray), lambda a, b: (a != b).any(),
@@ -211,7 +215,7 @@ class Design:
         dst = Map.of(**dst)
         keys = src.keys() | dst.keys()
         multi = {k: (
-                src.try_find(k).default_value(set()) | dst.try_find(k).default_value(set())
+                    src.try_find(k).default_value([]) + dst.try_find(k).default_value([])
         ) for k in keys}
         return multi
 
@@ -250,6 +254,8 @@ class Design:
     def bind_instance(self, **kwargs):
         x = self
         for k, v in kwargs.items():
+            if isinstance(v,type):
+                logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
             x = x.bind(k).to_instance(v)
         return x
 
@@ -460,22 +466,39 @@ class Design:
         """:cvar adds a provider to specified key so that result of calling multiple providers will be
         aggregated and provided as a list.
         """
+
         return self + Design(
             multi_binds={
-                k: {v}
+                k: [v]
                 for k, v in kwargs.items()
             }
         )
 
     def multi_bind_empty(self, *keys):
         """:key returns a new design which returns a [] for "key" as default value. """
+        # None works as a signal to remove
         return self + Design(
             multi_binds={
-                k: set() for k in keys
+                k: [None] for k in keys
             }
         )
+    def _acc_multi_provider(self,providers):
+        if providers:
+            logger.info("--------")
+            logger.info(providers)
+        res = []
+        for p in providers:
+            if p is None:# this is set by empty_multi_provider call
+                res = []
+            else:
+                res.append(p)
+        if providers:
+            logger.info(res)
+            logger.info("--------")
+        return res
 
-    def _add_multi_binding(self, design, k, providers):
+    def _add_multi_binding(self, design, k, providers:list):
+        providers = self._acc_multi_provider(providers)
         deps = [get_class_aware_args(f) for f in providers]
         dep_set = set(chain(*deps))
         if "self" in dep_set:
