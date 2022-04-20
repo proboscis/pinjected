@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pinject-design"
-version = "0.1.3"
+version = "0.1.7"
 description = "immutable wrapper for pinject"
 authors = ["proboscis <nameissoap@gmail.com>"]
 license = "MIT"

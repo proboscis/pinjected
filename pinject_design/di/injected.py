@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any
 
 import makefun
+from IPython import embed
 from loguru import logger
 from makefun import create_function
 
@@ -61,11 +62,7 @@ def partialclass(name, cls, *args, **kwds):
 
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
-    what I want to achieve is ..
-    to define a function that can accept injected[T]s to return injected[X]
-    I only want to define a function that converts it.
-    so given a function we want to lift that function to Injected Function
-    so, define a function and convert it with mappings
+    this class is actually an abstraction of fucntion partial application.
     """
 
     @staticmethod
@@ -95,6 +92,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             target_function=_target_function_,
             kwargs_mapping=kwargs_mapping
         )
+
+    @staticmethod
+    def direct(_target_function, **kwargs) -> "Injected":
+        """
+        uses Injected.pure by default unless the parameter is an instance of Injected.
+        :param _target_function:
+        :param kwargs:
+        :return:
+        """
+        en_injected = {k: Injected.pure(v) for k, v in kwargs.items() if not isinstance(v, Injected)}
+        already_injected = {k: v for k, v in kwargs.items() if isinstance(v, Injected)}
+        return Injected.bind(_target_function, **en_injected, **already_injected)
 
     def _faster_get_fname(self):
         frame = sys._getframe().f_back.f_back.f_back.f_back
@@ -178,31 +187,39 @@ class MappedInjected(Injected):
 
     def get_provider(self):
         def impl(**kwargs):
-            tmp = self.src.get_provider()(**kwargs)
+            assert self.dependencies() == set(
+                kwargs.keys())  # this is fine but get_provider returns wrong signatured func
+            try:
+                tmp = self.src.get_provider()(**kwargs)
+            except Exception as e:
+                logger.error(f"src:{self.src}")
+                embed()
+                raise e
             return self.f(tmp)
 
         return create_function(self.get_signature(), func_impl=impl)
 
-class MapWithExtras(Injected):
-    src:Injected[T]
-    f:Callable[[T,Any],U]
-    extras:Set[str]
 
-    def __init__(self, stack, src, f,extras:Set[str]):
+class MapWithExtras(Injected):
+    src: Injected[T]
+    f: Callable[[T, Any], U]
+    extras: Set[str]
+
+    def __init__(self, stack, src, f, extras: Set[str]):
         super(MappedInjected, self).__init__(stack)
         self.src = src
         self.f = f
-        self.extras=extras
+        self.extras = extras
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies() | self.extras
 
     def get_provider(self):
         def impl(**kwargs):
-            src_deps = {k:kwargs[k] for k in self.src.dependencies()}
-            extras = {k:kwargs[k] for k in self.extras}
+            src_deps = {k: kwargs[k] for k in self.src.dependencies()}
+            extras = {k: kwargs[k] for k in self.extras}
             tmp = self.src.get_provider()(**src_deps)
-            return self.f(tmp,**extras)
+            return self.f(tmp, **extras)
 
         return create_function(self.get_signature(), func_impl=impl)
 
@@ -292,7 +309,7 @@ class InjectedFunction(Injected[T]):
                 deps[mdep] = solve_injection(mdep, kwargs)
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
-            #logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
+            # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             return self.target_function(**deps)
 
         # you have to add a prefix 'provider'""
@@ -334,10 +351,10 @@ class InjectedByName(Injected[T]):
         self.name = name
 
     def dependencies(self) -> Set[str]:
-        return set(self.name)
+        return {self.name}
 
     def get_provider(self):
-        return create_function(func_signature=self.get_signature(), func_impl=lambda v: v)
+        return create_function(func_signature=self.get_signature(), func_impl=lambda **kwargs: kwargs[self.name])
 
 
 class ZippedInjected(Injected[Tuple[A, B]]):
@@ -351,21 +368,21 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
     def get_provider(self):
         def impl(**kwargs):  # can we pickle this though?
-            logger.info(f"providing from ZippedInjected!:{kwargs}")
-            logger.info(f"a:{self.a}")
-            logger.info(f"b:{self.b}")
+            #logger.info(f"providing from ZippedInjected!:{kwargs}")
+            #logger.info(f"a:{self.a}")
+            #logger.info(f"b:{self.b}")
             a_kwargs = {k: kwargs[k] for k in self.a.dependencies()}
             b_kwargs = {k: kwargs[k] for k in self.b.dependencies()}
             # embed()
             a = self.a.get_provider()(**a_kwargs)
-            logger.info(f"a:{a}")
+            #logger.info(f"a:{a}")
             b = self.b.get_provider()(**b_kwargs)
-            logger.info(f"b:{b}")
-            logger.info((a, b))
+            #logger.info(f"b:{b}")
+            #logger.info((a, b))
             return a, b
 
         signature = self.get_signature()
-        logger.info(f"created signature:{signature} for ZippedInjected")
+        #logger.info(f"created signature:{signature} for ZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
 
 
