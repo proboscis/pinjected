@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any
 
 import makefun
-from IPython import embed
-from loguru import logger
 from makefun import create_function
 
 T, U = TypeVar("T"), TypeVar("U")
@@ -106,10 +104,16 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.bind(_target_function, **en_injected, **already_injected)
 
     def _faster_get_fname(self):
-        frame = sys._getframe().f_back.f_back.f_back.f_back
-        mod = frame.f_globals["__name__"]
-        name = frame.f_lineno
-        return f"{mod.replace('.', '_')}_L_{name}"
+        try:
+            frame = sys._getframe().f_back.f_back.f_back.f_back
+            mod = frame.f_globals["__name__"]
+            name = frame.f_lineno
+            return f"{mod.replace('.', '_')}_L_{name}".replace("<","__").replace(">","__")
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"failed to get name of the injected location.")
+            return f"__unknown_module__maybe_due_to_pickling__"
+
 
     def __init__(self, init_stack):
         self.fname = self._faster_get_fname()
@@ -189,12 +193,7 @@ class MappedInjected(Injected):
         def impl(**kwargs):
             assert self.dependencies() == set(
                 kwargs.keys())  # this is fine but get_provider returns wrong signatured func
-            try:
-                tmp = self.src.get_provider()(**kwargs)
-            except Exception as e:
-                logger.error(f"src:{self.src}")
-                embed()
-                raise e
+            tmp = self.src.get_provider()(**kwargs)
             return self.f(tmp)
 
         return create_function(self.get_signature(), func_impl=impl)
@@ -242,7 +241,11 @@ def extract_dependency(dep: Union[str, type, Callable, Injected]) -> Set[str]:
         argspec = inspect.getfullargspec(dep.__init__)
         return set(argspec.args) - {'self'}
     elif isinstance(dep, Callable):
-        argspec = inspect.getfullargspec(dep)
+        try:
+            argspec = inspect.getfullargspec(dep)
+        except Exception as e:
+            raise e
+
         return set(argspec.args) - {'self'}
     elif isinstance(dep, Injected):
         return dep.dependencies()
@@ -368,21 +371,21 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
     def get_provider(self):
         def impl(**kwargs):  # can we pickle this though?
-            #logger.info(f"providing from ZippedInjected!:{kwargs}")
-            #logger.info(f"a:{self.a}")
-            #logger.info(f"b:{self.b}")
+            # logger.info(f"providing from ZippedInjected!:{kwargs}")
+            # logger.info(f"a:{self.a}")
+            # logger.info(f"b:{self.b}")
             a_kwargs = {k: kwargs[k] for k in self.a.dependencies()}
             b_kwargs = {k: kwargs[k] for k in self.b.dependencies()}
             # embed()
             a = self.a.get_provider()(**a_kwargs)
-            #logger.info(f"a:{a}")
+            # logger.info(f"a:{a}")
             b = self.b.get_provider()(**b_kwargs)
-            #logger.info(f"b:{b}")
-            #logger.info((a, b))
+            # logger.info(f"b:{b}")
+            # logger.info((a, b))
             return a, b
 
         signature = self.get_signature()
-        #logger.info(f"created signature:{signature} for ZippedInjected")
+        # logger.info(f"created signature:{signature} for ZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
 
 
@@ -407,5 +410,6 @@ class MZippedInjected(Injected):
             return tuple(res)
 
         signature = self.get_signature()
+        from loguru import logger
         logger.info(f"created signature:{signature} for MZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)

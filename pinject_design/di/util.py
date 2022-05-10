@@ -17,7 +17,7 @@ from makefun import create_function, wraps
 from pampy import match
 from pinject import BindingSpec
 from pinject.scoping import SingletonScope
-from returns.result import safe, Failure
+from returns.result import safe, Failure, Result
 from tabulate import tabulate
 
 from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, InjectedProvider, PinjectConfigure, \
@@ -33,7 +33,9 @@ T = TypeVar("T")
 
 def check_picklable(tgt: dict):
     cloud_dumps_try = safe(cloudpickle.dumps)
-    res = cloud_dumps_try(tgt)
+    cloud_loads_try = safe(cloudpickle.loads)
+    res = cloud_dumps_try(tgt).bind(cloud_loads_try)
+
     if isinstance(res,Failure):
         target_check = Map.of(**valmap(cloud_dumps_try, tgt))
         logger.error(
@@ -41,6 +43,7 @@ def check_picklable(tgt: dict):
         logger.error(f"if the error message contains EncodedFile pickling error, "
                      f"check whether the logging module is included in the target object or not.")
         raise RuntimeError("this object is not picklable. check the error messages above.")
+    #logger.info(res)
 
 
 def inject_proto(all_except=None, arg_names=None):
@@ -183,7 +186,8 @@ class Design:
             modules=[m.__name__ for m in self.modules],
             classes=self.classes,
         )
-        check_picklable(self.bindings)
+        # ah, so this pickling checker is a bit of a problem
+        #check_picklable(self.bindings)
         return res
 
     def __setstate__(self, state):
@@ -409,19 +413,20 @@ class Design:
                            )
         return res
 
-    def to_binding_spec(self):
-        """Generate a BindingSpec class for pinject and returns its instance."""
-
-        design = self
-        # what if there exists a binding for the same key for multi_binding?
-        # do we overwrite? or aggregate?
-        # aggregation is safer I think.
+    def build(self):
+        design= self
         for k, providers in self.multi_binds.items():
             # assert k not in self.bindings,f"multi binding key overwrapping with normal binding key,{k}"
             if len(providers) == 0:
                 design = design.bind_instance(**{k: set()})
             else:
                 design = self._add_multi_binding(design, k, providers)
+        return design
+
+    def to_binding_spec(self):
+        """Generate a BindingSpec class for pinject and returns its instance."""
+
+        design = self.build()
         bindings = Map.of(**design.bindings).map(lambda k, v: v.to_pinject_binding())
         configures = bindings.filter(lambda k, v: isinstance(v, PinjectConfigure))
         providers = bindings.filter(lambda k, v: isinstance(v, PinjectProvider)).map(
@@ -484,8 +489,9 @@ class Design:
         )
     def _acc_multi_provider(self,providers):
         if providers:
-            logger.info("--------")
-            logger.info(providers)
+            #logger.info("--------")
+            #logger.info(providers)
+            pass
         res = []
         for p in providers:
             if p is None:# this is set by empty_multi_provider call
@@ -493,8 +499,9 @@ class Design:
             else:
                 res.append(p)
         if providers:
-            logger.info(res)
-            logger.info("--------")
+            #logger.info(res)
+            #logger.info("--------")
+            pass
         return res
 
     def _add_multi_binding(self, design, k, providers:list):
@@ -504,7 +511,7 @@ class Design:
         if "self" in dep_set:
             dep_set.remove("self")
         f_signature = f"multi_bind_provider_{k}({','.join(dep_set)})"
-        logger.info(f_signature)
+        #logger.info(f_signature)
         for ds in deps:
             for d in ds:
                 assert d in dep_set
@@ -523,7 +530,7 @@ class Design:
 
         new_f = create_function(f_signature, create_impl(providers, deps))
         binding = {k: new_f}
-        logger.info(binding)
+        #logger.info(binding)
         design = design.bind_provider(**binding)
         return design
 
@@ -618,6 +625,7 @@ class PinjectProviderBind(Bind):
     in_scope: Any
 
     def __post_init__(self):
+        assert self.f is not None,"PinjectProviderBind cannot have None as f."
         if self.f.__name__ == "<lambda>":
             self.f.__name__ = "_lambda_"
         self._fname = self.f.__name__
@@ -626,6 +634,7 @@ class PinjectProviderBind(Bind):
 
     def provider_for_binding_spec(self):
         # so first you need to convert a method in to function
+        assert self.f is not None
         f = self.f
         if "__name__" not in dir(f):
             f = method_to_function(f)
@@ -662,3 +671,4 @@ class PinjectProviderBind(Bind):
     def __setstate__(self, state):
         for k, v in state.items():
             setattr(self, k, v)
+        assert self.f is not None
