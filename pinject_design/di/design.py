@@ -25,6 +25,7 @@ class PinjectConfigure:
 @dataclass
 class PinjectProvider:
     method: Callable  # a callable with (self,dep1,dep2) signatures...
+
     # might be annotated with pinject's annotations..
     # pinject ads an attribute to an annotated function for marking..
     # which is not something I prefer though...
@@ -32,7 +33,7 @@ class PinjectProvider:
 
     def __post_init__(self):
         # if self is not in method signature, this will add it.
-        assert self.method is not None,"PinjectProvider created with method==None!"
+        assert self.method is not None, "PinjectProvider created with method==None!"
         if callable(self.method):
             self.method = ensure_self_arg(self.method)
             # we need to make sure the function's name starts with provide_
@@ -107,7 +108,7 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
     deps = extract_dependency_including_self(f)
     to_remove = set(kwargs)
     new_kwargs = deps - to_remove
-    func_name = f.__name__.replace("<lambda>","_lambda_")
+    func_name = f.__name__.replace("<lambda>", "_lambda_")
     sig = f"""{func_name}({",".join(new_kwargs)})"""
 
     def impl(**called_kwargs):
@@ -122,10 +123,10 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
 
 
 def bind_to_injected(bind: Bind):
-    if isinstance(bind,PinjectBind) and "to_class" in bind.kwargs:
+    if isinstance(bind, PinjectBind) and "to_class" in bind.kwargs:
         cls = bind.kwargs["to_class"]
         return Injected.bind(cls)
-    elif isinstance(bind,InjectedProvider):
+    elif isinstance(bind, InjectedProvider):
         return bind.src
     pb = bind.to_pinject_binding()
     provider = pinject_to_provider(pb)
@@ -140,7 +141,6 @@ def bind_to_injected(bind: Bind):
 
 
 # in order to make this class picklable, we need to postpone the wrapping process until to_binding_spec() call.
-@dataclass
 class ProviderTrait(Bind[T]):
     @property
     @abc.abstractmethod
@@ -149,7 +149,7 @@ class ProviderTrait(Bind[T]):
 
     def to_pinject_binding(self) -> Union["PinjectConfigure", "PinjectProvider"]:
         provider = self.provider
-        assert provider is not None,"provider is None for some reason!"
+        assert provider is not None, "provider is None for some reason!"
         return PinjectProvider(provider)
 
 
