@@ -346,6 +346,9 @@ design.bind_provider(
 ```
 This is useful when your mapping function requires many dependencies.
 
+# Picklability
+Compatible with dill and cloudpickle as long as the bound objects are picklable.
+
 # TODO
 - add mnist training example with keras
 - add 'modularization on the fly' example
