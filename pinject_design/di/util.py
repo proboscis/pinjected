@@ -392,13 +392,17 @@ class Design:
         return self.bindings[item]
 
     def __str__(self):
+        return f"Design(len={len(self.bindings) + len(self.multi_binds)})"
+
+    def __repr__(self):
+        return str(self)
+
+    def table_str(self):
         import tabulate
         binds = tabulate.tabulate(sorted(list(self.bindings.items())))
         multis = tabulate.tabulate(sorted(list(self.multi_binds.items())))
         return binds + "\n" + multis
 
-    def __repr__(self):
-        return str(self)
 
     def to_str_dict(self):
         res = dict()
