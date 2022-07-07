@@ -231,3 +231,10 @@ class PinjectBind(Bind):
 
     def to_pinject_binding(self) -> Union[PinjectConfigure, PinjectProvider]:
         return PinjectConfigure(self.kwargs)
+
+@dataclass
+class MetaBind(Bind):
+    src:Bind
+    metadata:dict
+    def to_pinject_binding(self) -> Union[PinjectConfigure, PinjectProvider]:
+        return self.src.to_pinject_binding()

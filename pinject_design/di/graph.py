@@ -19,7 +19,7 @@ class ExtendedObjectGraph:
 
     def provide(self, target: Union[str, Type[T], Injected[T], Callable]) -> Union[object, T]:
         if isinstance(target, str):
-            assert "self" not in target, f"provide target:{target}"
+            assert target!="self", f"provide target:{target}"
             code = compile(f"""def __init__(self,{target}):self.res={target}""", "<string>", "exec")
             fn = FunctionType(code.co_consts[0], globals(), "__init__")
             Request = type("Request", (object,), dict(__init__=fn))

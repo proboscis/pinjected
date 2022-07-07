@@ -36,14 +36,14 @@ def check_picklable(tgt: dict):
     cloud_loads_try = safe(cloudpickle.loads)
     res = cloud_dumps_try(tgt).bind(cloud_loads_try)
 
-    if isinstance(res,Failure):
+    if isinstance(res, Failure):
         target_check = Map.of(**valmap(cloud_dumps_try, tgt))
         logger.error(
             "failed pickling:\n" + tabulate(target_check.filter(lambda k, v: isinstance(v, Failure)).to_list()))
         logger.error(f"if the error message contains EncodedFile pickling error, "
                      f"check whether the logging module is included in the target object or not.")
         raise RuntimeError("this object is not picklable. check the error messages above.")
-    #logger.info(res)
+    # logger.info(res)
 
 
 def inject_proto(all_except=None, arg_names=None):
@@ -89,6 +89,7 @@ class DesignBindContext:
         self.key = key
 
     def to_class(self, cls: type, **kwargs):
+        assert isinstance(cls, type), f"binding must be a class! got:{cls} for key:{self.src}"
         return self.src.bind_imm(self.key, to_class=cls, **kwargs)
 
     def to_instance(self, instance, **kwargs):
@@ -187,7 +188,7 @@ class Design:
             classes=self.classes,
         )
         # ah, so this pickling checker is a bit of a problem
-        #check_picklable(self.bindings)
+        # check_picklable(self.bindings)
         return res
 
     def __setstate__(self, state):
@@ -219,7 +220,7 @@ class Design:
         dst = Map.of(**dst)
         keys = src.keys() | dst.keys()
         multi = {k: (
-                    src.try_find(k).default_value([]) + dst.try_find(k).default_value([])
+                src.try_find(k).default_value([]) + dst.try_find(k).default_value([])
         ) for k in keys}
         return multi
 
@@ -239,10 +240,12 @@ class Design:
     def bind_provider_imm(self, key, f, all_except=None, arg_names=None, in_scope=None):
         def raise_unhandled(any):
             raise RuntimeError(f"unknown input type for bind_provider_imm! key:{key}, provider:{f}")
+
         bind = match(f,
                      Injected, lambda i: Design({key: InjectedProvider(i)}),
                      ProviderTrait, lambda pt: Design({key: pt}),
-                     callable, lambda c: Design({key: PinjectProviderBind(f, all_except=all_except, arg_names=arg_names, in_scope=in_scope)}),
+                     callable, lambda c: Design(
+                {key: PinjectProviderBind(f, all_except=all_except, arg_names=arg_names, in_scope=in_scope)}),
                      Any, raise_unhandled
                      )
         res = self + bind
@@ -258,7 +261,7 @@ class Design:
     def bind_instance(self, **kwargs):
         x = self
         for k, v in kwargs.items():
-            if isinstance(v,type):
+            if isinstance(v, type):
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
             x = x.bind(k).to_instance(v)
         return x
@@ -267,7 +270,7 @@ class Design:
         x = self
         for k, v in kwargs.items():
             # logger.info(f"binding provider:{k}=>{v}")
-            if isinstance(v,type):
+            if isinstance(v, type):
                 logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
                 x = x.bind(k).to_class(v)
             else:
@@ -277,7 +280,11 @@ class Design:
     def bind_class(self, **kwargs):
         x = self
         for k, v in kwargs.items():
-            x = x.bind(k).to_class(v)
+            if isinstance(v, Injected):
+                logger.warning(f"{k}->{v}: Injected instance is used for bind_class. fixing automatically.")
+                x = x.bind(k).to_provider(v)
+            else:
+                x = x.bind(k).to_class(v)
         return x
 
     def to_graph(self, modules=None, classes=None) -> ExtendedObjectGraph:
@@ -403,7 +410,6 @@ class Design:
         multis = tabulate.tabulate(sorted(list(self.multi_binds.items())))
         return binds + "\n" + multis
 
-
     def to_str_dict(self):
         res = dict()
         from pampy import _
@@ -418,7 +424,7 @@ class Design:
         return res
 
     def build(self):
-        design= self
+        design = self
         for k, providers in self.multi_binds.items():
             # assert k not in self.bindings,f"multi binding key overwrapping with normal binding key,{k}"
             if len(providers) == 0:
@@ -491,31 +497,25 @@ class Design:
                 k: [None] for k in keys
             }
         )
-    def _acc_multi_provider(self,providers):
-        if providers:
-            #logger.info("--------")
-            #logger.info(providers)
-            pass
+
+    def _acc_multi_provider(self, providers):
         res = []
         for p in providers:
-            if p is None:# this is set by empty_multi_provider call
+            if p is None:  # this is set by empty_multi_provider call
                 res = []
             else:
                 res.append(p)
-        if providers:
-            #logger.info(res)
-            #logger.info("--------")
-            pass
         return res
 
-    def _add_multi_binding(self, design, k, providers:list):
+    def _add_multi_binding(self, design, k, providers: list):
+        # TODO use Injected's mzip.
         providers = self._acc_multi_provider(providers)
-        deps = [get_class_aware_args(f) for f in providers]
+        deps = [f.dependencies() if isinstance(f, Injected) else get_class_aware_args(f) for f in providers]
         dep_set = set(chain(*deps))
         if "self" in dep_set:
             dep_set.remove("self")
         f_signature = f"multi_bind_provider_{k}({','.join(dep_set)})"
-        #logger.info(f_signature)
+        # logger.info(f_signature)
         for ds in deps:
             for d in ds:
                 assert d in dep_set
@@ -534,7 +534,7 @@ class Design:
 
         new_f = create_function(f_signature, create_impl(providers, deps))
         binding = {k: new_f}
-        #logger.info(binding)
+        # logger.info(binding)
         design = design.bind_provider(**binding)
         return design
 
@@ -629,7 +629,7 @@ class PinjectProviderBind(Bind):
     in_scope: Any
 
     def __post_init__(self):
-        assert self.f is not None,"PinjectProviderBind cannot have None as f."
+        assert self.f is not None, "PinjectProviderBind cannot have None as f."
         if self.f.__name__ == "<lambda>":
             self.f.__name__ = "_lambda_"
         self._fname = self.f.__name__

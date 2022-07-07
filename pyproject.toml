@@ -1,9 +1,14 @@
+[build-system]
+requires = [ "poetry-core>=1.0.0",]
+build-backend = "poetry.core.masonry.api"
+
 [tool.poetry]
 name = "pinject-design"
-version = "0.1.16"
+version = "0.1.20"
 description = "immutable wrapper for pinject"
-authors = ["proboscis <nameissoap@gmail.com>"]
+authors = [ "proboscis <nameissoap@gmail.com>",]
 license = "MIT"
+
 [tool.poetry.dependencies]
 python = "^3.7"
 makefun = "*"
@@ -17,7 +22,3 @@ tabulate = "*"
 cytoolz = "*"
 
 [tool.poetry.dev-dependencies]
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
