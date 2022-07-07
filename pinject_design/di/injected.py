@@ -3,9 +3,10 @@ import functools
 import inspect
 import sys
 from dataclasses import dataclass
-from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any
+from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any, Dict
 
 import makefun
+from loguru import logger
 from makefun import create_function
 
 T, U = TypeVar("T"), TypeVar("U")
@@ -64,11 +65,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def partial(target_function: Callable, **manual_injections) -> "Injected[Callable]":
+    def partial(target_function: Callable, *injection_targets) -> "Injected[Callable]":
         """
         use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved
         :param target_function: Callable
-        :param manual_injections: specific parameters to inject
+        :param injection_targets: specific parameters to make injected automatically
         :return:
         """
         # how can I partially apply class constructor?
@@ -78,9 +79,15 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             partial = functools.partial
 
         def _impl_for_injection(**kwargs):
-            return partial(target_function, **kwargs)
+            logger.info(f"partially injecting :{target_function.__name__} with {kwargs}")
+            # if you partially apply with kwargs way, the args after those args cannot be specified by positional args.
+            # so all args needs to be positionally injected instead by kwargs
+            applied= partial(target_function, *[kwargs[k] for k in injection_targets])
+            # so first we need to get the signature of the target_function, and then align with the injection_targets.
+            logger.info(f"applied func:{inspect.signature(applied)}")
+            return applied
 
-        sig = f"""{target_function.__name__}_provider({",".join(manual_injections.keys())})"""
+        sig = f"""{target_function.__name__}_provider({",".join(injection_targets)})"""
         func = makefun.create_function(sig, _impl_for_injection)
         return Injected.bind(func)
 
@@ -160,6 +167,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return self.zip(other).map(
             lambda t: t[1](t[0])
         )
+
+    @staticmethod
+    def dict(**kwargs:"Injected")->"Injected[Dict]":
+        keys = list(kwargs.keys())
+        return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t:{k:v for k,v in zip(keys,t)})
+
 
 
 class GeneratedInjected(Injected):
