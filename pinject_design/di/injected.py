@@ -3,6 +3,7 @@ import functools
 import inspect
 import sys
 from dataclasses import dataclass
+from pprint import pformat
 from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any, Dict
 
 import makefun
@@ -65,31 +66,49 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def partial(target_function: Callable, *injection_targets) -> "Injected[Callable]":
+    def partial(target_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
         use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved
         :param target_function: Callable
         :param injection_targets: specific parameters to make injected automatically
-        :return:
+        :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
         # how can I partially apply class constructor?
-        if isinstance(target_function, type):
-            partial = functools.partial(partialclass, target_function.__name__ + "Applied")
-        else:
-            partial = functools.partial
+        argspec = inspect.getfullargspec(target_function)
+        remaining_arg_names = argspec.args
+        if "self" in remaining_arg_names:
+            remaining_arg_names.remove("self")
+        logger.info(f"partially applying {injection_targets}")
+        logger.info(f"original args:{remaining_arg_names}")
+        for injected in injection_targets.keys():
+            remaining_arg_names.remove(injected)
 
-        def _impl_for_injection(**kwargs):
-            logger.info(f"partially injecting :{target_function.__name__} with {kwargs}")
-            # if you partially apply with kwargs way, the args after those args cannot be specified by positional args.
-            # so all args needs to be positionally injected instead by kwargs
-            applied= partial(target_function, *[kwargs[k] for k in injection_targets])
-            # so first we need to get the signature of the target_function, and then align with the injection_targets.
-            logger.info(f"applied func:{inspect.signature(applied)}")
-            return applied
+        def makefun_impl(kwargs):
+            logger.info(f"partial injection :{pformat(kwargs)}")
 
-        sig = f"""{target_function.__name__}_provider({",".join(injection_targets)})"""
-        func = makefun.create_function(sig, _impl_for_injection)
-        return Injected.bind(func)
+            def inner(*_args):
+                # user calls with both args or kwargs so we need to handle both.
+                call_kwargs = dict(zip(remaining_arg_names, _args))
+                logger.info(f"partial injection call :{pformat(call_kwargs)}")
+                full_kwargs = {**kwargs, **call_kwargs}
+                return target_function(**full_kwargs)
+
+            return inner
+        injected_kwargs = Injected.dict(**injection_targets)
+        injected_factory = Injected.bind(makefun_impl,kwargs=injected_kwargs)
+        return injected_factory
+
+
+    @staticmethod
+    def inject_except(target_function, *whitelist: str) -> "Injected[Callable]":
+        """
+        :param target_function:
+        :param whitelist: name of arguments which should not be injected by DI.
+        :return: Injected[Callable[(whitelisted args)=>Any]]
+        """
+        argspec = inspect.getfullargspec(target_function)
+        args_to_be_injected = [a for a in argspec.args if a not in whitelist and a != "self"]
+        return Injected.partial(target_function, *args_to_be_injected)
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "Injected":
@@ -115,12 +134,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             frame = sys._getframe().f_back.f_back.f_back.f_back
             mod = frame.f_globals["__name__"]
             name = frame.f_lineno
-            return f"{mod.replace('.', '_')}_L_{name}".replace("<","__").replace(">","__")
+            return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
         except Exception as e:
             from loguru import logger
             logger.warning(f"failed to get name of the injected location.")
             return f"__unknown_module__maybe_due_to_pickling__"
-
 
     def __init__(self, init_stack):
         self.fname = self._faster_get_fname()
@@ -169,10 +187,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         )
 
     @staticmethod
-    def dict(**kwargs:"Injected")->"Injected[Dict]":
+    def dict(**kwargs: "Injected") -> "Injected[Dict]":
         keys = list(kwargs.keys())
-        return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t:{k:v for k,v in zip(keys,t)})
-
+        return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
 
 
 class GeneratedInjected(Injected):
@@ -302,6 +319,7 @@ class InjectedFunction(Injected[T]):
                  kwargs_mapping: Mapping[str, Union[str, type, Callable, Injected]]
                  ):
         super().__init__(init_stack=4)
+        assert callable(target_function)
         self.target_function = target_function
         self.kwargs_mapping = kwargs_mapping
         for k, v in self.kwargs_mapping.items():
