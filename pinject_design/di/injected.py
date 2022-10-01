@@ -78,18 +78,21 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         remaining_arg_names = argspec.args
         if "self" in remaining_arg_names:
             remaining_arg_names.remove("self")
-        logger.info(f"partially applying {injection_targets}")
-        logger.info(f"original args:{remaining_arg_names}")
+        #logger.info(f"partially applying {injection_targets}")
+        #logger.info(f"original args:{remaining_arg_names}")
+
         for injected in injection_targets.keys():
             remaining_arg_names.remove(injected)
 
         def makefun_impl(kwargs):
-            logger.info(f"partial injection :{pformat(kwargs)}")
+            #logger.info(f"partial injection :{pformat(kwargs)}")
 
             def inner(*_args):
                 # user calls with both args or kwargs so we need to handle both.
+                assert len(_args) == len(remaining_arg_names),\
+                    f"partially applied injected function is missing some of positional args! {remaining_arg_names} for {_args}"
                 call_kwargs = dict(zip(remaining_arg_names, _args))
-                logger.info(f"partial injection call :{pformat(call_kwargs)}")
+                #logger.info(f"partial injection call :{pformat(call_kwargs)}")
                 full_kwargs = {**kwargs, **call_kwargs}
                 return target_function(**full_kwargs)
 
@@ -108,10 +111,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
         argspec = inspect.getfullargspec(target_function)
         args_to_be_injected = [a for a in argspec.args if a not in whitelist and a != "self"]
-        return Injected.partial(target_function, *args_to_be_injected)
+        return Injected.partial(target_function, **{item:Injected.by_name(item) for item in args_to_be_injected})
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "Injected":
+        if isinstance(_target_function_,Injected):
+            _target_function_ = _target_function_.get_provider()
         return InjectedFunction(
             target_function=_target_function_,
             kwargs_mapping=kwargs_mapping
@@ -334,6 +339,9 @@ class InjectedFunction(Injected[T]):
         # assert "self" not in inspect.signature(target_function).parameters
         self.missings = missings
 
+    def override_mapping(self,**kwargs:Union[str,type,Callable,Injected]):
+        return InjectedFunction(self.target_function,{**self.kwargs_mapping,**kwargs})
+
     def get_provider(self):
         signature = self.get_signature()
 
@@ -363,8 +371,8 @@ class InjectedFunction(Injected[T]):
             # logger.info(f"deps of dependency({k}):{d}")
         return res
 
-    def __str__(self):
-        return f"""InjectedFunction(target={self.target_function},kwargs_mapping={self.kwargs_mapping})"""
+    #def __str__(self):
+    #    return f"""InjectedFunction(target={self.target_function},kwargs_mapping={self.kwargs_mapping})"""
 
 
 class InjectedPure(Injected[T]):
@@ -420,6 +428,7 @@ class ZippedInjected(Injected[Tuple[A, B]]):
         return create_function(func_signature=signature, func_impl=impl)
 
 
+
 class MZippedInjected(Injected):
     def __init__(self, init_stack, *srcs: Injected):
         super().__init__(init_stack)
@@ -444,3 +453,23 @@ class MZippedInjected(Injected):
         from loguru import logger
         logger.info(f"created signature:{signature} for MZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
+
+def _injected_factory(**targets: Injected):
+    def _impl(f):
+        return Injected.partial(f, **targets)
+
+    return _impl
+
+
+def injected_factory(f):
+    """
+    any args starting with "_" is considered to be injected.
+    :param f:
+    :return:
+    """
+    sig: inspect.Signature = inspect.signature(f)
+    tgts = dict()
+    for k in sig.parameters.keys():
+        if k.startswith("_"):
+            tgts[k] = Injected.by_name(k[1:])
+    return _injected_factory(**tgts)(f)
