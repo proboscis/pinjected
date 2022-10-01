@@ -4,31 +4,47 @@ from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from itertools import chain
-from pickle import PicklingError
+from pprint import pformat
 from typing import Union, Type, TypeVar, Callable, Dict, Any
 
-import pinject
 import cloudpickle
-from cytoolz import merge, valmap
-from expression import Some, Nothing
-from expression.collections import Map
-from loguru import logger
+import pinject
+from cytoolz import merge, valmap, itemmap
 from makefun import create_function, wraps
 from pampy import match
 from pinject import BindingSpec
 from pinject.scoping import SingletonScope
-from returns.result import safe, Failure, Result
-from tabulate import tabulate
-
 from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, InjectedProvider, PinjectConfigure, \
     PinjectProvider, ensure_self_arg, PinjectBind
 from pinject_design.di.graph import ExtendedObjectGraph
 from pinject_design.di.injected import Injected
+from returns.result import safe, Failure
+from tabulate import tabulate
 
 prototype = pinject.provides(in_scope=pinject.PROTOTYPE)
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
 T = TypeVar("T")
+
+
+def rec_valmap(f, tgt: dict):
+    res = dict()
+    for k, v in f.items():
+        if isinstance(v, dict):
+            res[k] = rec_valmap(tgt[k], v)
+        else:
+            res[k] = f(v)
+    return res
+
+
+def rec_val_filter(f, tgt: dict):
+    res = dict()
+    for k, v in tgt.items():
+        if isinstance(v, dict):
+            res[k] = rec_val_filter(f, v)
+        elif f(v):
+            res[k] = v
+    return res
 
 
 def check_picklable(tgt: dict):
@@ -37,9 +53,13 @@ def check_picklable(tgt: dict):
     res = cloud_dumps_try(tgt).bind(cloud_loads_try)
 
     if isinstance(res, Failure):
-        target_check = Map.of(**valmap(cloud_dumps_try, tgt))
-        logger.error(
-            "failed pickling:\n" + tabulate(target_check.filter(lambda k, v: isinstance(v, Failure)).to_list()))
+        # target_check = valmap(cloud_dumps_try, tgt)
+        rec_check = rec_valmap(lambda v:(cloud_dumps_try(v),v), tgt)
+        failures = rec_val_filter(lambda v:isinstance(v[0], Failure),rec_check)
+        #failures = [(k, v, tgt[k]) for k, v in target_check.items() if isinstance(v, Failure)]
+
+        from loguru import logger
+        logger.error(f"Failed to pickle target: {pformat(failures)}")
         logger.error(f"if the error message contains EncodedFile pickling error, "
                      f"check whether the logging module is included in the target object or not.")
         raise RuntimeError("this object is not picklable. check the error messages above.")
@@ -113,10 +133,7 @@ def get_class_aware_args(f):
 
 
 def getitem_opt(o, k):
-    if k in o:
-        return Some(o[k])
-    else:
-        return Nothing
+    return safe(o.__getitem__)(k)
 
 
 def to_readable_name(o):
@@ -150,8 +167,8 @@ def get_dict_diff(a: dict, b: dict):
     Subject = try_import_subject()
     for k in all_keys:
 
-        ak = getitem_opt(a, k).map(to_readable_name).or_else(Some(None)).value
-        bk = getitem_opt(b, k).map(to_readable_name).or_else(Some(None)).value
+        ak = getitem_opt(a, k).map(to_readable_name).value_or(None)
+        bk = getitem_opt(b, k).map(to_readable_name).value_or(None)
         flag = match((ak, bk),
                      (Subject, Subject), lambda a, b: True,
                      # (np.ndarray, np.ndarray), lambda a, b: (a != b).any(),
@@ -216,11 +233,12 @@ class Design:
                      )
 
     def _merge_multi_binds(self, src, dst):
-        src = Map.of(**src)
-        dst = Map.of(**dst)
+        # src = Map.of(**src)
+        # dst = Map.of(**dst)
         keys = src.keys() | dst.keys()
         multi = {k: (
-                src.try_find(k).default_value([]) + dst.try_find(k).default_value([])
+                getitem_opt(src, k).value_or([]) +
+                getitem_opt(dst, k).value_or([])
         ) for k in keys}
         return multi
 
@@ -262,22 +280,31 @@ class Design:
         x = self
         for k, v in kwargs.items():
             if isinstance(v, type):
+                from loguru import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
             x = x.bind(k).to_instance(v)
         return x
 
-    def bind_provider(self, **kwargs):
+    def bind_provider(self, **kwargs: Union[Callable, Injected]):
+        from loguru import logger
         x = self
         for k, v in kwargs.items():
             # logger.info(f"binding provider:{k}=>{v}")
             if isinstance(v, type):
                 logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
                 x = x.bind(k).to_class(v)
+            if isinstance(v, Injected):
+                x = x.bind(k).to_provider(v)
+            elif not callable(v):
+                logger.warning(
+                    f"{k}->{v}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
+                x = x.bind(k).to_instance(v)
             else:
                 x = x.bind(k).to_provider(v)
         return x
 
     def bind_class(self, **kwargs):
+        from loguru import logger
         x = self
         for k, v in kwargs.items():
             if isinstance(v, Injected):
@@ -437,11 +464,17 @@ class Design:
         """Generate a BindingSpec class for pinject and returns its instance."""
 
         design = self.build()
-        bindings = Map.of(**design.bindings).map(lambda k, v: v.to_pinject_binding())
-        configures = bindings.filter(lambda k, v: isinstance(v, PinjectConfigure))
-        providers = bindings.filter(lambda k, v: isinstance(v, PinjectProvider)).map(
-            lambda k, v: self._ensure_provider_name(k, v.method)
-        )
+        bindings = {k: v.to_pinject_binding() for k, v in design.bindings.items()}
+        configures = {k: v for k, v in bindings.items() if isinstance(v, PinjectConfigure)}
+        # configures = bindings.filter(lambda k, v: isinstance(v, PinjectConfigure))
+        providers = {k: v for k, v in bindings.items() if isinstance(v, PinjectProvider)}
+        providers = {k: self._ensure_provider_name(k, v.method) for k, v in providers.items()}
+
+        # providers = itemmap(lambda t: self._ensure_provider_name(t[0], t[1].method), providers)
+
+        # providers = bindings.filter(lambda k, v: isinstance(v, PinjectProvider)).map(
+        #     lambda k, v: self._ensure_provider_name(k, v.method)
+        # )
 
         def configure(self, bind):
             for c, v in dict(configures).items():
@@ -458,6 +491,7 @@ class Design:
 
     def _ensure_provider_name(self, k, method):
         """set appropriate name for provider function to be recognized by pinject"""
+        from loguru import logger
         name = f"provide_{k}"
         if not method.__name__ == name:
             # there are cases where you cannot directly set __name__ attribute.
@@ -522,7 +556,9 @@ class Design:
 
         def create_impl(tgt_providers, tgt_dependencies):
             def f_impl(**kwargs):
-                logger.info(f"{f_signature} called with {list(kwargs.keys())}")
+                # from loguru import logger
+
+                # logger.info(f"{f_signature} called with {list(kwargs.keys())}")
                 values = []
                 for provider, ds in zip(tgt_providers, tgt_dependencies):
                     p_deps = {k: kwargs[k] for k in ds}
@@ -541,6 +577,17 @@ class Design:
     def diff(self, other):
         d = get_dict_diff(self.bindings, other.bindings)
         return d
+
+    def inspect_picklability(self):
+        from loguru import logger
+        logger.info(f"checking picklability of bindings")
+        check_picklable(self.bindings)
+        logger.info(f"checking picklability of multi-binds")
+        check_picklable(self.multi_binds)
+        logger.info(f"checking picklability of modules")
+        check_picklable(self.modules)
+        logger.info(f"checking picklability of classes")
+        check_picklable(self.classes)
 
 
 @dataclass
@@ -587,6 +634,7 @@ def _patched_provide(self, binding_key, default_provider_fn):
 
 
 def patch_pinject_singleton_scope():
+    from loguru import logger
     logger.warning(f"patching pinject's SingletonScope to produce better exception")
     SingletonScope.provide = _patched_provide
     logger.warning(f"patching done")
@@ -612,6 +660,7 @@ def _get_external_type_name(thing):
 
 def patch_pinject_get_external_type_name():
     import pinject.locations
+    from loguru import logger
     logger.warning(f"patching pinject's _get_external_type_name to accept pickled function")
     pinject.locations._get_external_type_name = _get_external_type_name
 
