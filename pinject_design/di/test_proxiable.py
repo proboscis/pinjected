@@ -1,5 +1,5 @@
 from pinject_design import Injected, Designed
-from pinject_design.di.proxiable import Object, ast_proxy
+from pinject_design.di.static_proxy import Object, ast_proxy
 
 
 def test_expr():

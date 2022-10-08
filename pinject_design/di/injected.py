@@ -184,7 +184,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def mzip(*srcs: "Injected"):
-        return MZippedInjected(4, *srcs)
+        return MZippedInjected(*srcs)
 
     # this is ap of applicative functor.
     def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
@@ -202,7 +202,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """use this to modify injected variables freely without map.
         call eval() at the end to finish modification
         """
-        from pinject_design.di.proxiable import injected_proxy
+        from pinject_design.di.static_proxy import injected_proxy
         return injected_proxy(self)
 
 
@@ -397,6 +397,11 @@ class InjectedPure(Injected[T]):
     def get_provider(self):
         return create_function(func_signature=self.get_signature(), func_impl=lambda: self.value)
 
+    def __str__(self):
+        return f"Pure({self.value})"
+    def __repr__(self):
+        return str(self)
+
 
 class InjectedByName(Injected[T]):
     def __init__(self, name):
@@ -436,6 +441,7 @@ class MZippedInjected(Injected):
     def __init__(self, *srcs: Injected):
         super().__init__()
         self.srcs = srcs
+        assert all(isinstance(s,Injected) for s in srcs),srcs
 
     def dependencies(self) -> Set[str]:
         res = set()
