@@ -50,7 +50,7 @@ class Designed(Generic[T], ABC):
 
     @property
     def proxy(self):
-        from pinject_design.di.proxiable import designed_proxy
+        from pinject_design.di.static_proxy import designed_proxy
         return designed_proxy(self)
 
 

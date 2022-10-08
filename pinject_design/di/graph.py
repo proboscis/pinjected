@@ -14,6 +14,7 @@ from returns.maybe import Nothing, Maybe, Some
 
 from pinject_design.di.designed import Designed
 from pinject_design.di.injected import Injected
+from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import OverridenBindableScopes
 from pinject_design.exceptions import DependencyResolutionFailure
 
@@ -32,7 +33,7 @@ class MissingDependencyException(Exception):
         return MissingDependencyException(MissingDependencyException.create_message(deps))
 
 
-Providable = Union[str, Type[T], Injected[T], Callable, Designed[T]]
+Providable = Union[str, Type[T], Injected[T], Callable, Designed[T], DelegatedVar[Injected], DelegatedVar[Designed]]
 
 
 class ExtendedObjectGraph:
@@ -62,54 +63,74 @@ class ExtendedObjectGraph:
         :param target:
         :return:
         """
-        if isinstance(target, str):
-            return self._provide(Injected.by_name(target))
-        elif isinstance(target, type):
-            return self.src.provide(target)
-        elif isinstance(target, Injected):
-            deps = target.dependencies()
-            if 'self' in deps:
-                deps.remove('self')
-            signature = f"""__init__(self,{','.join(deps)})"""
+        from pinject_design.di.static_proxy import Expr
+        match target:
+            case str():
+                return self._provide(Injected.by_name(target))
+            case type():
+                return self.src.provide(target)
+            case Injected():
+                return self._provide_injected(target)
+            case Designed():
+                return self.child_session(target.design)[target.internal_injected]
+            case DelegatedVar():
+                return self._provide(target.eval())
+            case _ if callable(target):
+                assert not isinstance(target,DelegatedVar),str(target)
+                return self.run(target)
+            case _:
+                raise TypeError(f"target must be either class or a string or Injected. got {target}")
 
-            def impl(self, **kwargs):
-                self.data = target.get_provider()(**kwargs)
+    def _provide_injected(self, injected: Injected[T]) -> T:
+        deps = injected.dependencies()
+        if 'self' in deps:
+            deps.remove('self')
+        signature = f"""__init__(self,{','.join(deps)})"""
 
-            __init__ = create_function(signature, func_impl=impl)
-            Request = type("Request", (object,), dict(__init__=__init__))
-            return self.src.provide(Request).data
-        elif isinstance(target, Designed):
-            return self.child_session(target.design)[target.internal_injected]
-        elif isinstance(target, Callable):
-            return self.run(target)
-        else:
-            raise TypeError(f"target must be either class or a string or Injected. got {target}")
+        def impl(self, **kwargs):
+            self.data = injected.get_provider()(**kwargs)
+
+        __init__ = create_function(signature, func_impl=impl)
+        Request = type("Request", (object,), dict(__init__=__init__))
+        return self.src.provide(Request).data
 
     def provide(self, target: Providable) -> Union[object, T]:
         try:
             return self._provide(target)
         except NothingInjectableForArgError as e:
-            # preventing circular import
-            from pinject_design.visualize_di import DIGraph
-            match target:
-                case type():
-                    deps = [default_get_arg_names_from_class_name(target.__name__)[0]]
-                case Injected():
-                    deps = target.dependencies()
-                case str():
-                    deps = [target]
-                case other:
-                    raise e
-
-            missings = DIGraph(self.design).find_missing_dependencies(deps)
+            missings = self._inspect_dependencies(target)
             if missings:
                 for missing in missings:
                     logger.error(f"failed to find dependency:{missing}")
                 raise MissingDependencyException.create(missings)
-            else:
-                raise e
+            raise e
 
-    def sessioned(self, target: Providable) -> "SessionValue[Union[object,T]]":
+    def _inspect_dependencies(self, target: Providable):
+        # preventing circular import
+        from pinject_design.visualize_di import DIGraph
+        deps, design = self._extract_dependencies(target)
+        missings = DIGraph(design).find_missing_dependencies(deps)
+        return missings
+
+    def _extract_dependencies(self, target: Providable):
+        match target:
+            case type():
+                deps = [default_get_arg_names_from_class_name(target.__name__)[0]]
+            case Injected():
+                return target.dependencies(), self.design
+            case str():
+                return [target], self.design
+            case Designed():
+                deps, d = self._extract_dependencies(target.internal_injected)
+                return deps, d + target.design
+            case DelegatedVar():
+                return self._extract_dependencies(target.eval())
+            case x if callable(x):
+                return self._extract_dependencies(Injected.bind(x))
+            case other:
+                raise TypeError(f"cannot extract dependencies. unsupported :{target}")
+
+    def sessioned(self, target: Providable) -> "DelegatedVar[Union[object,T]]":
         match target:
             case str():
                 return self.sessioned(Injected.by_name(target))
@@ -118,7 +139,10 @@ class ExtendedObjectGraph:
             case provider if callable(provider):
                 return self.sessioned(Injected.bind(provider))
             case Designed():
-                return SessionValue(self, target)
+                val = SessionValue(self, target)
+                ctx = sessioned_value_proxy_context(self, val.session)
+                from pinject_design.di.proxiable import DelegatedVar
+                return DelegatedVar(val, ctx)
             case _:
                 raise TypeError(f"Unknown target:{target} queried for DI.")
 
@@ -131,7 +155,7 @@ class ExtendedObjectGraph:
         return f(**kwargs)
 
     def __repr__(self):
-        return f"ExtendedObjectGraph of a design:\n{self.design}"
+        return f"ExtendedObjectGraph({self.design})"
 
     def __getitem__(self, item):
         return self.provide(item)
@@ -146,17 +170,31 @@ class ExtendedObjectGraph:
         """
         return ChildGraph(self.src, self.design, overrides)
 
-    def _merged_binding_mapping(self, child_graph: ObjectGraph):
-        src: BindingMapping = self.src._obj_provider._binding_mapping
-        child: BindingMapping = child_graph._obj_provider._binding_mapping
-        return BindingMapping(
-            {**src._binding_key_to_binding, **child._binding_key_to_binding},
-            {**src._collided_binding_key_to_bindings, **child._collided_binding_key_to_bindings}
-        )
+
+def sessioned_value_proxy_context(parent: ExtendedObjectGraph, session: ExtendedObjectGraph):
+    from pinject_design.di.dynamic_proxy import DynamicProxyContextImpl
+    return DynamicProxyContextImpl(
+        lambda a: a.value,
+        lambda x: SessionValue(
+            parent,
+            Designed.bind(Injected.pure(x)),
+            session
+        ),
+        "SessionValueProxy"
+    )
+
+
+def _merged_binding_mapping(src_graph: ObjectGraph, child_graph: ObjectGraph):
+    src: BindingMapping = src_graph._obj_provider._binding_mapping
+    child: BindingMapping = child_graph._obj_provider._binding_mapping
+    return BindingMapping(
+        {**src._binding_key_to_binding, **child._binding_key_to_binding},
+        {**src._collided_binding_key_to_bindings, **child._collided_binding_key_to_bindings}
+    )
 
 
 class ChildGraph(ExtendedObjectGraph):
-    def __init__(self, src, design, overrides: "Design" = None):
+    def __init__(self, src: ObjectGraph, design: "Design", overrides: "Design" = None):
         """
         :param src:
         :param design:
@@ -168,7 +206,7 @@ class ChildGraph(ExtendedObjectGraph):
             # binding_mapping:BindingMapping = design_to_binding_keys(overrides)
         child_graph = overrides.to_graph().src
         override_keys = set(child_graph._obj_provider._binding_mapping._binding_key_to_binding.keys())
-        new_mapping = self._merged_binding_mapping(child_graph)
+        new_mapping = _merged_binding_mapping(src, child_graph)
         new_scopes = OverridenBindableScopes(src._obj_provider._bindable_scopes, override_keys)
         # now we need overriden child scope
         child_obj_provider = ObjectProvider(
@@ -178,9 +216,9 @@ class ChildGraph(ExtendedObjectGraph):
         )
         child_obj_graph = ObjectGraph(
             obj_provider=child_obj_provider,
-            injection_context_factory=self.src._injection_context_factory,
-            is_injectable_fn=self.src._is_injectable_fn,
-            use_short_stack_traces=self.src._use_short_stack_traces
+            injection_context_factory=src._injection_context_factory,
+            is_injectable_fn=src._is_injectable_fn,
+            use_short_stack_traces=src._use_short_stack_traces
         )
         super().__init__(
             design + overrides,
@@ -200,10 +238,12 @@ class SessionValue(Generic[T]):
     """
     parent: ExtendedObjectGraph
     designed: Designed[T]
+    session: ExtendedObjectGraph = field(default=None)
     _cache: Maybe[T] = field(default=Nothing)
 
     def __post_init__(self):
-        self.session = self.parent.child_session(self.designed.design)
+        if self.session is None:
+            self.session = self.parent.child_session(self.designed.design)
 
     @property
     def value(self) -> Any:
