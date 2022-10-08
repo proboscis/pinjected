@@ -9,6 +9,7 @@ from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set,
 import makefun
 from loguru import logger
 from makefun import create_function
+from returns.maybe import Maybe, Nothing
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -78,29 +79,29 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         remaining_arg_names = argspec.args
         if "self" in remaining_arg_names:
             remaining_arg_names.remove("self")
-        #logger.info(f"partially applying {injection_targets}")
-        #logger.info(f"original args:{remaining_arg_names}")
+        # logger.info(f"partially applying {injection_targets}")
+        # logger.info(f"original args:{remaining_arg_names}")
 
         for injected in injection_targets.keys():
             remaining_arg_names.remove(injected)
 
         def makefun_impl(kwargs):
-            #logger.info(f"partial injection :{pformat(kwargs)}")
+            # logger.info(f"partial injection :{pformat(kwargs)}")
 
             def inner(*_args):
                 # user calls with both args or kwargs so we need to handle both.
-                assert len(_args) == len(remaining_arg_names),\
+                assert len(_args) == len(remaining_arg_names), \
                     f"partially applied injected function is missing some of positional args! {remaining_arg_names} for {_args}"
                 call_kwargs = dict(zip(remaining_arg_names, _args))
-                #logger.info(f"partial injection call :{pformat(call_kwargs)}")
+                # logger.info(f"partial injection call :{pformat(call_kwargs)}")
                 full_kwargs = {**kwargs, **call_kwargs}
                 return target_function(**full_kwargs)
 
             return inner
-        injected_kwargs = Injected.dict(**injection_targets)
-        injected_factory = Injected.bind(makefun_impl,kwargs=injected_kwargs)
-        return injected_factory
 
+        injected_kwargs = Injected.dict(**injection_targets)
+        injected_factory = Injected.bind(makefun_impl, kwargs=injected_kwargs)
+        return injected_factory
 
     @staticmethod
     def inject_except(target_function, *whitelist: str) -> "Injected[Callable]":
@@ -111,11 +112,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
         argspec = inspect.getfullargspec(target_function)
         args_to_be_injected = [a for a in argspec.args if a not in whitelist and a != "self"]
-        return Injected.partial(target_function, **{item:Injected.by_name(item) for item in args_to_be_injected})
+        return Injected.partial(target_function, **{item: Injected.by_name(item) for item in args_to_be_injected})
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "Injected":
-        if isinstance(_target_function_,Injected):
+        if isinstance(_target_function_, Injected):
             _target_function_ = _target_function_.get_provider()
         return InjectedFunction(
             target_function=_target_function_,
@@ -145,7 +146,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             logger.warning(f"failed to get name of the injected location.")
             return f"__unknown_module__maybe_due_to_pickling__"
 
-    def __init__(self, init_stack):
+    def __init__(self):
         self.fname = self._faster_get_fname()
 
     @abc.abstractmethod
@@ -168,18 +169,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def from_impl(impl: Callable, dependencies: Set[str]):
-        return GeneratedInjected(impl, dependencies, init_stack=4)
+        return GeneratedInjected(impl, dependencies)
 
     @staticmethod
     def pure(value):
-        return InjectedPure(value, init_stack=4)
+        return InjectedPure(value)
 
     @staticmethod
     def by_name(name: str):
-        return InjectedByName(name, init_stack=4)
+        return InjectedByName(name, )
 
     def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
-        return ZippedInjected(self, other, init_stack=4)
+        return ZippedInjected(self, other, )
 
     @staticmethod
     def mzip(*srcs: "Injected"):
@@ -196,12 +197,20 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         keys = list(kwargs.keys())
         return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
 
+    @property
+    def proxy(self):
+        """use this to modify injected variables freely without map.
+        call eval() at the end to finish modification
+        """
+        from pinject_design.di.proxiable import injected_proxy
+        return injected_proxy(self)
+
 
 class GeneratedInjected(Injected):
     """creates Injected from dependencies and funct(**kwargs) signature"""
 
-    def __init__(self, impl: Callable, dependencies: Set[str], init_stack):
-        super().__init__(init_stack)
+    def __init__(self, impl: Callable, dependencies: Set[str]):
+        super().__init__()
         self.impl = impl
         self._dependencies = dependencies
 
@@ -217,7 +226,7 @@ class MappedInjected(Injected):
     f: Callable[[T], U]
 
     def __init__(self, stack, src, f):
-        super(MappedInjected, self).__init__(stack)
+        super(MappedInjected, self).__init__()
         self.src = src
         self.f = f
 
@@ -323,7 +332,7 @@ class InjectedFunction(Injected[T]):
                  target_function: Callable,
                  kwargs_mapping: Mapping[str, Union[str, type, Callable, Injected]]
                  ):
-        super().__init__(init_stack=4)
+        super().__init__()
         assert callable(target_function)
         self.target_function = target_function
         self.kwargs_mapping = kwargs_mapping
@@ -339,8 +348,8 @@ class InjectedFunction(Injected[T]):
         # assert "self" not in inspect.signature(target_function).parameters
         self.missings = missings
 
-    def override_mapping(self,**kwargs:Union[str,type,Callable,Injected]):
-        return InjectedFunction(self.target_function,{**self.kwargs_mapping,**kwargs})
+    def override_mapping(self, **kwargs: Union[str, type, Callable, Injected]):
+        return InjectedFunction(self.target_function, {**self.kwargs_mapping, **kwargs})
 
     def get_provider(self):
         signature = self.get_signature()
@@ -371,13 +380,15 @@ class InjectedFunction(Injected[T]):
             # logger.info(f"deps of dependency({k}):{d}")
         return res
 
-    #def __str__(self):
+    # def __str__(self):
     #    return f"""InjectedFunction(target={self.target_function},kwargs_mapping={self.kwargs_mapping})"""
 
 
 class InjectedPure(Injected[T]):
-    def __init__(self, value, init_stack):
-        super().__init__(init_stack)
+    __match_args__ = ("value",)
+
+    def __init__(self, value):
+        super().__init__()
         self.value = value
 
     def dependencies(self) -> Set[str]:
@@ -388,8 +399,8 @@ class InjectedPure(Injected[T]):
 
 
 class InjectedByName(Injected[T]):
-    def __init__(self, name, init_stack):
-        super().__init__(init_stack)
+    def __init__(self, name):
+        super().__init__()
         self.name = name
 
     def dependencies(self) -> Set[str]:
@@ -400,8 +411,8 @@ class InjectedByName(Injected[T]):
 
 
 class ZippedInjected(Injected[Tuple[A, B]]):
-    def __init__(self, a: Injected[A], b: Injected[B], init_stack):
-        super().__init__(init_stack)
+    def __init__(self, a: Injected[A], b: Injected[B]):
+        super().__init__()
         self.a = a
         self.b = b
 
@@ -410,17 +421,10 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
     def get_provider(self):
         def impl(**kwargs):  # can we pickle this though?
-            # logger.info(f"providing from ZippedInjected!:{kwargs}")
-            # logger.info(f"a:{self.a}")
-            # logger.info(f"b:{self.b}")
             a_kwargs = {k: kwargs[k] for k in self.a.dependencies()}
             b_kwargs = {k: kwargs[k] for k in self.b.dependencies()}
-            # embed()
             a = self.a.get_provider()(**a_kwargs)
-            # logger.info(f"a:{a}")
             b = self.b.get_provider()(**b_kwargs)
-            # logger.info(f"b:{b}")
-            # logger.info((a, b))
             return a, b
 
         signature = self.get_signature()
@@ -428,10 +432,9 @@ class ZippedInjected(Injected[Tuple[A, B]]):
         return create_function(func_signature=signature, func_impl=impl)
 
 
-
 class MZippedInjected(Injected):
-    def __init__(self, init_stack, *srcs: Injected):
-        super().__init__(init_stack)
+    def __init__(self, *srcs: Injected):
+        super().__init__()
         self.srcs = srcs
 
     def dependencies(self) -> Set[str]:
@@ -453,6 +456,7 @@ class MZippedInjected(Injected):
         from loguru import logger
         logger.info(f"created signature:{signature} for MZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
+
 
 def _injected_factory(**targets: Injected):
     def _impl(f):

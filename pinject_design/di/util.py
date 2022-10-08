@@ -13,13 +13,15 @@ from cytoolz import merge, valmap, itemmap
 from makefun import create_function, wraps
 from pampy import match
 from pinject import BindingSpec
-from pinject.scoping import SingletonScope
+from pinject.scoping import SingletonScope, BindableScopes, SINGLETON
 from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, InjectedProvider, PinjectConfigure, \
     PinjectProvider, ensure_self_arg, PinjectBind
 from pinject_design.di.graph import ExtendedObjectGraph
 from pinject_design.di.injected import Injected
 from returns.result import safe, Failure
 from tabulate import tabulate
+
+from pinject_design.di.session import SessionScope
 
 prototype = pinject.provides(in_scope=pinject.PROTOTYPE)
 # is it possible to create a binding class which also has an ability to dynamically add..?
@@ -29,7 +31,7 @@ T = TypeVar("T")
 
 def rec_valmap(f, tgt: dict):
     res = dict()
-    for k, v in f.items():
+    for k, v in tgt.items():
         if isinstance(v, dict):
             res[k] = rec_valmap(tgt[k], v)
         else:
@@ -54,9 +56,9 @@ def check_picklable(tgt: dict):
 
     if isinstance(res, Failure):
         # target_check = valmap(cloud_dumps_try, tgt)
-        rec_check = rec_valmap(lambda v:(cloud_dumps_try(v),v), tgt)
-        failures = rec_val_filter(lambda v:isinstance(v[0], Failure),rec_check)
-        #failures = [(k, v, tgt[k]) for k, v in target_check.items() if isinstance(v, Failure)]
+        rec_check = rec_valmap(lambda v: (cloud_dumps_try(v), v), tgt)
+        failures = rec_val_filter(lambda v: isinstance(v[0], Failure), rec_check)
+        # failures = [(k, v, tgt[k]) for k, v in target_check.items() if isinstance(v, Failure)]
 
         from loguru import logger
         logger.error(f"Failed to pickle target: {pformat(failures)}")
@@ -318,13 +320,15 @@ class Design:
         modules = self.modules + (modules or [])
         classes = self.classes + (classes or [])
         # logger.info(f"to_graph:\n\t{pformat(modules)}\n\t{pformat(classes)}")
-        return ExtendedObjectGraph(
-            self,
-            pinject.new_object_graph(
-                modules=modules,
-                binding_specs=[self.to_binding_spec()],
-                classes=classes
-            ))
+        g = pinject.new_object_graph(
+            modules=modules,
+            binding_specs=[self.to_binding_spec()],
+            classes=classes
+        )
+        g._obj_provider._bindable_scopes = BindableScopes(
+            id_to_scope={SINGLETON: SessionScope()}
+        )
+        return ExtendedObjectGraph(self, g)
 
     def run(self, f, modules=None, classes=None):
         return self.to_graph(modules, classes).run(f)
@@ -588,6 +592,15 @@ class Design:
         check_picklable(self.modules)
         logger.info(f"checking picklability of classes")
         check_picklable(self.classes)
+
+    def add_modules(self, *modules):
+        return self + Design(modules=list(modules))
+
+    def add_classes(self, *classes):
+        return self + Design(classes=list(classes))
+
+
+EmptyDesign = Design()
 
 
 @dataclass
