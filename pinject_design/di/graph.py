@@ -1,6 +1,5 @@
 import inspect
 from dataclasses import dataclass, field
-from types import FunctionType
 from typing import Union, Type, Callable, TypeVar, List, Any, Generic
 
 from loguru import logger
@@ -16,6 +15,7 @@ from pinject_design.di.designed import Designed
 from pinject_design.di.injected import Injected
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import OverridenBindableScopes
+from pinject_design.di.sessioned import Sessioned
 from pinject_design.exceptions import DependencyResolutionFailure
 
 T = TypeVar("T")
@@ -63,7 +63,6 @@ class ExtendedObjectGraph:
         :param target:
         :return:
         """
-        from pinject_design.di.static_proxy import Expr
         match target:
             case str():
                 return self._provide(Injected.by_name(target))
@@ -76,7 +75,7 @@ class ExtendedObjectGraph:
             case DelegatedVar():
                 return self._provide(target.eval())
             case _ if callable(target):
-                assert not isinstance(target,DelegatedVar),str(target)
+                assert not isinstance(target, DelegatedVar), str(target)
                 return self.run(target)
             case _:
                 raise TypeError(f"target must be either class or a string or Injected. got {target}")
@@ -130,7 +129,7 @@ class ExtendedObjectGraph:
             case other:
                 raise TypeError(f"cannot extract dependencies. unsupported :{target}")
 
-    def sessioned(self, target: Providable) -> "DelegatedVar[Union[object,T]]":
+    def sessioned(self, target: Providable) -> DelegatedVar[Union[object, T]]:
         match target:
             case str():
                 return self.sessioned(Injected.by_name(target))
@@ -141,10 +140,34 @@ class ExtendedObjectGraph:
             case Designed():
                 val = SessionValue(self, target)
                 ctx = sessioned_value_proxy_context(self, val.session)
-                from pinject_design.di.proxiable import DelegatedVar
                 return DelegatedVar(val, ctx)
+            case DelegatedVar():
+                return self.sessioned(target.eval())
             case _:
                 raise TypeError(f"Unknown target:{target} queried for DI.")
+
+    def _providable_to_designed(self, target: Providable):
+        match target:
+            case str():
+                return self._providable_to_designed(Injected.by_name(target))
+            case Injected():
+                return Designed.bind(target)
+            case Designed():
+                return target
+            case DelegatedVar():
+                return self._providable_to_designed(target.eval())
+            case provider if callable(provider):
+                return self._providable_to_designed(Injected.bind(provider))
+            case _:
+                raise TypeError(f"Unknown target:{target} queried for DI.")
+
+    def proxied(self, providable: Providable) -> DelegatedVar[Sessioned]:
+        from pinject_design.di.sessioned import sessioned_ast_context
+        designed = self._providable_to_designed(providable)
+        item = Sessioned(self, designed)
+        ctx = sessioned_ast_context(self)
+        from pinject_design.di.static_proxy import Object
+        return DelegatedVar(Object(item), ctx)
 
     def run(self, f):
         argspec = inspect.getfullargspec(f)
@@ -162,9 +185,12 @@ class ExtendedObjectGraph:
 
     def child_session(self, overrides: "Design" = None) -> "ChildGraph":
         """
-        1, make binding_keys from design
-        2. make a scope
-        3.
+        bindings that are explicit in the overrides are always recreated.
+        implicit bindings are created if it is not created in parent. and will be discarded after session.
+        else from parent.
+        so, implicit bindings that are instantiated at the moment this function is called will be used if not explicitly overriden.
+        invalidation is not implemented yet.
+        I want the bindings that are dependent on the overriden keys to be reconstructed.
         :param overrides:
         :return:
         """
@@ -230,11 +256,11 @@ class ChildGraph(ExtendedObjectGraph):
 @dataclass
 class SessionValue(Generic[T]):
     """a class that holds a lazy value and the session used for producing the value.
-    I want to make use of this to act as a proxy.
-    How can I make many proxy variables?
-    we can map and zip on this variable.
-    and also, I want to yield from this variable.
-    which should yield SessionValue too.
+    how can I access session of DelegatedVar[SessionValue]?
+    current implementatoin uses accessor to get value and then bypassess getattr for this value.
+    so I need to tell the context which vars are supposed to be accessed through DelegatedVar
+    actually, we can access session through delegatedvar.value.session.
+    since value shows the internal value, while eval() returns the final semantic value.
     """
     parent: ExtendedObjectGraph
     designed: Designed[T]

@@ -1,13 +1,10 @@
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Generic, Tuple, Dict, Any, Callable, Optional, Iterator, Set
+from typing import Generic, Tuple, Dict, Any, Callable, Optional, Iterator
 
 from cytoolz import valmap
 from frozendict import frozendict
 
-from pinject_design import Injected, Designed, Design
-from pinject_design.di.designed import PureDesigned
-from pinject_design.di.injected import InjectedPure
+from pinject_design.di.applicative import Applicative
 from pinject_design.di.proxiable import T, DelegatedVar, IProxyContext
 
 
@@ -36,30 +33,26 @@ class Expr(Generic[T]):
     def __repr__(self):
         return str(self)
 
-#from pydantic import BaseModel
-#@dataclass(frozen=True)
-from attr import define
-from attr import field as a_field
-@define
+@dataclass
 class Call(Expr[T]):
     func: Expr
-    args: Tuple[Expr] = a_field(factory=tuple)
-    kwargs: Dict[str, Expr] = a_field(factory=dict)
+    args: Tuple[Expr] = field(default_factory=tuple)
+    kwargs: Dict[str, Expr] = field(default_factory=dict)
 
     def __hash__(self):
         return hash(hash(self.func) + hash(self.args) + hash(frozendict(self.kwargs)))
 
-@define
+@dataclass
 class Attr(Expr[T]):
     data: Expr
     attr_name: str  # static access so no ast involved
 
-@define
+@dataclass
 class GetItem(Expr[T]):
     data: Expr
     key: Expr
 
-@define
+@dataclass
 class Object(Expr[T]):
     """
     Use this to construct an AST and then compile it for any use.
@@ -149,30 +142,6 @@ def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
     return DelegatedVar(Object(tgt), cxt)
 
 
-class Applicative(Generic[T], ABC):
-    @abstractmethod
-    def map(self, target: T, f) -> T:
-        pass
-
-    @abstractmethod
-    def zip(self, *targets: T):
-        pass
-
-    @abstractmethod
-    def pure(self, item) -> T:
-        pass
-
-    @abstractmethod
-    def is_instance(self, item)->bool:
-        pass
-
-    def dict(self, **kwargs: T) -> T:
-        items = list(kwargs.items())
-        keys = [t[0] for t in items]
-        values = [t[1] for t in items]
-        return self.zip(*values).map(lambda vs: dict(zip(keys, vs)))
-
-
 def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
     def _eval(expr):
         def eval_tuple(expr):
@@ -197,14 +166,14 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                                   lambda t: t[0](*t[1], **t[2]))
                 return applied
             case Attr(Expr() as data, str() as attr_name):
-                injected_data: Injected = _eval(data)
+                injected_data  = _eval(data)
                 return app.map(
                     injected_data,
                     lambda x: getattr(x, attr_name)
                 )
 
             case GetItem(Expr() as data, Expr() as key):
-                injected_data: Injected = _eval(data)
+                injected_data  = _eval(data)
                 injected_key = _eval(key)
                 return app.map(
                     app.zip(injected_data, injected_key),
@@ -216,98 +185,3 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
     return _eval(expr)
 
 
-class ApplicativeInjectedImpl(Applicative[Injected]):
-
-    def map(self, target: Injected, f) -> T:
-        return target.map(f)
-
-    def zip(self, *targets: Injected):
-        return Injected.mzip(*targets)
-
-    def pure(self, item) -> T:
-        return Injected.pure(item)
-    def is_instance(self, item) ->bool:
-        return isinstance(item,Injected)
-
-
-class ApplicativeDesignedImpl(Applicative[Designed]):
-
-    def map(self, target: Designed, f) -> T:
-        return target.map(f)
-
-    def zip(self, *targets: Designed):
-        return Designed.zip(*targets)
-
-    def pure(self, item) -> T:
-        return Designed.bind(Injected.pure(item))
-
-    def is_instance(self, item) ->bool:
-        return isinstance(item,Designed)
-
-
-def reduce_injected_expr(expr: Expr):
-    match expr:
-        case Object(InjectedPure(value)):
-            return str(value)
-        case Object(Injected() as i):
-            return f"{i.__class__.__name__}"
-
-
-def reduce_designed_expr(expr: Expr):
-    match expr:
-        case Object(PureDesigned(design, InjectedPure(value))):
-            return f"Object({str(value)} with {design})"
-
-
-@dataclass
-class EvaledInjected(Injected[T]):
-    value: Injected[T]
-    ast: Expr[Injected[T]]
-
-    def dependencies(self) -> Set[str]:
-        return self.value.dependencies()
-
-    def get_provider(self):
-        return self.value.get_provider()
-
-    def __str__(self):
-        return f"EvaledInjected(value={self.value},ast={show_expr(self.ast, reduce_injected_expr)})"
-
-
-@dataclass
-class EvaledDesigned(Designed[T]):
-    value: Designed[T]
-    ast: Expr[Designed[T]]
-
-    @property
-    def design(self) -> "Design":
-        return self.value.design
-
-    @property
-    def internal_injected(self) -> "Injected":
-        return self.value.internal_injected
-
-    def __str__(self):
-        return f"EvaledDesigned(value={self.value},ast={show_expr(self.ast, reduce_designed_expr)})"
-
-
-def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
-    return EvaledInjected(eval_app(expr, ApplicativeInjected), expr)
-
-
-def eval_designed(expr: Expr[Designed]) -> Designed:
-    return EvaledDesigned(eval_app(expr, ApplicativeDesigned), expr)
-
-
-def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
-    return ast_proxy(injected, InjectedEvalContext)
-
-
-def designed_proxy(designed: Designed) -> DelegatedVar[Designed]:
-    return ast_proxy(designed, DesignedEvalContext)
-
-
-ApplicativeInjected = ApplicativeInjectedImpl()
-ApplicativeDesigned = ApplicativeDesignedImpl()
-InjectedEvalContext = AstProxyContextImpl(eval_injected, _alias_name="InjectedProxy")
-DesignedEvalContext = AstProxyContextImpl(eval_designed, _alias_name="DesignedProxy")
