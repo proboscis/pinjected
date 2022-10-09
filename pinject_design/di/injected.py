@@ -202,7 +202,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """use this to modify injected variables freely without map.
         call eval() at the end to finish modification
         """
-        from pinject_design.di.static_proxy import injected_proxy
+        from pinject_design.di.app_injected import injected_proxy
         return injected_proxy(self)
 
 

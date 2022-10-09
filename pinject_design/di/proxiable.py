@@ -54,7 +54,7 @@ class DelegatedVar(Generic[T]):  # Generic Var Type that delegates all implement
     def __getitem__(self, key):
         return self.cxt.getitem(self.value, key)
 
-    def eval(self):
+    def eval(self)->T:
         """this should return the semantic result of calculation."""
         return self.cxt.eval(self.value)
 
