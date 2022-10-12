@@ -4,7 +4,8 @@ from typing import Generic, TypeVar
 from pinject_design.di.designed import Designed
 from pinject_design.di.injected import Injected
 from pinject_design.di.applicative import Applicative
-from pinject_design.di.static_proxy import AstProxyContextImpl, Expr, eval_app
+from pinject_design.di.static_proxy import AstProxyContextImpl, eval_app
+from pinject_design.di.ast import Expr
 
 T = TypeVar("T")
 

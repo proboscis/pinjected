@@ -166,7 +166,7 @@ class ExtendedObjectGraph:
         designed = self._providable_to_designed(providable)
         item = Sessioned(self, designed)
         ctx = sessioned_ast_context(self)
-        from pinject_design.di.static_proxy import Object
+        from pinject_design.di.ast import Object
         return DelegatedVar(Object(item), ctx)
 
     def run(self, f):
