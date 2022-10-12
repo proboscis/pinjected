@@ -5,8 +5,9 @@ from pinject_design import Injected
 from pinject_design.di.applicative import Applicative
 from pinject_design.di.injected import InjectedPure
 from pinject_design.di.proxiable import T, DelegatedVar
-from pinject_design.di.static_proxy import Expr, Object, eval_app, ast_proxy, \
-    show_expr, AstProxyContextImpl
+from pinject_design.di.static_proxy import eval_app, ast_proxy, \
+    AstProxyContextImpl
+from pinject_design.di.ast import Expr, Object, show_expr
 
 
 class ApplicativeInjectedImpl(Applicative[Injected]):

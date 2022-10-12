@@ -1,105 +1,11 @@
 from dataclasses import dataclass, field
-from typing import Generic, Tuple, Dict, Any, Callable, Optional, Iterator
+from typing import Any, Callable, Iterator
 
 from cytoolz import valmap
-from frozendict import frozendict
 
 from pinject_design.di.applicative import Applicative
+from pinject_design.di.ast import Expr, Call, Attr, GetItem, Object
 from pinject_design.di.proxiable import T, DelegatedVar, IProxyContext
-
-
-class Expr(Generic[T]):
-    def __getattr__(self, item: str):
-        return Attr(self, item)
-
-    def _wrap_if_non_expr(self,item)->"Self":
-        if not isinstance(item,Expr):
-            return Object(item)
-        else:
-            return item
-
-    def __call__(self, *args: "Expr", **kwargs: "Expr"):
-        return Call(self,
-                    tuple(self._wrap_if_non_expr(item) for item in args),
-                    {k:self._wrap_if_non_expr(v) for k,v in kwargs.items()}
-                    )
-
-    def __getitem__(self, item: "Expr"):
-        return GetItem(self, self._wrap_if_non_expr(item))
-
-    def __str__(self):
-        return f"Expr(||{show_expr(self)}||)"
-
-    def __repr__(self):
-        return str(self)
-
-@dataclass
-class Call(Expr[T]):
-    func: Expr
-    args: Tuple[Expr] = field(default_factory=tuple)
-    kwargs: Dict[str, Expr] = field(default_factory=dict)
-
-    def __hash__(self):
-        return hash(hash(self.func) + hash(self.args) + hash(frozendict(self.kwargs)))
-
-@dataclass
-class Attr(Expr[T]):
-    data: Expr
-    attr_name: str  # static access so no ast involved
-
-@dataclass
-class GetItem(Expr[T]):
-    data: Expr
-    key: Expr
-
-@dataclass
-class Object(Expr[T]):
-    """
-    Use this to construct an AST and then compile it for any use.
-    """
-    data: Any  # holds user data
-
-    def __hash__(self):
-        return hash(id(self.data))
-
-    # def __repr__(self):
-    #     return f"Object({str(self.data)[:20]})".replace("\n", "").replace(" ", "")
-
-
-def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:
-    def _show_expr(expr):
-        def eval_tuple(expr):
-            return tuple(_show_expr(i) for i in expr)
-
-        def eval_dict(expr):
-            return {k: _show_expr(e) for k, e in expr.items()}
-
-        reduced = custom(expr)
-        if reduced:
-            return reduced
-
-        match expr:
-            case Object(str() as x):
-                return f'"{x}"'
-            case Object(x):
-                return str(x)
-            case Call(f, args, kwargs):
-                # hmm, this is complicated.
-                func_str = _show_expr(f)
-                args = list(eval_tuple(args))
-                kwargs = eval_dict(kwargs)
-                kwargs = [f"{k}={v}" for k, v in kwargs.items()]
-                return f"{func_str}({','.join(args + kwargs)})"
-            case Attr(data, str() as attr_name):
-                return f"{_show_expr(data)}.{attr_name}"
-            case GetItem(data, key):
-                return f"{_show_expr(data)}[{_show_expr(key)}]"
-            case DelegatedVar(wrapped, cxt):
-                return f"{_show_expr(wrapped)}"
-            case _:
-                raise RuntimeError(f"unsupported ast found!:{expr}")
-
-    return _show_expr(expr)
 
 
 @dataclass
@@ -131,7 +37,7 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
             raise NotImplementedError("iter() not implemented for this context")
         return self.iter_impl(tgt)
 
-    def dir(self,tgt:Expr[T]):
+    def dir(self, tgt: Expr[T]):
         return dir(tgt)
 
     def __str__(self):
@@ -166,14 +72,14 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                                   lambda t: t[0](*t[1], **t[2]))
                 return applied
             case Attr(Expr() as data, str() as attr_name):
-                injected_data  = _eval(data)
+                injected_data = _eval(data)
                 return app.map(
                     injected_data,
                     lambda x: getattr(x, attr_name)
                 )
 
             case GetItem(Expr() as data, Expr() as key):
-                injected_data  = _eval(data)
+                injected_data = _eval(data)
                 injected_key = _eval(key)
                 return app.map(
                     app.zip(injected_data, injected_key),
@@ -183,5 +89,3 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)},{expr}")
 
     return _eval(expr)
-
-

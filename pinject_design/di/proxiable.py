@@ -41,7 +41,9 @@ class IProxyContext(Generic[T]):
 
 
 @dataclass
-class DelegatedVar(Generic[T]):  # Generic Var Type that delegates all implementations to cxt.
+class DelegatedVar(Generic[T]):
+    # Generic Var Type that delegates all implementations to cxt.
+    # todo add 'hook capability'
     value: T
     cxt: IProxyContext[T]
 
