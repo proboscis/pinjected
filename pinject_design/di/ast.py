@@ -18,7 +18,7 @@ class Expr(Generic[T], ABC):
             return item
 
     def __call__(self, *args: "Expr", **kwargs: "Expr"):
-        print(f"{self}->args:{args},kwargs:{kwargs}")
+        #print(f"{self}->args:{args},kwargs:{kwargs}")
         return Call(self,
                     tuple([self._wrap_if_non_expr(item) for item in args]),
                     {k: self._wrap_if_non_expr(v) for k, v in kwargs.items()}
@@ -36,7 +36,7 @@ class Expr(Generic[T], ABC):
         pass
 
     def __str__(self):
-        return f"Expr(||{show_expr(self)}||)"
+        return f"Expr(>{show_expr(self)}<)"
 
     def __repr__(self):
         return str(self)

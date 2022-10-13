@@ -3,13 +3,9 @@ import functools
 import inspect
 import sys
 from dataclasses import dataclass
-from pprint import pformat
-from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Any, Dict
+from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Dict
 
-import makefun
-from loguru import logger
 from makefun import create_function
-from returns.maybe import Maybe, Nothing
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -142,8 +138,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             name = frame.f_lineno
             return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
         except Exception as e:
-            from loguru import logger
-            logger.warning(f"failed to get name of the injected location.")
+            #from loguru import logger
+            #logger.warning(f"failed to get name of the injected location.")
             return f"__unknown_module__maybe_due_to_pickling__"
 
     def __init__(self):
@@ -165,7 +161,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
 
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
-        return MappedInjected(4, self, f)
+        return MappedInjected(self, f)
 
     @staticmethod
     def from_impl(impl: Callable, dependencies: Set[str]):
@@ -201,6 +197,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def proxy(self):
         """use this to modify injected variables freely without map.
         call eval() at the end to finish modification
+        # it seems this thing is preventing from pickling?
         """
         from pinject_design.di.app_injected import injected_proxy
         return injected_proxy(self)
@@ -222,13 +219,12 @@ class GeneratedInjected(Injected):
 
 
 class MappedInjected(Injected):
-    src: Injected[T]
-    f: Callable[[T], U]
+    __match_args__ = ("src", "f")
 
-    def __init__(self, stack, src, f):
+    def __init__(self, src: Injected[T], f: Callable[[T], U]):
         super(MappedInjected, self).__init__()
-        self.src = src
-        self.f = f
+        self.src: Injected[T] = src
+        self.f: Callable[[T], U] = f
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies()
@@ -239,30 +235,6 @@ class MappedInjected(Injected):
                 kwargs.keys())  # this is fine but get_provider returns wrong signatured func
             tmp = self.src.get_provider()(**kwargs)
             return self.f(tmp)
-
-        return create_function(self.get_signature(), func_impl=impl)
-
-
-class MapWithExtras(Injected):
-    src: Injected[T]
-    f: Callable[[T, Any], U]
-    extras: Set[str]
-
-    def __init__(self, stack, src, f, extras: Set[str]):
-        super(MappedInjected, self).__init__(stack)
-        self.src = src
-        self.f = f
-        self.extras = extras
-
-    def dependencies(self) -> Set[str]:
-        return self.src.dependencies() | self.extras
-
-    def get_provider(self):
-        def impl(**kwargs):
-            src_deps = {k: kwargs[k] for k in self.src.dependencies()}
-            extras = {k: kwargs[k] for k in self.extras}
-            tmp = self.src.get_provider()(**src_deps)
-            return self.f(tmp, **extras)
 
         return create_function(self.get_signature(), func_impl=impl)
 
@@ -328,6 +300,7 @@ def assert_kwargs_type(v):
 
 class InjectedFunction(Injected[T]):
     # since the behavior differs in classes extending Generic[T]
+    __match_args__=("target_function","kwargs_mapping")
     def __init__(self,
                  target_function: Callable,
                  kwargs_mapping: Mapping[str, Union[str, type, Callable, Injected]]
@@ -399,11 +372,13 @@ class InjectedPure(Injected[T]):
 
     def __str__(self):
         return f"Pure({self.value})"
+
     def __repr__(self):
         return str(self)
 
 
 class InjectedByName(Injected[T]):
+    __match_args__ = ("name",)
     def __init__(self, name):
         super().__init__()
         self.name = name
@@ -416,6 +391,7 @@ class InjectedByName(Injected[T]):
 
 
 class ZippedInjected(Injected[Tuple[A, B]]):
+    __match_args__ = ("a","b")
     def __init__(self, a: Injected[A], b: Injected[B]):
         super().__init__()
         self.a = a
@@ -438,10 +414,11 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
 
 class MZippedInjected(Injected):
+    __match_args__ = ("srcs",)
     def __init__(self, *srcs: Injected):
         super().__init__()
         self.srcs = srcs
-        assert all(isinstance(s,Injected) for s in srcs),srcs
+        assert all(isinstance(s, Injected) for s in srcs), srcs
 
     def dependencies(self) -> Set[str]:
         res = set()
@@ -459,8 +436,8 @@ class MZippedInjected(Injected):
             return tuple(res)
 
         signature = self.get_signature()
-        from loguru import logger
-        logger.info(f"created signature:{signature} for MZippedInjected")
+        #from loguru import logger
+        #logger.info(f"created signature:{signature} for MZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
 
 

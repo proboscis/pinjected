@@ -7,7 +7,7 @@ from typing import Callable, List, Any, Dict, Union
 
 import networkx as nx
 from cytoolz import memoize
-from loguru import logger
+
 from pampy import match
 from pinject.bindings import default_get_arg_names_from_class_name
 from pinject.finding import find_classes

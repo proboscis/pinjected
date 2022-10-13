@@ -5,7 +5,7 @@ from functools import wraps
 from typing import TypeVar, Generic, Callable, Union, Dict, List
 
 from frozendict import frozendict
-from loguru import logger
+
 from makefun import create_function
 
 from pinject_design.di.injected import Injected, extract_dependency_including_self, extract_dependency
