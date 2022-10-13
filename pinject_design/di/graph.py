@@ -2,7 +2,7 @@ import inspect
 from dataclasses import dataclass, field
 from typing import Union, Type, Callable, TypeVar, List, Any, Generic
 
-from loguru import logger
+
 from makefun import create_function
 from pinject import binding_keys, locations, SINGLETON
 from pinject.bindings import default_get_arg_names_from_class_name, BindingMapping, new_binding_to_instance
@@ -100,6 +100,7 @@ class ExtendedObjectGraph:
             missings = self._inspect_dependencies(target)
             if missings:
                 for missing in missings:
+                    from loguru import logger
                     logger.error(f"failed to find dependency:{missing}")
                 raise MissingDependencyException.create(missings)
             raise e

@@ -1,7 +1,7 @@
 from functools import partial
 from typing import Callable, Any
 
-from loguru import logger
+
 
 from pinject_design.di.injected import Injected
 from pinject_design.di.util import Design

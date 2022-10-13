@@ -57,10 +57,12 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
             return valmap(_eval, expr)
 
         match expr:
-            case DelegatedVar(Expr() as wrapped, AstProxyContextImpl()):
+            case Object(DelegatedVar(Expr() as wrapped, AstProxyContextImpl())):
                 return _eval(wrapped)
             case Object(x) if app.is_instance(x):
                 return x
+            #case Object(DelegatedVar() as var):
+            #    return var.eval()
             case Object(x):
                 return app.pure(x)
             case Call(Expr() as f, args, kwargs):

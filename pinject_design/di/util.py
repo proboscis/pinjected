@@ -33,7 +33,7 @@ def rec_valmap(f, tgt: dict):
     res = dict()
     for k, v in tgt.items():
         if isinstance(v, dict):
-            res[k] = rec_valmap(tgt[k], v)
+            res[k] = rec_valmap(f,v)
         else:
             res[k] = f(v)
     return res
