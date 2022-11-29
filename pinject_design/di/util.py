@@ -21,6 +21,7 @@ from pinject_design.di.injected import Injected
 from returns.result import safe, Failure
 from tabulate import tabulate
 
+from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import SessionScope
 
 prototype = pinject.provides(in_scope=pinject.PROTOTYPE)
@@ -33,7 +34,7 @@ def rec_valmap(f, tgt: dict):
     res = dict()
     for k, v in tgt.items():
         if isinstance(v, dict):
-            res[k] = rec_valmap(f,v)
+            res[k] = rec_valmap(f, v)
         else:
             res[k] = f(v)
     return res
@@ -264,6 +265,7 @@ class Design:
         bind = match(f,
                      Injected, lambda i: Design({key: InjectedProvider(i)}),
                      ProviderTrait, lambda pt: Design({key: pt}),
+                     DelegatedVar, lambda dv: Design({key: InjectedProvider(dv.eval())}),
                      callable, lambda c: Design(
                 {key: PinjectProviderBind(f, all_except=all_except, arg_names=arg_names, in_scope=in_scope)}),
                      Any, raise_unhandled
@@ -292,17 +294,23 @@ class Design:
         x = self
         for k, v in kwargs.items():
             # logger.info(f"binding provider:{k}=>{v}")
-            if isinstance(v, type):
-                logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
-                x = x.bind(k).to_class(v)
-            if isinstance(v, Injected):
-                x = x.bind(k).to_provider(v)
-            elif not callable(v):
-                logger.warning(
-                    f"{k}->{v}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
-                x = x.bind(k).to_instance(v)
-            else:
-                x = x.bind(k).to_provider(v)
+            def parse(item):
+                match item:
+                    case type():
+                        logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
+                        return x.bind(k).to_class(item)
+                    case Injected():
+                        return x.bind(k).to_provider(item)
+                    case DelegatedVar():
+                        return parse(item.eval())
+                    case non_func if not callable(non_func):
+                        logger.warning(
+                            f"{k}->{item}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
+                        return x.bind(k).to_instance(v)
+                    case _:
+                        return x.bind(k).to_provider(item)
+
+            x = parse(v)
         return x
 
     def bind_class(self, **kwargs):
@@ -598,6 +606,10 @@ class Design:
 
     def add_classes(self, *classes):
         return self + Design(classes=list(classes))
+
+    def to_vis_graph(self):
+        from pinject_design.visualize_di import DIGraph
+        return DIGraph(self)
 
 
 EmptyDesign = Design()

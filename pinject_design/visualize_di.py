@@ -1,4 +1,6 @@
 import inspect
+import os
+import platform
 import uuid
 from dataclasses import dataclass
 from itertools import chain
@@ -6,12 +8,15 @@ from pprint import pformat
 from typing import Callable, List, Any, Dict, Union
 
 import networkx as nx
+import networkx.classes
 from cytoolz import memoize
+from networkx.drawing.nx_agraph import graphviz_layout
 
 from pampy import match
 from pinject.bindings import default_get_arg_names_from_class_name
 from pinject.finding import find_classes
 from pyvis.network import Network
+from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
 from pinject_design.di.design import PinjectBind, Bind, InjectedProvider
@@ -172,13 +177,16 @@ class DIGraph:
     def dependencies_of(self, src):
         return self.deps_impl(src)
 
-    def di_dfs(self, src):
+    def di_dfs(self, src, replace_missing=False):
         def dfs(node: str, trace=[]):
             try:
                 nexts: List[str] = self.dependencies_of(node)
             except Exception as e:
-                raise _MissingDepsError(f"failed to get neighbors of {node} at {' => '.join(trace)}.", node,
-                                        trace) from e
+                if replace_missing:
+                    nexts = []
+                else:
+                    raise _MissingDepsError(f"failed to get neighbors of {node} at {' => '.join(trace)}.", node,
+                                            trace) from e
             for n in nexts:
                 yield node, n, trace
                 yield from dfs(n, trace + [n])
@@ -197,85 +205,99 @@ class DIGraph:
 
         yield from dfs(src, [src])
 
-    def create_dependency_network(self, roots: Union[str, List[str]]):
+    def get_source(self, f):
+        try:
+            file = inspect.getfile(f)
+            src = inspect.getsource(f)
+            res = file + "\n" + src
+
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"{e} error from {f}")
+            res = f"failed:{f} from {f}"
+
+        res = res.replace("<", "").replace(">", "")
+        return res
+
+    def parse_injected(self, tgt: Injected):
+        # from archpainter.my_artifacts.artifact_object import IArtifactObject
+        return match(tgt,
+                     InjectedFunction,
+                     lambda injected: ("injected",
+                                       f"Injected:{safe(getattr)(injected.target_function, '__name__').value_or(repr(injected.target_function))}",
+                                       self.get_source(injected.target_function)),
+                     InjectedPure,
+                     lambda injected: (
+                         "injected",
+                         f"Pure:{injected.value}",
+                         self.get_source(injected.value)
+                         if isinstance(injected, Callable)
+                         else str(injected.value)
+                     ),
+                     MappedInjected,
+                     lambda injected: ("injected", f"{injected.__class__.__name__}", self.get_source(injected.f)),
+                     ZippedInjected,
+                     lambda injected: ("injected", f"{injected.__class__.__name__}", "zipped"),
+                     MZippedInjected,
+                     lambda injected: ("injected", f"{injected.__class__.__name__}", "mzipped"),
+                     # IArtifactObject,
+                     # lambda injected: ("injected", f"artifact:{injected.metadata.identifier}", str(injected)),
+                     InjectedByName,
+                     lambda injected: (
+                         "injected", f"name:{injected.name}", f"injected by name:{injected.name}"),
+                     Injected,
+                     lambda injected: ("injected", f"{injected.__class__.__name__}", str(injected)),
+                     )
+
+    def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
+                                         replace_missing=True) -> networkx.classes.DiGraph:
+        return DIGraph(self.src.bind_provider(**{root_name: root})) \
+            .create_dependency_digraph(
+            root_name,
+            replace_missing=replace_missing
+        )
+
+    def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> networkx.classes.DiGraph:
         if isinstance(roots, str):
             roots = [roots]
 
-        def get_source(f):
-            try:
-                file = inspect.getfile(f)
-                src = inspect.getsource(f)
-                res = file + "\n" + src
-
-            except Exception as e:
-                logger.warning(f"{e} error from {f}")
-                res = f"failed:{f} from {f}"
-
-            res = res.replace("<", "").replace(">", "")
-            return res
-
         # get_source = lambda f: safe(inspect.getsource)(f).value_or(f"failed:{f}").replace("<", "").replace(">", "")
+        # I think I need to wrap roots to one node.
+        # root = Injected.mzip(*(Injected.by_name(r) for r in roots))
+        # since this visualization is contextual, I feel I need to make a RootedGraph or stg
+        # the problem is that this class is very stateful?
+        # one work around is to make a new DIGraph from this, with overriden design.
 
         nx_graph = nx.DiGraph()
         for root in roots:
-            for a, b, trc in self.di_dfs(root):
+            for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
                 nx_graph.add_edge(b, a)
 
         @memoize
         def node_to_sl(n):
             def parse(tgt):
                 return match(tgt,
-                             Injected, parse_injected,
-                             InjectedProvider(Injected), parse_injected,
-                             PinjectProviderBind, lambda ppb: ("function", ppb.f.__name__, get_source(ppb.f)),
-                             DirectPinjectProvider, lambda dpp: ("method", dpp.method.__name__, get_source(dpp.method)),
-                             PinjectBind({"to_instance": callable}), lambda i: ("instance", str(i), get_source(i)),
+                             Injected, self.parse_injected,
+                             InjectedProvider(Injected), self.parse_injected,
+                             PinjectProviderBind, lambda ppb: ("function", ppb.f.__name__, self.get_source(ppb.f)),
+                             DirectPinjectProvider,
+                             lambda dpp: ("method", dpp.method.__name__, self.get_source(dpp.method)),
+                             PinjectBind({"to_instance": callable}), lambda i: ("instance", str(i), self.get_source(i)),
                              PinjectBind({"to_instance": Any}),
                              lambda i: ("instance", str(i), f"instance:{pformat(i)}"),
-                             PinjectBind({"to_class": Any}), lambda i: ("class", i.__name__, get_source(i)),
-                             type, lambda cls: ("class", cls.__name__, get_source(cls)),
+                             PinjectBind({"to_class": Any}), lambda i: ("class", i.__name__, self.get_source(i)),
+                             type, lambda cls: ("class", cls.__name__, self.get_source(cls)),
                              list, lambda providers: ("multi_binding", repr(providers), repr(providers)),
                              # MetaBind, lambda mb: (mb.metadata["src"],parse(mb.src)[1],mb.metadata["src"]),
                              Any, lambda a: ("unknown", str(a), f"unknown-type:{type(a)}=>{a}")
                              )
 
-            def parse_injected(tgt: Injected):
-                # from archpainter.my_artifacts.artifact_object import IArtifactObject
-                return match(tgt,
-                             InjectedFunction,
-                             lambda injected: ("injected",
-                                               f"Injected:{safe(getattr)(injected.target_function, '__name__').value_or(repr(injected.target_function))}",
-                                               get_source(injected.target_function)),
-                             InjectedPure,
-                             lambda injected: (
-                                 "injected",
-                                 f"Pure:{injected.value}",
-                                 get_source(injected.value)
-                                 if isinstance(injected, Callable)
-                                 else str(injected.value)
-                             ),
-                             MappedInjected,
-                             lambda injected: ("injected", f"{injected.__class__.__name__}", get_source(injected.f)),
-                             ZippedInjected,
-                             lambda injected: ("injected", f"{injected.__class__.__name__}", "zipped"),
-                             MZippedInjected,
-                             lambda injected: ("injected", f"{injected.__class__.__name__}", "mzipped"),
-                             # IArtifactObject,
-                             # lambda injected: ("injected", f"artifact:{injected.metadata.identifier}", str(injected)),
-                             InjectedByName,
-                             lambda injected: (
-                                 "injected", f"name:{injected.name}", f"injected by name:{injected.name}"),
-                             Injected,
-                             lambda injected: ("injected", f"{injected.__class__.__name__}", str(injected)),
-                             )
-
-            group, short, long = parse(self[n])
+            if replace_missing and not is_successful(safe(self.__getitem__)(n)):
+                group, short, long = "missing", f"missing_{n}", f"missing_{n}"
+            else:
+                group, short, long = parse(self[n])
             short = str(short).replace("<", "").replace(">", "")[:100]
-            # long = long.replace("\n", "<br>")  # .replace("<","").replace(">","")
-
-            # logger.debug(short)
-            # logger.debug(long)
-            n_edges = len(list(nx_graph.neighbors(n))) + len(self.dependencies_of(n))
+            n_edges = len(list(nx_graph.neighbors(n))) + safe(self.dependencies_of)(n).map(len).value_or(0)
             return dict(
                 label=f"{n}\n{short}",
                 title=long,
@@ -286,15 +308,20 @@ class DIGraph:
 
         for root in roots:
             nx_graph.add_node(root)
+
         for n in nx_graph.nodes:
             assert isinstance(n, str)
             attrs = node_to_sl(n)
             node = nx_graph.nodes[n]
             for k, v in attrs.items():
                 node[k] = v
+
         for root in roots:
             nx_graph.nodes[root]["group"] = "root"
+        return nx_graph
 
+    def create_dependency_network(self, roots: Union[str, List[str]], replace_missing=True):
+        nx_graph = self.create_dependency_digraph(roots, replace_missing)
         nt = Network('100%', '100%', directed=True)
         nt.from_nx(nx_graph)
         nt.show_buttons(filter_=["physics"])
@@ -316,9 +343,32 @@ class DIGraph:
         nt.prep_notebook()
         return nt.show("__notebook__.html")
 
-    def save_as_html(self, roots: Union[str, List[str]], dst_path: str):
-        nt = self.create_dependency_network(roots)
+    def save_as_html(self, roots: Union[str, List[str]], dst_path: str, visualize_missing=True):
+        nt = self.create_dependency_network(roots, replace_missing=visualize_missing)
         nt.show(dst_path)
+
+    def plot(self, roots: Union[str, List[str]], visualize_missing=True):
+        if "darwin" in platform.system().lower():
+            from matplotlib import pyplot as plt
+            plt.figure(figsize=(20, 20))
+            G = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
+            pos = graphviz_layout(G, prog='dot')
+            nx.draw(G, with_labels=True, pos=pos)
+            plt.show()
+
+        else:
+            from loguru import logger
+            logger.warning("visualization of a design is disabled for non mac os.")
+
+    def show_html(self, roots, visualize_missing=True):
+        if "darwin" in platform.system().lower():
+            from loguru import logger
+            logger.info(f"showing visualization html")
+            self.save_as_html(roots, "di_visualiztion.html", visualize_missing=visualize_missing)
+            os.system("open di_visualiztion.html")
+        else:
+            from loguru import logger
+            logger.warning("visualization of a design is disabled for non mac os.")
 
 
 # %%

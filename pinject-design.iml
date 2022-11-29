@@ -3,6 +3,12 @@
   <component name="NewModuleRootManager" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$" />
+    <content url="file://$MODULE_DIR$/../stable-diffusion/src/clip">
+      <sourceFolder url="file://$MODULE_DIR$/../stable-diffusion/src/clip" isTestSource="false" />
+    </content>
+    <content url="file://$MODULE_DIR$/../stable-diffusion/src/taming-transformers">
+      <sourceFolder url="file://$MODULE_DIR$/../stable-diffusion/src/taming-transformers" isTestSource="false" />
+    </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
