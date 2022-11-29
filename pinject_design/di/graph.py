@@ -6,7 +6,7 @@ from typing import Union, Type, Callable, TypeVar, List, Any, Generic
 from makefun import create_function
 from pinject import binding_keys, locations, SINGLETON
 from pinject.bindings import default_get_arg_names_from_class_name, BindingMapping, new_binding_to_instance
-from pinject.errors import NothingInjectableForArgError
+from pinject.errors import NothingInjectableForArgError, OnlyInstantiableViaProviderFunctionError
 from pinject.object_graph import ObjectGraph
 from pinject.object_providers import ObjectProvider
 from returns.maybe import Nothing, Maybe, Some
@@ -60,7 +60,7 @@ class ExtendedObjectGraph:
     def _provide(self, target: Providable) -> Union[object, T]:
         """
         Hacks pinject to provide from string. by creating a new class.
-        :param target:
+        :param targe
         :return:
         """
         match target:
@@ -104,6 +104,20 @@ class ExtendedObjectGraph:
                     logger.error(f"failed to find dependency:{missing}")
                 raise MissingDependencyException.create(missings)
             raise e
+        except OnlyInstantiableViaProviderFunctionError as e:
+            from loguru import logger
+            logger.error(f"failed to provide target:{target}.")
+            logger.error(f"probably caused by errors inside provider function implementations.")
+            logger.error(f"context:{e.__context__}")
+            # TODO I feel like I should implement the DI by myself rather than using pinject.
+            raise e
+        except Exception as e:
+            from loguru import logger
+            import traceback
+            logger.error(f"failed to provide target:{target} due to {e}")
+            for line in traceback.format_exception(e):
+                logger.error(line)
+            raise e
 
     def _inspect_dependencies(self, target: Providable):
         # preventing circular import
@@ -116,6 +130,8 @@ class ExtendedObjectGraph:
         match target:
             case type():
                 deps = [default_get_arg_names_from_class_name(target.__name__)[0]]
+                from pinject_design import Design
+                return deps, self.design + Design(classes=[target])
             case Injected():
                 return target.dependencies(), self.design
             case str():
@@ -252,6 +268,7 @@ class ChildGraph(ExtendedObjectGraph):
             child_obj_graph,
         )
         self.overrides = overrides
+        self.scopes = new_scopes
 
 
 @dataclass

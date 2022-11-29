@@ -37,6 +37,9 @@ class DynamicProxyContextImpl(IProxyContext[T]):
     def dir(self, tgt: T):
         return dir(self.accessor(tgt))
 
+    def map(self, tgt: T, f):
+        return self.pure(f(self.accessor(tgt)))
+
 
 @dataclass
 class DynamicProxyIterator(Generic[T]):

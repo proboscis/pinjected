@@ -18,7 +18,7 @@ class Expr(Generic[T], ABC):
             return item
 
     def __call__(self, *args: "Expr", **kwargs: "Expr"):
-        #print(f"{self}->args:{args},kwargs:{kwargs}")
+        # print(f"{self}->args:{args},kwargs:{kwargs}")
         return Call(self,
                     tuple([self._wrap_if_non_expr(item) for item in args]),
                     {k: self._wrap_if_non_expr(v) for k, v in kwargs.items()}
@@ -47,9 +47,6 @@ class Call(Expr):
     func: Expr
     args: Tuple[Expr] = field(default_factory=tuple)
     kwargs: Dict[str, Expr] = field(default_factory=dict)
-
-    def __hash__(self):
-        return hash(hash(self.func) + hash(self.args) + hash(frozendict(self.kwargs)))
 
     def __getstate__(self):
         return self.func, self.args, self.kwargs
