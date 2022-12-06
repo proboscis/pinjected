@@ -460,7 +460,7 @@ def _injected_factory(**targets: Injected):
     return _impl
 
 
-def injected_factory(f):
+def injected_function(f):
     """
     any args starting with "_" is considered to be injected.
     :param f:
