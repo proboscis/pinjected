@@ -70,6 +70,8 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 args = app.zip(*eval_tuple(args))
                 kwargs: "T[dict]" = app.dict(**eval_dict(kwargs))
                 # now we are all in the world of injected. how can I combine them all?
+                # so all the arguments are converted into Injected if not, then combined together
+                # so if you are to pass an Injected as an argument, you must wrap it with Injected.pure
                 applied = app.map(app.zip(injected_func, args, kwargs),
                                   lambda t: t[0](*t[1], **t[2]))
                 return applied

@@ -94,6 +94,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"partial injection call :{pformat(call_kwargs)}")
                 full_kwargs = {**kwargs, **call_kwargs, **_kwargs}
                 return target_function(**full_kwargs)
+            # I guess we need to make a function for inner
 
             return inner
 
