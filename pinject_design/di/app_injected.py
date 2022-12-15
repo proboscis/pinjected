@@ -29,7 +29,7 @@ def reduce_injected_expr(expr: Expr):
         case Object(InjectedPure(value)):
             return str(value)
         case Object(Injected() as i):
-            return f"{i.__class__.__name__}()"
+            return f"<{i.__class__.__name__}>"
 
 
 @dataclass
