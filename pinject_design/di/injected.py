@@ -473,3 +473,4 @@ def injected_function(f):
         if k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
     return _injected_factory(**tgts)(f)
+
