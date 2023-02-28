@@ -41,7 +41,7 @@ def test_injected_function():
 
 
 def test_injected_function2():
-    @injected_function2
+    @injected_function
     def test_func(x, y, /, *args, **mykwargs):
         assert args, "args should be non-empty"
         return x + y + str(args)
