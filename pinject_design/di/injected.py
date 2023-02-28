@@ -76,43 +76,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
         # how can I partially apply class constructor?
         argspec = inspect.getfullargspec(target_function)
-        remaining_arg_names = argspec.args
-        if "self" in remaining_arg_names:
-            remaining_arg_names.remove("self")
-        # logger.info(f"partially applying {injection_targets}")
-        # logger.info(f"original args:{remaining_arg_names}")
-
-        for injected in injection_targets.keys():
-            remaining_arg_names.remove(injected)
-
 
         def makefun_impl(injected_kwargs):
             # logger.info(f"partial injection :{pformat(kwargs)}")
 
             def inner(*_args, **_kwargs):
-                # user calls with both args or kwargs so we need to handle both.
-                # assert len(_args) == len(remaining_arg_names), \
-                #    f"partially applied injected function is missing some of positional args! {remaining_arg_names} for {_args}"
                 from loguru import logger
                 tgt_sig = inspect.signature(target_function)
                 logger.info(f"partial injection => injected kwargs:{pformat(injected_kwargs)}, args:{pformat(_args)}, kwargs:{pformat(_kwargs)}")
                 logger.info(f"target function signature: {tgt_sig}")
-                # since the injection targets are positional arguments, it needs to be applied first?
-
-                # ah, so if the args are not in the remaining_arg_name, it will be ignored.
-                # how about we just pass it?
-                # call_kwargs = dict(zip(remaining_arg_names, _args))
-                # logger.info(f"partial injection call :{pformat(call_kwargs)}")
-                #full_kwargs = {**kwargs, **call_kwargs, **_kwargs}
-                # so, I want to apply the positional args with injected_kwargs and then pass the rest of the args to the target function.
                 positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
                 bind_result = tgt_sig.bind(*positional_args,*_args,**_kwargs)
                 bind_result.apply_defaults()
-                logger.info(f"partial injection bind result :{pformat(bind_result.arguments)}")
-                # the only thing to clarify the argument positioning is to use kwargs for everything.
-                # so we need to first split the target function signature into injection targets and remaining targets.
-                # and the application must be done all in positional for known arguments.
-
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
             # I guess we need to make a function for inner
@@ -502,15 +477,17 @@ def _injected_factory(**targets: Injected):
 
 def injected_function(f):
     """
-    any args starting with "_" is considered to be injected.
+    any args starting with "_" or positional_only kwargs is considered to be injected.
     :param f:
     :return:
     """
     sig: inspect.Signature = inspect.signature(f)
     tgts = dict()
-    for k in sig.parameters.keys():
+    for k,v in sig.parameters.items():
         if k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
+        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
+            tgts[k] = Injected.by_name(k)
     new_f = Injected.partial(f, **tgts)
     new_f.__name__ = f.__name__
     return new_f
@@ -524,10 +501,9 @@ def injected_function2(f):
     """
     sig: inspect.Signature = inspect.signature(f)
     tgts = dict()
-    for k in sig.parameters.keys():
-        if k == '/':
-            break
-        tgts[k] = Injected.by_name(k)
+    for k,v in sig.parameters.items():
+        if v.kind == inspect.Parameter.POSITIONAL_ONLY:
+            tgts[k] = Injected.by_name(k)
     new_f = Injected.partial(f, **tgts)
     new_f.__name__ = f.__name__
     return new_f
