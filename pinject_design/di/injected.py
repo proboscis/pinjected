@@ -2,7 +2,9 @@ import abc
 import functools
 import inspect
 import sys
+from copy import copy
 from dataclasses import dataclass
+from pprint import pformat
 from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Dict
 
 from makefun import create_function
@@ -83,23 +85,43 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         for injected in injection_targets.keys():
             remaining_arg_names.remove(injected)
 
-        def makefun_impl(kwargs):
+
+        def makefun_impl(injected_kwargs):
             # logger.info(f"partial injection :{pformat(kwargs)}")
 
             def inner(*_args, **_kwargs):
                 # user calls with both args or kwargs so we need to handle both.
                 # assert len(_args) == len(remaining_arg_names), \
                 #    f"partially applied injected function is missing some of positional args! {remaining_arg_names} for {_args}"
-                call_kwargs = dict(zip(remaining_arg_names, _args))
+                from loguru import logger
+                tgt_sig = inspect.signature(target_function)
+                logger.info(f"partial injection => injected kwargs:{pformat(injected_kwargs)}, args:{pformat(_args)}, kwargs:{pformat(_kwargs)}")
+                logger.info(f"target function signature: {tgt_sig}")
+                # since the injection targets are positional arguments, it needs to be applied first?
+
+                # ah, so if the args are not in the remaining_arg_name, it will be ignored.
+                # how about we just pass it?
+                # call_kwargs = dict(zip(remaining_arg_names, _args))
                 # logger.info(f"partial injection call :{pformat(call_kwargs)}")
-                full_kwargs = {**kwargs, **call_kwargs, **_kwargs}
-                return target_function(**full_kwargs)
+                #full_kwargs = {**kwargs, **call_kwargs, **_kwargs}
+                # so, I want to apply the positional args with injected_kwargs and then pass the rest of the args to the target function.
+                positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
+                bind_result = tgt_sig.bind(*positional_args,*_args,**_kwargs)
+                bind_result.apply_defaults()
+                logger.info(f"partial injection bind result :{pformat(bind_result.arguments)}")
+                # the only thing to clarify the argument positioning is to use kwargs for everything.
+                # so we need to first split the target function signature into injection targets and remaining targets.
+                # and the application must be done all in positional for known arguments.
+
+                return target_function(*bind_result.args, **bind_result.kwargs)
+
             # I guess we need to make a function for inner
 
             return inner
 
         injected_kwargs = Injected.dict(**injection_targets)
-        injected_factory = Injected.bind(makefun_impl, kwargs=injected_kwargs)
+        injected_factory = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
+        # the inner will be called upon calling the injection result.
         return injected_factory
 
     @staticmethod
@@ -197,13 +219,23 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
 
     @property
-    def proxy(self)->DelegatedVar:
+    def proxy(self) -> DelegatedVar:
         """use this to modify injected variables freely without map.
         call eval() at the end to finish modification
         # it seems this thing is preventing from pickling?
         """
         from pinject_design.di.app_injected import injected_proxy
         return injected_proxy(self)
+
+    @staticmethod
+    def ensure_injected(data: Union["Injected", DelegatedVar]):
+        match data:
+            case DelegatedVar():
+                return Injected.ensure_injected(data.eval())
+            case Injected():
+                return data
+            case _:
+                raise RuntimeError(f"not an injected object: {data}")
 
 
 class GeneratedInjected(Injected):
@@ -253,16 +285,20 @@ def extract_dependency_including_self(f: Union[type, Callable]):
         raise RuntimeError(f"input:{f} is not either type or Callable")
 
 
-def extract_dependency(dep: Union[str, type, Callable, Injected]) -> Set[str]:
+def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[Injected]]) -> Set[str]:
     if isinstance(dep, str):
         return {dep}
     elif isinstance(dep, type):  # it's a constructor and we must use __init__ for backward compatibility.
         argspec = inspect.getfullargspec(dep.__init__)
         return set(argspec.args) - {'self'}
+    elif isinstance(dep, DelegatedVar):
+        return extract_dependency(dep.eval())
     elif isinstance(dep, Callable):
         try:
             argspec = inspect.getfullargspec(dep)
         except Exception as e:
+            from loguru import logger
+            logger.error(f"failed to get argspec of {dep}. of type {type(dep)}")
             raise e
 
         return set(argspec.args) - {'self'}
@@ -275,6 +311,8 @@ def extract_dependency(dep: Union[str, type, Callable, Injected]) -> Set[str]:
 def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dict):
     if isinstance(dep, str):
         return kwargs[dep]
+    elif isinstance(dep, DelegatedVar):
+        return solve_injection(dep.eval(), kwargs)
     elif isinstance(dep, (type, Callable)):
         return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
     elif isinstance(dep, Injected):
@@ -307,16 +345,17 @@ class InjectedFunction(Injected[T]):
 
     def __init__(self,
                  target_function: Callable,
-                 kwargs_mapping: Mapping[str, Union[str, type, Callable, Injected]]
+                 kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]]
                  ):
         super().__init__()
         assert callable(target_function)
         self.target_function = target_function
-        self.kwargs_mapping = kwargs_mapping
+        self.kwargs_mapping = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
             assert v is not None, f"injected got None binding for key:{k}"
             assert_kwargs_type(v)
-
+            if isinstance(v, DelegatedVar):
+                self.kwargs_mapping[k] = v.eval()
         org_deps = extract_dependency(self.target_function)
         # logger.info(f"tgt:{target_function} original dependency:{org_deps}")
         missings = {d for d in org_deps if d not in self.kwargs_mapping}
@@ -430,7 +469,7 @@ class MZippedInjected(Injected):
 
     def __init__(self, *srcs: Injected):
         super().__init__()
-        self.srcs = srcs
+        self.srcs = [Injected.ensure_injected(item) for item in srcs]
         assert all(isinstance(s, Injected) for s in srcs), srcs
 
     def dependencies(self) -> Set[str]:
@@ -472,5 +511,23 @@ def injected_function(f):
     for k in sig.parameters.keys():
         if k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
-    return _injected_factory(**tgts)(f)
+    new_f = Injected.partial(f, **tgts)
+    new_f.__name__ = f.__name__
+    return new_f
+    # return _injected_factory(**tgts)(f)
 
+def injected_function2(f):
+    """
+    any args before '/' is considered to be injected.
+    :param f:
+    :return:
+    """
+    sig: inspect.Signature = inspect.signature(f)
+    tgts = dict()
+    for k in sig.parameters.keys():
+        if k == '/':
+            break
+        tgts[k] = Injected.by_name(k)
+    new_f = Injected.partial(f, **tgts)
+    new_f.__name__ = f.__name__
+    return new_f
