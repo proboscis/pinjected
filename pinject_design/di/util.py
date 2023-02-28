@@ -750,3 +750,19 @@ class PinjectProviderBind(Bind):
         for k, v in state.items():
             setattr(self, k, v)
         assert self.f is not None
+
+
+def instances(**kwargs):
+    return Design().bind_instance(**kwargs)
+
+
+def providers(**kwargs):
+    return Design().bind_provider(**kwargs)
+
+
+def classes(**kwargs):
+    return Design().bind_class(**kwargs)
+
+
+def injecteds(**kwargs):
+    return Design().bind_provider(**kwargs)

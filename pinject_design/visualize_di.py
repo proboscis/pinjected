@@ -73,7 +73,7 @@ class DIGraph:
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
     def __post_init__(self):
-        self.src = self.src.build()
+        self.src = self.src.bind_instance(session='DummyForVisualization').build()
         self.implicit_mappings = dict(self._get_mapping())
         self.pinject_mappings = dict(self._get_configured())
         # we want to know if the binding is InjectedProvider or not
@@ -322,9 +322,9 @@ class DIGraph:
 
     def create_dependency_network(self, roots: Union[str, List[str]], replace_missing=True):
         nx_graph = self.create_dependency_digraph(roots, replace_missing)
-        nt = Network('100%', '100%', directed=True)
+        nt = Network('1080px', '100%', directed=True)
         nt.from_nx(nx_graph)
-        nt.show_buttons(filter_=["physics"])
+        #nt.show_buttons(filter_=["physics"])
         nt.toggle_physics(True)
         return nt
 
