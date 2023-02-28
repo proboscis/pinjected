@@ -3,7 +3,7 @@ from typing import Callable, Any
 
 from loguru import logger
 
-from pinject_design.di.injected import Injected, injected_function, injected_function2
+from pinject_design.di.injected import Injected, injected_function
 from pinject_design.di.util import Design, instances
 
 
@@ -32,19 +32,6 @@ def test_injected_function():
     def test_func(_x, _y, /, *args, **mykwargs):
         assert args, "args should be non-empty"
         return _x + _y + str(args)
-
-    g = instances(
-        x='x',
-        y='y',
-    ).to_graph()
-    assert g[test_func](1, 2, 3, 5, 6) == 'x' + 'y' + '(1, 2, 3, 5, 6)'
-
-
-def test_injected_function2():
-    @injected_function
-    def test_func(x, y, /, *args, **mykwargs):
-        assert args, "args should be non-empty"
-        return x + y + str(args)
 
     g = instances(
         x='x',

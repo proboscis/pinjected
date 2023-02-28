@@ -4,8 +4,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass
-from pprint import pformat
-from typing import List, Generic, Mapping, Union, Callable, TypeVar, Tuple, Set, Dict
+from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
 from makefun import create_function
 
@@ -74,19 +73,17 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
-        # how can I partially apply class constructor?
-        argspec = inspect.getfullargspec(target_function)
 
         def makefun_impl(injected_kwargs):
             # logger.info(f"partial injection :{pformat(kwargs)}")
 
             def inner(*_args, **_kwargs):
-                from loguru import logger
+                # from loguru import logger
                 tgt_sig = inspect.signature(target_function)
-                logger.info(f"partial injection => injected kwargs:{pformat(injected_kwargs)}, args:{pformat(_args)}, kwargs:{pformat(_kwargs)}")
-                logger.info(f"target function signature: {tgt_sig}")
+                # logger.info(f"partial injection => injected kwargs:{pformat(injected_kwargs)}, args:{pformat(_args)}, kwargs:{pformat(_kwargs)}")
+                # logger.info(f"target function signature: {tgt_sig}")
                 positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
-                bind_result = tgt_sig.bind(*positional_args,*_args,**_kwargs)
+                bind_result = tgt_sig.bind(*positional_args, *_args, **_kwargs)
                 bind_result.apply_defaults()
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
@@ -483,7 +480,7 @@ def injected_function(f):
     """
     sig: inspect.Signature = inspect.signature(f)
     tgts = dict()
-    for k,v in sig.parameters.items():
+    for k, v in sig.parameters.items():
         if k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
@@ -492,18 +489,3 @@ def injected_function(f):
     new_f.__name__ = f.__name__
     return new_f
     # return _injected_factory(**tgts)(f)
-
-def injected_function2(f):
-    """
-    any args before '/' is considered to be injected.
-    :param f:
-    :return:
-    """
-    sig: inspect.Signature = inspect.signature(f)
-    tgts = dict()
-    for k,v in sig.parameters.items():
-        if v.kind == inspect.Parameter.POSITIONAL_ONLY:
-            tgts[k] = Injected.by_name(k)
-    new_f = Injected.partial(f, **tgts)
-    new_f.__name__ = f.__name__
-    return new_f
