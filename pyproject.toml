@@ -22,3 +22,5 @@ tabulate = "*"
 cytoolz = "*"
 
 [tool.poetry.dev-dependencies]
+[tool.poetry.scripts]
+pinject_design_config = 'pinject_design.run_config_utils:main'

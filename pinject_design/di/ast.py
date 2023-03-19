@@ -54,6 +54,9 @@ class Call(Expr):
     def __setstate__(self, state):
         self.func, self.args, self.kwargs = state
 
+    def __hash__(self):
+        return hash((self.func,self.args,frozendict(self.kwargs)))
+
 
 @dataclass
 class Attr(Expr):
@@ -91,6 +94,9 @@ class Object(Expr):
 
     def __setstate__(self, state):
         self.data = state
+
+    def __hash__(self):
+        return hash(self.data)
 
 
 def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:

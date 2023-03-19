@@ -1,6 +1,8 @@
 import inspect
 import os
 import platform
+import tempfile
+import time
 import uuid
 from dataclasses import dataclass
 from itertools import chain
@@ -10,6 +12,7 @@ from typing import Callable, List, Any, Dict, Union
 import networkx as nx
 import networkx.classes
 from cytoolz import memoize
+from loguru import logger
 from networkx.drawing.nx_agraph import graphviz_layout
 
 from pampy import match
@@ -21,7 +24,7 @@ from returns.result import safe, Result, Failure
 
 from pinject_design.di.design import PinjectBind, Bind, InjectedProvider
 from pinject_design.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
-    ZippedInjected, MZippedInjected, InjectedByName, extract_dependency
+    ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign
 from pinject_design.di.util import Design, DirectPinjectProvider, PinjectProviderBind
 from pinject_design.exceptions import DependencyResolutionFailure, _MissingDepsError
 
@@ -177,10 +180,15 @@ class DIGraph:
     def dependencies_of(self, src):
         return self.deps_impl(src)
 
-    def di_dfs(self, src, replace_missing=False):
+    def di_dfs_old(self, src, replace_missing=False):
+        from loguru import logger
         def dfs(node: str, trace=[]):
+            logger.info(f"dfs: {node} => {' => '.join(trace)}")
+
             try:
                 nexts: List[str] = self.dependencies_of(node)
+            except TypeError as te:
+                raise te
             except Exception as e:
                 if replace_missing:
                     nexts = []
@@ -192,6 +200,36 @@ class DIGraph:
                 yield from dfs(n, trace + [n])
 
         yield from dfs(src, [src])
+
+    def di_dfs(self, src, replace_missing=False):
+        ignore_list = ["mzip_src_","mapped_src_","injected_kwargs_"]
+        def filter(node):
+            res = any([ignore in node for ignore in ignore_list])
+            return res
+
+        def dfs(prev, current, trace=[]):
+            try:
+                nexts: List[str] = self.dependencies_of(current)
+            except Exception as e:
+                if replace_missing:
+                    nexts = []
+                else:
+                    raise _MissingDepsError(f"failed to get neighbors of {current} at {' => '.join(trace)}.", current,
+                                            trace) from e
+            for n in nexts:
+                match (filter(current),filter(n)):
+                    case (True,True):
+                        yield from dfs(prev, n, trace + [n])
+                    case (True,False):
+                        yield prev, n, trace
+                        yield from dfs(prev, n, trace + [n])
+                    case (False,True):
+                        yield from dfs(current, n, trace + [n])
+                    case (False,False):
+                        yield current, n, trace
+                        yield from dfs(current, n, trace + [n])
+
+        yield from dfs(src,src, [src])
 
     def di_dfs_validation(self, src):
         def dfs(node: str, trace=[]):
@@ -207,8 +245,14 @@ class DIGraph:
 
     def get_source(self, f):
         try:
-            file = inspect.getfile(f)
-            src = inspect.getsource(f)
+            if hasattr(f, "__original_file__"):
+                file = f.__original_file__
+            else:
+                file = inspect.getfile(f)
+            if hasattr(f, "__original_code__"):
+                src = f.__original_code__
+            else:
+                src = inspect.getsource(f)
             res = file + "\n" + src
 
         except Exception as e:
@@ -222,6 +266,7 @@ class DIGraph:
     def parse_injected(self, tgt: Injected):
         # from archpainter.my_artifacts.artifact_object import IArtifactObject
         return match(tgt,
+                     InjectedWithDefaultDesign, lambda iwdd: self.parse_injected(iwdd.src),
                      InjectedFunction,
                      lambda injected: ("injected",
                                        f"Injected:{safe(getattr)(injected.target_function, '__name__').value_or(repr(injected.target_function))}",
@@ -250,7 +295,8 @@ class DIGraph:
                      )
 
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
-                                         replace_missing=True) -> networkx.classes.DiGraph:
+                                         replace_missing=True
+                                         ) -> networkx.classes.DiGraph:
         return DIGraph(self.src.bind_provider(**{root_name: root})) \
             .create_dependency_digraph(
             root_name,
@@ -267,7 +313,7 @@ class DIGraph:
         # since this visualization is contextual, I feel I need to make a RootedGraph or stg
         # the problem is that this class is very stateful?
         # one work around is to make a new DIGraph from this, with overriden design.
-
+        from loguru import logger
         nx_graph = nx.DiGraph()
         for root in roots:
             for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
@@ -324,7 +370,7 @@ class DIGraph:
         nx_graph = self.create_dependency_digraph(roots, replace_missing)
         nt = Network('1080px', '100%', directed=True)
         nt.from_nx(nx_graph)
-        #nt.show_buttons(filter_=["physics"])
+        # nt.show_buttons(filter_=["physics"])
         nt.toggle_physics(True)
         return nt
 
@@ -369,6 +415,26 @@ class DIGraph:
         else:
             from loguru import logger
             logger.warning("visualization of a design is disabled for non mac os.")
+
+    def show_injected_html(self,tgt:Injected,name:str=None):
+        assert isinstance(tgt,Injected)
+        assert platform.system().lower() == "darwin"
+        nx_graph = self.create_dependency_digraph_rooted(tgt,name or "__root__",replace_missing=True)
+        nt = Network('1080px', '100%', directed=True)
+        nt.from_nx(nx_graph)
+        # nt.show_buttons(filter_=["physics"])
+        nt.toggle_physics(True)
+        # create tmp file
+        org_dir = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.chdir(temp_dir)
+            temp_file_path = "temp.html"
+            nt.show(temp_file_path)
+            os.system(f"open {temp_file_path}")
+            time.sleep(5)
+        os.chdir(org_dir)
+
+
 
 
 # %%

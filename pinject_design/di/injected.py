@@ -75,25 +75,25 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
 
         def makefun_impl(injected_kwargs):
-            # logger.info(f"partial injection :{pformat(kwargs)}")
-
             def inner(*_args, **_kwargs):
-                # from loguru import logger
                 tgt_sig = inspect.signature(target_function)
-                # logger.info(f"partial injection => injected kwargs:{pformat(injected_kwargs)}, args:{pformat(_args)}, kwargs:{pformat(_kwargs)}")
-                # logger.info(f"target function signature: {tgt_sig}")
                 positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
                 bind_result = tgt_sig.bind(*positional_args, *_args, **_kwargs)
                 bind_result.apply_defaults()
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
-            # I guess we need to make a function for inner
-
             return inner
+
+        makefun_impl.__name__ = target_function.__name__
+        makefun_impl.__original_code__ = inspect.getsource(target_function)
+        makefun_impl.__original_file__ = inspect.getfile(target_function)
 
         injected_kwargs = Injected.dict(**injection_targets)
         injected_factory = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
         # the inner will be called upon calling the injection result.
+        # This involves many internal Injecte instances. can I make it simler?
+        # it takes *by_name, mzip, and map.
+
         return injected_factory
 
     @staticmethod
@@ -206,6 +206,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 return Injected.ensure_injected(data.eval())
             case Injected():
                 return data
+            case func if callable(func):
+                return Injected.bind(func)
             case _:
                 raise RuntimeError(f"not an injected object: {data}")
 
@@ -486,6 +488,41 @@ def injected_function(f):
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
             tgts[k] = Injected.by_name(k)
     new_f = Injected.partial(f, **tgts)
-    new_f.__name__ = f.__name__
+
     return new_f
     # return _injected_factory(**tgts)(f)
+
+
+class InjectedWithDefaultDesign(Injected):
+    __match_args__ = ('src', 'default_design_path')
+
+    def __init__(self, src: Injected, default_design_path: str):
+        super().__init__()
+        self.src: Injected = src
+        self.default_design_path: str = default_design_path
+
+    def dependencies(self) -> Set[str]:
+        return self.src.dependencies()
+
+    def get_provider(self):
+        return self.src.get_provider()
+
+
+def with_default(design_path: str):
+    def _impl(f):
+        return InjectedWithDefaultDesign(Injected.ensure_injected(f), design_path)
+
+    return _impl
+
+
+@dataclass
+class RunnableInjected(Injected):
+    src: Injected
+    design_path: str
+    working_dir: str
+
+    def dependencies(self) -> Set[str]:
+        return self.src.dependencies()
+
+    def get_provider(self):
+        return self.src.get_provider()

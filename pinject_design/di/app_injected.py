@@ -32,7 +32,7 @@ def reduce_injected_expr(expr: Expr):
             return f"<{i.__class__.__name__}>"
 
 
-@dataclass
+@dataclass(frozen=True)
 class EvaledInjected(Injected[T]):
     value: Injected[T]
     ast: Expr[Injected[T]]
@@ -45,6 +45,7 @@ class EvaledInjected(Injected[T]):
 
     def __str__(self):
         return f"EvaledInjected(value={self.value},ast={show_expr(self.ast, reduce_injected_expr)})"
+
     def __repr__(self):
         return str(self)
 
