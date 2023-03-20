@@ -8,6 +8,9 @@ from pinject_design.di.util import Design, instances
 
 
 def _factory(a, b, x):
+    assert a == 3
+    assert b == 2
+    assert x == 5
     return a + b + x
 
 
@@ -16,15 +19,9 @@ def test_partial():
         a=1,
         b=2
     ).bind_provider(
-        f=Injected.partial(_factory, "a", "b")
+        f=Injected.partial(_factory,b=Injected.by_name("b"),x=Injected.pure(5))
     )
-    f: Callable[[int], Any] = d.provide("f")
-    applied: Callable[[int], Any] = partial(_factory, 0, 0)
-
-    assert partial(_factory, 0, b=0)(x=1) == 1
-    fx = f(3)
-    logger.info(f)
-    assert fx == 6
+    assert d.provide("f")(3) == 10
 
 
 def test_injected_function():

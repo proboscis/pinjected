@@ -17,14 +17,16 @@ class ModuleVarSpec(Generic[T]):
 
 
 def get_project_root(start_path: str) -> str:
-    current_path = os.path.abspath(start_path)
-    while not os.path.exists(os.path.join(current_path, "__init__.py")):
+    from loguru import logger
+    current_path = os.path.dirname(os.path.abspath(start_path))
+    logger.debug(f"current_path:{current_path}")
+    while os.path.exists(os.path.join(current_path, "__init__.py")):
         parent_path = os.path.dirname(current_path)
         if parent_path == current_path:
             raise ValueError("Project root not found")
         current_path = parent_path
-    current_path = os.path.dirname(current_path)
-    return os.path.dirname(current_path)
+        logger.debug(f"current_path:{current_path}")
+    return current_path
 
 
 def get_module_path(root_path, module_path):
@@ -34,8 +36,12 @@ def get_module_path(root_path, module_path):
 
 
 def inspect_module_for_type(module_path: str, accept: Callable[[str, Any], bool]) -> List[ModuleVarSpec[T]]:
+    from loguru import logger
     project_root = get_project_root(os.path.dirname(module_path))
+    logger.info(f"project_root:{project_root}")
     module_name = get_module_path(project_root, module_path)
+    logger.info(f"module_name:{module_name}")
+
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     module = importlib.util.module_from_spec(spec)

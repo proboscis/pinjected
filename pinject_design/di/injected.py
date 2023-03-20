@@ -75,18 +75,20 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
 
         def makefun_impl(injected_kwargs):
-            def inner(*_args, **_kwargs):
-                tgt_sig = inspect.signature(target_function)
-                positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
+            tgt_sig = inspect.signature(target_function)
+            positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
+
+            def func_gets_called_after_injection(*_args, **_kwargs):
                 bind_result = tgt_sig.bind(*positional_args, *_args, **_kwargs)
                 bind_result.apply_defaults()
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
-            return inner
+            return func_gets_called_after_injection
 
         makefun_impl.__name__ = target_function.__name__
         makefun_impl.__original_code__ = inspect.getsource(target_function)
         makefun_impl.__original_file__ = inspect.getfile(target_function)
+        makefun_impl.__doc__ = target_function.__doc__
 
         injected_kwargs = Injected.dict(**injection_targets)
         injected_factory = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
@@ -352,6 +354,7 @@ class InjectedFunction(Injected[T]):
                 deps[k] = solve_injection(dep, kwargs)
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             return self.target_function(**deps)
+
 
         # you have to add a prefix 'provider'""
         return create_function(func_signature=signature, func_impl=impl)
