@@ -28,6 +28,7 @@ import importlib
 import importlib.util
 import sys
 from copy import copy
+from pprint import pformat
 from typing import Optional, List
 
 import loguru
@@ -112,6 +113,7 @@ def inspect_and_make_configurations(
             return True
 
     injecteds = inspect_module_for_type(module_path, accept)
+    logger.info(f"Found {len(injecteds)} injecteds. {pformat(injecteds)}")
     results = []
     for i in injecteds:
         config_args = {
@@ -168,12 +170,16 @@ def load_variable_by_module_path(full_module_path):
 def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
     # get the var and design
     # then run it based on cmd with args/kwargs
+    from loguru import logger
     var: Injected = Injected.ensure_injected(load_variable_by_module_path(var_path))
     design: Design = load_variable_by_module_path(design_path)
+    # if you return python object, fire will try to use it as a command object
     if cmd == 'call':
-        return design.provide(var)(*args, **kwargs)
+        res = design.provide(var)(*args, **kwargs)
+        logger.info(f"run_injected result:\n{res}")
     elif cmd == 'get':
-        return design.provide(var)
+        res = design.provide(var)
+        logger.info(f"run_injected result:\n{res}")
     elif cmd == 'visualize':
         from loguru import logger
         logger.info(f"visualizing {var_path} with design {design_path}")
