@@ -7,7 +7,7 @@ from pinject_design.di.injected import Injected, injected_function
 from pinject_design.di.util import Design, instances
 
 
-def _factory(a, b, x):
+def _factory(a, b, y=0,x=7):
     assert a == 3
     assert b == 2
     assert x == 5

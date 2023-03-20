@@ -74,16 +74,44 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
+        tgt_sig = inspect.signature(target_function)
+
+        # hmm we need to check if the args are positional only or not.
+        # in that case we need to inject with *args.
 
         def makefun_impl(injected_kwargs):
-            tgt_sig = inspect.signature(target_function)
+            missing_keys = [k for k in tgt_sig.parameters.keys() if k not in injected_kwargs]
+            missing_params = [tgt_sig.parameters[k] for k in missing_keys]
+            missing_positional_args = [p for p in missing_params if p.kind == inspect.Parameter.POSITIONAL_ONLY]
+            # convert injected kwargs to positional args if there are any positional only args
+            # if we are not fillingt
+            new_func_sig = f"{target_function.__name__}({','.join([str(p) for p in missing_params])})"
 
-            def func_gets_called_after_injection(*_args, **_kwargs):
-                bind_result = tgt_sig.bind(*_args, **_kwargs,**injected_kwargs)
+            def func_gets_called_after_injection_impl(*_args, **_kwargs):
+                assert len(_args) >= len(
+                    missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
+                inferred_arg_names = [p.name for p in missing_positional_args]
+                # now lets align the injected and the positional args
+                total_kwargs = {**injected_kwargs, **{k: v for k, v in zip(inferred_arg_names, _args)}, **_kwargs}
+                # now lets create the args
+                args = [total_kwargs[k] for k in tgt_sig.parameters.keys()]
+                bind_result = tgt_sig.bind(*args)
                 bind_result.apply_defaults()
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
-            return func_gets_called_after_injection
+            new_func = create_function(
+                new_func_sig,
+                func_gets_called_after_injection_impl,
+                func_name=target_function.__name__,
+                doc=target_function.__doc__,
+            )
+            new_func.__skeleton__ = f"""def {new_func_sig}:
+    \"\"\"
+    {new_func.__doc__}
+    \"\"\"
+"""
+
+            return new_func
 
         makefun_impl.__name__ = target_function.__name__
         makefun_impl.__original_code__ = inspect.getsource(target_function)
@@ -354,7 +382,6 @@ class InjectedFunction(Injected[T]):
                 deps[k] = solve_injection(dep, kwargs)
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             return self.target_function(**deps)
-
 
         # you have to add a prefix 'provider'""
         return create_function(func_signature=signature, func_impl=impl)
