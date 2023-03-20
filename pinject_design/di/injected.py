@@ -69,6 +69,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def partial(target_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
         use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved
+        TODO fix this to be able to partially apply any argument
         :param target_function: Callable
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
@@ -76,10 +77,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         def makefun_impl(injected_kwargs):
             tgt_sig = inspect.signature(target_function)
-            positional_args = [injected_kwargs[arg] for arg in tgt_sig.parameters.keys() if arg in injected_kwargs]
 
             def func_gets_called_after_injection(*_args, **_kwargs):
-                bind_result = tgt_sig.bind(*positional_args, *_args, **_kwargs)
+                bind_result = tgt_sig.bind(*_args, **_kwargs,**injected_kwargs)
                 bind_result.apply_defaults()
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
