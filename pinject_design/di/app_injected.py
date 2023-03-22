@@ -20,8 +20,9 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
 
     def pure(self, item) -> T:
         return Injected.pure(item)
-    def is_instance(self, item) ->bool:
-        return isinstance(item,Injected)
+
+    def is_instance(self, item) -> bool:
+        return isinstance(item, Injected)
 
 
 def reduce_injected_expr(expr: Expr):
@@ -34,8 +35,12 @@ def reduce_injected_expr(expr: Expr):
 
 @dataclass(frozen=True)
 class EvaledInjected(Injected[T]):
+    #TODO I think this class has issue with serialization of ast.
     value: Injected[T]
     ast: Expr[Injected[T]]
+
+    def __post_init__(self):
+        assert isinstance(self.ast, Expr)
 
     def dependencies(self) -> Set[str]:
         return self.value.dependencies()

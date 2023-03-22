@@ -6,6 +6,7 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
+from loguru import logger
 from makefun import create_function
 from returns.maybe import Nothing
 
@@ -136,7 +137,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # Ah, since the target_function is async, we can't catch...
                 return target_function(*bind_result.args, **bind_result.kwargs)
 
-
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,
@@ -148,9 +148,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     {__doc__}
     \"\"\"
 """
-            func_gets_called_after_injection_impl.__skeleton__ = __skeleton__
-            func_gets_called_after_injection_impl.__doc__ = __doc__
-            func_gets_called_after_injection_impl.__name__ = "partial_" + target_function.__name__
+            new_func.__skeleton__ = __skeleton__
 
             return new_func
 
@@ -160,7 +158,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         makefun_impl.__doc__ = target_function.__doc__
 
         injected_kwargs = Injected.dict(**injection_targets)
-        injected_factory = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
+        injected_factory = PartialInjectedFunction(
+            Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
+        )
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
         # it takes *by_name, mzip, and map.
@@ -306,7 +306,7 @@ class MappedInjected(Injected):
 
     def __init__(self, src: Injected[T], f: Callable[[T], U]):
         super(MappedInjected, self).__init__()
-        self.src: Injected[T] = src
+        self.src = src
         self.f: Callable[[T], U] = f
 
     def dependencies(self) -> Set[str]:
@@ -341,6 +341,8 @@ def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[In
         return set(argspec.args) - {'self'}
     elif isinstance(dep, DelegatedVar):
         return extract_dependency(dep.eval())
+    elif isinstance(dep, Injected):
+        return dep.dependencies()
     elif isinstance(dep, Callable):
         try:
             argspec = inspect.getfullargspec(dep)
@@ -350,8 +352,6 @@ def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[In
             raise e
 
         return set(argspec.args) - {'self'}
-    elif isinstance(dep, Injected):
-        return dep.dependencies()
     else:
         raise RuntimeError(f"dep must be either str/type/Callable/Injected. got {type(dep)}")
 
@@ -361,10 +361,10 @@ def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dict):
         return kwargs[dep]
     elif isinstance(dep, DelegatedVar):
         return solve_injection(dep.eval(), kwargs)
-    elif isinstance(dep, (type, Callable)):
-        return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
     elif isinstance(dep, Injected):
         return solve_injection(dep.get_provider(), kwargs)
+    elif isinstance(dep, (type, Callable)):
+        return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
     else:
         raise RuntimeError(f"dep must be one of str/type/Callable/Injected. got {type(dep)}")
 
@@ -396,6 +396,7 @@ class InjectedFunction(Injected[T]):
                  kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]]
                  ):
         super().__init__()
+        assert not isinstance(target_function, (Injected, DelegatedVar))
         assert callable(target_function)
         self.target_function = target_function
         self.kwargs_mapping = copy(kwargs_mapping)
@@ -404,6 +405,7 @@ class InjectedFunction(Injected[T]):
             assert_kwargs_type(v)
             if isinstance(v, DelegatedVar):
                 self.kwargs_mapping[k] = v.eval()
+        #logger.info(f"InjectedFunction:{self.target_function} kwargs_mapping:{self.kwargs_mapping}")
         org_deps = extract_dependency(self.target_function)
         # logger.info(f"tgt:{target_function} original dependency:{org_deps}")
         missings = {d for d in org_deps if d not in self.kwargs_mapping}
@@ -425,6 +427,8 @@ class InjectedFunction(Injected[T]):
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
+            # logger.info(f"src mapping:{self.kwargs_mapping}")
+            # logger.info(f"with deps:{deps}")
             return self.target_function(**deps)
 
         # you have to add a prefix 'provider'""
@@ -599,4 +603,22 @@ class RunnableInjected(Injected):
         return self.src.dependencies()
 
     def get_provider(self):
+        return self.src.get_provider()
+
+
+@dataclass
+class PartialInjectedFunction(Injected):
+    src: Injected[Callable]
+    def __post_init__(self):
+        assert isinstance(self.src, Injected),f"src:{self.src} is not an Injected"
+
+    def __call__(self, *args, **kwargs) -> DelegatedVar:
+        # logger.warning(f"PartialInjectedFunction.__call__() is called here. with args:{args},kwargs:{kwargs}")
+        return self.src.proxy(*args, **kwargs)
+
+    def dependencies(self) -> Set[str]:
+        return self.src.dependencies()
+
+    def get_provider(self):
+        #logger.warning(f"PartialInjectedFunction.get_provider() is called here.")
         return self.src.get_provider()

@@ -65,7 +65,7 @@ def check_picklable(tgt: dict):
         logger.error(f"Failed to pickle target: {pformat(failures)}")
         logger.error(f"if the error message contains EncodedFile pickling error, "
                      f"check whether the logging module is included in the target object or not.")
-        raise RuntimeError("this object is not picklable. check the error messages above.")
+        raise RuntimeError("this object is not picklable. check the error messages above.") from res.failure()
     # logger.info(res)
 
 
