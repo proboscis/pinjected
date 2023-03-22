@@ -3,10 +3,11 @@ import functools
 import inspect
 import sys
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
 from makefun import create_function
+from returns.maybe import Nothing
 
 from pinject_design.di.proxiable import DelegatedVar
 
@@ -60,6 +61,15 @@ def partialclass(name, cls, *args, **kwds):
     return new_cls
 
 
+@dataclass
+class ParamInfo:
+    params_to_fill: Dict  # = tgt_sig.parameters
+    params_state: Dict  # = dict()
+    vargs: List = field(default_factory=list)  # = []
+    kwargs: Dict = field(default_factory=dict)  # = dict()
+    # the problem is we may or may not have vargs and kwargs...
+
+
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
     this class is actually an abstraction of fucntion partial application.
@@ -69,7 +79,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def partial(target_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
         use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved
-        TODO fix this to be able to partially apply any argument
         :param target_function: Callable
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
@@ -80,36 +89,68 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # in that case we need to inject with *args.
 
         def makefun_impl(injected_kwargs):
+
             missing_keys = [k for k in tgt_sig.parameters.keys() if k not in injected_kwargs]
             missing_params = [tgt_sig.parameters[k] for k in missing_keys]
             missing_positional_args = [p for p in missing_params if p.kind == inspect.Parameter.POSITIONAL_ONLY]
+            missing_non_positional_args = [p for p in missing_params if
+                                           p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
+            # now we should have all the args,
             # convert injected kwargs to positional args if there are any positional only args
             # if we are not fillingt
-            new_func_sig = f"{target_function.__name__}({','.join([str(p) for p in missing_params])})"
+            new_func_sig = f"_injected_partial_{target_function.__name__}({','.join([str(p).split(':')[0] for p in missing_params])})"
+
+            # we need to partition by positional_only / not positional_only / kwargs / kwargs_only
 
             def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
-                inferred_arg_names = [p.name for p in missing_positional_args]
-                # now lets align the injected and the positional args
-                total_kwargs = {**injected_kwargs, **{k: v for k, v in zip(inferred_arg_names, _args)}, **_kwargs}
-                # now lets create the args
-                args = [total_kwargs[k] for k in tgt_sig.parameters.keys()]
-                bind_result = tgt_sig.bind(*args)
+                num_missing_positional_args = len(missing_positional_args)
+                inferred_pos_arg_names = [p.name for p in missing_positional_args]
+                inferred_non_pos_arg_names = [p.name for p in missing_non_positional_args]
+                inferred_positional_args, inferred_non_positional_args = _args[:num_missing_positional_args], _args[
+                                                                                                              num_missing_positional_args:]
+                total_kwargs = {**injected_kwargs,
+                                **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
+                                **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
+                                **_kwargs}
+                args = [total_kwargs[k] for k, p in tgt_sig.parameters.items() if
+                        p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
+                # we need to put the ramaining args into kwargs if kwargs is present in the signature
+                vks = [p for k, p in tgt_sig.parameters.items() if p.kind == inspect.Parameter.VAR_KEYWORD]
+                if vks:
+                    kwargs = {k: v for k, v in total_kwargs.items() if k not in tgt_sig.parameters.keys()}
+                else:
+                    kwargs = {}
+                vas = [p for k, p in tgt_sig.parameters.items() if p.kind == inspect.Parameter.VAR_POSITIONAL]
+                if vas:
+                    # we need to put the ramaining args into kwargs if kwargs is present in the signature
+                    vargs = _args[num_missing_positional_args + len(missing_non_positional_args):]
+                else:
+                    vargs = []
+
+                # hmm we need to pass kwargs too..
+
+                bind_result = tgt_sig.bind(*args, *vargs, **kwargs)
                 bind_result.apply_defaults()
+                # Ah, since the target_function is async, we can't catch...
                 return target_function(*bind_result.args, **bind_result.kwargs)
+
 
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,
-                func_name=target_function.__name__,
                 doc=target_function.__doc__,
             )
-            new_func.__skeleton__ = f"""def {new_func_sig}:
+            __doc__ = target_function.__doc__
+            __skeleton__ = f"""def {new_func_sig}:
     \"\"\"
-    {new_func.__doc__}
+    {__doc__}
     \"\"\"
 """
+            func_gets_called_after_injection_impl.__skeleton__ = __skeleton__
+            func_gets_called_after_injection_impl.__doc__ = __doc__
+            func_gets_called_after_injection_impl.__name__ = "partial_" + target_function.__name__
 
             return new_func
 
@@ -123,6 +164,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
         # it takes *by_name, mzip, and map.
+        injected_factory.__runnable_metadata__ = {
+            "kind": "callable"
+        }
 
         return injected_factory
 
@@ -528,7 +572,7 @@ class InjectedWithDefaultDesign(Injected):
 
     def __init__(self, src: Injected, default_design_path: str):
         super().__init__()
-        self.src: Injected = src
+        self.src = src
         self.default_design_path: str = default_design_path
 
     def dependencies(self) -> Set[str]:
