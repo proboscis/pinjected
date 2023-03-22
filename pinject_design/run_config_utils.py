@@ -36,9 +36,12 @@ from expression import Nothing
 from pydantic import BaseModel, validator
 import returns.maybe as raybe
 from returns.maybe import Maybe, Some, maybe
+from returns.result import safe, Success, Result, Failure
 
 from pinject_design import Injected, Design
+from pinject_design.di.app_injected import InjectedEvalContext
 from pinject_design.di.injected import InjectedWithDefaultDesign, InjectedFunction, injected_function
+from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.util import instances
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 
@@ -111,6 +114,9 @@ def inspect_and_make_configurations(
             return True
         elif isinstance(tgt, Injected):
             return True
+        elif isinstance(tgt, DelegatedVar):
+            if tgt.cxt == InjectedEvalContext:
+                return True
 
     injecteds = inspect_module_for_type(module_path, accept)
     logger.info(f"Found {len(injecteds)} injecteds. {pformat(injecteds)}")
@@ -123,26 +129,40 @@ def inspect_and_make_configurations(
             'working_dir': default_working_dir.value_or(os.getcwd())
         }
         args = None
-        match i, default_design_path:
-            case (ModuleVarSpec(InjectedWithDefaultDesign(InjectedFunction(), design_path), var_path), _):
-                args = ['call', var_path, design_path]
-            case (ModuleVarSpec(InjectedWithDefaultDesign(Injected(), design_path), var_path), _):
-                args = ['get', var_path, design_path]
-            case (ModuleVarSpec(InjectedFunction(), var_path), Some(ddp)):
-                args = ['call', var_path, ddp]
-            case (ModuleVarSpec(Injected(), var_path), Some(ddp)):
-                args = ['get', var_path, ddp]
-            case (ModuleVarSpec(InjectedFunction(), var_path), Nothing):
-                logger.info(f"Skipping {i} because it is an injected_function and no default design path is provided.")
-            case (ModuleVarSpec(Injected(), var_path), Nothing):
-                logger.info(f"Skipping {i} because it is an injected var and no default design path is provided.")
-            case (ModuleVarSpec(func, var_path), Some(ddp)) if callable(func):
-                args = ['get', var_path, ddp]
-            case (ModuleVarSpec(func, var_path), Nothing) if callable(func):
-                logger.info(f"Skipping {i} because it is a provider function and no default design path is provided.")
-            case _:
-                raise NotImplementedError(
-                    f"Unsupported case {i, default_design_path}. make sure to provide default design path.")
+        # TODO InjectedFunctions are not guaranteed to return a function
+        # So let's rely on __runnable_metadata__
+        if isinstance(i, ModuleVarSpec):
+            meta = safe(getattr)(i.var,"__runnable_metadata__")
+            # hmm, it is too hard to tell whether the object should be told or not.
+            # I guess we just return 'get' for all of them. and
+            # let 'run_injected' to decide whether to call it or not...?
+            # Or we can mark the callable ones with some metadata.
+            # Injected[Function] as IFunc = Injected[Function]
+            # or let user select from the popup?
+            match i.var,meta, default_design_path:
+                case (_,Success({"kind":"callable","default_design_path":ddp}),_):
+                    args = ['call', i.var_path, ddp]
+                case (_,Success({"kind":"callable"}),Some(ddp)):
+                    args = ['call', i.var_path, ddp]
+                case (_,Success({"kind":"object","default_design_path":ddp}),_):
+                    args = ['get', i.var_path, ddp]
+                case (_,Success({"kind":"object"}),Some(ddp)):
+                    args = ['get', i.var_path, ddp]
+                case (_,Failure(), Some(ddp)) if callable(i.var):
+                    args = ['get', i.var_path, ddp]
+                case (Injected(),Failure(), Some(ddp)):
+                    args = ['get', i.var_path, ddp]
+                    logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
+                case (DelegatedVar(),_, Some(ddp)):
+                    args = ['get', i.var_path, ddp]
+                    logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
+                case (_,Failure(), Some(ddp)):
+                    logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
+                case (_, Maybe.empty):
+                    logger.info(f"skipping {i.var_path} because it has no default design path.")
+                case _:
+                    raise NotImplementedError(
+                        f"Unsupported case {i,meta, default_design_path}. make sure to provide default design path.")
         if args is not None:
             run_args = ['run_injected'] + args
             viz_args = ['run_injected', 'visualize'] + args[1:]
@@ -184,6 +204,11 @@ def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
         from loguru import logger
         logger.info(f"visualizing {var_path} with design {design_path}")
         design.to_vis_graph().show_injected_html(var)
+    elif cmd == "sandbox":
+       # TODO make a ~sandbox.py file and edit it?
+        pass
+
+
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:
@@ -221,6 +246,7 @@ def find_module_attr(file_path: str, attr_name: str) -> Optional[str]:
             grandparent_file_path = os.path.join(grandparent_dir, '__init__.py')
             if os.path.exists(grandparent_file_path):
                 return find_module_attr(grandparent_file_path, attr_name)
+
     return None
 
 
@@ -235,7 +261,7 @@ def create_configurations(
     import sys
     import os
     logger.debug(f"python paths:{sys.path}")
-    logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
+    #logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
     interpreter_path = interpreter_path or sys.executable
     default_design_path = maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)
