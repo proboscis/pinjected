@@ -405,7 +405,7 @@ class InjectedFunction(Injected[T]):
             assert_kwargs_type(v)
             if isinstance(v, DelegatedVar):
                 self.kwargs_mapping[k] = v.eval()
-        #logger.info(f"InjectedFunction:{self.target_function} kwargs_mapping:{self.kwargs_mapping}")
+        # logger.info(f"InjectedFunction:{self.target_function} kwargs_mapping:{self.kwargs_mapping}")
         org_deps = extract_dependency(self.target_function)
         # logger.info(f"tgt:{target_function} original dependency:{org_deps}")
         missings = {d for d in org_deps if d not in self.kwargs_mapping}
@@ -426,9 +426,9 @@ class InjectedFunction(Injected[T]):
                 deps[mdep] = solve_injection(mdep, kwargs)
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
-            # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
-            # logger.info(f"src mapping:{self.kwargs_mapping}")
-            # logger.info(f"with deps:{deps}")
+            logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
+            logger.info(f"src mapping:{self.kwargs_mapping}")
+            logger.info(f"with deps:{deps}")
             return self.target_function(**deps)
 
         # you have to add a prefix 'provider'""
@@ -552,25 +552,6 @@ def _injected_factory(**targets: Injected):
     return _impl
 
 
-def injected_function(f):
-    """
-    any args starting with "_" or positional_only kwargs is considered to be injected.
-    :param f:
-    :return:
-    """
-    sig: inspect.Signature = inspect.signature(f)
-    tgts = dict()
-    for k, v in sig.parameters.items():
-        if k.startswith("_"):
-            tgts[k] = Injected.by_name(k[1:])
-        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
-            tgts[k] = Injected.by_name(k)
-    new_f = Injected.partial(f, **tgts)
-
-    return new_f
-    # return _injected_factory(**tgts)(f)
-
-
 class InjectedWithDefaultDesign(Injected):
     __match_args__ = ('src', 'default_design_path')
 
@@ -609,8 +590,9 @@ class RunnableInjected(Injected):
 @dataclass
 class PartialInjectedFunction(Injected):
     src: Injected[Callable]
+
     def __post_init__(self):
-        assert isinstance(self.src, Injected),f"src:{self.src} is not an Injected"
+        assert isinstance(self.src, Injected), f"src:{self.src} is not an Injected"
 
     def __call__(self, *args, **kwargs) -> DelegatedVar:
         # logger.warning(f"PartialInjectedFunction.__call__() is called here. with args:{args},kwargs:{kwargs}")
@@ -620,5 +602,24 @@ class PartialInjectedFunction(Injected):
         return self.src.dependencies()
 
     def get_provider(self):
-        #logger.warning(f"PartialInjectedFunction.get_provider() is called here.")
+        # logger.warning(f"PartialInjectedFunction.get_provider() is called here.")
         return self.src.get_provider()
+
+
+def injected_function(f) -> PartialInjectedFunction:
+    """
+    any args starting with "_" or positional_only kwargs is considered to be injected.
+    :param f:
+    :return:
+    """
+    sig: inspect.Signature = inspect.signature(f)
+    tgts = dict()
+    for k, v in sig.parameters.items():
+        if k.startswith("_"):
+            tgts[k] = Injected.by_name(k[1:])
+        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
+            tgts[k] = Injected.by_name(k)
+    new_f = Injected.partial(f, **tgts)
+
+    return new_f
+    # return _injected_factory(**tgts)(f)
