@@ -23,24 +23,26 @@ Hmm, an easy way is to add some metadata though..
 Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
-import os
 import importlib
 import importlib.util
+import json
+import os
 import sys
 from copy import copy
+from datetime import datetime
 from pprint import pformat
 from typing import Optional, List
 
 import loguru
+import returns.maybe as raybe
 from expression import Nothing
 from pydantic import BaseModel, validator
-import returns.maybe as raybe
 from returns.maybe import Maybe, Some, maybe
-from returns.result import safe, Success, Result, Failure
+from returns.result import safe, Success, Failure
 
 from pinject_design import Injected, Design
 from pinject_design.di.app_injected import InjectedEvalContext
-from pinject_design.di.injected import InjectedWithDefaultDesign, InjectedFunction, injected_function
+from pinject_design.di.injected import injected_function
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.util import instances
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
@@ -71,7 +73,7 @@ class RunnableInjected(BaseModel):
     I think it is easier to make as much configuration as possible on this side.
     """
     src: ModuleVarSpec[Injected]
-    design: Optional[ModuleVarSpec[Design]]
+    design_path: str
 
     @validator('src')
     def validate_src_type(cls, value):
@@ -99,16 +101,7 @@ class IdeaRunConfigurations(BaseModel):
     configs: List[IdeaRunConfiguration]
 
 
-@injected_function
-def inspect_and_make_configurations(
-        entrypoint_path: str,
-        interpreter_path: str,
-        default_design_path: Maybe[str],
-        default_working_dir: Maybe[str],
-        logger,
-        /,
-        module_path
-) -> IdeaRunConfigurations:
+def get_injecteds(module_path):
     def accept(name, tgt):
         if name.startswith("provide_"):
             return True
@@ -119,6 +112,55 @@ def inspect_and_make_configurations(
                 return True
 
     injecteds = inspect_module_for_type(module_path, accept)
+    return injecteds
+
+
+@injected_function
+def extract_runnables(
+        default_design_path,
+        logger,
+        /,
+        injecteds: List[ModuleVarSpec[Injected]]
+):
+    def extract_runnable(i: ModuleVarSpec[Injected], meta):
+        match i.var, meta, default_design_path:
+            case (_, Success({"default_design_path": ddp}), _):
+                return RunnableInjected(src=i, design_path=ddp)
+            case (_, Success(), Some(ddp)):
+                return RunnableInjected(src=i, design_path=ddp)
+            case (_, Failure(), Some(ddp)) if callable(i.var):
+                return RunnableInjected(src=i, design_path=ddp)
+            case (DelegatedVar(), _, Some(ddp)):
+                return RunnableInjected(src=i, design_path=ddp)
+            case (_, Failure(), Some(ddp)):
+                raise ValueError(f"Cannot find default design path for {i.var_path}")
+            case (_, Maybe.empty):
+                raise ValueError(f"Cannot find default design path for {i.var_path}")
+            case _:
+                raise NotImplementedError(
+                    f"Unsupported case {i, meta, default_design_path}. make sure to provide default design path.")
+
+    results = []
+    for i in injecteds:
+        if isinstance(i, ModuleVarSpec):
+            meta = safe(getattr)(i.var, "__runnable_metadata__")
+            results.append(safe(extract_runnable)(i, meta))
+    failures = [r for r in results if isinstance(r, Failure)]
+    logger.warning(f"Failed to extract runnable from {failures}")
+    return [r.unwrap() for r in results if isinstance(r, Success)]
+
+
+@injected_function
+def inspect_and_make_configurations(
+        entrypoint_path: str,
+        interpreter_path: str,
+        default_design_path: Maybe[str],
+        default_working_dir: Maybe[str],
+        logger,
+        /,
+        module_path
+) -> IdeaRunConfigurations:
+    injecteds = get_injecteds(module_path)
     logger.info(f"Found {len(injecteds)} injecteds. {pformat(injecteds)}")
     results = []
     for i in injecteds:
@@ -132,37 +174,37 @@ def inspect_and_make_configurations(
         # TODO InjectedFunctions are not guaranteed to return a function
         # So let's rely on __runnable_metadata__
         if isinstance(i, ModuleVarSpec):
-            meta = safe(getattr)(i.var,"__runnable_metadata__")
+            meta = safe(getattr)(i.var, "__runnable_metadata__")
             # hmm, it is too hard to tell whether the object should be told or not.
             # I guess we just return 'get' for all of them. and
             # let 'run_injected' to decide whether to call it or not...?
             # Or we can mark the callable ones with some metadata.
             # Injected[Function] as IFunc = Injected[Function]
             # or let user select from the popup?
-            match i.var,meta, default_design_path:
-                case (_,Success({"kind":"callable","default_design_path":ddp}),_):
+            match i.var, meta, default_design_path:
+                case (_, Success({"kind": "callable", "default_design_path": ddp}), _):
                     args = ['call', i.var_path, ddp]
-                case (_,Success({"kind":"callable"}),Some(ddp)):
+                case (_, Success({"kind": "callable"}), Some(ddp)):
                     args = ['call', i.var_path, ddp]
-                case (_,Success({"kind":"object","default_design_path":ddp}),_):
+                case (_, Success({"kind": "object", "default_design_path": ddp}), _):
                     args = ['get', i.var_path, ddp]
-                case (_,Success({"kind":"object"}),Some(ddp)):
+                case (_, Success({"kind": "object"}), Some(ddp)):
                     args = ['get', i.var_path, ddp]
-                case (_,Failure(), Some(ddp)) if callable(i.var):
+                case (_, Failure(), Some(ddp)) if callable(i.var):
                     args = ['get', i.var_path, ddp]
-                case (Injected(),Failure(), Some(ddp)):
+                case (Injected(), Failure(), Some(ddp)):
                     args = ['get', i.var_path, ddp]
                     logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
-                case (DelegatedVar(),_, Some(ddp)):
+                case (DelegatedVar(), _, Some(ddp)):
                     args = ['get', i.var_path, ddp]
                     logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
-                case (_,Failure(), Some(ddp)):
+                case (_, Failure(), Some(ddp)):
                     logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
                 case (_, Maybe.empty):
                     logger.info(f"skipping {i.var_path} because it has no default design path.")
                 case _:
                     raise NotImplementedError(
-                        f"Unsupported case {i,meta, default_design_path}. make sure to provide default design path.")
+                        f"Unsupported case {i, meta, default_design_path}. make sure to provide default design path.")
         if args is not None:
             run_args = ['run_injected'] + args
             viz_args = ['run_injected', 'visualize'] + args[1:]
@@ -204,11 +246,27 @@ def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
         from loguru import logger
         logger.info(f"visualizing {var_path} with design {design_path}")
         design.to_vis_graph().show_injected_html(var)
-    elif cmd == "sandbox":
-       # TODO make a ~sandbox.py file and edit it?
-        pass
 
 
+def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
+    d = instances()
+    if kotlin_zmq_address is not None:
+        d += instances(
+            kotlin_zmq_address=kotlin_zmq_address
+        )
+    tgt: Injected = load_variable_by_module_path(module_path)
+    g = d.to_graph()
+    return g[tgt]
+
+
+def send_kotlin_code(address: str, code: str):
+    import zmq
+    context = zmq.Context()
+    socket = context.socket(zmq.REQ)
+    socket.connect(address)
+    socket.send_string(code)
+    response = socket.recv_string()
+    return response
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:
@@ -250,6 +308,13 @@ def find_module_attr(file_path: str, attr_name: str) -> Optional[str]:
     return None
 
 
+def find_injecteds(
+        module_path
+):
+    injecteds = get_injecteds(module_path)
+    return print(json.dumps([i.var_path for i in injecteds]))
+
+
 def create_configurations(
         module_path,
         default_design_path=None,
@@ -259,9 +324,8 @@ def create_configurations(
 ):
     from loguru import logger
     import sys
-    import os
     logger.debug(f"python paths:{sys.path}")
-    #logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
+    # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
     interpreter_path = interpreter_path or sys.executable
     default_design_path = maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)
@@ -284,11 +348,52 @@ def create_configurations(
     print(configs.json())
 
 
+SANDBOX_TEMPLATE = """
+from {design_path} import {design_name}
+from {var_path} import {var_name}
+g = {design_name}.to_graph()
+tgt = g[{var_name}]
+"""
+
+
+@maybe
+def retrieve_design_path_from_injected(tgt: Injected):
+    meta = safe(getattr)(tgt, '__runnable_metadata__')
+    match meta:
+        case {"default_design_path": design_path}:
+            return design_path
+
+
+def make_sandbox(module_file_path,var_name):
+    tgts = get_injecteds(module_file_path)
+    name_to_tgt = {tgt.var_path.split(".")[-1]: tgt for tgt in tgts}
+    tgt:ModuleVarSpec = name_to_tgt[var_name]
+    default_design_path = (retrieve_design_path_from_injected(tgt.var) | maybe(find_default_design_path)(module_file_path)).unwrap()
+    default_design_path_parent = ".".join(default_design_path.split('.')[:-1])
+    var_path_parent = ".".join(tgt.var_path.split('.')[:-1])
+    # let's make a file for sandbox,
+    # format datetime like 20230101_010101
+    datetime_str_as_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+    sandbox_name = f"{var_name}_sandbox_{datetime_str_as_name}.py"
+    sandbox_path = os.path.join(os.path.dirname(module_file_path), sandbox_name)
+    with open(sandbox_path, 'w') as f:
+        f.write(SANDBOX_TEMPLATE.format(
+            design_path=default_design_path_parent,
+            design_name=default_design_path.split('.')[-1],
+            var_path=var_path_parent,
+            var_name=var_name
+        ))
+    print(sandbox_path)
+
+
 def main():
     import fire
     fire.Fire({
         'create_configurations': create_configurations,
         'run_injected': run_injected,
+        'run_with_kotlin': run_with_kotlin,
+        'find_injecteds': find_injecteds,
+        'make_sandbox': make_sandbox,
     })
 
 
