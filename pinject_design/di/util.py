@@ -18,7 +18,7 @@ from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, Inje
     PinjectProvider, ensure_self_arg, PinjectBind
 from pinject_design.di.graph import ExtendedObjectGraph
 from pinject_design.di.injected import Injected
-from returns.result import safe, Failure
+from returns.result import safe, Failure, Success
 from tabulate import tabulate
 
 from pinject_design.di.proxiable import DelegatedVar
@@ -49,10 +49,34 @@ def rec_val_filter(f, tgt: dict):
             res[k] = v
     return res
 
+class ErrorWithTrace(BaseException):
+    def __init__(self,src: BaseException, trace: str):
+        super().__init__()
+        self.src = src
+        self.trace = trace
+    def __reduce__(self):
+        return (ErrorWithTrace, (self.src, self.trace))
+
+    def __str__(self):
+        return f"{self.src}\n {self.trace}"
+
+def my_safe(f):
+    def impl(*args, **kwargs):
+        try:
+            return Success(f(*args, **kwargs))
+        except Exception as e:
+            import traceback
+            trace = "\n".join(traceback.format_exception(e))
+
+            return Failure(ErrorWithTrace(
+                e,
+                trace
+            ))
+    return impl
 
 def check_picklable(tgt: dict):
-    cloud_dumps_try = safe(cloudpickle.dumps)
-    cloud_loads_try = safe(cloudpickle.loads)
+    cloud_dumps_try = my_safe(cloudpickle.dumps)
+    cloud_loads_try = my_safe(cloudpickle.loads)
     res = cloud_dumps_try(tgt).bind(cloud_loads_try)
 
     if isinstance(res, Failure):

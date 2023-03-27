@@ -31,7 +31,7 @@ import sys
 from copy import copy
 from datetime import datetime
 from pprint import pformat
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import loguru
 import returns.maybe as raybe
@@ -98,7 +98,7 @@ class IdeaRunConfiguration(BaseModel):
 
 
 class IdeaRunConfigurations(BaseModel):
-    configs: List[IdeaRunConfiguration]
+    configs: Dict[str, List[IdeaRunConfiguration]]
 
 
 def get_injecteds(module_path):
@@ -154,64 +154,71 @@ def extract_runnables(
 def inspect_and_make_configurations(
         entrypoint_path: str,
         interpreter_path: str,
-        default_design_path: Maybe[str],
+        default_design_paths: List[str],
         default_working_dir: Maybe[str],
         logger,
         /,
         module_path
 ) -> IdeaRunConfigurations:
+    assert isinstance(default_design_paths,list)
     injecteds = get_injecteds(module_path)
     logger.info(f"Found {len(injecteds)} injecteds. {pformat(injecteds)}")
-    results = []
+    results = dict()
     for i in injecteds:
+        name = i.var_path.split(".")[-1]
+        results[name] = []
         config_args = {
-            'name': i.var_path.split(".")[-1],
             'script_path': entrypoint_path,
             'interpreter_path': interpreter_path,
             'working_dir': default_working_dir.value_or(os.getcwd())
         }
-        args = None
-        # TODO InjectedFunctions are not guaranteed to return a function
         # So let's rely on __runnable_metadata__
         if isinstance(i, ModuleVarSpec):
             meta = safe(getattr)(i.var, "__runnable_metadata__")
-            # hmm, it is too hard to tell whether the object should be told or not.
-            # I guess we just return 'get' for all of them. and
-            # let 'run_injected' to decide whether to call it or not...?
-            # Or we can mark the callable ones with some metadata.
-            # Injected[Function] as IFunc = Injected[Function]
-            # or let user select from the popup?
-            match i.var, meta, default_design_path:
-                case (_, Success({"kind": "callable", "default_design_path": ddp}), _):
-                    args = ['call', i.var_path, ddp]
-                case (_, Success({"kind": "callable"}), Some(ddp)):
-                    args = ['call', i.var_path, ddp]
-                case (_, Success({"kind": "object", "default_design_path": ddp}), _):
-                    args = ['get', i.var_path, ddp]
-                case (_, Success({"kind": "object"}), Some(ddp)):
-                    args = ['get', i.var_path, ddp]
-                case (_, Failure(), Some(ddp)) if callable(i.var):
-                    args = ['get', i.var_path, ddp]
-                case (Injected(), Failure(), Some(ddp)):
-                    args = ['get', i.var_path, ddp]
-                    logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
-                case (DelegatedVar(), _, Some(ddp)):
-                    args = ['get', i.var_path, ddp]
-                    logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
-                case (_, Failure(), Some(ddp)):
-                    logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
-                case (_, Maybe.empty):
-                    logger.info(f"skipping {i.var_path} because it has no default design path.")
-                case _:
-                    raise NotImplementedError(
-                        f"Unsupported case {i, meta, default_design_path}. make sure to provide default design path.")
-        if args is not None:
-            run_args = ['run_injected'] + args
-            viz_args = ['run_injected', 'visualize'] + args[1:]
-            results.append(IdeaRunConfiguration(**config_args, arguments=run_args))
-            viz_configs = copy(config_args)
-            viz_configs['name'] = f"{viz_configs['name']}_viz"
-            results.append(IdeaRunConfiguration(**viz_configs, arguments=viz_args))
+            # so we need to gather the possible design paths
+            ddps = []
+            match meta:
+                case Success({"default_design_path": ddp}):
+                    ddps.append(ddp)
+            ddps += default_design_paths
+
+            # for each ddp we create a run config named with design's name
+            for ddp in ddps:
+                args = None
+                match i.var, meta:
+                    case (_, Success({"kind": "callable"})):
+                        args = ['call', i.var_path, ddp]
+                    case (_, Success({"kind": "object"})):
+                        args = ['get', i.var_path, ddp]
+                    case (_, Failure()) if callable(i.var):
+                        args = ['get', i.var_path, ddp]
+                    case (Injected(), Failure()):
+                        args = ['get', i.var_path, ddp]
+                        logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
+                    case (DelegatedVar(), _):
+                        args = ['get', i.var_path, ddp]
+                        logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
+                    case (_, Failure()):
+                        logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
+                    case (_, Maybe.empty):
+                        logger.info(f"skipping {i.var_path} because it has no default design path.")
+                    case _:
+                        raise NotImplementedError(
+                            f"Unsupported case {i, meta, ddp}. make sure to provide default design path.")
+                if args is not None:
+                    ddp_name = ddp.split(".")[-1]
+                    config = dict(
+                        **config_args,
+                        arguments=['run_injected'] + args,
+                        name=f"{name}({ddp_name})"
+                    )
+                    viz_config = dict(
+                        **config_args,
+                        arguments=['run_injected', 'visualize'] + args[1:],
+                        name=f"{name}({ddp_name})_viz",
+                    )
+                    results[name].append(IdeaRunConfiguration(**config))
+                    results[name].append(IdeaRunConfiguration(**viz_config))
     return IdeaRunConfigurations(configs=results)
 
 
@@ -328,7 +335,11 @@ def create_configurations(
     # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
     interpreter_path = interpreter_path or sys.executable
-    default_design_path = maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)
+    default_design_paths: list[str] = maybe(find_module_attr)(module_path, '__default_design_paths__').value_or([])
+    default_design_path: list[str] = (
+                maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
+        lambda p: [p]).value_or([])
+    default_design_paths = default_design_paths + default_design_path
     default_working_dir = maybe(lambda: working_dir)() | maybe(get_project_root)(module_path)
 
     # somehow find the default design
@@ -339,7 +350,7 @@ def create_configurations(
     design = instances(
         entrypoint_path=entrypoint_path,
         interpreter_path=interpreter_path,
-        default_design_path=default_design_path,
+        default_design_paths=default_design_paths,
         default_working_dir=default_working_dir,
         logger=loguru.logger
     )
@@ -364,11 +375,12 @@ def retrieve_design_path_from_injected(tgt: Injected):
             return design_path
 
 
-def make_sandbox(module_file_path,var_name):
+def make_sandbox(module_file_path, var_name):
     tgts = get_injecteds(module_file_path)
     name_to_tgt = {tgt.var_path.split(".")[-1]: tgt for tgt in tgts}
-    tgt:ModuleVarSpec = name_to_tgt[var_name]
-    default_design_path = (retrieve_design_path_from_injected(tgt.var) | maybe(find_default_design_path)(module_file_path)).unwrap()
+    tgt: ModuleVarSpec = name_to_tgt[var_name]
+    default_design_path = (retrieve_design_path_from_injected(tgt.var) | maybe(find_default_design_path)(
+        module_file_path)).unwrap()
     default_design_path_parent = ".".join(default_design_path.split('.')[:-1])
     var_path_parent = ".".join(tgt.var_path.split('.')[:-1])
     # let's make a file for sandbox,
