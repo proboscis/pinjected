@@ -114,9 +114,8 @@ class ExtendedObjectGraph:
         except Exception as e:
             from loguru import logger
             import traceback
-            logger.error(f"failed to provide target:{target} due to {e}")
-            for line in traceback.format_exception(e):
-                logger.error(line)
+            trace = traceback.format_exc()
+            logger.error(f"failed to provide target:{target} due to {e}. Traceback:{trace}")
             raise e
 
     def _inspect_dependencies(self, target: Providable):

@@ -6,7 +6,6 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
-from loguru import logger
 from makefun import create_function
 from returns.maybe import Nothing
 
@@ -426,6 +425,7 @@ class InjectedFunction(Injected[T]):
                 deps[mdep] = solve_injection(mdep, kwargs)
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
+            from loguru import logger
             logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             logger.info(f"src mapping:{self.kwargs_mapping}")
             logger.info(f"with deps:{deps}")
