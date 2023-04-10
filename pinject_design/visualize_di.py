@@ -116,6 +116,7 @@ class DIGraph:
 
     def resolve_injected(self, i: Injected) -> List[str]:
         "give new name to unknown manual injected valus and return dependencies"
+        # i needs to be hashable
         if i not in self.injected_to_id:
             self.injected_to_id[i] = str(uuid.uuid4())[:6]
             # logger.info(f"add injected node:\n{tabulate.tabulate(list(self.injected_to_id.items()))}")
@@ -180,38 +181,22 @@ class DIGraph:
     def dependencies_of(self, src):
         return self.deps_impl(src)
 
-    def di_dfs_old(self, src, replace_missing=False):
-        from loguru import logger
-        def dfs(node: str, trace=[]):
-            logger.info(f"dfs: {node} => {' => '.join(trace)}")
-
-            try:
-                nexts: List[str] = self.dependencies_of(node)
-            except TypeError as te:
-                raise te
-            except Exception as e:
-                if replace_missing:
-                    nexts = []
-                else:
-                    raise _MissingDepsError(f"failed to get neighbors of {node} at {' => '.join(trace)}.", node,
-                                            trace) from e
-            for n in nexts:
-                yield node, n, trace
-                yield from dfs(n, trace + [n])
-
-        yield from dfs(src, [src])
-
     def di_dfs(self, src, replace_missing=False):
         ignore_list = ["mzip_src_","mapped_src_","injected_kwargs_"]
         def filter(node):
             res = any([ignore in node for ignore in ignore_list])
+            if res:
+                logger.info(f"ignore {node}")
             return res
 
         def dfs(prev, current, trace=[]):
             try:
                 nexts: List[str] = self.dependencies_of(current)
             except Exception as e:
+                import traceback
+                trb = traceback.format_exc()
                 if replace_missing:
+                    logger.warning(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e} \n{trb}")
                     nexts = []
                 else:
                     raise _MissingDepsError(f"failed to get neighbors of {current} at {' => '.join(trace)}.", current,
@@ -297,7 +282,8 @@ class DIGraph:
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
                                          replace_missing=True
                                          ) -> networkx.classes.DiGraph:
-        return DIGraph(self.src.bind_provider(**{root_name: root})) \
+        tmp_design = self.src.bind_provider(**{root_name: root})
+        return DIGraph(tmp_design) \
             .create_dependency_digraph(
             root_name,
             replace_missing=replace_missing
@@ -306,17 +292,14 @@ class DIGraph:
     def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> networkx.classes.DiGraph:
         if isinstance(roots, str):
             roots = [roots]
-
-        # get_source = lambda f: safe(inspect.getsource)(f).value_or(f"failed:{f}").replace("<", "").replace(">", "")
-        # I think I need to wrap roots to one node.
-        # root = Injected.mzip(*(Injected.by_name(r) for r in roots))
-        # since this visualization is contextual, I feel I need to make a RootedGraph or stg
-        # the problem is that this class is very stateful?
-        # one work around is to make a new DIGraph from this, with overriden design.
+        # hmm,
         from loguru import logger
+        logger.info(f"making dependency graph for {roots}.")
         nx_graph = nx.DiGraph()
+        # why am I seeing no deps?
         for root in roots:
             for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
+                logger.info(f"adding {b} -> {a}")
                 nx_graph.add_edge(b, a)
 
         @memoize

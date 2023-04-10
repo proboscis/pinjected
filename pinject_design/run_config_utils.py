@@ -252,6 +252,7 @@ def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
     elif cmd == 'visualize':
         from loguru import logger
         logger.info(f"visualizing {var_path} with design {design_path}")
+        logger.info(f"deps:{var.dependencies()}")
         design.to_vis_graph().show_injected_html(var)
 
 
