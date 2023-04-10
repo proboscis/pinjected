@@ -73,6 +73,7 @@ class ParamInfo:
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
     this class is actually an abstraction of fucntion partial application.
+    TODO get out of pinject's dependency resolution system, so that we can take full control.
     """
 
     @staticmethod
@@ -557,7 +558,7 @@ class InjectedWithDefaultDesign(Injected):
 
     def __init__(self, src: Injected, default_design_path: str):
         super().__init__()
-        self.src = src
+        self.src = src # why does this receive 4 play buttons?
         self.default_design_path: str = default_design_path
 
     def dependencies(self) -> Set[str]:
