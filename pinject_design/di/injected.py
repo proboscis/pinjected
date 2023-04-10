@@ -605,6 +605,9 @@ class PartialInjectedFunction(Injected):
         # logger.warning(f"PartialInjectedFunction.get_provider() is called here.")
         return self.src.get_provider()
 
+    def __hash__(self):
+        return hash(self.src)
+
 
 def injected_function(f) -> PartialInjectedFunction:
     """
