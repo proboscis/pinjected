@@ -216,6 +216,16 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def __init__(self):
         self.fname = self._faster_get_fname()
 
+    def apply_partial(self, *args: "Injected", **kwargs: "Injected"):
+        assert all(isinstance(a, Injected) for a in args), f"{args} is not all Injected"
+        assert all(isinstance(a, Injected) for a in kwargs.values()), f"{kwargs} is not all Injected"
+        args = Injected.mzip(*args)
+        kwargs = Injected.dict(**kwargs)
+        f = self
+        res = Injected.mzip(f, args, kwargs).map(
+            lambda f_args_kwargs: functools.partial(f_args_kwargs[0], *f_args_kwargs[1], **f_args_kwargs[2]))
+        return PartialInjectedFunction(res)
+
     @abc.abstractmethod
     def dependencies(self) -> Set[str]:
         pass
@@ -283,7 +293,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             case func if callable(func):
                 return Injected.bind(func)
             case _:
-                raise RuntimeError(f"not an injected object: {data}")
+                raise RuntimeError(f"not an injected object: {data},type(data)={type(data)}")
 
 
 class GeneratedInjected(Injected):
@@ -558,7 +568,7 @@ class InjectedWithDefaultDesign(Injected):
 
     def __init__(self, src: Injected, default_design_path: str):
         super().__init__()
-        self.src = src # why does this receive 4 play buttons?
+        self.src = src  # why does this receive 4 play buttons?
         self.default_design_path: str = default_design_path
 
     def dependencies(self) -> Set[str]:
