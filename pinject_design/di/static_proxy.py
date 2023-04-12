@@ -42,6 +42,8 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
 
     def __str__(self):
         return f"{self._alias_name}Context"
+    def __hash__(self):
+        return hash(self._alias_name)
 
 
 def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):

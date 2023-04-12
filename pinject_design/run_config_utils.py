@@ -23,6 +23,7 @@ Hmm, an easy way is to add some metadata though..
 Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
+import asyncio
 import importlib
 import importlib.util
 import json
@@ -31,7 +32,7 @@ import sys
 from copy import copy
 from datetime import datetime
 from pprint import pformat
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Awaitable, Coroutine
 
 import loguru
 import returns.maybe as raybe
@@ -245,9 +246,13 @@ def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
     # if you return python object, fire will try to use it as a command object
     if cmd == 'call':
         res = design.provide(var)(*args, **kwargs)
+        if isinstance(res,Coroutine):
+            res = asyncio.run(res)
         logger.info(f"run_injected result:\n{res}")
     elif cmd == 'get':
         res = design.provide(var)
+        if isinstance(res,Coroutine):
+            res = asyncio.run(res)
         logger.info(f"run_injected result:\n{res}")
     elif cmd == 'visualize':
         from loguru import logger

@@ -69,6 +69,9 @@ class Attr(Expr):
     def __setstate__(self, state):
         self.data, self.attr_name = state
 
+    def __hash__(self):
+        return hash((self.data,self.attr_name))
+
 
 @dataclass
 class GetItem(Expr):
@@ -80,6 +83,9 @@ class GetItem(Expr):
 
     def __setstate__(self, state):
         self.data, self.key = state
+
+    def __hash__(self):
+        return hash((self.data,self.key))
 
 
 @dataclass

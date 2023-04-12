@@ -269,6 +269,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             lambda t: t[1](t[0])
         )
 
+    def and_then_injected(self, other: "Injected[Callable[[T],U]]") -> "Injected[Callable[[Any],U]]":
+        return self.zip(other).map(
+            lambda t: lambda *args, **kwargs: t[1](t[0](*args, **kwargs))
+        )
+
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
         keys = list(kwargs.keys())
@@ -437,9 +442,9 @@ class InjectedFunction(Injected[T]):
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
             from loguru import logger
-            logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
-            logger.info(f"src mapping:{self.kwargs_mapping}")
-            logger.info(f"with deps:{deps}")
+            # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
+            # logger.info(f"src mapping:{self.kwargs_mapping}")
+            # logger.info(f"with deps:{deps}")
             return self.target_function(**deps)
 
         # you have to add a prefix 'provider'""
@@ -637,3 +642,6 @@ def injected_function(f) -> PartialInjectedFunction:
 
     return new_f
     # return _injected_factory(**tgts)(f)
+
+def injected(name:str):
+    return Injected.by_name(name).proxy
