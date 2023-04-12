@@ -36,10 +36,10 @@ class IProxyContext(Generic[T]):
     @abstractmethod
     def iter(self, tgt: T):
         pass
-    @abstractmethod
-    def dir(self,tgt):
-        pass
 
+    @abstractmethod
+    def dir(self, tgt):
+        pass
 
 
 @dataclass
@@ -59,7 +59,7 @@ class DelegatedVar(Generic[T]):
     def __getitem__(self, key):
         return self.cxt.getitem(self.value, key)
 
-    def eval(self)->T:
+    def eval(self) -> T:
         """this should return the semantic result of calculation."""
         return self.cxt.eval(self.value)
 
@@ -70,8 +70,10 @@ class DelegatedVar(Generic[T]):
         return self.cxt.iter(self.value)
 
     def __getstate__(self):
-        return self.value,self.cxt
+        return self.value, self.cxt
+
     def __setstate__(self, state):
-        self.value,self.cxt = state
+        self.value, self.cxt = state
 
-
+    def __hash__(self):
+        return hash((self.value, self.cxt))
