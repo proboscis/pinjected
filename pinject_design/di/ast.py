@@ -102,7 +102,11 @@ class Object(Expr):
         self.data = state
 
     def __hash__(self):
-        return hash(self.data)
+        # what if the data is not hashable?
+        try:
+            return hash(self.data)
+        except TypeError as e:
+            return hash(id(self.data))
 
 
 def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:

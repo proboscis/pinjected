@@ -30,6 +30,7 @@ import json
 import os
 import sys
 from copy import copy
+from dataclasses import dataclass
 from datetime import datetime
 from pprint import pformat
 from typing import Optional, List, Dict, Awaitable, Coroutine
@@ -161,7 +162,7 @@ def inspect_and_make_configurations(
         /,
         module_path
 ) -> IdeaRunConfigurations:
-    assert isinstance(default_design_paths,list)
+    assert isinstance(default_design_paths, list)
     injecteds = get_injecteds(module_path)
     logger.info(f"Found {len(injecteds)} injecteds. {pformat(injecteds)}")
     results = dict()
@@ -237,7 +238,7 @@ def load_variable_by_module_path(full_module_path):
     return variable
 
 
-def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
+def run_injected_impl(cmd: str, var_path, design_path):
     # get the var and design
     # then run it based on cmd with args/kwargs
     from loguru import logger
@@ -245,13 +246,18 @@ def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
     design: Design = load_variable_by_module_path(design_path)
     # if you return python object, fire will try to use it as a command object
     if cmd == 'call':
-        res = design.provide(var)(*args, **kwargs)
-        if isinstance(res,Coroutine):
+        res = design.provide(var)()
+        if isinstance(res, Coroutine):
             res = asyncio.run(res)
         logger.info(f"run_injected result:\n{res}")
     elif cmd == 'get':
         res = design.provide(var)
-        if isinstance(res,Coroutine):
+        if isinstance(res, Coroutine):
+            res = asyncio.run(res)
+        logger.info(f"run_injected result:\n{res}")
+    elif cmd == 'fire':
+        res = design.provide(var)
+        if isinstance(res, Coroutine):
             res = asyncio.run(res)
         logger.info(f"run_injected result:\n{res}")
     elif cmd == 'visualize':
@@ -259,6 +265,80 @@ def run_injected(cmd: str, var_path, design_path, *args, **kwargs):
         logger.info(f"visualizing {var_path} with design {design_path}")
         logger.info(f"deps:{var.dependencies()}")
         design.to_vis_graph().show_injected_html(var)
+        return
+
+
+@dataclass
+class RunInjected:
+    var_path: str
+    design_path: str = None
+
+    def __post_init__(self):
+        if self.design_path is None:
+            self.design_path = get_design_path_from_var_path(self.var_path)
+
+    def _var_design(self):
+        var: Injected = Injected.ensure_injected(load_variable_by_module_path(self.var_path))
+        design: Design = load_variable_by_module_path(self.design_path)
+        return var, design
+
+    def _get(self):
+        var, design = self._var_design()
+        return design.provide(var)
+
+    def chain_call(self, *args, **kwargs):
+        res = self._get()(*args, **kwargs)
+        if isinstance(res, Coroutine):
+            res = asyncio.run(res)
+        return res
+
+    def chain_get(self):
+        res = self._get()
+        if isinstance(res, Coroutine):
+            res = asyncio.run(res)
+        return res
+
+    def get(self):
+        from loguru import logger
+        logger.info(f"injected get result\n{self.chain_get()}")
+
+    def call(self, *args, **kwargs):
+        from loguru import logger
+        logger.info(f"injected get result\n{self.chain_call(*args, **kwargs)}")
+
+    def visualize(self):
+        from loguru import logger
+        logger.info(f"visualizing {self.var_path} with design {self.design_path}")
+        var, design = self._var_design()
+        design.to_vis_graph().show_injected_html(var)
+
+
+def run_injected(
+        cmd,
+        var_path,
+        design_path: str = None,
+        *args, **kwargs
+):
+    from loguru import logger
+    if design_path is None:
+        design_path = get_design_path_from_var_path(var_path)
+    assert design_path, f"design path must be a valid module path, got:{design_path}"
+    return run_injected_impl(cmd, var_path, design_path, *args, **kwargs)
+
+
+def get_design_path_from_var_path(var_path):
+    from loguru import logger
+    logger.info(f"looking for default design paths from {var_path}")
+    module_path = ".".join(var_path.split(".")[:-1])
+    # we need to get the file path from var path
+    logger.info(f"loading module:{module_path}")
+    # Import the module
+    module = importlib.import_module(module_path)
+    module_path = module.__file__
+    design_paths = find_default_design_paths(module_path, None)
+    assert design_paths
+    design_path = design_paths[0]
+    return design_path
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
@@ -292,6 +372,7 @@ def find_default_working_dir(file_path: str) -> Optional[str]:
 
 def find_module_attr(file_path: str, attr_name: str) -> Optional[str]:
     from loguru import logger
+    logger.info(f"checking {file_path} for {attr_name}")
     root_module_path = get_project_root(file_path)
     if not file_path.startswith(root_module_path):
         return None
@@ -328,6 +409,20 @@ def find_injecteds(
     return print(json.dumps([i.var_path for i in injecteds]))
 
 
+def find_default_design_paths(module_path, default_design_path):
+    """
+    :param module_path: absolute file path.("/")
+    :param default_design_path: absolute module path (".")
+    :return:
+    """
+    default_design_paths: list[str] = maybe(find_module_attr)(module_path, '__default_design_paths__').value_or([])
+    default_design_path: list[str] = (
+            maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
+        lambda p: [p]).value_or([])
+    default_design_paths = default_design_paths + default_design_path
+    return default_design_paths
+
+
 def create_configurations(
         module_path,
         default_design_path=None,
@@ -341,11 +436,7 @@ def create_configurations(
     # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
     interpreter_path = interpreter_path or sys.executable
-    default_design_paths: list[str] = maybe(find_module_attr)(module_path, '__default_design_paths__').value_or([])
-    default_design_path: list[str] = (
-                maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
-        lambda p: [p]).value_or([])
-    default_design_paths = default_design_paths + default_design_path
+    default_design_paths = find_default_design_paths(module_path, default_design_path)
     default_working_dir = maybe(lambda: working_dir)() | maybe(get_project_root)(module_path)
 
     # somehow find the default design
@@ -409,6 +500,7 @@ def main():
     fire.Fire({
         'create_configurations': create_configurations,
         'run_injected': run_injected,
+        'run_injected2': RunInjected,
         'run_with_kotlin': run_with_kotlin,
         'find_injecteds': find_injecteds,
         'make_sandbox': make_sandbox,
