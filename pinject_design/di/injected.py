@@ -77,53 +77,94 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def partial(target_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+    def partial(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
-        use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved
-        :param target_function: Callable
+        use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved.
+        This implementation is very ugly.
+        :param original_function: Callable
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
-        tgt_sig = inspect.signature(target_function)
+        original_sig = inspect.signature(original_function)
 
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
+        def _get_new_signature(funcname, missing_params):
+            missing_non_defaults = [p for p in missing_params if p.default is inspect.Parameter.empty]
+            vkwarg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_KEYWORD]
+            if not vkwarg:
+                vkwarg = [inspect.Parameter('kwargs', inspect.Parameter.VAR_KEYWORD)]
+            else:
+                vkwarg = []  # use default one.
+            new_func_sig = f"_injected_partial_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + vkwarg)])})"
+            return new_func_sig
 
         def makefun_impl(injected_kwargs):
 
-            missing_keys = [k for k in tgt_sig.parameters.keys() if k not in injected_kwargs]
-            missing_params = [tgt_sig.parameters[k] for k in missing_keys]
+            missing_keys = [k for k in original_sig.parameters.keys() if k not in injected_kwargs]
+            missing_params = [original_sig.parameters[k] for k in missing_keys]
             missing_positional_args = [p for p in missing_params if p.kind == inspect.Parameter.POSITIONAL_ONLY]
             missing_non_positional_args = [p for p in missing_params if
                                            p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
+            missing_kw_args = [p for p in missing_params if p.kind == inspect.Parameter.KEYWORD_ONLY]
+            from loguru import logger
+            logger.info(f"original function signature:{original_sig}")
+            logger.info(f"original func name:{original_function.__name__}")
+            logger.info(f"missing keys:{missing_keys}")
+            logger.info(f"missing params:{missing_params}")
+            logger.info(f"missing positional args:{missing_positional_args}")
+            logger.info(f"missing non positional args:{missing_non_positional_args}")
+            logger.info(f"missing kw args:{missing_kw_args}")
+
             # now we should have all the args,
             # convert injected kwargs to positional args if there are any positional only args
-            # if we are not fillingt
-            new_func_sig = f"_injected_partial_{target_function.__name__}({','.join([str(p).split(':')[0] for p in missing_params])})"
+            # if we are not filling
+            # TODO the kwargs with defaults doesn't work, because if we place it here, eval() can't understand it.
+            # It means that the defaults needs to be taken care manually here.
+            # I see, the func requires kwargs to accept defaults..
+            new_func_sig = _get_new_signature(original_function.__name__, missing_params)
+            defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
+
+            logger.info(f"defaults:{defaults}")
+            logger.info(f"new func sig:{new_func_sig}")
 
             # we need to partition by positional_only / not positional_only / kwargs / kwargs_only
 
             def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
+                logger.info(f"calling {original_function.__name__}")
                 num_missing_positional_args = len(missing_positional_args)
                 inferred_pos_arg_names = [p.name for p in missing_positional_args]
                 inferred_non_pos_arg_names = [p.name for p in missing_non_positional_args]
                 inferred_positional_args, inferred_non_positional_args = _args[:num_missing_positional_args], _args[
                                                                                                               num_missing_positional_args:]
-                total_kwargs = {**injected_kwargs,
-                                **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
-                                **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
-                                **_kwargs}
-                args = [total_kwargs[k] for k, p in tgt_sig.parameters.items() if
-                        p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
+                logger.info(f"inferred positional args:{inferred_positional_args}")
+                logger.info(f"inferred non positional args:{inferred_non_positional_args}")
+                logger.info(f"inferred positional arg names:{inferred_pos_arg_names}")
+                logger.info(f"inferred non positional arg names:{inferred_non_pos_arg_names}")
+                total_kwargs = copy(defaults)
+                filled_kwargs = {**injected_kwargs,
+                                 **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
+                                 **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
+                                 **_kwargs}
+                logger.info(f"filled kwargs:{filled_kwargs}")
+                total_kwargs.update(filled_kwargs)
+                logger.info(f"total kwargs:{total_kwargs}")
+                args = [total_kwargs[k] for k, p in original_sig.parameters.items() if
+                        p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL and p.kind != inspect.Parameter.KEYWORD_ONLY]
                 # we need to put the ramaining args into kwargs if kwargs is present in the signature
-                vks = [p for k, p in tgt_sig.parameters.items() if p.kind == inspect.Parameter.VAR_KEYWORD]
+                vks = [p for k, p in original_sig.parameters.items() if p.kind == inspect.Parameter.VAR_KEYWORD]
                 if vks:
-                    kwargs = {k: v for k, v in total_kwargs.items() if k not in tgt_sig.parameters.keys()}
+                    kwargs = {k: v for k, v in total_kwargs.items() if k not in original_sig.parameters.keys()}
                 else:
                     kwargs = {}
-                vas = [p for k, p in tgt_sig.parameters.items() if p.kind == inspect.Parameter.VAR_POSITIONAL]
+                # we also need to handle kwonly args
+                kws = [p for k, p in original_sig.parameters.items() if p.kind == inspect.Parameter.KEYWORD_ONLY]
+                if kws:
+                    for k in kws:
+                        kwargs[k.name] = total_kwargs[k.name]
+                vas = [p for k, p in original_sig.parameters.items() if p.kind == inspect.Parameter.VAR_POSITIONAL]
                 if vas:
                     # we need to put the ramaining args into kwargs if kwargs is present in the signature
                     vargs = _args[num_missing_positional_args + len(missing_non_positional_args):]
@@ -131,18 +172,23 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                     vargs = []
 
                 # hmm we need to pass kwargs too..
-
-                bind_result = tgt_sig.bind(*args, *vargs, **kwargs)
+                logger.info(f"args:{args}")
+                # args contains values from kwargs...
+                logger.info(f"vargs:{vargs}")
+                logger.info(f"kwargs:{kwargs}")
+                bind_result = original_sig.bind(*args, *vargs, **kwargs)
                 bind_result.apply_defaults()
+                logger.info(f"bound args:{bind_result.args}")
+                logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
-                return target_function(*bind_result.args, **bind_result.kwargs)
+                return original_function(*bind_result.args, **bind_result.kwargs)
 
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,
-                doc=target_function.__doc__,
+                doc=original_function.__doc__,
             )
-            __doc__ = target_function.__doc__
+            __doc__ = original_function.__doc__
             __skeleton__ = f"""def {new_func_sig}:
     \"\"\"
     {__doc__}
@@ -152,10 +198,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
             return new_func
 
-        makefun_impl.__name__ = target_function.__name__
-        makefun_impl.__original_code__ = inspect.getsource(target_function)
-        makefun_impl.__original_file__ = inspect.getfile(target_function)
-        makefun_impl.__doc__ = target_function.__doc__
+        makefun_impl.__name__ = original_function.__name__
+        makefun_impl.__original_code__ = inspect.getsource(original_function)
+        makefun_impl.__original_file__ = inspect.getfile(original_function)
+        makefun_impl.__doc__ = original_function.__doc__
 
         injected_kwargs = Injected.dict(**injection_targets)
         injected_factory = PartialInjectedFunction(
@@ -643,5 +689,6 @@ def injected_function(f) -> PartialInjectedFunction:
     return new_f
     # return _injected_factory(**tgts)(f)
 
-def injected(name:str):
+
+def injected(name: str):
     return Injected.by_name(name).proxy
