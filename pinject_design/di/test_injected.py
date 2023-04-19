@@ -69,4 +69,5 @@ def test_injected_function_with_defaults():
     assert g[test_func](1, 2) == expectation5
     assert g[test_func2](1, 2) == expectation6
     assert g[test_func2(1, 2)] == expectation6
+    assert g[test_func2(1, 2, 7)] == expectation6
 
