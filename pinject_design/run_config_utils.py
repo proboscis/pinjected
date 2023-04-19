@@ -476,8 +476,8 @@ def make_sandbox(module_file_path, var_name):
     tgts = get_injecteds(module_file_path)
     name_to_tgt = {tgt.var_path.split(".")[-1]: tgt for tgt in tgts}
     tgt: ModuleVarSpec = name_to_tgt[var_name]
-    default_design_path = (retrieve_design_path_from_injected(tgt.var) | maybe(find_default_design_path)(
-        module_file_path)).unwrap()
+    default_design_paths = find_default_design_paths(module_file_path, None)
+    default_design_path = default_design_paths[0]
     default_design_path_parent = ".".join(default_design_path.split('.')[:-1])
     var_path_parent = ".".join(tgt.var_path.split('.')[:-1])
     # let's make a file for sandbox,

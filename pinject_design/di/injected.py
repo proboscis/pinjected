@@ -90,17 +90,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
         def _get_new_signature(funcname, missing_params):
-            missing_non_defaults = [p for p in missing_params if p.default is inspect.Parameter.empty]
+            missing_non_defaults = [p for p in missing_params if p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
+
             vkwarg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_KEYWORD]
             if not vkwarg:
                 vkwarg = [inspect.Parameter('kwargs', inspect.Parameter.VAR_KEYWORD)]
-            else:
-                vkwarg = []  # use default one.
             varg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_POSITIONAL]
             if not varg:
                 varg = [inspect.Parameter('args', inspect.Parameter.VAR_POSITIONAL)]
-            else:
-                varg = []
             # we also need to pass varargs if there are default args..
             new_func_sig = f"_injected_partial_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
             return new_func_sig
@@ -122,12 +119,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             logger.info(f"missing non positional args:{missing_non_positional_args}")
             logger.info(f"missing kw args:{missing_kw_args}")
 
-            # now we should have all the args,
-            # convert injected kwargs to positional args if there are any positional only args
-            # if we are not filling
-            # TODO the kwargs with defaults doesn't work, because if we place it here, eval() can't understand it.
-            # It means that the defaults needs to be taken care manually here.
-            # I see, the func requires kwargs to accept defaults..
             new_func_sig = _get_new_signature(original_function.__name__, missing_params)
             defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
 
@@ -205,8 +196,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             return new_func
 
         makefun_impl.__name__ = original_function.__name__
-        makefun_impl.__original_code__ = inspect.getsource(original_function)
-        makefun_impl.__original_file__ = inspect.getfile(original_function)
+        if isinstance(original_function, type):
+            makefun_impl.__original_code__ = "not available"
+            makefun_impl.__original_file__ = "not available"
+        else:
+            makefun_impl.__original_code__ = inspect.getsource(original_function)
+            makefun_impl.__original_file__ = inspect.getfile(original_function)
         makefun_impl.__doc__ = original_function.__doc__
 
         injected_kwargs = Injected.dict(**injection_targets)
@@ -694,6 +689,8 @@ def injected_function(f) -> PartialInjectedFunction:
 
     return new_f
     # return _injected_factory(**tgts)(f)
+def injected_class(cls):
+    return injected_function(cls)
 
 
 def injected(name: str):
