@@ -96,7 +96,13 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 vkwarg = [inspect.Parameter('kwargs', inspect.Parameter.VAR_KEYWORD)]
             else:
                 vkwarg = []  # use default one.
-            new_func_sig = f"_injected_partial_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + vkwarg)])})"
+            varg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_POSITIONAL]
+            if not varg:
+                varg = [inspect.Parameter('args', inspect.Parameter.VAR_POSITIONAL)]
+            else:
+                varg = []
+            # we also need to pass varargs if there are default args..
+            new_func_sig = f"_injected_partial_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
             return new_func_sig
 
         def makefun_impl(injected_kwargs):
