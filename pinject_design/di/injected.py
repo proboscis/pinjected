@@ -85,6 +85,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
+        #TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
 
         # hmm we need to check if the args are positional only or not.
@@ -110,7 +111,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             missing_non_positional_args = [p for p in missing_params if
                                            p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
             missing_kw_args = [p for p in missing_params if p.kind == inspect.Parameter.KEYWORD_ONLY]
-            from loguru import logger
             # logger.info(f"original function signature:{original_sig}")
             # logger.info(f"original func name:{original_function.__name__}")
             # logger.info(f"missing keys:{missing_keys}")
@@ -130,7 +130,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
-                logger.info(f"calling {original_function.__name__}")
                 num_missing_positional_args = len(missing_positional_args)
                 inferred_pos_arg_names = [p.name for p in missing_positional_args]
                 inferred_non_pos_arg_names = [p.name for p in missing_non_positional_args]

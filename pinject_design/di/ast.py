@@ -90,14 +90,19 @@ class BiOp(Expr):
     left: Expr
     right: Expr
 
+    def __post_init__(self):
+        assert isinstance(self.left, Expr), f"{self.left} is not an Expr"
+        assert isinstance(self.right, Expr), f"{self.right} is not an Expr"
+        assert isinstance(self.name, str), f"{self.name} is not a str"
+
     def __getstate__(self):
-        return self.left, self.right
+        return self.name,self.left, self.right
 
     def __setstate__(self, state):
-        self.left, self.right = state
+        self.name,self.left, self.right = state
 
     def __hash__(self):
-        return hash((self.left, self.right))
+        return hash((self.name,self.left, self.right))
 
 
 @dataclass
@@ -192,15 +197,15 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 kwargs = eval_dict(kwargs)
                 kwargs = [f"{k}={v}" for k, v in kwargs.items()]
                 return f"{func_str}({','.join(args + kwargs)})"
-            case BiOp(op, left, right):
+            case BiOp(str() as op, Expr() as left, Expr() as right):
                 return f"({_show_expr(left)} {op} {_show_expr(right)})"
-            case Attr(data, str() as attr_name):
+            case Attr(Expr() as data, str() as attr_name):
                 return f"{_show_expr(data)}.{attr_name}"
-            case GetItem(data, key):
+            case GetItem(Expr() as data, key):
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
             case DelegatedVar(wrapped, cxt):
                 return f"{_show_expr(wrapped)}"
             case _:
-                raise RuntimeError(f"unsupported ast found!:{expr}")
+                raise RuntimeError(f"unsupported ast found!:{type(expr)}")
 
     return _show_expr(expr)
