@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterator
 from cytoolz import valmap
 
 from pinject_design.di.applicative import Applicative
-from pinject_design.di.ast import Expr, Call, Attr, GetItem, Object
+from pinject_design.di.ast import Expr, Call, Attr, GetItem, Object, BiOp
 from pinject_design.di.proxiable import T, DelegatedVar, IProxyContext
 
 
@@ -42,8 +42,42 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
 
     def __str__(self):
         return f"{self._alias_name}Context"
+
     def __hash__(self):
         return hash(self._alias_name)
+
+    def biop_impl(self, op: str, tgt: Expr[T], other):
+        match op:
+            case '+':
+                return self.pure(tgt + other)
+            case '-':
+                return self.pure(tgt - other)
+            case '*':
+                return self.pure(tgt * other)
+            case '/':
+                return self.pure(tgt / other)
+            case '%':
+                return self.pure(tgt % other)
+            case '**':
+                return self.pure(tgt ** other)
+            case '<<':
+                return self.pure(tgt << other)
+            case '>>':
+                return self.pure(tgt >> other)
+            case '&':
+                return self.pure(tgt & other)
+            case '^':
+                return self.pure(tgt ^ other)
+            case '|':
+                return self.pure(tgt | other)
+            case '//':
+                return self.pure(tgt // other)
+            case '@':
+                return self.pure(tgt @ other)
+            case '==':
+                return self.pure(tgt == other)
+            case _:
+                raise NotImplementedError(f"biop {op} not implemented")
 
 
 def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
@@ -63,7 +97,7 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 return _eval(wrapped)
             case Object(x) if app.is_instance(x):
                 return x
-            #case Object(DelegatedVar() as var):
+            # case Object(DelegatedVar() as var):
             #    return var.eval()
             case Object(x):
                 return app.pure(x)
@@ -90,6 +124,13 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 return app.map(
                     app.zip(injected_data, injected_key),
                     lambda t: t[0][t[1]]
+                )
+            case BiOp('+', Expr() as left, Expr() as right):
+                injected_left = _eval(left)
+                injected_right = _eval(right)
+                return app.map(
+                    app.zip(injected_left, injected_right),
+                    lambda t: t[0] + t[1]
                 )
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)},{expr}")
