@@ -111,19 +111,19 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                                            p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
             missing_kw_args = [p for p in missing_params if p.kind == inspect.Parameter.KEYWORD_ONLY]
             from loguru import logger
-            logger.info(f"original function signature:{original_sig}")
-            logger.info(f"original func name:{original_function.__name__}")
-            logger.info(f"missing keys:{missing_keys}")
-            logger.info(f"missing params:{missing_params}")
-            logger.info(f"missing positional args:{missing_positional_args}")
-            logger.info(f"missing non positional args:{missing_non_positional_args}")
-            logger.info(f"missing kw args:{missing_kw_args}")
+            # logger.info(f"original function signature:{original_sig}")
+            # logger.info(f"original func name:{original_function.__name__}")
+            # logger.info(f"missing keys:{missing_keys}")
+            # logger.info(f"missing params:{missing_params}")
+            # logger.info(f"missing positional args:{missing_positional_args}")
+            # logger.info(f"missing non positional args:{missing_non_positional_args}")
+            # logger.info(f"missing kw args:{missing_kw_args}")
 
             new_func_sig = _get_new_signature(original_function.__name__, missing_params)
             defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
 
-            logger.info(f"defaults:{defaults}")
-            logger.info(f"new func sig:{new_func_sig}")
+            # logger.info(f"defaults:{defaults}")
+            # logger.info(f"new func sig:{new_func_sig}")
 
             # we need to partition by positional_only / not positional_only / kwargs / kwargs_only
 
@@ -136,18 +136,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 inferred_non_pos_arg_names = [p.name for p in missing_non_positional_args]
                 inferred_positional_args, inferred_non_positional_args = _args[:num_missing_positional_args], _args[
                                                                                                               num_missing_positional_args:]
-                logger.info(f"inferred positional args:{inferred_positional_args}")
-                logger.info(f"inferred non positional args:{inferred_non_positional_args}")
-                logger.info(f"inferred positional arg names:{inferred_pos_arg_names}")
-                logger.info(f"inferred non positional arg names:{inferred_non_pos_arg_names}")
+                # logger.info(f"inferred positional args:{inferred_positional_args}")
+                # logger.info(f"inferred non positional args:{inferred_non_positional_args}")
+                # logger.info(f"inferred positional arg names:{inferred_pos_arg_names}")
+                # logger.info(f"inferred non positional arg names:{inferred_non_pos_arg_names}")
                 total_kwargs = copy(defaults)
                 filled_kwargs = {**injected_kwargs,
                                  **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
                                  **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
                                  **_kwargs}
-                logger.info(f"filled kwargs:{filled_kwargs}")
+                # logger.info(f"filled kwargs:{filled_kwargs}")
                 total_kwargs.update(filled_kwargs)
-                logger.info(f"total kwargs:{total_kwargs}")
+                # logger.info(f"total kwargs:{total_kwargs}")
                 args = [total_kwargs[k] for k, p in original_sig.parameters.items() if
                         p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL and p.kind != inspect.Parameter.KEYWORD_ONLY]
                 # we need to put the ramaining args into kwargs if kwargs is present in the signature
@@ -169,14 +169,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                     vargs = []
 
                 # hmm we need to pass kwargs too..
-                logger.info(f"args:{args}")
+                # logger.info(f"args:{args}")
                 # args contains values from kwargs...
-                logger.info(f"vargs:{vargs}")
-                logger.info(f"kwargs:{kwargs}")
+                # logger.info(f"vargs:{vargs}")
+                # logger.info(f"kwargs:{kwargs}")
                 bind_result = original_sig.bind(*args, *vargs, **kwargs)
                 bind_result.apply_defaults()
-                logger.info(f"bound args:{bind_result.args}")
-                logger.info(f"bound kwargs:{bind_result.kwargs}")
+                # logger.info(f"bound args:{bind_result.args}")
+                # logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
                 return original_function(*bind_result.args, **bind_result.kwargs)
 
@@ -346,6 +346,13 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 return Injected.bind(func)
             case _:
                 raise RuntimeError(f"not an injected object: {data},type(data)={type(data)}")
+
+    def __add__(self, other:"Injected"):
+        other = Injected.ensure_injected(other)
+        return self.zip(other).map(lambda t: t[0] + t[1])
+
+
+
 
 
 class GeneratedInjected(Injected):

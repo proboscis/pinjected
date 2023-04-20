@@ -41,6 +41,12 @@ class IProxyContext(Generic[T]):
     def dir(self, tgt):
         pass
 
+    def biop_impl(self, op: str, tgt: T, other):
+        """Bi-Operator Implementation
+        op: '+' | '-' | '*' | '/' | '%' | '**' | '<<' | '>>' | '&' | '^' | '|' | '//'
+        """
+        raise NotImplementedError()
+
 
 @dataclass
 class DelegatedVar(Generic[T]):
@@ -76,3 +82,6 @@ class DelegatedVar(Generic[T]):
 
     def __hash__(self):
         return hash((self.value, self.cxt))
+
+    def __add__(self, other):
+        return self.cxt.biop_impl('+', self.value, other)

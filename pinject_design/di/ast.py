@@ -41,6 +41,64 @@ class Expr(Generic[T], ABC):
     def __repr__(self):
         return str(self)
 
+    def __add__(self, other):
+        return BiOp("+", self, self._wrap_if_non_expr(other))
+
+    def __or__(self, other):
+        return BiOp("|", self, self._wrap_if_non_expr(other))
+
+    def __and__(self, other):
+        return BiOp("&", self, self._wrap_if_non_expr(other))
+
+    def __sub__(self, other):
+        return BiOp("-", self, self._wrap_if_non_expr(other))
+
+    def __mul__(self, other):
+        return BiOp("*", self, self._wrap_if_non_expr(other))
+
+    def __matmul__(self, other):
+        return BiOp("@", self, self._wrap_if_non_expr(other))
+
+    def __truediv__(self, other):
+        return BiOp("/", self, self._wrap_if_non_expr(other))
+
+    def __floordiv__(self, other):
+        return BiOp("//", self, self._wrap_if_non_expr(other))
+
+    def __mod__(self, other):
+        return BiOp("%", self, self._wrap_if_non_expr(other))
+
+    def __pow__(self, other):
+        return BiOp("**", self, self._wrap_if_non_expr(other))
+
+    def __lshift__(self, other):
+        return BiOp("<<", self, self._wrap_if_non_expr(other))
+
+    def __rshift__(self, other):
+        return BiOp(">>", self, self._wrap_if_non_expr(other))
+
+    def __xor__(self, other):
+        return BiOp("^", self, self._wrap_if_non_expr(other))
+
+    def __eq__(self, other):
+        return BiOp("==", self, self._wrap_if_non_expr(other))
+
+
+@dataclass
+class BiOp(Expr):
+    name: str
+    left: Expr
+    right: Expr
+
+    def __getstate__(self):
+        return self.left, self.right
+
+    def __setstate__(self, state):
+        self.left, self.right = state
+
+    def __hash__(self):
+        return hash((self.left, self.right))
+
 
 @dataclass
 class Call(Expr):
@@ -55,7 +113,7 @@ class Call(Expr):
         self.func, self.args, self.kwargs = state
 
     def __hash__(self):
-        return hash((self.func,self.args,frozendict(self.kwargs)))
+        return hash((self.func, self.args, frozendict(self.kwargs)))
 
 
 @dataclass
@@ -70,7 +128,7 @@ class Attr(Expr):
         self.data, self.attr_name = state
 
     def __hash__(self):
-        return hash((self.data,self.attr_name))
+        return hash((self.data, self.attr_name))
 
 
 @dataclass
@@ -85,7 +143,7 @@ class GetItem(Expr):
         self.data, self.key = state
 
     def __hash__(self):
-        return hash((self.data,self.key))
+        return hash((self.data, self.key))
 
 
 @dataclass
@@ -134,6 +192,8 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 kwargs = eval_dict(kwargs)
                 kwargs = [f"{k}={v}" for k, v in kwargs.items()]
                 return f"{func_str}({','.join(args + kwargs)})"
+            case BiOp(op, left, right):
+                return f"({_show_expr(left)} {op} {_show_expr(right)})"
             case Attr(data, str() as attr_name):
                 return f"{_show_expr(data)}.{attr_name}"
             case GetItem(data, key):

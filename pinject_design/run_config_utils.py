@@ -436,6 +436,7 @@ def create_configurations(
     # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
     interpreter_path = interpreter_path or sys.executable
+    logger.info(f"looking for default design paths from {module_path}")
     default_design_paths = find_default_design_paths(module_path, default_design_path)
     default_working_dir = maybe(lambda: working_dir)() | maybe(get_project_root)(module_path)
 
