@@ -87,7 +87,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
         #TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
-
+        # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
         def _get_new_signature(funcname, missing_params):
