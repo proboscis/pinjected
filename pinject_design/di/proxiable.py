@@ -2,7 +2,6 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar, Any
 
-from loguru import logger
 
 T = TypeVar("T")
 
@@ -55,7 +54,6 @@ class DelegatedVar(Generic[T]):
     cxt: IProxyContext[T]
 
     def __getattr__(self, item):
-        logger.info(f"getattr({self.value},{item})")
         return self.cxt.getattr(self.value, item)
 
     def __call__(self, *args, **kwargs):
