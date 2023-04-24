@@ -591,7 +591,7 @@ class MZippedInjected(Injected):
     def __init__(self, *srcs: Injected):
         super().__init__()
         self.srcs = [Injected.ensure_injected(item) for item in srcs]
-        assert all(isinstance(s, Injected) for s in srcs), srcs
+        assert all(isinstance(s, Injected) for s in self.srcs), self.srcs
 
     def dependencies(self) -> Set[str]:
         res = set()
