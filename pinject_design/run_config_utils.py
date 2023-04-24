@@ -239,6 +239,8 @@ def load_variable_by_module_path(full_module_path):
 
 
 def run_injected_impl(cmd: str, var_path, design_path):
+    # TODO pass the resulting errors into gpt to give better error messages.
+    # for that, I need to capture the stderr/stdout
     # get the var and design
     # then run it based on cmd with args/kwargs
     from loguru import logger
