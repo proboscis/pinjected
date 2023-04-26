@@ -95,10 +95,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
             vkwarg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_KEYWORD]
             if not vkwarg:
-                vkwarg = [inspect.Parameter('kwargs', inspect.Parameter.VAR_KEYWORD)]
+                vkwarg = [inspect.Parameter('__kwargs', inspect.Parameter.VAR_KEYWORD)]
             varg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_POSITIONAL]
             if not varg:
-                varg = [inspect.Parameter('args', inspect.Parameter.VAR_POSITIONAL)]
+                varg = [inspect.Parameter('__args', inspect.Parameter.VAR_POSITIONAL)]
             # we also need to pass varargs if there are default args..
             new_func_sig = f"_injected_partial_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
             return new_func_sig
@@ -110,23 +110,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             missing_positional_args = [p for p in missing_params if p.kind == inspect.Parameter.POSITIONAL_ONLY]
             missing_non_positional_args = [p for p in missing_params if
                                            p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
-            missing_kw_args = [p for p in missing_params if p.kind == inspect.Parameter.KEYWORD_ONLY]
-            # logger.info(f"original function signature:{original_sig}")
-            # logger.info(f"original func name:{original_function.__name__}")
-            # logger.info(f"missing keys:{missing_keys}")
-            # logger.info(f"missing params:{missing_params}")
-            # logger.info(f"missing positional args:{missing_positional_args}")
-            # logger.info(f"missing non positional args:{missing_non_positional_args}")
-            # logger.info(f"missing kw args:{missing_kw_args}")
-
             new_func_sig = _get_new_signature(original_function.__name__, missing_params)
             defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
-
-            # logger.info(f"defaults:{defaults}")
-            # logger.info(f"new func sig:{new_func_sig}")
-
-            # we need to partition by positional_only / not positional_only / kwargs / kwargs_only
-
             def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
@@ -178,7 +163,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
                 return original_function(*bind_result.args, **bind_result.kwargs)
-
+            from loguru import logger
+            logger.info(f"injected.partial -> {new_func_sig}")
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,
