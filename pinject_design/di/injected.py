@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import functools
 import inspect
 import sys
@@ -104,6 +105,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             return new_func_sig
 
         def makefun_impl(injected_kwargs):
+            # this gets called every time you call this function through PartialInjectedFunction interface
+            # this is because the injected_kwargs gets changed.
 
             missing_keys = [k for k in original_sig.parameters.keys() if k not in injected_kwargs]
             missing_params = [original_sig.parameters[k] for k in missing_keys]
@@ -164,7 +167,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # Ah, since the target_function is async, we can't catch...
                 return original_function(*bind_result.args, **bind_result.kwargs)
             from loguru import logger
-            logger.info(f"injected.partial -> {new_func_sig}")
+            logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,
@@ -335,6 +338,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def __add__(self, other:"Injected"):
         other = Injected.ensure_injected(other)
         return self.zip(other).map(lambda t: t[0] + t[1])
+
+    def desync(self):
+        return self.map(lambda coroutine:asyncio.run(coroutine))
 
 
 
