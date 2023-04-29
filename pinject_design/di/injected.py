@@ -298,6 +298,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def mzip(*srcs: "Injected"):
         return MZippedInjected(*srcs)
 
+    @staticmethod
+    def list(*srcs: "Injected"):
+        return Injected.mzip(*srcs).map(list)
     # this is ap of applicative functor.
     def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
         return self.zip(other).map(
