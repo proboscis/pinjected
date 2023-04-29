@@ -108,6 +108,10 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
             case Object(([*items] as x)) if isinstance(x, tuple):
                 t = app.zip(*[ensure_pure(item) for item in items])
                 return app.map(t, tuple)
+            case Object({**items} as x) if isinstance(x, dict):
+                values = app.zip(*[ensure_pure(item) for item in items.values()])
+                return app.map(values, lambda t: {k: v for k, v in zip(items.keys(), t)})
+
             case Object(x):
                 return ensure_pure(x)
             case Call(Expr() as f, args, kwargs):
