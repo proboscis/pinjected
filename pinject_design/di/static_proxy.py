@@ -92,15 +92,24 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
         def eval_dict(expr):
             return valmap(_eval, expr)
 
+        def ensure_pure(item):
+            match item:
+                case item if app.is_instance(item):
+                    return item
+                case DelegatedVar(Expr() as wrapped, AstProxyContextImpl()):
+                    return _eval(wrapped)
+                case item:
+                    return app.pure(item)
+
         match expr:
-            case Object(DelegatedVar(Expr() as wrapped, AstProxyContextImpl())):
-                return _eval(wrapped)
-            case Object(x) if app.is_instance(x):
-                return x
-            # case Object(DelegatedVar() as var):
-            #    return var.eval()
+            case Object([*items] as x) if isinstance(x, list):
+                t = app.zip(*[ensure_pure(item) for item in items])
+                return app.map(t, list)
+            case Object(([*items] as x)) if isinstance(x, tuple):
+                t = app.zip(*[ensure_pure(item) for item in items])
+                return app.map(t, tuple)
             case Object(x):
-                return app.pure(x)
+                return ensure_pure(x)
             case Call(Expr() as f, args, kwargs):
                 injected_func: "T[Callable]" = _eval(f)
                 args = app.zip(*eval_tuple(args))
