@@ -124,7 +124,6 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 def apply(t):
                     from loguru import logger
                     func, args, kwargs = t
-                    logger.debug(f"applying {func} with {args} and {kwargs}")
                     return func(*args, **kwargs)
                 applied = app.map(app.zip(injected_func, args, kwargs),apply)
                 return applied
