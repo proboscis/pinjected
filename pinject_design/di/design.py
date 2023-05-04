@@ -207,6 +207,7 @@ def ensure_self_arg(func, fname: str = None):
             fn = func.__name__.replace("<", "").replace(">", "")
             fname = f"""{module.__name__.replace(".", "_")}_{fn}"""
         except AttributeError as ae:
+            from loguru import logger
             logger.warning(f"could not set reasonable func name. better provide fname as argument!")
             fname = f"""unknwon_module_function"""
 
