@@ -30,9 +30,10 @@ class SessionScope(ISessionScope):
             self.pending.append(binding_key)
             logger.debug(f'Providing:{"<-".join([k._name for k in self.pending])}')
             #logger.debug(f"SessionScope: {indent} -> {binding_key._name}")
-            self.cache[binding_key] = default_provider_fn()
+            value = default_provider_fn()
+            self.cache[binding_key] = value
             self.pending.pop()
-            logger.debug(f'Remaining:{"<-".join([k._name for k in self.pending])}')
+            logger.debug(f'Remaining:{"<-".join([k._name for k in self.pending])} {binding_key}={str(value)[:100]}')
             #logger.debug(f"SessionScope: {indent} <- {binding_key._name}")
             self.provide_depth -= 1
         return self.cache[binding_key]

@@ -191,8 +191,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         if isinstance(original_function, type):
             makefun_impl.__original_code__ = "not available"
             makefun_impl.__original_file__ = "not available"
+        elif type(original_function).__name__ == 'staticmethod':
+            makefun_impl.__original_code__ = inspect.getsource(original_function.__func__)
+            makefun_impl.__original_file__ = inspect.getfile(original_function.__func__)
         else:
             makefun_impl.__original_code__ = inspect.getsource(original_function)
+            # staticmethod is not allowed?
             makefun_impl.__original_file__ = inspect.getfile(original_function)
         makefun_impl.__doc__ = original_function.__doc__
         injected_kwargs = Injected.dict(**injection_targets)
@@ -284,7 +288,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
         return MappedInjected(self, f)
 
-    @staticmethod
     def from_impl(impl: Callable, dependencies: Set[str]):
         return GeneratedInjected(impl, dependencies)
 
