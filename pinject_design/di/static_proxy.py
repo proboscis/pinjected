@@ -121,8 +121,12 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 # now we are all in the world of injected. how can I combine them all?
                 # so all the arguments are converted into Injected if not, then combined together
                 # so if you are to pass an Injected as an argument, you must wrap it with Injected.pure
-                applied = app.map(app.zip(injected_func, args, kwargs),
-                                  lambda t: t[0](*t[1], **t[2]))
+                def apply(t):
+                    from loguru import logger
+                    func, args, kwargs = t
+                    logger.debug(f"applying {func} with {args} and {kwargs}")
+                    return func(*args, **kwargs)
+                applied = app.map(app.zip(injected_func, args, kwargs),apply)
                 return applied
             case Attr(Expr() as data, str() as attr_name):
                 injected_data = _eval(data)

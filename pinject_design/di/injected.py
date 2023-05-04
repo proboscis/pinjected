@@ -87,19 +87,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
         from loguru import logger
-        logger.info(f"calling Injected.partial to {original_function.__name__}")
         #TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
-        if inspect.ismethod(original_function):
-            pass
 
         # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
         def _get_new_signature(funcname, missing_params):
             missing_non_defaults = [p for p in missing_params if p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
-
-            assert 'self' not in [p.name for p in missing_non_defaults], f"self is not allowed in {funcname} for Injected.partial"
             # hmm, we need to check if the original_funcion is a method or not.
             # if method, ignore the first param.
 
@@ -200,8 +195,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             makefun_impl.__original_code__ = inspect.getsource(original_function)
             makefun_impl.__original_file__ = inspect.getfile(original_function)
         makefun_impl.__doc__ = original_function.__doc__
-
         injected_kwargs = Injected.dict(**injection_targets)
+        # hmm?
+        # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         injected_factory = PartialInjectedFunction(
             Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
         )
@@ -668,7 +664,6 @@ class PartialInjectedFunction(Injected):
         assert isinstance(self.src, Injected), f"src:{self.src} is not an Injected"
 
     def __call__(self, *args, **kwargs) -> DelegatedVar:
-        # logger.warning(f"PartialInjectedFunction.__call__() is called here. with args:{args},kwargs:{kwargs}")
         return self.src.proxy(*args, **kwargs)
 
     def dependencies(self) -> Set[str]:
@@ -702,7 +697,15 @@ def injected_function(f) -> PartialInjectedFunction:
     new_f = Injected.partial(f, **tgts)
 
     return new_f
-    # return _injected_factory(**tgts)(f)
+
+def injected_method(f):
+    _impl = injected_function(f)
+
+    def impl(self, *args, **kwargs):
+        return _impl(self,*args, **kwargs)
+
+    return impl
+
 def injected_class(cls):
     return injected_function(cls)
 
