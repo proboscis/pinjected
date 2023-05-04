@@ -90,11 +90,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         logger.info(f"calling Injected.partial to {original_function.__name__}")
         #TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
+        if inspect.ismethod(original_function):
+            pass
+
         # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
         def _get_new_signature(funcname, missing_params):
             missing_non_defaults = [p for p in missing_params if p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
+
+            assert 'self' not in [p.name for p in missing_non_defaults], f"self is not allowed in {funcname} for Injected.partial"
+            # hmm, we need to check if the original_funcion is a method or not.
+            # if method, ignore the first param.
 
             vkwarg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_KEYWORD]
             if not vkwarg:
@@ -681,9 +688,13 @@ def injected_function(f) -> PartialInjectedFunction:
     :param f:
     :return:
     """
+    # How can we make this work on a class method?
     sig: inspect.Signature = inspect.signature(f)
     tgts = dict()
     for k, v in sig.parameters.items():
+        # does this contain self?
+        # assert k != 'self', f"self is not allowed in injected_function... for now:{f}"
+        #
         if k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:

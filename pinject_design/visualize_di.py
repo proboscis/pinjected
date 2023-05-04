@@ -10,10 +10,8 @@ from pprint import pformat
 from typing import Callable, List, Any, Dict, Union
 
 import networkx as nx
-import networkx.classes
 from cytoolz import memoize
 from loguru import logger
-from networkx.drawing.nx_agraph import graphviz_layout
 
 from pampy import match
 from pinject.bindings import default_get_arg_names_from_class_name
@@ -27,6 +25,7 @@ from pinject_design.di.injected import Injected, InjectedFunction, InjectedPure,
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign
 from pinject_design.di.util import Design, DirectPinjectProvider, PinjectProviderBind
 from pinject_design.exceptions import DependencyResolutionFailure, _MissingDepsError
+from pinject_design.nx_graph_util import NxGraphUtil
 
 
 def dfs(neighbors: Callable, node: str, trace=[]):
@@ -182,7 +181,8 @@ class DIGraph:
         return self.deps_impl(src)
 
     def di_dfs(self, src, replace_missing=False):
-        ignore_list = ["mzip_src_","mapped_src_","injected_kwargs_"]
+        ignore_list = ["mzip_src_", "mapped_src_", "injected_kwargs_"]
+
         def filter(node):
             res = any([ignore in node for ignore in ignore_list])
             if res:
@@ -202,19 +202,19 @@ class DIGraph:
                     raise _MissingDepsError(f"failed to get neighbors of {current} at {' => '.join(trace)}.", current,
                                             trace) from e
             for n in nexts:
-                match (filter(current),filter(n)):
-                    case (True,True):
+                match (filter(current), filter(n)):
+                    case (True, True):
                         yield from dfs(prev, n, trace + [n])
-                    case (True,False):
+                    case (True, False):
                         yield prev, n, trace
                         yield from dfs(prev, n, trace + [n])
-                    case (False,True):
+                    case (False, True):
                         yield from dfs(current, n, trace + [n])
-                    case (False,False):
+                    case (False, False):
                         yield current, n, trace
                         yield from dfs(current, n, trace + [n])
 
-        yield from dfs(src,src, [src])
+        yield from dfs(src, src, [src])
 
     def di_dfs_validation(self, src):
         def dfs(node: str, trace=[]):
@@ -281,7 +281,7 @@ class DIGraph:
 
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
                                          replace_missing=True
-                                         ) -> networkx.classes.DiGraph:
+                                         ) -> NxGraphUtil:
         tmp_design = self.src.bind_provider(**{root_name: root})
         return DIGraph(tmp_design) \
             .create_dependency_digraph(
@@ -289,7 +289,7 @@ class DIGraph:
             replace_missing=replace_missing
         )
 
-    def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> networkx.classes.DiGraph:
+    def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> NxGraphUtil:
         if isinstance(roots, str):
             roots = [roots]
         # hmm,
@@ -347,15 +347,11 @@ class DIGraph:
 
         for root in roots:
             nx_graph.nodes[root]["group"] = "root"
-        return nx_graph
+        return NxGraphUtil(nx_graph)
 
     def create_dependency_network(self, roots: Union[str, List[str]], replace_missing=True):
         nx_graph = self.create_dependency_digraph(roots, replace_missing)
-        nt = Network('1080px', '100%', directed=True)
-        nt.from_nx(nx_graph)
-        # nt.show_buttons(filter_=["physics"])
-        nt.toggle_physics(True)
-        return nt
+        return nx_graph.to_physics_network()
 
     def find_missing_dependencies(self, roots: Union[str, List[str]]) -> List[DependencyResolutionFailure]:
         if isinstance(roots, str):
@@ -378,45 +374,22 @@ class DIGraph:
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():
-            from matplotlib import pyplot as plt
-            plt.figure(figsize=(20, 20))
             G = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
-            pos = graphviz_layout(G, prog='dot')
-            nx.draw(G, with_labels=True, pos=pos)
-            plt.show()
-
+            G.plot_mpl()
         else:
             from loguru import logger
             logger.warning("visualization of a design is disabled for non mac os.")
 
     def show_html(self, roots, visualize_missing=True):
-        if "darwin" in platform.system().lower():
-            from loguru import logger
-            logger.info(f"showing visualization html")
-            self.save_as_html(roots, "di_visualiztion.html", visualize_missing=visualize_missing)
-            os.system("open di_visualiztion.html")
-        else:
-            from loguru import logger
-            logger.warning("visualization of a design is disabled for non mac os.")
+        g = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
+        g.show_html()
 
-    def show_injected_html(self,tgt:Injected,name:str=None):
-        assert isinstance(tgt,Injected)
+    def show_injected_html(self, tgt: Injected, name: str = None):
+
+        assert isinstance(tgt, Injected)
         assert platform.system().lower() == "darwin"
-        nx_graph = self.create_dependency_digraph_rooted(tgt,name or "__root__",replace_missing=True)
-        nt = Network('1080px', '100%', directed=True)
-        nt.from_nx(nx_graph)
-        # nt.show_buttons(filter_=["physics"])
-        nt.toggle_physics(True)
-        # create tmp file
-        org_dir = os.getcwd()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            os.chdir(temp_dir)
-            temp_file_path = "temp.html"
-            nt.show(temp_file_path)
-            os.system(f"open {temp_file_path}")
-            time.sleep(5)
-        os.chdir(org_dir)
-
+        nx_graph = self.create_dependency_digraph_rooted(tgt, name or "__root__", replace_missing=True)
+        nx_graph.show_html_temp()
 
 
 
