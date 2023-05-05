@@ -9,18 +9,17 @@ from typing import Union, Type, TypeVar, Callable, Dict, Any
 
 import cloudpickle
 import pinject
-from cytoolz import merge, valmap, itemmap
+from cytoolz import merge
 from makefun import create_function, wraps
 from pampy import match
 from pinject import BindingSpec
 from pinject.scoping import SingletonScope, BindableScopes, SINGLETON
+from returns.result import safe, Failure, Success
+
 from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, InjectedProvider, PinjectConfigure, \
     PinjectProvider, ensure_self_arg, PinjectBind
-from pinject_design.di.graph import ExtendedObjectGraph
+from pinject_design.di.graph import ExtendedObjectGraph, MyObjectGraph
 from pinject_design.di.injected import Injected
-from returns.result import safe, Failure, Success
-from tabulate import tabulate
-
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import SessionScope
 
@@ -361,6 +360,7 @@ class Design:
             id_to_scope={SINGLETON: SessionScope()}
         )
         return ExtendedObjectGraph(self, g)
+        #return MyObjectGraph(self, modules=modules, classes=classes)
 
     def run(self, f, modules=None, classes=None):
         return self.to_graph(modules, classes).run(f)

@@ -1,8 +1,5 @@
 import inspect
-import os
 import platform
-import tempfile
-import time
 import uuid
 from dataclasses import dataclass
 from itertools import chain
@@ -14,9 +11,6 @@ from cytoolz import memoize
 from loguru import logger
 
 from pampy import match
-from pinject.bindings import default_get_arg_names_from_class_name
-from pinject.finding import find_classes
-from pyvis.network import Network
 from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
@@ -25,6 +19,7 @@ from pinject_design.di.injected import Injected, InjectedFunction, InjectedPure,
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign
 from pinject_design.di.util import Design, DirectPinjectProvider, PinjectProviderBind
 from pinject_design.exceptions import DependencyResolutionFailure, _MissingDepsError
+from pinject_design.graph_inspection import DIGraphHelper
 from pinject_design.nx_graph_util import NxGraphUtil
 
 
@@ -65,18 +60,14 @@ class DIGraph:
                 pp = PinProvider(b.method)
                 yield k, pp
 
-    def _get_mapping(self):
-        classes = find_classes(self.src.modules, self.src.classes)
-        for c in classes:
-            for name in default_get_arg_names_from_class_name(c.__name__):
-                yield name, c
 
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
     def __post_init__(self):
         self.src = self.src.bind_instance(session='DummyForVisualization').build()
-        self.implicit_mappings = dict(self._get_mapping())
+        self.helper = DIGraphHelper(self.src)
+        self.implicit_mappings = dict(self.helper.get_implicit_mapping())
         self.pinject_mappings = dict(self._get_configured())
         # we want to know if the binding is InjectedProvider or not
         self.explicit_mappings: Dict[str, Bind] = {k: b for k, b in self.src.bindings.items() if
