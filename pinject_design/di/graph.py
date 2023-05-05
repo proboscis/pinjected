@@ -1,7 +1,9 @@
+import asyncio
 import inspect
+from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
-from typing import Union, Type, Callable, TypeVar, List, Any, Generic
-
+from functools import lru_cache
+from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable
 
 from makefun import create_function
 from pinject import binding_keys, locations, SINGLETON
@@ -11,12 +13,14 @@ from pinject.object_graph import ObjectGraph
 from pinject.object_providers import ObjectProvider
 from returns.maybe import Nothing, Maybe, Some
 
+# from pinject_design import Design
 from pinject_design.di.designed import Designed
 from pinject_design.di.injected import Injected
 from pinject_design.di.proxiable import DelegatedVar
-from pinject_design.di.session import OverridenBindableScopes
+from pinject_design.di.session import OverridenBindableScopes, SessionScope, ISessionScope
 from pinject_design.di.sessioned import Sessioned
 from pinject_design.exceptions import DependencyResolutionFailure
+from pinject_design.graph_inspection import DIGraphHelper
 
 T = TypeVar("T")
 
@@ -36,9 +40,218 @@ class MissingDependencyException(Exception):
 Providable = Union[str, Type[T], Injected[T], Callable, Designed[T], DelegatedVar[Injected], DelegatedVar[Designed]]
 
 
-class ExtendedObjectGraph:
+class IObjectGraph(metaclass=ABCMeta):
+    @abstractmethod
+    def provide(self, target: Providable):
+        pass
+
+    @abstractmethod
+    def sessioned(self, target: Providable):
+        pass
+
+    @abstractmethod
+    def proxied(self, providable: Providable):
+        pass
+
+    def __getitem__(self, item: Providable):
+        return self.provide(item)
+
+    @abstractmethod
+    def child_session(self, overrides) -> "IObjectGraph":
+        """
+        bindings that are explicit in the overrides are always recreated.
+        implicit bindings are created if it is not created in parent. and will be discarded after session.
+        else from parent.
+        so, implicit bindings that are instantiated at the moment this function is called will be used if not explicitly overriden.
+        invalidation is not implemented yet.
+        I want the bindings that are dependent on the overriden keys to be reconstructed.
+        :param overrides:
+        :return:
+        """
+        pass
+
+    def run(self, f):
+        argspec = inspect.getfullargspec(f)
+        assert "self" not in argspec.args, f"self in {argspec.args}, of {f}"
+        # logger.info(self)
+        assert argspec.varargs is None
+        kwargs = {k: self.provide(k) for k in argspec.args}
+        return f(**kwargs)
+
+
+class IAsyncScope:
+    @abstractmethod
+    async def provide(self, key, provider_func: Callable[[], Any],trace:List) -> Any:
+        pass
+
+
+
+@dataclass
+class AsyncScope(IAsyncScope):
+    cache: dict[str, Any] = field(default_factory=dict)
+
+    async def provide(self, key, async_provider: Callable[[], Any],trace:List) -> Any:
+        from loguru import logger
+        if key in self.cache:
+            return self.cache[key]
+        logger.info(f"providing {' -> '.join(trace)}")
+        res = await async_provider()
+        match res:
+            case awaitable if inspect.isawaitable(awaitable):
+                logger.info(f"awaiting {key}")
+                awaited = await awaitable
+                logger.info(f"awaited {key} -> {awaited}")
+                self.cache[key] = awaited
+            case _:
+                self.cache[key] = res
+        res = self.cache[key]
+        logger.info(f"provided {' <- '.join(trace)} = {res}")
+        return self.cache[key]
+
+
+@dataclass
+class AsyncChildScope(IAsyncScope):
+    parent: IAsyncScope
+    override_targets: set
+    cache: dict[str, Any] = field(default_factory=dict)
+
+    async def provide(self, key, provider_func: Callable[[], Any],trace:List) -> Any:
+        from loguru import logger
+        if key not in self.cache:
+            if key in self.override_targets:
+                logger.info(f"providing {' -> '.join(trace)}")
+                res = provider_func()
+                match res:
+                    case awaitable if inspect.isawaitable(awaitable):
+                        logger.info(f"awaiting {key}")
+                        awaited = await awaitable
+                        logger.info(f"awaited {key} -> {awaited}")
+                        self.cache[key] = awaited
+                    case _:
+                        self.cache[key] = res
+                res = self.cache[key]
+                logger.info(f"provided {' <- '.join(trace)} = {res}")
+            else:
+                self.cache[key] = await self.parent.provide(key, provider_func,trace)
+        return self.cache[key]
+
+
+@dataclass
+class DependencyResolver:
+    scope: IAsyncScope
+    src: "Design"
+
+    def _to_injected(self, tgt: Providable):
+        match tgt:
+            case str():
+                return Injected.by_name(tgt)
+            case type():
+                return Injected.bind(tgt)
+            case Injected():
+                return tgt
+            case DelegatedVar(value, cxt):
+                return self._to_injected(tgt.eval())
+            case f if callable(f):
+                return Injected.bind(f)
+            case _:
+                raise TypeError(f"target must be either class or a string or Injected. got {tgt}")
+
+    def __post_init__(self):
+        # gather things to build providers graph
+        helper = DIGraphHelper(self.src)
+        self.mapping: dict[str, Injected] = helper.total_mappings()
+
+        @lru_cache()
+        def _memoized_provider(tgt: str):
+            return self.mapping[tgt].get_provider()
+
+        self.memoized_provider = _memoized_provider
+
+        @lru_cache()
+        def _memoized_deps(tgt: str):
+            return self.mapping[tgt].dependencies()
+
+        self.memoized_deps = _memoized_deps
+
+    def _dependency_tree(self, tgt: str):
+        return {t:self._dependency_tree(t) for t in self.memoized_deps(tgt)}
+    def dependency_tree(self, providable: Providable):
+        match providable:
+            case str():
+                return {providable:self._dependency_tree(providable)}
+            case _:
+                tgt: Injected = self._to_injected(providable)
+
+                return {t:self._dependency_tree(t) for t in tgt.dependencies()}
+
+    async def _provide(self, tgt: str, trace: list[str] = None):
+        if trace is None:
+            trace = []
+        assert isinstance(tgt, str)
+        from loguru import logger
+        deps = await asyncio.gather(*[self._provide(d, trace+[d]) for d in self.memoized_deps(tgt)])
+
+        async def provider_impl():
+            provider = self.memoized_provider(tgt)
+            return provider(*deps)
+
+        res = await self.scope.provide(tgt, provider_impl,trace)
+        return res
+
+    def provide(self, providable: Providable):
+        tgt: Injected = self._to_injected(providable)
+
+        match providable:
+            case str():
+                key = providable
+                return asyncio.run(self._provide(key,trace=[key]))
+            case _:
+                provider = tgt.get_provider()
+                key = provider.__name__ + str(id(tgt))
+                async def get_result():
+                    deps = tgt.dependencies()
+                    values = await asyncio.gather(*[self._provide(d,[key]) for d in tgt.dependencies()])
+                    kwargs = dict(zip(deps, values))
+                    return provider(**kwargs)
+                # I think we need to give a unique name to this injected so that the value will be cached
+                return asyncio.run(self.scope.provide(key, get_result,trace=[key]))
+
+
+@dataclass
+class MyObjectGraph(IObjectGraph):
+    resolver: DependencyResolver
+
+    @staticmethod
+    def root(design: "Design") -> "MyObjectGraph":
+        scope = AsyncScope()
+        graph = MyObjectGraph(None)
+        design = design.bind_instance(session=graph)
+        resolver = DependencyResolver(scope, design)
+        graph.resolver = resolver
+        return graph
+
+    def provide(self, target: Providable):
+        return self.resolver.provide(target)
+
+    def sessioned(self, target: Providable):
+        raise NotImplementedError()
+
+    def proxied(self, providable: Providable):
+        raise NotImplementedError()
+
+    def child_session(self, overrides:"Design"):
+        child_scope = AsyncChildScope(self.resolver.scope, overrides.keys())
+        child_graph = MyObjectGraph(None)
+        child_design = self.resolver.src+overrides.bind_instance(session=child_graph)
+        child_resolver = DependencyResolver(child_scope, child_design)
+        child_graph.resolver = child_resolver
+        return child_graph
+
+
+class ExtendedObjectGraph(IObjectGraph):
     """
     an object graph which can also provide instances based on its name not only from class object.
+    TODO I need to change the implementation to not to use pinject, so that I can provide async providers
     """
 
     def __init__(self, design: "Design", src: ObjectGraph):
@@ -185,19 +398,8 @@ class ExtendedObjectGraph:
         from pinject_design.di.ast import Object
         return DelegatedVar(Object(item), ctx)
 
-    def run(self, f):
-        argspec = inspect.getfullargspec(f)
-        assert "self" not in argspec.args, f"self in {argspec.args}, of {f}"
-        # logger.info(self)
-        assert argspec.varargs is None
-        kwargs = {k: self.provide(k) for k in argspec.args}
-        return f(**kwargs)
-
     def __repr__(self):
         return f"ExtendedObjectGraph({self.design})"
-
-    def __getitem__(self, item):
-        return self.provide(item)
 
     def child_session(self, overrides: "Design" = None) -> "ChildGraph":
         """

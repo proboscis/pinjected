@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
 from makefun import create_function
-from returns.maybe import Nothing
 
 from pinject_design.di.proxiable import DelegatedVar
 
@@ -86,15 +85,15 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param injection_targets: specific parameters to make injected automatically
         :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
         """
-        from loguru import logger
-        #TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
+        # TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
 
         # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
         def _get_new_signature(funcname, missing_params):
-            missing_non_defaults = [p for p in missing_params if p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
+            missing_non_defaults = [p for p in missing_params if
+                                    p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
             # hmm, we need to check if the original_funcion is a method or not.
             # if method, ignore the first param.
 
@@ -119,6 +118,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                                            p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
             new_func_sig = _get_new_signature(original_function.__name__, missing_params)
             defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
+
             def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
@@ -170,6 +170,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
                 return original_function(*bind_result.args, **bind_result.kwargs)
+
             from loguru import logger
             logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
@@ -309,6 +310,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def list(*srcs: "Injected"):
         return Injected.mzip(*srcs).map(list)
+
     # this is ap of applicative functor.
     def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
         return self.zip(other).map(
@@ -346,15 +348,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             case _:
                 raise RuntimeError(f"not an injected object: {data},type(data)={type(data)}")
 
-    def __add__(self, other:"Injected"):
+    def __add__(self, other: "Injected"):
         other = Injected.ensure_injected(other)
         return self.zip(other).map(lambda t: t[0] + t[1])
 
     def desync(self):
-        return self.map(lambda coroutine:asyncio.run(coroutine))
-
-
-
+        return self.map(lambda coroutine: asyncio.run(coroutine))
 
 
 class GeneratedInjected(Injected):
@@ -497,7 +496,6 @@ class InjectedFunction(Injected[T]):
                 deps[mdep] = solve_injection(mdep, kwargs)
             for k, dep in self.kwargs_mapping.items():
                 deps[k] = solve_injection(dep, kwargs)
-            from loguru import logger
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             # logger.info(f"src mapping:{self.kwargs_mapping}")
             # logger.info(f"with deps:{deps}")
@@ -701,13 +699,15 @@ def injected_function(f) -> PartialInjectedFunction:
 
     return new_f
 
+
 def injected_method(f):
     _impl = injected_function(f)
 
     def impl(self, *args, **kwargs):
-        return _impl(self,*args, **kwargs)
+        return _impl(self, *args, **kwargs)
 
     return impl
+
 
 def injected_class(cls):
     return injected_function(cls)
