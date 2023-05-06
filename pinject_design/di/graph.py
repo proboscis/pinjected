@@ -1,10 +1,14 @@
 import asyncio
 import inspect
+import threading
 from abc import ABCMeta, abstractmethod
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable
+from pprint import pformat
+from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable, Set
 
+import yaml
 from makefun import create_function
 from pinject import binding_keys, locations, SINGLETON
 from pinject.bindings import default_get_arg_names_from_class_name, BindingMapping, new_binding_to_instance
@@ -13,9 +17,11 @@ from pinject.object_graph import ObjectGraph
 from pinject.object_providers import ObjectProvider
 from returns.maybe import Nothing, Maybe, Some
 
+from pinject_design.di.app_injected import EvaledInjected
+from pinject_design.di.ast import Expr
 # from pinject_design import Design
 from pinject_design.di.designed import Designed
-from pinject_design.di.injected import Injected
+from pinject_design.di.injected import Injected, InjectedByName, InjectedFunction
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import OverridenBindableScopes, SessionScope, ISessionScope
 from pinject_design.di.sessioned import Sessioned
@@ -42,22 +48,14 @@ Providable = Union[str, Type[T], Injected[T], Callable, Designed[T], DelegatedVa
 
 class IObjectGraph(metaclass=ABCMeta):
     @abstractmethod
-    def provide(self, target: Providable):
-        pass
-
-    @abstractmethod
-    def sessioned(self, target: Providable):
-        pass
-
-    @abstractmethod
-    def proxied(self, providable: Providable):
+    def provide(self, target: Providable, level: int = 2):
         pass
 
     def __getitem__(self, item: Providable):
-        return self.provide(item)
+        return self.provide(item, level=3)
 
     @abstractmethod
-    def child_session(self, overrides) -> "IObjectGraph":
+    def child_session(self, overrides=None) -> "IObjectGraph":
         """
         bindings that are explicit in the overrides are always recreated.
         implicit bindings are created if it is not created in parent. and will be discarded after session.
@@ -68,7 +66,7 @@ class IObjectGraph(metaclass=ABCMeta):
         :param overrides:
         :return:
         """
-        pass
+        raise NotImplementedError()
 
     def run(self, f):
         argspec = inspect.getfullargspec(f)
@@ -78,67 +76,113 @@ class IObjectGraph(metaclass=ABCMeta):
         kwargs = {k: self.provide(k) for k in argspec.args}
         return f(**kwargs)
 
+    def proxied(self, providable: Providable) -> DelegatedVar[Sessioned]:
+        from pinject_design.di.sessioned import sessioned_ast_context
+        designed = self._providable_to_designed(providable)
+        item = Sessioned(self, designed)
+        ctx = sessioned_ast_context(self)
+        from pinject_design.di.ast import Object
+        return DelegatedVar(Object(item), ctx)
 
-class IAsyncScope:
+    def sessioned(self, target: Providable) -> DelegatedVar[Union[object, T]]:
+        match target:
+            case str():
+                return self.sessioned(Injected.by_name(target))
+            case Injected():
+                return self.sessioned(Designed.bind(target))
+            case provider if callable(provider):
+                return self.sessioned(Injected.bind(provider))
+            case Designed():
+                val = SessionValue(self, target)
+                ctx = sessioned_value_proxy_context(self, val.session)
+                return DelegatedVar(val, ctx)
+            case DelegatedVar():
+                return self.sessioned(target.eval())
+            case _:
+                raise TypeError(f"Unknown target:{target} queried for DI.")
+
+    def _providable_to_designed(self, target: Providable):
+        match target:
+            case str():
+                return self._providable_to_designed(Injected.by_name(target))
+            case Injected():
+                return Designed.bind(target)
+            case Designed():
+                return target
+            case DelegatedVar():
+                return self._providable_to_designed(target.eval())
+            case provider if callable(provider):
+                return self._providable_to_designed(Injected.bind(provider))
+            case _:
+                raise TypeError(f"Unknown target:{target} queried for DI.")
+
+    @property
     @abstractmethod
-    async def provide(self, key, provider_func: Callable[[], Any],trace:List) -> Any:
+    def design(self):
         pass
 
 
+# using async was not a good Idea since all the function needs to be assumed a coroutine.
+# we don't assume the provider function is a coroutine.
+
+class IScope:
+    @abstractmethod
+    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+        pass
+
+
+def trace_string(trace:list[str]):
+    res = "\n"
+    for i, item in enumerate(trace):
+        res += f"{i*'  '}{item} -> \n"
+    return res
+
 
 @dataclass
-class AsyncScope(IAsyncScope):
+class MScope(IScope):
     cache: dict[str, Any] = field(default_factory=dict)
+    def __getstate__(self):
+        raise NotImplementedError("MScope is not serializable")
 
-    async def provide(self, key, async_provider: Callable[[], Any],trace:List) -> Any:
+    def provide(self, key, provider: Callable[[], Any], trace: List) -> Any:
         from loguru import logger
+        # with self.lock:
         if key in self.cache:
             return self.cache[key]
-        logger.info(f"providing {' -> '.join(trace)}")
-        res = await async_provider()
-        match res:
-            case awaitable if inspect.isawaitable(awaitable):
-                logger.info(f"awaiting {key}")
-                awaited = await awaitable
-                logger.info(f"awaited {key} -> {awaited}")
-                self.cache[key] = awaited
-            case _:
-                self.cache[key] = res
+        assert isinstance(trace, list) and all(isinstance(item, str) for item in trace)
+        logger.info(trace_string(trace))
+        res = provider()
+        self.cache[key] = res
         res = self.cache[key]
-        logger.info(f"provided {' <- '.join(trace)} = {res}")
+        logger.info(f"provided   {' <- '.join(trace)} = {repr(res)[:100]}")
         return self.cache[key]
 
 
 @dataclass
-class AsyncChildScope(IAsyncScope):
-    parent: IAsyncScope
+class MChildScope(IScope):
+    parent: IScope
     override_targets: set
     cache: dict[str, Any] = field(default_factory=dict)
+    def __getstate__(self):
+        raise NotImplementedError("MChildScope is not serializable")
 
-    async def provide(self, key, provider_func: Callable[[], Any],trace:List) -> Any:
+    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
         from loguru import logger
         if key not in self.cache:
             if key in self.override_targets:
                 logger.info(f"providing {' -> '.join(trace)}")
                 res = provider_func()
-                match res:
-                    case awaitable if inspect.isawaitable(awaitable):
-                        logger.info(f"awaiting {key}")
-                        awaited = await awaitable
-                        logger.info(f"awaited {key} -> {awaited}")
-                        self.cache[key] = awaited
-                    case _:
-                        self.cache[key] = res
+                self.cache[key] = res
                 res = self.cache[key]
                 logger.info(f"provided {' <- '.join(trace)} = {res}")
             else:
-                self.cache[key] = await self.parent.provide(key, provider_func,trace)
+                self.cache[key] = self.parent.provide(key, provider_func, trace)
         return self.cache[key]
 
 
 @dataclass
 class DependencyResolver:
-    scope: IAsyncScope
+    scope: IScope
     src: "Design"
 
     def _to_injected(self, tgt: Providable):
@@ -173,79 +217,187 @@ class DependencyResolver:
 
         self.memoized_deps = _memoized_deps
 
+    def _dfs(self, tgt: str, visited: set[str] = None):
+        if visited is None:
+            visited = set()
+        if tgt in visited:
+            return
+        visited.add(tgt)
+        deps = self.memoized_deps(tgt)
+        yield tgt
+        for dep in deps:
+            yield from self._dfs(dep, visited)
+
     def _dependency_tree(self, tgt: str):
-        return {t:self._dependency_tree(t) for t in self.memoized_deps(tgt)}
+        return {t: self._dependency_tree(t) for t in self.memoized_deps(tgt)}
+
     def dependency_tree(self, providable: Providable):
         match providable:
             case str():
-                return {providable:self._dependency_tree(providable)}
+                return {providable: self._dependency_tree(providable)}
             case _:
                 tgt: Injected = self._to_injected(providable)
 
-                return {t:self._dependency_tree(t) for t in tgt.dependencies()}
+                return {t: self._dependency_tree(t) for t in tgt.dependencies()}
 
-    async def _provide(self, tgt: str, trace: list[str] = None):
+    def sorted_dependencies(self, providable: Providable) -> List[Set[str]]:
+        match self._to_injected(providable):
+            case InjectedByName(name):
+                return list(self._dfs(name))
+            case tgt:
+                from itertools import chain
+                visited = set()
+                return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
+
+    def _provide(self, tgt: str, trace: list[str] = None):
         if trace is None:
             trace = []
         assert isinstance(tgt, str)
         from loguru import logger
-        deps = await asyncio.gather(*[self._provide(d, trace+[d]) for d in self.memoized_deps(tgt)])
+        deps = [self._provide(d, trace + [d]) for d in self.memoized_deps(tgt)]
 
-        async def provider_impl():
+        def provider_impl():
             provider = self.memoized_provider(tgt)
-            return provider(*deps)
+            try:
+                res = provider(*deps)
+            except Exception as e:
+                logger.error(f"failed to provide {tgt} with {deps}. {' -> '.join(trace)} -> {e}")
+                raise e
+            return res
 
-        res = await self.scope.provide(tgt, provider_impl,trace)
+        res = self.scope.provide(tgt, provider_impl, trace)
         return res
 
     def provide(self, providable: Providable):
         tgt: Injected = self._to_injected(providable)
 
-        match providable:
-            case str():
-                key = providable
-                return asyncio.run(self._provide(key,trace=[key]))
-            case _:
-                provider = tgt.get_provider()
-                key = provider.__name__ + str(id(tgt))
-                async def get_result():
-                    deps = tgt.dependencies()
-                    values = await asyncio.gather(*[self._provide(d,[key]) for d in tgt.dependencies()])
-                    kwargs = dict(zip(deps, values))
-                    return provider(**kwargs)
+        def provide_injected(tgt: Injected, key: str):
+            assert isinstance(tgt, Injected),f"tgt must be Injected. got {tgt} of type {type(tgt)}"
+            assert isinstance(key, str),f"key must be str. got {key} of type {type(key)}"
+            provider = tgt.get_provider()
+
+            def get_result():
+                deps = tgt.dependencies()
+                values = [self._provide(d, [key]) for d in tgt.dependencies()]
+                kwargs = dict(zip(deps, values))
+                return provider(**kwargs)
+
                 # I think we need to give a unique name to this injected so that the value will be cached
-                return asyncio.run(self.scope.provide(key, get_result,trace=[key]))
+                # check if we are in the loop or not
+
+            return self.scope.provide(key, get_result, trace=[key])
+
+        match tgt:
+            case InjectedByName(key):
+                res = self._provide(key, trace=[key])
+            case EvaledInjected(value, ast) as e:
+                of = ast.origin_frame
+                assert not isinstance(of,Expr),f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
+                key = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno) + f" #{str(id(tgt))}"
+                res = provide_injected(e, key)
+            case InjectedFunction(func, kwargs) as IF if IF.origin_frame is not None:
+                frame = IF.origin_frame
+                key = frame.filename + ":" + str(frame.lineno)
+                res = provide_injected(IF, key)
+            case DelegatedVar(value, cxt) as dv:
+                res = self.provide(dv.eval())
+            case Injected():
+                from loguru import logger
+                logger.warning(f"unhandled providable type:{tgt}")
+                provider = tgt.get_provider()
+                key = provider.__name__ + "#" + str(id(tgt))
+                res = provide_injected(tgt, key)
+            case _:
+                raise TypeError(f"unhandled providable type:{tgt}")
+        # unless we release the block, the coroutine for the remaining task won't get executed.
+        # so we must use async provide where 'session' is used
+        # one way to prevent this from happening is to use a thread for each provider.
+        return res
+
+
+def run_coroutine_in_new_thread(coroutine):
+    # Future to store the result of the coroutine
+    future = Future()
+
+    # Function to run the coroutine in a new event loop
+    def run_coroutine():
+        from loguru import logger
+        logger.info(f"running coroutine in new thread")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(coroutine)
+            future.set_result(result)
+        except Exception as e:
+            future.set_exception(e)
+        finally:
+            loop.close()
+
+    # Start the new thread
+    t = threading.Thread(target=run_coroutine)
+    t.start()
+    t.join()
+
+    # Return the result of the coroutine
+    return future.result()
+
+
+def get_caller_info(level: int):
+    caller_frame = inspect.currentframe()
+    for _ in range(level):
+        caller_frame = caller_frame.f_back
+    caller_info = inspect.getframeinfo(caller_frame)
+
+    file_name = caller_info.filename
+    line_number = caller_info.lineno
+
+    return file_name, line_number
 
 
 @dataclass
 class MyObjectGraph(IObjectGraph):
     resolver: DependencyResolver
+    src_design:"Design"
+
+    def __post_init__(self):
+        assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
 
     @staticmethod
     def root(design: "Design") -> "MyObjectGraph":
-        scope = AsyncScope()
-        graph = MyObjectGraph(None)
+        scope = MScope()
+        graph = MyObjectGraph(None,design)
         design = design.bind_instance(session=graph)
         resolver = DependencyResolver(scope, design)
         graph.resolver = resolver
         return graph
 
-    def provide(self, target: Providable):
+    def provide(self, target: Providable, level: int = 2):
+        """
+        :param target:
+        :param level: 2 when you are direcly calling. set increased number to show the callee
+        :return:
+        """
+        from loguru import logger
+        # I need to get the filename and line number of the caller
+        fn, ln = get_caller_info(level)
+        logger.debug(
+            f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(self.resolver.dependency_tree(target))}")
         return self.resolver.provide(target)
 
-    def sessioned(self, target: Providable):
-        raise NotImplementedError()
-
-    def proxied(self, providable: Providable):
-        raise NotImplementedError()
-
-    def child_session(self, overrides:"Design"):
-        child_scope = AsyncChildScope(self.resolver.scope, overrides.keys())
-        child_graph = MyObjectGraph(None)
-        child_design = self.resolver.src+overrides.bind_instance(session=child_graph)
+    def child_session(self, overrides: "Design" = None):
+        if overrides is None:
+            from pinject_design import Design
+            overrides = Design()
+        child_scope = MChildScope(self.resolver.scope, overrides.keys())
+        child_graph = MyObjectGraph(None,self.design+overrides)
+        child_design = self.design + overrides.bind_instance(session=child_graph)
         child_resolver = DependencyResolver(child_scope, child_design)
         child_graph.resolver = child_resolver
         return child_graph
+
+    @property
+    def design(self):
+        return self.src_design
 
 
 class ExtendedObjectGraph(IObjectGraph):
@@ -254,8 +406,12 @@ class ExtendedObjectGraph(IObjectGraph):
     TODO I need to change the implementation to not to use pinject, so that I can provide async providers
     """
 
+    @property
+    def design(self):
+        return self._design
+
     def __init__(self, design: "Design", src: ObjectGraph):
-        self.design = design
+        self._design = design
         # TODO override ObjectGraph vars to have 'session' as special name to be injected.
         # TODO use new_binding_to_instance to bind self as session
         back_frame = locations.get_back_frame_loc()
@@ -358,46 +514,6 @@ class ExtendedObjectGraph(IObjectGraph):
             case other:
                 raise TypeError(f"cannot extract dependencies. unsupported :{target}")
 
-    def sessioned(self, target: Providable) -> DelegatedVar[Union[object, T]]:
-        match target:
-            case str():
-                return self.sessioned(Injected.by_name(target))
-            case Injected():
-                return self.sessioned(Designed.bind(target))
-            case provider if callable(provider):
-                return self.sessioned(Injected.bind(provider))
-            case Designed():
-                val = SessionValue(self, target)
-                ctx = sessioned_value_proxy_context(self, val.session)
-                return DelegatedVar(val, ctx)
-            case DelegatedVar():
-                return self.sessioned(target.eval())
-            case _:
-                raise TypeError(f"Unknown target:{target} queried for DI.")
-
-    def _providable_to_designed(self, target: Providable):
-        match target:
-            case str():
-                return self._providable_to_designed(Injected.by_name(target))
-            case Injected():
-                return Designed.bind(target)
-            case Designed():
-                return target
-            case DelegatedVar():
-                return self._providable_to_designed(target.eval())
-            case provider if callable(provider):
-                return self._providable_to_designed(Injected.bind(provider))
-            case _:
-                raise TypeError(f"Unknown target:{target} queried for DI.")
-
-    def proxied(self, providable: Providable) -> DelegatedVar[Sessioned]:
-        from pinject_design.di.sessioned import sessioned_ast_context
-        designed = self._providable_to_designed(providable)
-        item = Sessioned(self, designed)
-        ctx = sessioned_ast_context(self)
-        from pinject_design.di.ast import Object
-        return DelegatedVar(Object(item), ctx)
-
     def __repr__(self):
         return f"ExtendedObjectGraph({self.design})"
 
@@ -415,7 +531,7 @@ class ExtendedObjectGraph(IObjectGraph):
         return ChildGraph(self.src, self.design, overrides)
 
 
-def sessioned_value_proxy_context(parent: ExtendedObjectGraph, session: ExtendedObjectGraph):
+def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):
     from pinject_design.di.dynamic_proxy import DynamicProxyContextImpl
     return DynamicProxyContextImpl(
         lambda a: a.value,
@@ -481,9 +597,9 @@ class SessionValue(Generic[T]):
     actually, we can access session through delegatedvar.value.session.
     since value shows the internal value, while eval() returns the final semantic value.
     """
-    parent: ExtendedObjectGraph
+    parent: IObjectGraph
     designed: Designed[T]
-    session: ExtendedObjectGraph = field(default=None)
+    session: IObjectGraph = field(default=None)
     _cache: Maybe[T] = field(default=Nothing)
 
     def __post_init__(self):

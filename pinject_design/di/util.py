@@ -18,7 +18,7 @@ from returns.result import safe, Failure, Success
 
 from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, InjectedProvider, PinjectConfigure, \
     PinjectProvider, ensure_self_arg, PinjectBind
-from pinject_design.di.graph import ExtendedObjectGraph, MyObjectGraph
+from pinject_design.di.graph import ExtendedObjectGraph, MyObjectGraph, IObjectGraph
 from pinject_design.di.injected import Injected
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import SessionScope
@@ -347,20 +347,24 @@ class Design:
                 x = x.bind(k).to_class(v)
         return x
 
-    def to_graph(self, modules=None, classes=None) -> ExtendedObjectGraph:
-        modules = self.modules + (modules or [])
-        classes = self.classes + (classes or [])
+    def to_graph(self, modules=None, classes=None) -> IObjectGraph:
+        # modules = self.modules + (modules or [])
+        # classes = self.classes + (classes or [])
         # logger.info(f"to_graph:\n\t{pformat(modules)}\n\t{pformat(classes)}")
-        g = pinject.new_object_graph(
-            modules=modules,
-            binding_specs=[self.to_binding_spec()],
-            classes=classes
+        # g = pinject.new_object_graph(
+        #     modules=modules,
+        #     binding_specs=[self.to_binding_spec()],
+        #     classes=classes
+        # )
+        # g._obj_provider._bindable_scopes = BindableScopes(
+        #     id_to_scope={SINGLETON: SessionScope()}
+        # )
+        # return ExtendedObjectGraph(self, g)
+        design = self + Design(
+            modules=modules or [],
+            classes=classes or []
         )
-        g._obj_provider._bindable_scopes = BindableScopes(
-            id_to_scope={SINGLETON: SessionScope()}
-        )
-        return ExtendedObjectGraph(self, g)
-        #return MyObjectGraph(self, modules=modules, classes=classes)
+        return MyObjectGraph.root(design)
 
     def run(self, f, modules=None, classes=None):
         return self.to_graph(modules, classes).run(f)
@@ -371,7 +375,7 @@ class Design:
         :param modules: modules to use for graph construction
         :return:
         """
-        return self.to_graph(modules=modules, classes=classes).provide(target)
+        return self.to_graph(modules=modules, classes=classes).provide(target,level=3)
 
     @staticmethod
     def gather_spec(b: BindingSpec) -> "Design":

@@ -3,7 +3,7 @@ from typing import Set
 
 from pinject_design import Injected
 from pinject_design.di.applicative import Applicative
-from pinject_design.di.injected import InjectedPure
+from pinject_design.di.injected import InjectedPure, InjectedFunction
 from pinject_design.di.proxiable import T, DelegatedVar
 from pinject_design.di.static_proxy import eval_app, ast_proxy, \
     AstProxyContextImpl
@@ -25,17 +25,9 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
         return isinstance(item, Injected)
 
 
-def reduce_injected_expr(expr: Expr):
-    match expr:
-        case Object(InjectedPure(value)):
-            return str(value)
-        case Object(Injected() as i):
-            return f"<{i.__class__.__name__}>"
-
-
 @dataclass(frozen=True)
 class EvaledInjected(Injected[T]):
-    #TODO I think this class has issue with serialization of ast.
+    # TODO I think this class has issue with serialization of ast.
     value: Injected[T]
     ast: Expr[Injected[T]]
 
@@ -53,6 +45,26 @@ class EvaledInjected(Injected[T]):
 
     def __repr__(self):
         return str(self)
+
+    def repr_ast(self):
+        return show_expr(self.ast, reduce_injected_expr)
+
+
+def reduce_injected_expr(expr: Expr):
+    match expr:
+        case Object(InjectedPure(value)):
+            return str(value)
+        case Object(InjectedFunction(func, kwargs)):
+            reduced = reduce_injected_expr(Object(kwargs))
+            return f"{func.__name__}({reduced})"
+        case Object(DelegatedVar() as dv):
+            return reduce_injected_expr(Object(dv.eval()))
+        case Object(EvaledInjected() as ei):
+            return ei.repr_ast()
+        case Object(Injected() as i):
+            return f"<{i.__class__.__name__}>"
+        case Object(x):
+            return f"???:{type(x)}"
 
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:

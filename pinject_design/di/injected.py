@@ -9,6 +9,7 @@ from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
 from makefun import create_function
 
+from pinject_design.di.injected_analysis import get_instance_origin
 from pinject_design.di.proxiable import DelegatedVar
 
 T, U = TypeVar("T"), TypeVar("U")
@@ -465,6 +466,8 @@ class InjectedFunction(Injected[T]):
                  target_function: Callable,
                  kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]]
                  ):
+        # I think we need to know where this class is instantiated outside of pinject_design_package
+        self.origin_frame = get_instance_origin("pinject_design")
         super().__init__()
         assert not isinstance(target_function, (Injected, DelegatedVar))
         assert callable(target_function)
