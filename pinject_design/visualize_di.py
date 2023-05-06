@@ -60,7 +60,6 @@ class DIGraph:
                 pp = PinProvider(b.method)
                 yield k, pp
 
-
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
@@ -233,7 +232,7 @@ class DIGraph:
 
         except Exception as e:
             from loguru import logger
-            logger.warning(f"{e} error from {f}")
+            logger.warning(f"{repr(e)[:100]} error from {repr(f)[:100]}")
             res = f"failed:{f} from {f}"
 
         res = res.replace("<", "").replace(">", "")
@@ -290,7 +289,7 @@ class DIGraph:
         # why am I seeing no deps?
         for root in roots:
             for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
-                logger.info(f"adding {b} -> {a}")
+                #logger.info(f"adding {b} -> {a}")
                 nx_graph.add_edge(b, a)
 
         @memoize
@@ -381,7 +380,6 @@ class DIGraph:
         assert platform.system().lower() == "darwin"
         nx_graph = self.create_dependency_digraph_rooted(tgt, name or "__root__", replace_missing=True)
         nx_graph.show_html_temp()
-
 
 
 # %%

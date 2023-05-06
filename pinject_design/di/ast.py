@@ -4,10 +4,19 @@ from typing import Generic, Tuple, Dict, Any, Callable, Optional, TypeVar
 
 from frozendict import frozendict
 
+from pinject_design.di.injected_analysis import get_instance_origin
+
 T = TypeVar("T")
 
 
 class Expr(Generic[T], ABC):
+    """
+    I want to know where this instance is instantiated
+    """
+
+    def __post_init__(self):
+        self.origin_frame = get_instance_origin('pinject_design')
+
     def __getattr__(self, item: str):
         return Attr(self, item)
 
@@ -91,18 +100,19 @@ class BiOp(Expr):
     right: Expr
 
     def __post_init__(self):
+        super().__post_init__()
         assert isinstance(self.left, Expr), f"{self.left} is not an Expr"
         assert isinstance(self.right, Expr), f"{self.right} is not an Expr"
         assert isinstance(self.name, str), f"{self.name} is not a str"
 
     def __getstate__(self):
-        return self.name,self.left, self.right
+        return self.name, self.left, self.right, self.origin_frame
 
     def __setstate__(self, state):
-        self.name,self.left, self.right = state
+        self.name, self.left, self.right, self.origin_frame = state
 
     def __hash__(self):
-        return hash((self.name,self.left, self.right))
+        return hash((self.name, self.left, self.right))
 
 
 @dataclass
@@ -112,10 +122,10 @@ class Call(Expr):
     kwargs: Dict[str, Expr] = field(default_factory=dict)
 
     def __getstate__(self):
-        return self.func, self.args, self.kwargs
+        return self.func, self.args, self.kwargs, self.origin_frame
 
     def __setstate__(self, state):
-        self.func, self.args, self.kwargs = state
+        self.func, self.args, self.kwargs, self.origin_frame = state
 
     def __hash__(self):
         return hash((self.func, self.args, frozendict(self.kwargs)))
@@ -127,10 +137,10 @@ class Attr(Expr):
     attr_name: str  # static access so no ast involved
 
     def __getstate__(self):
-        return self.data, self.attr_name
+        return self.data, self.attr_name, self.origin_frame
 
     def __setstate__(self, state):
-        self.data, self.attr_name = state
+        self.data, self.attr_name, self.origin_frame = state
 
     def __hash__(self):
         return hash((self.data, self.attr_name))
@@ -142,10 +152,10 @@ class GetItem(Expr):
     key: Expr
 
     def __getstate__(self):
-        return self.data, self.key
+        return self.data, self.key, self.origin_frame
 
     def __setstate__(self, state):
-        self.data, self.key = state
+        self.data, self.key, self.origin_frame = state
 
     def __hash__(self):
         return hash((self.data, self.key))
@@ -159,10 +169,10 @@ class Object(Expr):
     data: Any  # holds user data
 
     def __getstate__(self):
-        return self.data
+        return self.data, self.origin_frame
 
     def __setstate__(self, state):
-        self.data = state
+        self.data, self.origin_frame = state
 
     def __hash__(self):
         # what if the data is not hashable?
