@@ -269,6 +269,9 @@ class DependencyResolver:
         return res
 
     def provide(self, providable: Providable):
+        # I need to make this based on Threaded Future rather than asyncio
+        # because asyncio does not support creating new loop in a thread
+        # which means that we cannot use asyncio.run in a cooruntine
         tgt: Injected = self._to_injected(providable)
 
         def provide_injected(tgt: Injected, key: str):
