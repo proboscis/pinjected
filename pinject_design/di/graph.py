@@ -131,16 +131,17 @@ class IScope:
         pass
 
 
-def trace_string(trace:list[str]):
+def trace_string(trace: list[str]):
     res = "\n"
     for i, item in enumerate(trace):
-        res += f"{i*'  '}{item} -> \n"
+        res += f"{i * '  '}{item} -> \n"
     return res
 
 
 @dataclass
 class MScope(IScope):
     cache: dict[str, Any] = field(default_factory=dict)
+
     def __getstate__(self):
         raise NotImplementedError("MScope is not serializable")
 
@@ -163,6 +164,7 @@ class MChildScope(IScope):
     parent: IScope
     override_targets: set
     cache: dict[str, Any] = field(default_factory=dict)
+
     def __getstate__(self):
         raise NotImplementedError("MChildScope is not serializable")
 
@@ -170,11 +172,11 @@ class MChildScope(IScope):
         from loguru import logger
         if key not in self.cache:
             if key in self.override_targets:
-                logger.info(f"providing {' -> '.join(trace)}")
+                logger.info(f"providing from child:{' -> '.join(trace)}")
                 res = provider_func()
                 self.cache[key] = res
                 res = self.cache[key]
-                logger.info(f"provided {' <- '.join(trace)} = {res}")
+                logger.info(f"provided from child: {' <- '.join(trace)} = {str(res)[:100]}")
             else:
                 self.cache[key] = self.parent.provide(key, provider_func, trace)
         return self.cache[key]
@@ -275,8 +277,8 @@ class DependencyResolver:
         tgt: Injected = self._to_injected(providable)
 
         def provide_injected(tgt: Injected, key: str):
-            assert isinstance(tgt, Injected),f"tgt must be Injected. got {tgt} of type {type(tgt)}"
-            assert isinstance(key, str),f"key must be str. got {key} of type {type(key)}"
+            assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
+            assert isinstance(key, str), f"key must be str. got {key} of type {type(key)}"
             provider = tgt.get_provider()
 
             def get_result():
@@ -295,11 +297,14 @@ class DependencyResolver:
                 res = self._provide(key, trace=[key])
             case EvaledInjected(value, ast) as e:
                 of = ast.origin_frame
-                assert not isinstance(of,Expr),f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
-                key = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno) + f" #{str(id(tgt))}"
+                assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
+                original = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
+                key = f"EvaledInjected#{str(id(tgt))}"
+                from loguru import logger
+                logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
             case InjectedFunction(func, kwargs) as IF if IF.origin_frame is not None:
-                frame = IF.origin_frame
+                frame = IF.origin_fram
                 key = frame.filename + ":" + str(frame.lineno)
                 res = provide_injected(IF, key)
             case DelegatedVar(value, cxt) as dv:
@@ -360,7 +365,7 @@ def get_caller_info(level: int):
 @dataclass
 class MyObjectGraph(IObjectGraph):
     resolver: DependencyResolver
-    src_design:"Design"
+    src_design: "Design"
 
     def __post_init__(self):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
@@ -368,7 +373,7 @@ class MyObjectGraph(IObjectGraph):
     @staticmethod
     def root(design: "Design") -> "MyObjectGraph":
         scope = MScope()
-        graph = MyObjectGraph(None,design)
+        graph = MyObjectGraph(None, design)
         design = design.bind_instance(session=graph)
         resolver = DependencyResolver(scope, design)
         graph.resolver = resolver
@@ -392,7 +397,7 @@ class MyObjectGraph(IObjectGraph):
             from pinject_design import Design
             overrides = Design()
         child_scope = MChildScope(self.resolver.scope, overrides.keys())
-        child_graph = MyObjectGraph(None,self.design+overrides)
+        child_graph = MyObjectGraph(None, self.design + overrides)
         child_design = self.design + overrides.bind_instance(session=child_graph)
         child_resolver = DependencyResolver(child_scope, child_design)
         child_graph.resolver = child_resolver
@@ -415,8 +420,6 @@ class ExtendedObjectGraph(IObjectGraph):
 
     def __init__(self, design: "Design", src: ObjectGraph):
         self._design = design
-        # TODO override ObjectGraph vars to have 'session' as special name to be injected.
-        # TODO use new_binding_to_instance to bind self as session
         back_frame = locations.get_back_frame_loc()
         session_binding = new_binding_to_instance(
             binding_keys.new("session"),
@@ -465,7 +468,7 @@ class ExtendedObjectGraph(IObjectGraph):
         Request = type("Request", (object,), dict(__init__=__init__))
         return self.src.provide(Request).data
 
-    def provide(self, target: Providable) -> Union[object, T]:
+    def provide(self, target: Providable, level: int) -> Union[object, T]:
         try:
             return self._provide(target)
         except NothingInjectableForArgError as e:
