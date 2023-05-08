@@ -167,10 +167,9 @@ class MScope(IScope):
             logger.info(trace_string(trace))
             res = provider()
             self.cache[key] = res
-        res: Future
-        res.add_done_callback(
-            lambda f: logger.info(f"provided   {' <- '.join(trace)} = {repr(res)[:100]}")
-        )
+        # res.add_done_callback(
+        #     lambda f: logger.info(f"provided   {' <- '.join(trace)} = {repr(res)[:100]}")
+        # )
         return res
 
 
@@ -194,19 +193,21 @@ class MChildScope(IScope):
                     logger.info(f"providing {' -> '.join(trace)}")
                     res = provider_func()
                     self.cache[key] = res
-                    res.add_done_callback(
-                        lambda f: logger.info(f"provided {' <- '.join(trace)} = {res}")
-                    )
+                    # res.add_done_callback(
+                    #     lambda f: logger.info(f"provided {' <- '.join(trace)} = {res}")
+                    # )
                 else:
                     self.cache[key] = self.parent.provide(key, provider_func, trace)
             return self.cache[key]
 
+
 @dataclass
 class DummyExecutor:
-    def submit(self,func,*args,**kwargs):
+    def submit(self, func, *args, **kwargs):
         future = Future()
-        future.set_result(func(*args,**kwargs))
+        future.set_result(func(*args, **kwargs))
         return future
+
 
 @dataclass
 class DependencyResolver:
@@ -282,15 +283,18 @@ class DependencyResolver:
                 visited = set()
                 return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
 
-
-    def get_provider_impl(self,dependencies,trace,proivder_func,handler):
-        def impl()->Future:
+    def get_provider_impl(self, dependencies, trace, proivder_func, handler):
+        def impl() -> Future:
             deps = [self._provide(d, trace + [d]) for d in dependencies]
             deps = [d.result() for d in deps]
-            #fut = self.pool.submit(self.memoized_provider(tgt), *deps)
-            fut = DummyExecutor().submit(proivder_func, *deps)
-            fut.add_done_callback(handler)
-            return fut
+            # fut = self.pool.submit(self.memoized_provider(tgt), *deps)
+            res = proivder_func(*deps)
+            class MyFuture:
+                def result(self):
+                    return res
+            # fut.add_done_callback(handler)
+            return MyFuture()
+
         return impl
 
     def _provide(self, tgt: str, trace: list[str] = None) -> "Future[T]":
@@ -329,6 +333,7 @@ class DependencyResolver:
                     logger.error(f"error during provideing from injected object:{tgt},{key}")
 
                     raise f.exception()
+
             provider_impl = self.get_provider_impl(
                 tgt.dependencies(),
                 [key],
