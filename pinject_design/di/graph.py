@@ -5,6 +5,7 @@ from abc import ABCMeta, abstractmethod
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from functools import lru_cache
+from itertools import chain
 from pprint import pformat
 from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable, Set
 
@@ -132,10 +133,11 @@ class IScope:
 
 
 def trace_string(trace: list[str]):
-    res = "\n"
-    for i, item in enumerate(trace):
-        res += f"{i * '  '}{item} -> \n"
-    return res
+    # res = "\n"
+    # for i, item in enumerate(trace):
+    #     res += f"{i * '  '}{item} -> \n"
+    # return res
+    return f"->".join(trace)
 
 
 @dataclass
@@ -263,7 +265,7 @@ class DependencyResolver:
             try:
                 res = provider(*deps)
             except Exception as e:
-                logger.error(f"failed to provide {tgt} with {deps}. {' -> '.join(trace)} -> {e}")
+                logger.error(f"failed to provide {tgt} with {deps}.\n {' -> '.join(trace)} \n -> {e}")
                 raise e
             return res
 
@@ -304,8 +306,11 @@ class DependencyResolver:
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
             case InjectedFunction(func, kwargs) as IF if IF.origin_frame is not None:
-                frame = IF.origin_fram
-                key = frame.filename + ":" + str(frame.lineno)
+                frame = IF.origin_frame
+                original = frame.filename + ":" + str(frame.lineno)
+                key = f"InjectedFunction#{str(id(tgt))}"
+                from loguru import logger
+                logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(IF, key)
             case DelegatedVar(value, cxt) as dv:
                 res = self.provide(dv.eval())
@@ -390,7 +395,12 @@ class MyObjectGraph(IObjectGraph):
         fn, ln = get_caller_info(level)
         logger.debug(
             f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(self.resolver.dependency_tree(target))}")
-        return self.resolver.provide(target)
+        res = self.resolver.provide(target)
+        #flattened = list(chain(*self.resolver.sorted_dependencies(target)))
+        #resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
+        #logger.debug(f"DI blueprint resolution result:\n{pformat(resolved)}")
+        return res
+
 
     def child_session(self, overrides: "Design" = None):
         if overrides is None:
