@@ -244,8 +244,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param kwargs:
         :return:
         """
-        en_injected = {k: Injected.pure(v) for k, v in kwargs.items() if not isinstance(v, Injected)}
-        already_injected = {k: v for k, v in kwargs.items() if isinstance(v, Injected)}
+        en_injected = {k: Injected.pure(v) for k, v in kwargs.items() if not isinstance(v, (Injected, DelegatedVar))}
+        already_injected = {k: v for k, v in kwargs.items() if isinstance(v, (Injected, DelegatedVar))}
         return Injected.bind(_target_function, **en_injected, **already_injected)
 
     def _faster_get_fname(self):
@@ -355,6 +355,13 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     def desync(self):
         return self.map(lambda coroutine: asyncio.run(coroutine))
+
+    # Implementing these might end up with pickling issues. due to recursive getattr..?
+    # def __call__(self, *args, **kwargs):
+    #     return self.proxy(*args, **kwargs)
+    #
+    # def __getitem__(self, item):
+    #     return self.proxy[item]
 
 
 class GeneratedInjected(Injected):

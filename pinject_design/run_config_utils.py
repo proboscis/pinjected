@@ -42,8 +42,10 @@ from pydantic import BaseModel, validator
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
+import pinject_design.global_configs
 from pinject_design import Injected, Design
 from pinject_design.di.app_injected import InjectedEvalContext
+from pinject_design.global_configs import PINJECT_DESIGN_TRACK_ORIGIN
 from pinject_design.di.injected import injected_function
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.util import instances
@@ -434,6 +436,7 @@ def create_configurations(
 ):
     from loguru import logger
     import sys
+    pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = False
     logger.debug(f"python paths:{sys.path}")
     # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
@@ -456,6 +459,7 @@ def create_configurations(
     )
     g = design.to_graph()
     configs: IdeaRunConfigurations = g[inspect_and_make_configurations](module_path)
+    pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = True
     print(configs.json())
 
 

@@ -151,4 +151,8 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)},{expr}")
 
-    return _eval(expr)
+    try:
+        return _eval(expr)
+    except AttributeError as e:
+        raise RuntimeError(f"failed to evaluate {expr}") from e
+
