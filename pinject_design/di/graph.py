@@ -303,12 +303,12 @@ class DependencyResolver:
                 res = self.provide(dv.eval())
             case Injected():
                 from loguru import logger
-                logger.warning(f"unhandled providable type:{tgt}")
+                logger.warning(f"unhandled injected type:{type(tgt)}")
                 provider = tgt.get_provider()
                 key = provider.__name__ + "#" + str(id(tgt))
                 res = provide_injected(tgt, key)
             case _:
-                raise TypeError(f"unhandled providable type:{tgt}")
+                raise TypeError(f"unhandled providable type:{tgt} with type {type(tgt)}")
         # unless we release the block, the coroutine for the remaining task won't get executed.
         # so we must use async provide where 'session' is used
         # one way to prevent this from happening is to use a thread for each provider.

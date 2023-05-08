@@ -5,6 +5,7 @@ from typing import Generic, Tuple, Dict, Any, Callable, Optional, TypeVar
 from frozendict import frozendict
 
 from pinject_design.di.injected_analysis import get_instance_origin
+from pinject_design.global_configs import PINJECT_DESIGN_TRACK_ORIGIN
 
 T = TypeVar("T")
 
@@ -15,7 +16,11 @@ class Expr(Generic[T], ABC):
     """
 
     def __post_init__(self):
-        self.origin_frame = get_instance_origin('pinject_design')
+        # this takes time so... we need to toggle it
+        if PINJECT_DESIGN_TRACK_ORIGIN:
+            self.origin_frame = get_instance_origin('pinject_design')
+        else:
+            self.origin_frame = None
 
     def __getattr__(self, item: str):
         return Attr(self, item)
