@@ -137,15 +137,16 @@ def trace_string(trace: list[str]):
     for i, item in enumerate(trace):
         res += f"{i * '  '}{item} -> \n"
     return res
+
+
 @dataclass
 class LockKeys:
     _locks: dict[str, threading.Lock] = field(default_factory=lambda: defaultdict(threading.Lock))
     lock: threading.Lock = field(default_factory=threading.Lock)
+
     def __getitem__(self, item):
         with self.lock:
             return self._locks[item]
-
-
 
 
 @dataclass
@@ -173,13 +174,12 @@ class MScope(IScope):
         return res
 
 
-
 @dataclass
 class MChildScope(IScope):
     parent: IScope
     override_targets: set
     cache: dict[str, Any] = field(default_factory=dict)
-    locks:LockKeys = field(default_factory=LockKeys)
+    locks: LockKeys = field(default_factory=LockKeys)
 
     # ah we need a lock for each key.
 
@@ -201,6 +201,12 @@ class MChildScope(IScope):
                     self.cache[key] = self.parent.provide(key, provider_func, trace)
             return self.cache[key]
 
+@dataclass
+class DummyExecutor:
+    def submit(self,func,*args,**kwargs):
+        future = Future()
+        future.set_result(func(*args,**kwargs))
+        return future
 
 @dataclass
 class DependencyResolver:
@@ -276,6 +282,17 @@ class DependencyResolver:
                 visited = set()
                 return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
 
+
+    def get_provider_impl(self,dependencies,trace,proivder_func,handler):
+        def impl()->Future:
+            deps = [self._provide(d, trace + [d]) for d in dependencies]
+            deps = [d.result() for d in deps]
+            #fut = self.pool.submit(self.memoized_provider(tgt), *deps)
+            fut = DummyExecutor().submit(proivder_func, *deps)
+            fut.add_done_callback(handler)
+            return fut
+        return impl
+
     def _provide(self, tgt: str, trace: list[str] = None) -> "Future[T]":
         if trace is None:
             trace = []
@@ -287,12 +304,12 @@ class DependencyResolver:
                 logger.error(f"failed to provide {tgt}. {' -> '.join(trace)} -> {f.exception()}")
                 raise f.exception()
 
-        def provider_impl() -> Future:
-            deps = [self._provide(d, trace + [d]) for d in self.memoized_deps(tgt)]
-            deps = [d.result() for d in deps]
-            fut = self.pool.submit(self.memoized_provider(tgt), *deps)
-            fut.add_done_callback(handle_error)
-            return fut
+        provider_impl = self.get_provider_impl(
+            self.memoized_deps(tgt),
+            trace,
+            self.memoized_provider(tgt),
+            handle_error
+        )
 
         res = self.scope.provide(tgt, provider_impl, trace)
         return res
@@ -306,15 +323,19 @@ class DependencyResolver:
         def provide_injected(tgt: Injected, key: str):
             assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
             assert isinstance(key, str), f"key must be str. got {key} of type {type(key)}"
-            def get_result() -> Future:
-                provider = tgt.get_provider()
-                deps = tgt.dependencies()
-                values = [self._provide(d, [key]) for d in tgt.dependencies()]
-                values = [v.result() for v in values]
-                kwargs = dict(zip(deps, values))
-                return self.pool.submit(provider, **kwargs)
 
-            return self.scope.provide(key, get_result, trace=[key])
+            def handle_error(f: Future):
+                if f.exception() is not None:
+                    logger.error(f"error during provideing from injected object:{tgt},{key}")
+
+                    raise f.exception()
+            provider_impl = self.get_provider_impl(
+                tgt.dependencies(),
+                [key],
+                tgt.get_provider(),
+                handle_error
+            )
+            return self.scope.provide(key, provider_impl, trace=[key])
 
         match tgt:
             case InjectedByName(key):
@@ -342,33 +363,6 @@ class DependencyResolver:
         # so we must use async provide where 'session' is used
         # one way to prevent this from happening is to use a thread for each provider.
         return res.result()
-
-
-def run_coroutine_in_new_thread(coroutine):
-    # Future to store the result of the coroutine
-    future = Future()
-
-    # Function to run the coroutine in a new event loop
-    def run_coroutine():
-        from loguru import logger
-        logger.info(f"running coroutine in new thread")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(coroutine)
-            future.set_result(result)
-        except Exception as e:
-            future.set_exception(e)
-        finally:
-            loop.close()
-
-    # Start the new thread
-    t = threading.Thread(target=run_coroutine)
-    t.start()
-    t.join()
-
-    # Return the result of the coroutine
-    return future.result()
 
 
 def get_caller_info(level: int):

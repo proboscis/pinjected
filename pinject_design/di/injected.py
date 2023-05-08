@@ -612,7 +612,6 @@ class MZippedInjected(Injected):
 
     def get_provider(self):
         def impl(**kwargs):  # can we pickle this though?
-            each_kwargs = [{k: kwargs[k] for k in s.dependencies()} for s in self.srcs]
             res = []
             for s in self.srcs:
                 r = s.get_provider()(**{k: kwargs[k] for k in s.dependencies()})
