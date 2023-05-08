@@ -2,7 +2,8 @@ import asyncio
 import inspect
 import threading
 from abc import ABCMeta, abstractmethod
-from concurrent.futures import Future
+from collections import defaultdict
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pprint import pformat
@@ -127,35 +128,50 @@ class IObjectGraph(metaclass=ABCMeta):
 
 class IScope:
     @abstractmethod
-    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+    def provide(self, key, provider_func: Callable[[], Future], trace: List) -> Future:
         pass
 
 
-def trace_string(trace:list[str]):
+def trace_string(trace: list[str]):
     res = "\n"
     for i, item in enumerate(trace):
-        res += f"{i*'  '}{item} -> \n"
+        res += f"{i * '  '}{item} -> \n"
     return res
+@dataclass
+class LockKeys:
+    _locks: dict[str, threading.Lock] = field(default_factory=lambda: defaultdict(threading.Lock))
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    def __getitem__(self, item):
+        with self.lock:
+            return self._locks[item]
+
+
 
 
 @dataclass
 class MScope(IScope):
     cache: dict[str, Any] = field(default_factory=dict)
+    locks: LockKeys = field(default_factory=LockKeys)
+
     def __getstate__(self):
         raise NotImplementedError("MScope is not serializable")
 
-    def provide(self, key, provider: Callable[[], Any], trace: List) -> Any:
+    def provide(self, key, provider: Callable[[], Any], trace: List) -> Future:
         from loguru import logger
         # with self.lock:
-        if key in self.cache:
-            return self.cache[key]
-        assert isinstance(trace, list) and all(isinstance(item, str) for item in trace)
-        logger.info(trace_string(trace))
-        res = provider()
-        self.cache[key] = res
-        res = self.cache[key]
-        logger.info(f"provided   {' <- '.join(trace)} = {repr(res)[:100]}")
-        return self.cache[key]
+        with self.locks[key]:
+            if key in self.cache:
+                return self.cache[key]
+            assert isinstance(trace, list) and all(isinstance(item, str) for item in trace)
+            logger.info(trace_string(trace))
+            res = provider()
+            self.cache[key] = res
+        res: Future
+        res.add_done_callback(
+            lambda f: logger.info(f"provided   {' <- '.join(trace)} = {repr(res)[:100]}")
+        )
+        return res
+
 
 
 @dataclass
@@ -163,27 +179,37 @@ class MChildScope(IScope):
     parent: IScope
     override_targets: set
     cache: dict[str, Any] = field(default_factory=dict)
+    locks:LockKeys = field(default_factory=LockKeys)
+
+    # ah we need a lock for each key.
+
     def __getstate__(self):
         raise NotImplementedError("MChildScope is not serializable")
 
-    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+    def provide(self, key, provider_func: Callable[[], Future], trace: List) -> Future:
         from loguru import logger
-        if key not in self.cache:
-            if key in self.override_targets:
-                logger.info(f"providing {' -> '.join(trace)}")
-                res = provider_func()
-                self.cache[key] = res
-                res = self.cache[key]
-                logger.info(f"provided {' <- '.join(trace)} = {res}")
-            else:
-                self.cache[key] = self.parent.provide(key, provider_func, trace)
-        return self.cache[key]
+        with self.locks[key]:
+            if key not in self.cache:
+                if key in self.override_targets:
+                    logger.info(f"providing {' -> '.join(trace)}")
+                    res = provider_func()
+                    self.cache[key] = res
+                    res.add_done_callback(
+                        lambda f: logger.info(f"provided {' <- '.join(trace)} = {res}")
+                    )
+                else:
+                    self.cache[key] = self.parent.provide(key, provider_func, trace)
+            return self.cache[key]
 
 
 @dataclass
 class DependencyResolver:
     scope: IScope
     src: "Design"
+    pool: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor())
+
+    # TODO make this concurrent with thread!
+    # async cannot be used here.
 
     def _to_injected(self, tgt: Providable):
         match tgt:
@@ -216,6 +242,7 @@ class DependencyResolver:
             return self.mapping[tgt].dependencies()
 
         self.memoized_deps = _memoized_deps
+        assert self.pool is not None
 
     def _dfs(self, tgt: str, visited: set[str] = None):
         if visited is None:
@@ -249,44 +276,43 @@ class DependencyResolver:
                 visited = set()
                 return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
 
-    def _provide(self, tgt: str, trace: list[str] = None):
+    def _provide(self, tgt: str, trace: list[str] = None) -> "Future[T]":
         if trace is None:
             trace = []
         assert isinstance(tgt, str)
         from loguru import logger
-        deps = [self._provide(d, trace + [d]) for d in self.memoized_deps(tgt)]
 
-        def provider_impl():
-            provider = self.memoized_provider(tgt)
-            try:
-                res = provider(*deps)
-            except Exception as e:
-                logger.error(f"failed to provide {tgt} with {deps}. {' -> '.join(trace)} -> {e}")
-                raise e
-            return res
+        def handle_error(f: Future):
+            if f.exception() is not None:
+                logger.error(f"failed to provide {tgt}. {' -> '.join(trace)} -> {f.exception()}")
+                raise f.exception()
+
+        def provider_impl() -> Future:
+            deps = [self._provide(d, trace + [d]) for d in self.memoized_deps(tgt)]
+            deps = [d.result() for d in deps]
+            fut = self.pool.submit(self.memoized_provider(tgt), *deps)
+            fut.add_done_callback(handle_error)
+            return fut
 
         res = self.scope.provide(tgt, provider_impl, trace)
         return res
 
-    def provide(self, providable: Providable):
+    def provide(self, providable: Providable) -> Future:
         # I need to make this based on Threaded Future rather than asyncio
         # because asyncio does not support creating new loop in a thread
         # which means that we cannot use asyncio.run in a cooruntine
         tgt: Injected = self._to_injected(providable)
 
         def provide_injected(tgt: Injected, key: str):
-            assert isinstance(tgt, Injected),f"tgt must be Injected. got {tgt} of type {type(tgt)}"
-            assert isinstance(key, str),f"key must be str. got {key} of type {type(key)}"
-            provider = tgt.get_provider()
-
-            def get_result():
+            assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
+            assert isinstance(key, str), f"key must be str. got {key} of type {type(key)}"
+            def get_result() -> Future:
+                provider = tgt.get_provider()
                 deps = tgt.dependencies()
                 values = [self._provide(d, [key]) for d in tgt.dependencies()]
+                values = [v.result() for v in values]
                 kwargs = dict(zip(deps, values))
-                return provider(**kwargs)
-
-                # I think we need to give a unique name to this injected so that the value will be cached
-                # check if we are in the loop or not
+                return self.pool.submit(provider, **kwargs)
 
             return self.scope.provide(key, get_result, trace=[key])
 
@@ -295,7 +321,7 @@ class DependencyResolver:
                 res = self._provide(key, trace=[key])
             case EvaledInjected(value, ast) as e:
                 of = ast.origin_frame
-                assert not isinstance(of,Expr),f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
+                assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
                 key = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno) + f" #{str(id(tgt))}"
                 res = provide_injected(e, key)
             case InjectedFunction(func, kwargs) as IF if IF.origin_frame is not None:
@@ -315,7 +341,7 @@ class DependencyResolver:
         # unless we release the block, the coroutine for the remaining task won't get executed.
         # so we must use async provide where 'session' is used
         # one way to prevent this from happening is to use a thread for each provider.
-        return res
+        return res.result()
 
 
 def run_coroutine_in_new_thread(coroutine):
@@ -360,7 +386,7 @@ def get_caller_info(level: int):
 @dataclass
 class MyObjectGraph(IObjectGraph):
     resolver: DependencyResolver
-    src_design:"Design"
+    src_design: "Design"
 
     def __post_init__(self):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
@@ -368,7 +394,7 @@ class MyObjectGraph(IObjectGraph):
     @staticmethod
     def root(design: "Design") -> "MyObjectGraph":
         scope = MScope()
-        graph = MyObjectGraph(None,design)
+        graph = MyObjectGraph(None, design)
         design = design.bind_instance(session=graph)
         resolver = DependencyResolver(scope, design)
         graph.resolver = resolver
@@ -392,7 +418,7 @@ class MyObjectGraph(IObjectGraph):
             from pinject_design import Design
             overrides = Design()
         child_scope = MChildScope(self.resolver.scope, overrides.keys())
-        child_graph = MyObjectGraph(None,self.design+overrides)
+        child_graph = MyObjectGraph(None, self.design + overrides)
         child_design = self.design + overrides.bind_instance(session=child_graph)
         child_resolver = DependencyResolver(child_scope, child_design)
         child_graph.resolver = child_resolver
