@@ -16,7 +16,8 @@ from returns.result import safe, Result, Failure
 
 from pinject_design.di.design import PinjectBind, Bind, InjectedProvider
 from pinject_design.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
-    ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign
+    ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
+    PartialInjectedFunction
 from pinject_design.di.util import Design, DirectPinjectProvider, PinjectProviderBind
 from pinject_design.exceptions import DependencyResolutionFailure, _MissingDepsError
 from pinject_design.graph_inspection import DIGraphHelper
@@ -254,6 +255,7 @@ class DIGraph:
                          if isinstance(injected, Callable)
                          else str(injected.value)
                      ),
+                     PartialInjectedFunction,lambda injected: ("injected",f"partial=>{injected.src.target_function.__name__}",self.get_source(injected.src.target_function)),
                      MappedInjected,
                      lambda injected: ("injected", f"{injected.__class__.__name__}", self.get_source(injected.f)),
                      ZippedInjected,

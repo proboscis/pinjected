@@ -252,11 +252,15 @@ class Design:
         return DesignBindContext(self, key)
 
     def _ensure_dbc(self, other: Union["Design", BindingSpec, Dict[str, Bind]]):
-        return match(other,
-                     BindingSpec, lambda o: Design.gather_spec(o),
-                     Design, lambda d: d,
-                     Dict[str, Bind], lambda d: Design(d)
-                     )
+        match other:
+            case BindingSpec():
+                return Design.gather_spec(other)
+            case Design():
+                return other
+            case dict() if all([isinstance(v, Bind) for v in other.values()]):
+                return Design(other)
+            case _:
+                raise ValueError(f"cannot add {type(other)} to Design")
 
     def _merge_multi_binds(self, src, dst):
         # src = Map.of(**src)

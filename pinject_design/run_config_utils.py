@@ -220,6 +220,8 @@ def inspect_and_make_configurations(
                     logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
                 case (_, Maybe.empty):
                     logger.info(f"skipping {i.var_path} because it has no default design path.")
+                case (_, Success(_meta)) if "kind" not in meta:
+                    args = ['get', i.var_path, ddp]
                 case _:
                     raise NotImplementedError(
                         f"Unsupported case {i, meta, ddp}. make sure to provide default design path.")
@@ -262,6 +264,8 @@ def run_anything(cmd: str, var_path, design_path):
     from loguru import logger
     loaded_var = load_variable_by_module_path(var_path)
     meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
+    if not isinstance(meta, dict):
+        meta = {}
     overrides = meta.get("overrides", instances())
     var: Injected = Injected.ensure_injected(load_variable_by_module_path(var_path))
     design: Design = load_variable_by_module_path(design_path)
