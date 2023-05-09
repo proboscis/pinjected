@@ -45,7 +45,7 @@ class Designed(Generic[T], ABC):
     def zip(*others: "Self"):
         from pinject_design import Injected
         from pinject_design import EmptyDesign
-        d = sum([o.design for o in others],EmptyDesign)
+        d = sum([o.design for o in others], EmptyDesign)
         return Designed.bind(Injected.mzip(*[o.internal_injected for o in others])).override(d)
 
     @property

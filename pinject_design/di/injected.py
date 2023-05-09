@@ -173,7 +173,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 return original_function(*bind_result.args, **bind_result.kwargs)
 
             from loguru import logger
-            logger.info(f"injected.partial -> {new_func_sig} ")
+            #logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,

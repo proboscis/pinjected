@@ -348,24 +348,27 @@ class Design:
         return x
 
     def to_graph(self, modules=None, classes=None) -> IObjectGraph:
-        # from loguru import logger
-        # modules = self.modules + (modules or [])
-        # classes = self.classes + (classes or [])
-        # logger.info(f"to_graph:\n\t{pformat(modules)}\n\t{pformat(classes)}")
-        # g = pinject.new_object_graph(
-        #     modules=modules,
-        #     binding_specs=[self.to_binding_spec()],
-        #     classes=classes
-        # )
-        # g._obj_provider._bindable_scopes = BindableScopes(
-        #     id_to_scope={SINGLETON: SessionScope()}
-        # )
-        # return ExtendedObjectGraph(self, g)
+        #So MyObjectGraph's session is still corrupt?
         design = self + Design(
             modules=modules or [],
             classes=classes or []
         )
         return MyObjectGraph.root(design)
+
+    def _old_to_graph(self,modules=None, classes=None) -> IObjectGraph:
+        from loguru import logger
+        modules = self.modules + (modules or [])
+        classes = self.classes + (classes or [])
+        logger.info(f"to_graph:\n\t{pformat(modules)}\n\t{pformat(classes)}")
+        g = pinject.new_object_graph(
+            modules=modules,
+            binding_specs=[self.to_binding_spec()],
+            classes=classes
+        )
+        g._obj_provider._bindable_scopes = BindableScopes(
+            id_to_scope={SINGLETON: SessionScope()}
+        )
+        return ExtendedObjectGraph(self, g)
 
     def run(self, f, modules=None, classes=None):
         return self.to_graph(modules, classes).run(f)

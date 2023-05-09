@@ -6,6 +6,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from functools import lru_cache
 from itertools import chain
+from pathlib import Path
 from pprint import pformat
 from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable, Set
 
@@ -131,13 +132,17 @@ class IScope:
     def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
         pass
 
+    @abstractmethod
+    def __contains__(self, item):
+        raise NotImplementedError()
+
 
 def trace_string(trace: list[str]):
     # res = "\n"
     # for i, item in enumerate(trace):
     #     res += f"{i * '  '}{item} -> \n"
     # return res
-    return f"->".join(trace)
+    return f" -> ".join(trace)
 
 
 @dataclass
@@ -157,8 +162,12 @@ class MScope(IScope):
         res = provider()
         self.cache[key] = res
         res = self.cache[key]
-        logger.info(f"provided   {' <- '.join(trace)} = {repr(res)[:100]}")
+        logger.info(f"{' <- '.join(trace)} = {repr(res)[:100]}")
+        #
         return self.cache[key]
+
+    def __contains__(self, item):
+        return item in self.cache
 
 
 @dataclass
@@ -173,7 +182,7 @@ class MChildScope(IScope):
     def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
         from loguru import logger
         if key not in self.cache:
-            if key in self.override_targets:
+            if key in self.override_targets or key not in self.parent:
                 logger.info(f"providing from child:{' -> '.join(trace)}")
                 res = provider_func()
                 self.cache[key] = res
@@ -182,6 +191,9 @@ class MChildScope(IScope):
             else:
                 self.cache[key] = self.parent.provide(key, provider_func, trace)
         return self.cache[key]
+
+    def __contains__(self, item):
+        return item in self.cache or item in self.parent
 
 
 @dataclass
@@ -285,7 +297,7 @@ class DependencyResolver:
 
             def get_result():
                 deps = tgt.dependencies()
-                values = [self._provide(d, [key]) for d in tgt.dependencies()]
+                values = [self._provide(d, [key, d]) for d in tgt.dependencies()]
                 kwargs = dict(zip(deps, values))
                 return provider(**kwargs)
 
@@ -301,7 +313,8 @@ class DependencyResolver:
                 of = ast.origin_frame
                 assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
                 original = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
-                key = f"EvaledInjected#{str(id(tgt))}"
+                key = Path(ast.origin_frame.filename).name + ":" + str(ast.origin_frame.lineno)
+                # key = f"EvaledInjected#{str(id(tgt))}"
                 from loguru import logger
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
@@ -396,11 +409,10 @@ class MyObjectGraph(IObjectGraph):
         logger.debug(
             f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(self.resolver.dependency_tree(target))}")
         res = self.resolver.provide(target)
-        #flattened = list(chain(*self.resolver.sorted_dependencies(target)))
-        #resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
-        #logger.debug(f"DI blueprint resolution result:\n{pformat(resolved)}")
+        # flattened = list(chain(*self.resolver.sorted_dependencies(target)))
+        # resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
+        # logger.debug(f"DI blueprint resolution result:\n{pformat(resolved)}")
         return res
-
 
     def child_session(self, overrides: "Design" = None):
         if overrides is None:
