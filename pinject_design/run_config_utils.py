@@ -33,17 +33,18 @@ from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
 from pprint import pformat
-from typing import Optional, List, Dict, Awaitable, Coroutine
+from typing import Optional, List, Dict, Awaitable, Coroutine, Union
 
 import loguru
 import returns.maybe as raybe
+from IPython import embed
 from expression import Nothing
 from pydantic import BaseModel, validator
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
 import pinject_design.global_configs
-from pinject_design import Injected, Design
+from pinject_design import Injected, Design, Designed
 from pinject_design.di.app_injected import InjectedEvalContext
 from pinject_design.global_configs import PINJECT_DESIGN_TRACK_ORIGIN
 from pinject_design.di.injected import injected_function
@@ -72,17 +73,19 @@ Maybe.__or__ = maybe__or__
 Maybe.filter = maybe_filter
 
 
-class RunnableInjected(BaseModel):
+class RunnableValue(BaseModel):
     """
     I think it is easier to make as much configuration as possible on this side.
     """
-    src: ModuleVarSpec[Injected]
+    src: ModuleVarSpec[Union[Injected, Designed]]
     design_path: str
 
     @validator('src')
     def validate_src_type(cls, value):
         match value:
             case ModuleVarSpec(Injected(), _):
+                return value
+            case ModuleVarSpec(Designed(), _):
                 return value
             case _:
                 raise ValueError(f"src must be an instance of Injected of ModuleVarSpec, but got {value}")
@@ -105,18 +108,29 @@ class IdeaRunConfigurations(BaseModel):
     configs: Dict[str, List[IdeaRunConfiguration]]
 
 
-def get_injecteds(module_path):
-    def accept(name, tgt):
-        if name.startswith("provide_"):
-            return True
-        elif isinstance(tgt, Injected):
-            return True
-        elif isinstance(tgt, DelegatedVar):
-            if tgt.cxt == InjectedEvalContext:
-                return True
+safe_getattr = safe(getattr)
 
-    injecteds = inspect_module_for_type(module_path, accept)
-    return injecteds
+
+def get_runnables(module_path) -> List[ModuleVarSpec]:
+    def accept(name, tgt):
+        match (name, tgt):
+            case (n, _) if n.startswith("provide"):
+                return True
+            case (_, Injected()):
+                return True
+            case (_, Designed()):
+                return True
+            case (_, DelegatedVar(value, cxt)) if cxt == InjectedEvalContext:
+                return True
+            case (_, DelegatedVar(value, cxt)):
+                return False
+            case (_, item) if hasattr(item, "__runnable_metadata__") and isinstance(item.__runnable_metadata__, dict):
+                return True
+            case _:
+                return False
+
+    runnables = inspect_module_for_type(module_path, accept)
+    return runnables
 
 
 @injected_function
@@ -129,13 +143,13 @@ def extract_runnables(
     def extract_runnable(i: ModuleVarSpec[Injected], meta):
         match i.var, meta, default_design_path:
             case (_, Success({"default_design_path": ddp}), _):
-                return RunnableInjected(src=i, design_path=ddp)
+                return RunnableValue(src=i, design_path=ddp)
             case (_, Success(), Some(ddp)):
-                return RunnableInjected(src=i, design_path=ddp)
+                return RunnableValue(src=i, design_path=ddp)
             case (_, Failure(), Some(ddp)) if callable(i.var):
-                return RunnableInjected(src=i, design_path=ddp)
+                return RunnableValue(src=i, design_path=ddp)
             case (DelegatedVar(), _, Some(ddp)):
-                return RunnableInjected(src=i, design_path=ddp)
+                return RunnableValue(src=i, design_path=ddp)
             case (_, Failure(), Some(ddp)):
                 raise ValueError(f"Cannot find default design path for {i.var_path}")
             case (_, Maybe.empty):
@@ -165,10 +179,11 @@ def inspect_and_make_configurations(
         module_path
 ) -> IdeaRunConfigurations:
     assert isinstance(default_design_paths, list)
-    injecteds = get_injecteds(module_path)
-    logger.info(f"Found {len(injecteds)} injecteds. {pformat(injecteds)}")
+    runnables = get_runnables(module_path)
+    logger.info(f"Found {len(runnables)} injecteds. {pformat(runnables)}")
     results = dict()
-    for i in injecteds:
+    safe_getattr = safe(getattr)
+    for i in runnables:
         name = i.var_path.split(".")[-1]
         results[name] = []
         config_args = {
@@ -176,53 +191,52 @@ def inspect_and_make_configurations(
             'interpreter_path': interpreter_path,
             'working_dir': default_working_dir.value_or(os.getcwd())
         }
-        # So let's rely on __runnable_metadata__
-        if isinstance(i, ModuleVarSpec):
-            meta = safe(getattr)(i.var, "__runnable_metadata__")
-            # so we need to gather the possible design paths
-            ddps = []
-            match meta:
-                case Success({"default_design_path": ddp}):
-                    ddps.append(ddp)
-            ddps += default_design_paths
+        assert isinstance(i, ModuleVarSpec)
+        meta = safe_getattr(i.var, "__runnable_metadata__")
+        # so we need to gather the possible design paths
+        ddps = []
+        match meta:
+            case Success({"default_design_path": ddp}):
+                ddps.append(ddp)
+        ddps += default_design_paths
 
-            # for each ddp we create a run config named with design's name
-            for ddp in ddps:
-                args = None
-                match i.var, meta:
-                    case (_, Success({"kind": "callable"})):
-                        args = ['call', i.var_path, ddp]
-                    case (_, Success({"kind": "object"})):
-                        args = ['get', i.var_path, ddp]
-                    case (_, Failure()) if callable(i.var):
-                        args = ['get', i.var_path, ddp]
-                    case (Injected(), Failure()):
-                        args = ['get', i.var_path, ddp]
-                        logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
-                    case (DelegatedVar(), _):
-                        args = ['get', i.var_path, ddp]
-                        logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
-                    case (_, Failure()):
-                        logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
-                    case (_, Maybe.empty):
-                        logger.info(f"skipping {i.var_path} because it has no default design path.")
-                    case _:
-                        raise NotImplementedError(
-                            f"Unsupported case {i, meta, ddp}. make sure to provide default design path.")
-                if args is not None:
-                    ddp_name = ddp.split(".")[-1]
-                    config = dict(
-                        **config_args,
-                        arguments=['run_injected'] + args,
-                        name=f"{name}({ddp_name})"
-                    )
-                    viz_config = dict(
-                        **config_args,
-                        arguments=['run_injected', 'visualize'] + args[1:],
-                        name=f"{name}({ddp_name})_viz",
-                    )
-                    results[name].append(IdeaRunConfiguration(**config))
-                    results[name].append(IdeaRunConfiguration(**viz_config))
+        # for each ddp we create a run config named with design's name
+        for ddp in ddps:
+            args = None
+            match i.var, meta:
+                case (_, Success({"kind": "callable"})):
+                    args = ['call', i.var_path, ddp]
+                case (_, Success({"kind": "object"})):
+                    args = ['get', i.var_path, ddp]
+                case (_, Failure()) if callable(i.var):
+                    args = ['get', i.var_path, ddp]
+                case (Injected(), Failure()):
+                    args = ['get', i.var_path, ddp]
+                    logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
+                case (DelegatedVar(), _):
+                    args = ['get', i.var_path, ddp]
+                    logger.warning(f"using get for {i.var_path} because it has no __runnable_metadata__")
+                case (_, Failure()):
+                    logger.info(f"skipping {i.var_path} because it has no __runnable_metadata__")
+                case (_, Maybe.empty):
+                    logger.info(f"skipping {i.var_path} because it has no default design path.")
+                case _:
+                    raise NotImplementedError(
+                        f"Unsupported case {i, meta, ddp}. make sure to provide default design path.")
+            if args is not None:
+                ddp_name = ddp.split(".")[-1]
+                config = dict(
+                    **config_args,
+                    arguments=['run_injected'] + args,
+                    name=f"{name}({ddp_name})"
+                )
+                viz_config = dict(
+                    **config_args,
+                    arguments=['run_injected', 'visualize'] + args[1:],
+                    name=f"{name}({ddp_name})_viz",
+                )
+                results[name].append(IdeaRunConfiguration(**config))
+                results[name].append(IdeaRunConfiguration(**viz_config))
     return IdeaRunConfigurations(configs=results)
 
 
@@ -240,15 +254,23 @@ def load_variable_by_module_path(full_module_path):
     return variable
 
 
-def run_injected_impl(cmd: str, var_path, design_path):
+def run_anything(cmd: str, var_path, design_path):
     # TODO pass the resulting errors into gpt to give better error messages.
     # for that, I need to capture the stderr/stdout
     # get the var and design
     # then run it based on cmd with args/kwargs
     from loguru import logger
+    loaded_var = load_variable_by_module_path(var_path)
+    meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
+    overrides = meta.get("overrides", instances())
     var: Injected = Injected.ensure_injected(load_variable_by_module_path(var_path))
     design: Design = load_variable_by_module_path(design_path)
+    design = design + overrides
     # if you return python object, fire will try to use it as a command object
+    # we need to inspect __runnable_metadata__
+    logger.info(f"running target:{var}")
+    logger.info(f"metadata obtained from injected: {meta}")
+
     if cmd == 'call':
         res = design.provide(var)()
         if isinstance(res, Coroutine):
@@ -327,7 +349,7 @@ def run_injected(
     if design_path is None:
         design_path = get_design_path_from_var_path(var_path)
     assert design_path, f"design path must be a valid module path, got:{design_path}"
-    return run_injected_impl(cmd, var_path, design_path, *args, **kwargs)
+    return run_anything(cmd, var_path, design_path, *args, **kwargs)
 
 
 def get_design_path_from_var_path(var_path):
@@ -409,7 +431,7 @@ def find_module_attr(file_path: str, attr_name: str) -> Optional[str]:
 def find_injecteds(
         module_path
 ):
-    injecteds = get_injecteds(module_path)
+    injecteds = get_runnables(module_path)
     return print(json.dumps([i.var_path for i in injecteds]))
 
 
@@ -480,7 +502,7 @@ def retrieve_design_path_from_injected(tgt: Injected):
 
 
 def make_sandbox(module_file_path, var_name):
-    tgts = get_injecteds(module_file_path)
+    tgts = get_runnables(module_file_path)
     name_to_tgt = {tgt.var_path.split(".")[-1]: tgt for tgt in tgts}
     tgt: ModuleVarSpec = name_to_tgt[var_name]
     default_design_paths = find_default_design_paths(module_file_path, None)
