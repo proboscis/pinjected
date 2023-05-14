@@ -313,7 +313,8 @@ class DependencyResolver:
                 of = ast.origin_frame
                 assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
                 original = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
-                key = Path(ast.origin_frame.filename).name + ":" + str(ast.origin_frame.lineno)
+
+                key = Path(ast.origin_frame.filename).name + ":" + str(ast.origin_frame.lineno)+"#"+str(id(tgt))
                 # key = f"EvaledInjected#{str(id(tgt))}"
                 from loguru import logger
                 logger.info(f"naming new key: {key} == {original}")
