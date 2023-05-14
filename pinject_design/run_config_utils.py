@@ -255,6 +255,25 @@ def load_variable_by_module_path(full_module_path):
 
     return variable
 
+def notify(text) -> str:
+    """
+    pops up a notification with text
+    :param text:
+    :return: Notification result
+    """
+    from loguru import logger
+    import os
+    org = text
+    text = text.replace('"', '\\"')
+    text = text.replace("'", "")
+    script = f"'display notification \"{text}\" with title \"OpenAI notification\" sound name \"Glass\"'"
+    cmd = f"""osascript -e {script} """
+    logger.info(f"sending notification:{org}")
+    logger.info(f"running notification cmd:{cmd}")
+    os.system(cmd)
+    return f"Notified user with text: {org}"
+
+
 
 def run_anything(cmd: str, var_path, design_path):
     # TODO pass the resulting errors into gpt to give better error messages.
@@ -274,7 +293,7 @@ def run_anything(cmd: str, var_path, design_path):
     # we need to inspect __runnable_metadata__
     logger.info(f"running target:{var}")
     logger.info(f"metadata obtained from injected: {meta}")
-
+    res = None
     if cmd == 'call':
         res = design.provide(var)()
         if isinstance(res, Coroutine):
@@ -295,7 +314,7 @@ def run_anything(cmd: str, var_path, design_path):
         logger.info(f"visualizing {var_path} with design {design_path}")
         logger.info(f"deps:{var.dependencies()}")
         design.to_vis_graph().show_injected_html(var)
-        return
+    notify(f"Run result:\n{res}")
 
 
 @dataclass
