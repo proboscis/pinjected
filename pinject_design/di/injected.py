@@ -350,6 +350,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 raise RuntimeError(f"not an injected object: {data},type(data)={type(data)}")
 
     def __add__(self, other: "Injected"):
+        match other:
+            case int() | float() | str():
+                other = Injected.pure(other)
         other = Injected.ensure_injected(other)
         return self.zip(other).map(lambda t: t[0] + t[1])
 

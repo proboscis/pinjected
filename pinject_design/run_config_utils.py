@@ -255,7 +255,26 @@ def load_variable_by_module_path(full_module_path):
 
     return variable
 
-def notify(text) -> str:
+
+notification_sounds = [
+    "Basso",
+    "Blow",
+    "Bottle",
+    "Frog",
+    "Funk",
+    "Glass",
+    "Hero",
+    "Morse",
+    "Ping",
+    "Pop",
+    "Purr",
+    "Sosumi",
+    "Submarine",
+    "Tink"
+]
+
+
+def notify(text, sound='Glass') -> str:
     """
     pops up a notification with text
     :param text:
@@ -266,14 +285,12 @@ def notify(text) -> str:
     org = text
     text = text.replace('"', '\\"')
     text = text.replace("'", "")
-    script = f"'display notification \"{text}\" with title \"OpenAI notification\" sound name \"Glass\"'"
+    script = f"'display notification \"{text}\" with title \"OpenAI notification\" sound name \"{sound}\"'"
     cmd = f"""osascript -e {script} """
-    logger.info(f"sending notification:{org}")
-    logger.info(f"running notification cmd:{cmd}")
     os.system(cmd)
     return f"Notified user with text: {org}"
 
-
+# maybe we want to distinguish the error with its complexity and pass it to gpt if required.
 
 def run_anything(cmd: str, var_path, design_path):
     # TODO pass the resulting errors into gpt to give better error messages.
@@ -294,26 +311,30 @@ def run_anything(cmd: str, var_path, design_path):
     logger.info(f"running target:{var}")
     logger.info(f"metadata obtained from injected: {meta}")
     res = None
-    if cmd == 'call':
-        res = design.provide(var)()
-        if isinstance(res, Coroutine):
-            res = asyncio.run(res)
-        logger.info(f"run_injected result:\n{res}")
-    elif cmd == 'get':
-        res = design.provide(var)
-        if isinstance(res, Coroutine):
-            res = asyncio.run(res)
-        logger.info(f"run_injected result:\n{res}")
-    elif cmd == 'fire':
-        res = design.provide(var)
-        if isinstance(res, Coroutine):
-            res = asyncio.run(res)
-        logger.info(f"run_injected result:\n{res}")
-    elif cmd == 'visualize':
-        from loguru import logger
-        logger.info(f"visualizing {var_path} with design {design_path}")
-        logger.info(f"deps:{var.dependencies()}")
-        design.to_vis_graph().show_injected_html(var)
+    try:
+        if cmd == 'call':
+            res = design.provide(var)()
+            if isinstance(res, Coroutine):
+                res = asyncio.run(res)
+            logger.info(f"run_injected result:\n{res}")
+        elif cmd == 'get':
+            res = design.provide(var)
+            if isinstance(res, Coroutine):
+                res = asyncio.run(res)
+            logger.info(f"run_injected result:\n{res}")
+        elif cmd == 'fire':
+            res = design.provide(var)
+            if isinstance(res, Coroutine):
+                res = asyncio.run(res)
+            logger.info(f"run_injected result:\n{res}")
+        elif cmd == 'visualize':
+            from loguru import logger
+            logger.info(f"visualizing {var_path} with design {design_path}")
+            logger.info(f"deps:{var.dependencies()}")
+            design.to_vis_graph().show_injected_html(var)
+    except Exception as e:
+        notify(f"Run failed with error:\n{e}", sound='Frog')
+        raise e
     notify(f"Run result:\n{res}")
 
 
