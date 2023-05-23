@@ -244,8 +244,19 @@ class DependencyResolver:
         for dep in deps:
             yield from self._dfs(dep, visited)
 
-    def _dependency_tree(self, tgt: str):
-        return {t: self._dependency_tree(t) for t in self.memoized_deps(tgt)}
+    def _dependency_tree(self, tgt: str,trace: list[str] = None):
+        trace = trace or [tgt]
+        try:
+            res = dict()
+            deps = self.memoized_deps(tgt)
+            for d in deps:
+                res[d] = self._dependency_tree(d, trace + [d])
+            return res
+        except KeyError as ke:
+            from loguru import logger
+            msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
+            raise RuntimeError(msg) from ke
+
 
     def dependency_tree(self, providable: Providable):
         match providable:
