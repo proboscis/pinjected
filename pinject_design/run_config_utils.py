@@ -180,7 +180,7 @@ def inspect_and_make_configurations(
 ) -> IdeaRunConfigurations:
     assert isinstance(default_design_paths, list)
     runnables = get_runnables(module_path)
-    logger.info(f"Found {len(runnables)} injecteds. {pformat(runnables)}")
+    logger.info(f"Found {len(runnables)} injecteds")
     results = dict()
     safe_getattr = safe(getattr)
     for i in runnables:

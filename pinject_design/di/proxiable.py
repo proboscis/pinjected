@@ -46,6 +46,11 @@ class IProxyContext(Generic[T]):
         """
         raise NotImplementedError()
 
+    def unary_impl(self, op: str, tgt: T):
+        """Unary Operator Implementation
+        op: '-' | '~' | 'len' | 'del'
+        """
+        raise NotImplementedError()
 
 @dataclass
 class DelegatedVar(Generic[T]):

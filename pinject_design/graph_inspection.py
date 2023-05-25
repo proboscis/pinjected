@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from pprint import pformat
 
+from loguru import logger
 from pinject.bindings import default_get_arg_names_from_class_name
 from pinject.finding import find_classes
 
@@ -20,6 +22,9 @@ class DIGraphHelper:
         return {k:b for k,b in self.src.bindings.items()}
 
     def total_mappings(self)->dict[str,Injected]:
+        from pinject_design.di.implicit_globals import IMPLICIT_BINDINGS
+        global_implicit_mappings = IMPLICIT_BINDINGS
+        logger.warning(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
         implicit_mappings = {k:Injected.bind(v) for k,v in self.get_implicit_mapping()}
         explicit_mappings = {k:bind.to_injected() for k,bind in self.get_explicit_mapping().items()}
-        return {**implicit_mappings,**explicit_mappings}
+        return {**global_implicit_mappings,**implicit_mappings,**explicit_mappings}
