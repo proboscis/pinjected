@@ -9,6 +9,7 @@ from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
 
 from makefun import create_function
 
+from pinject_design.di.implicit_globals import IMPLICIT_BINDINGS
 from pinject_design.di.injected_analysis import get_instance_origin
 from pinject_design.di.proxiable import DelegatedVar
 
@@ -74,7 +75,6 @@ class ParamInfo:
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
     this class is actually an abstraction of fucntion partial application.
-    TODO get out of pinject's dependency resolution system, so that we can take full control.
     """
 
     @staticmethod
@@ -159,7 +159,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                     vargs = _args[num_missing_positional_args + len(missing_non_positional_args):]
                 else:
                     vargs = []
-
                 # hmm we need to pass kwargs too..
                 # logger.info(f"args:{args}")
                 # args contains values from kwargs...
@@ -358,6 +357,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     def desync(self):
         return self.map(lambda coroutine: asyncio.run(coroutine))
+
+    def __len__(self):
+        return self.map(len)
 
     # Implementing these might end up with pickling issues. due to recursive getattr..?
     # def __call__(self, *args, **kwargs):
@@ -709,6 +711,8 @@ def injected_function(f) -> PartialInjectedFunction:
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
             tgts[k] = Injected.by_name(k)
     new_f = Injected.partial(f, **tgts)
+
+    IMPLICIT_BINDINGS[f.__name__] = new_f
 
     return new_f
 

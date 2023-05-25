@@ -198,7 +198,10 @@ class MChildScope(IScope):
 
 @dataclass
 class DependencyResolver:
-    scope: IScope
+    """
+    okey I want to make a variant that uses IMPLICIT_BINDINGS when the target is not in the mapping.
+    what we need is actually a str->Injected mapping.
+    """
     src: "Design"
 
     def _to_injected(self, tgt: Providable):
@@ -219,6 +222,7 @@ class DependencyResolver:
     def __post_init__(self):
         # gather things to build providers graph
         helper = DIGraphHelper(self.src)
+        #
         self.mapping: dict[str, Injected] = helper.total_mappings()
 
         @lru_cache()
@@ -244,7 +248,7 @@ class DependencyResolver:
         for dep in deps:
             yield from self._dfs(dep, visited)
 
-    def _dependency_tree(self, tgt: str,trace: list[str] = None):
+    def _dependency_tree(self, tgt: str, trace: list[str] = None):
         trace = trace or [tgt]
         try:
             res = dict()
@@ -256,7 +260,6 @@ class DependencyResolver:
             from loguru import logger
             msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
             raise RuntimeError(msg) from ke
-
 
     def dependency_tree(self, providable: Providable):
         match providable:
@@ -276,12 +279,12 @@ class DependencyResolver:
                 visited = set()
                 return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
 
-    def _provide(self, tgt: str, trace: list[str] = None):
+    def _provide(self, tgt: str, scope: IScope, trace: list[str] = None):
         if trace is None:
             trace = []
         assert isinstance(tgt, str)
         from loguru import logger
-        deps = [self._provide(d, trace + [d]) for d in self.memoized_deps(tgt)]
+        deps = [self._provide(d, scope, trace + [d]) for d in self.memoized_deps(tgt)]
 
         def provider_impl():
             provider = self.memoized_provider(tgt)
@@ -292,10 +295,10 @@ class DependencyResolver:
                 raise e
             return res
 
-        res = self.scope.provide(tgt, provider_impl, trace)
+        res = scope.provide(tgt, provider_impl, trace)
         return res
 
-    def provide(self, providable: Providable):
+    def provide(self, providable: Providable, scope: IScope):
         # I need to make this based on Threaded Future rather than asyncio
         # because asyncio does not support creating new loop in a thread
         # which means that we cannot use asyncio.run in a cooruntine
@@ -308,24 +311,24 @@ class DependencyResolver:
 
             def get_result():
                 deps = tgt.dependencies()
-                values = [self._provide(d, [key, d]) for d in tgt.dependencies()]
+                values = [self._provide(d, scope, [key, d]) for d in tgt.dependencies()]
                 kwargs = dict(zip(deps, values))
                 return provider(**kwargs)
 
                 # I think we need to give a unique name to this injected so that the value will be cached
                 # check if we are in the loop or not
 
-            return self.scope.provide(key, get_result, trace=[key])
+            return scope.provide(key, get_result, trace=[key])
 
         match tgt:
             case InjectedByName(key):
-                res = self._provide(key, trace=[key])
+                res = self._provide(key, scope, trace=[key])
             case EvaledInjected(value, ast) as e:
                 of = ast.origin_frame
                 assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
                 original = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
 
-                key = Path(ast.origin_frame.filename).name + ":" + str(ast.origin_frame.lineno)+"#"+str(id(tgt))
+                key = Path(ast.origin_frame.filename).name + ":" + str(ast.origin_frame.lineno) + "#" + str(id(tgt))
                 # key = f"EvaledInjected#{str(id(tgt))}"
                 from loguru import logger
                 logger.info(f"naming new key: {key} == {original}")
@@ -338,7 +341,7 @@ class DependencyResolver:
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(IF, key)
             case DelegatedVar(value, cxt) as dv:
-                res = self.provide(dv.eval())
+                res = self.provide(dv.eval(), scope)
             case Injected():
                 from loguru import logger
                 logger.warning(f"unhandled injected type:{type(tgt)}")
@@ -351,6 +354,14 @@ class DependencyResolver:
         # so we must use async provide where 'session' is used
         # one way to prevent this from happening is to use a thread for each provider.
         return res
+
+    def child(self, session_provider, overrides: 'Design' = None):
+        if overrides is None:
+            from pinject_design import Design
+            overrides = Design()
+        child_design = self.src + overrides.bind_provider(session=session_provider)
+        child_resolver = DependencyResolver(child_design)
+        return child_resolver
 
 
 def run_coroutine_in_new_thread(coroutine):
@@ -396,6 +407,7 @@ def get_caller_info(level: int):
 class MyObjectGraph(IObjectGraph):
     resolver: DependencyResolver
     src_design: "Design"
+    scope: IScope
 
     def __post_init__(self):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
@@ -403,9 +415,9 @@ class MyObjectGraph(IObjectGraph):
     @staticmethod
     def root(design: "Design") -> "MyObjectGraph":
         scope = MScope()
-        graph = MyObjectGraph(None, design)
+        graph = MyObjectGraph(None, design, scope)
         design = design.bind_instance(session=graph)
-        resolver = DependencyResolver(scope, design)
+        resolver = DependencyResolver(design)
         graph.resolver = resolver
         return graph
 
@@ -420,7 +432,7 @@ class MyObjectGraph(IObjectGraph):
         fn, ln = get_caller_info(level)
         logger.debug(
             f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(self.resolver.dependency_tree(target))}")
-        res = self.resolver.provide(target)
+        res = self.resolver.provide(target, self.scope)
         # flattened = list(chain(*self.resolver.sorted_dependencies(target)))
         # resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
         # logger.debug(f"DI blueprint resolution result:\n{pformat(resolved)}")
@@ -430,10 +442,9 @@ class MyObjectGraph(IObjectGraph):
         if overrides is None:
             from pinject_design import Design
             overrides = Design()
-        child_scope = MChildScope(self.resolver.scope, overrides.keys())
-        child_graph = MyObjectGraph(None, self.design + overrides)
-        child_design = self.design + overrides.bind_instance(session=child_graph)
-        child_resolver = DependencyResolver(child_scope, child_design)
+        child_scope = MChildScope(self.scope, set(overrides.keys()))
+        child_graph = MyObjectGraph(None, self.design + overrides, child_scope)
+        child_resolver = self.resolver.child(lambda: child_graph, overrides)
         child_graph.resolver = child_resolver
         return child_graph
 
