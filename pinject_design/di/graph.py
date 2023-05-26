@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import threading
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, ABC
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -46,6 +46,19 @@ class MissingDependencyException(Exception):
 
 
 Providable = Union[str, Type[T], Injected[T], Callable, Designed[T], DelegatedVar[Injected], DelegatedVar[Designed]]
+
+
+class IObjectGraphFactory(ABC):
+    def create(self) -> "IObjectGraph":
+        pass
+
+
+@dataclass
+class OGFactoryByDesign(IObjectGraphFactory):
+    src: "Design"
+
+    def create(self) -> "IObjectGraph":
+        return self.src.to_graph()
 
 
 class IObjectGraph(metaclass=ABCMeta):
@@ -117,6 +130,11 @@ class IObjectGraph(metaclass=ABCMeta):
                 return self._providable_to_designed(Injected.bind(provider))
             case _:
                 raise TypeError(f"Unknown target:{target} queried for DI.")
+
+    @property
+    @abstractmethod
+    def factory(self)->IObjectGraphFactory:
+        pass
 
     @property
     @abstractmethod
@@ -411,6 +429,10 @@ class MyObjectGraph(IObjectGraph):
 
     def __post_init__(self):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
+
+    @property
+    def factory(self) -> IObjectGraphFactory:
+        return OGFactoryByDesign(self.src_design)
 
     @staticmethod
     def root(design: "Design") -> "MyObjectGraph":
