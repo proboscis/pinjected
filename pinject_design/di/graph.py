@@ -326,13 +326,16 @@ class DependencyResolver:
             assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
             assert isinstance(key, str), f"key must be str. got {key} of type {type(key)}"
             provider = tgt.get_provider()
+            # TODO handle the case where this provider raises an exception
 
             def get_result():
                 deps = tgt.dependencies()
                 values = [self._provide(d, scope, [key, d]) for d in tgt.dependencies()]
                 kwargs = dict(zip(deps, values))
-                return provider(**kwargs)
-
+                try:
+                    return provider(**kwargs)
+                except Exception as e:
+                    raise RuntimeError(f"failed to provide {key} due to an exception!") from e
                 # I think we need to give a unique name to this injected so that the value will be cached
                 # check if we are in the loop or not
 
