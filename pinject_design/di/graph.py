@@ -18,6 +18,7 @@ from pinject.errors import NothingInjectableForArgError, OnlyInstantiableViaProv
 from pinject.object_graph import ObjectGraph
 from pinject.object_providers import ObjectProvider
 from returns.maybe import Nothing, Maybe, Some
+from returns.result import safe
 
 from pinject_design.di.app_injected import EvaledInjected
 from pinject_design.di.ast import Expr
@@ -133,7 +134,7 @@ class IObjectGraph(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def factory(self)->IObjectGraphFactory:
+    def factory(self) -> IObjectGraphFactory:
         pass
 
     @property
@@ -326,6 +327,7 @@ class DependencyResolver:
             assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
             assert isinstance(key, str), f"key must be str. got {key} of type {type(key)}"
             provider = tgt.get_provider()
+
             # TODO handle the case where this provider raises an exception
 
             def get_result():
@@ -412,11 +414,13 @@ def run_coroutine_in_new_thread(coroutine):
     return future.result()
 
 
+@safe
 def get_caller_info(level: int):
     caller_frame = inspect.currentframe()
     for _ in range(level):
         caller_frame = caller_frame.f_back
     caller_info = inspect.getframeinfo(caller_frame)
+    # caller_info can be None
 
     file_name = caller_info.filename
     line_number = caller_info.lineno
@@ -454,7 +458,8 @@ class MyObjectGraph(IObjectGraph):
         """
         from loguru import logger
         # I need to get the filename and line number of the caller
-        fn, ln = get_caller_info(level)
+
+        fn, ln = get_caller_info(level).value_or(("unknown_function", "unknown_line"))
         logger.debug(
             f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(self.resolver.dependency_tree(target))}")
         res = self.resolver.provide(target, self.scope)

@@ -26,18 +26,17 @@ So I guess I need to introduce a new data structure.
 import asyncio
 import importlib
 import importlib.util
+import inspect
 import json
 import os
 import sys
-from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
 from pprint import pformat
-from typing import Optional, List, Dict, Awaitable, Coroutine, Union
+from typing import Optional, List, Dict, Coroutine, Union, OrderedDict
 
 import loguru
 import returns.maybe as raybe
-from IPython import embed
 from expression import Nothing
 from pydantic import BaseModel, validator
 from returns.maybe import Maybe, Some, maybe
@@ -46,10 +45,9 @@ from returns.result import safe, Success, Failure
 import pinject_design.global_configs
 from pinject_design import Injected, Design, Designed
 from pinject_design.di.app_injected import InjectedEvalContext
-from pinject_design.global_configs import PINJECT_DESIGN_TRACK_ORIGIN
 from pinject_design.di.injected import injected_function
 from pinject_design.di.proxiable import DelegatedVar
-from pinject_design.di.util import instances
+from pinject_design.di.util import instances, providers
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 
 
@@ -201,6 +199,7 @@ def inspect_and_make_configurations(
         ddps += default_design_paths
 
         # for each ddp we create a run config named with design's name
+        logger.info(f"found default design path {ddps}")
         for ddp in ddps:
             args = None
             match i.var, meta:
@@ -243,6 +242,8 @@ def inspect_and_make_configurations(
 
 
 def load_variable_by_module_path(full_module_path):
+    from loguru import logger
+    logger.info(f"loading {full_module_path}")
     module_path_parts = full_module_path.split('.')
     variable_name = module_path_parts[-1]
     module_path = '.'.join(module_path_parts[:-1])
@@ -280,7 +281,6 @@ def notify(text, sound='Glass') -> str:
     :param text:
     :return: Notification result
     """
-    from loguru import logger
     import os
     org = text
     text = text.replace('"', '\\"')
@@ -289,6 +289,7 @@ def notify(text, sound='Glass') -> str:
     cmd = f"""osascript -e {script} """
     os.system(cmd)
     return f"Notified user with text: {org}"
+
 
 # maybe we want to distinguish the error with its complexity and pass it to gpt if required.
 
@@ -389,7 +390,6 @@ def run_injected(
         design_path: str = None,
         *args, **kwargs
 ):
-    from loguru import logger
     if design_path is None:
         design_path = get_design_path_from_var_path(var_path)
     assert design_path, f"design path must be a valid module path, got:{design_path}"
@@ -479,7 +479,7 @@ def find_injecteds(
     return print(json.dumps([i.var_path for i in injecteds]))
 
 
-def find_default_design_paths(module_path, default_design_path):
+def find_default_design_paths(module_path, default_design_path: Optional[str]) -> list[str]:
     """
     :param module_path: absolute file path.("/")
     :param default_design_path: absolute module path (".")
@@ -488,7 +488,8 @@ def find_default_design_paths(module_path, default_design_path):
     default_design_paths: list[str] = maybe(find_module_attr)(module_path, '__default_design_paths__').value_or([])
     default_design_path: list[str] = (
             maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
-        lambda p: [p]).value_or([])
+        lambda p: [p]).value_or([]
+                                )
     default_design_paths = default_design_paths + default_design_path
     return default_design_paths
 
@@ -568,6 +569,80 @@ def make_sandbox(module_file_path, var_name):
     print(sandbox_path)
 
 
+def create_main_command(
+        targets: OrderedDict[str, Injected],
+        design_paths: OrderedDict[str, str],
+):
+    def main(target: str, design_path: Optional[str] = None):
+        tgt = targets[target]
+        if design_path is None:
+            design_path = design_paths[list(design_paths.keys())[0]]
+        design = load_variable_by_module_path(design_path)
+        cmd = design.to_graph()[tgt]
+        return cmd
+
+    return main
+
+
+@injected_function
+def main_command(
+        main_targets: OrderedDict[str, Injected],
+        main_design_paths: OrderedDict[str, str],
+        /, target: str, design_path: Optional[str] = None
+):
+    tgt = main_targets[target]
+    if design_path is None:
+        design_path = main_design_paths[list(main_design_paths.keys())[0]]
+    design = load_variable_by_module_path(design_path)
+    cmd = design.to_graph()[tgt]
+    return cmd
+
+
+def provide_module_path(logger, root_frame):
+    frame_info = inspect.getframeinfo(root_frame)
+    module_path = frame_info.filename
+    logger.debug(f"module path:{module_path}")
+    return module_path
+
+
+def provide_runnables(logger, module_path) -> Dict[str, Injected]:
+    tgts = get_runnables(module_path)
+    name_to_tgt = {tgt.var_path.split(".")[-1]: tgt.var for tgt in tgts}
+    logger.info(f"main targets:{pformat(name_to_tgt.keys())}")
+    return name_to_tgt
+
+
+def provide_design_paths(logger, module_path) -> OrderedDict[str, str]:
+    design_paths = find_default_design_paths(module_path, None)
+    design_paths = {design_path.split('.')[-1]: design_path for design_path in design_paths}
+    logger.info(f"main design paths:{pformat(design_paths.keys())}")
+    return design_paths
+
+
+def run_main():
+    """
+    inspect the caller's frame for runnable target and design path.
+    delegates its execution to fire.Fire.
+
+    get the file this is run,
+    find the runnables
+    find the designs
+    pass it to fire.
+    :return:
+    """
+    import inspect
+    import fire
+    from loguru import logger
+    cmd = (instances(
+        root_frame=inspect.currentframe().f_back,
+        logger=logger
+    ) + providers(
+        module_path=provide_module_path,
+        main_targets=provide_runnables,
+        main_design_paths=provide_design_paths
+    )).provide(main_command)
+    fire.Fire(cmd)
+
 def main():
     import fire
     fire.Fire({
@@ -578,6 +653,10 @@ def main():
         'find_injecteds': find_injecteds,
         'make_sandbox': make_sandbox,
     })
+
+
+# I need a function that converts an injected function into a fire command
+# I want it to find a default design and then use it and pass it to fire
 
 
 if __name__ == '__main__':

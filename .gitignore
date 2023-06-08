@@ -2,3 +2,7 @@
 .pyc
 *.pyc
 *.egg-info/
+*.whl
+*.tar.gz
+*.log
+*.iml
