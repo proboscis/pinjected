@@ -588,12 +588,27 @@ def create_main_command(
 def main_command(
         main_targets: OrderedDict[str, Injected],
         main_design_paths: OrderedDict[str, str],
-        /, target: str, design_path: Optional[str] = None
+        main_override_resolver,
+        /,
+        target: str,
+        design_path: Optional[str] = None,
+        overrides:str = None
 ):
+    """
+    :param main_targets:
+    :param main_design_paths:
+    :param target:
+    :param design_path:
+    :param overrides:
+        -
+    :return:
+    """
+
     tgt = main_targets[target]
     if design_path is None:
         design_path = main_design_paths[list(main_design_paths.keys())[0]]
-    design = load_variable_by_module_path(design_path)
+    main_overrides = main_override_resolver(overrides)
+    design = load_variable_by_module_path(design_path) + main_overrides
     cmd = design.to_graph()[tgt]
     return cmd
 
@@ -618,11 +633,35 @@ def provide_design_paths(logger, module_path) -> OrderedDict[str, str]:
     logger.info(f"main design paths:{pformat(design_paths.keys())}")
     return design_paths
 
+@injected_function
+def main_override_resolver(query)->Design:
+    """
+    :param query: can be filename with .json, .yaml.
+    we can also try parsing it as json.
+    :return:
+    """
+    if query is None:
+        return Design()
+    elif query.endswith('.json'):
+        import json
+        return instances(**json.load(open(query)))
+    elif query.endswith('.yaml'):
+        import yaml
+        return instances(**yaml.load(open(query), Loader=yaml.SafeLoader))
+    else:
+        try:
+            import json
+            return instances(**json.loads(query))
+        except:
+            raise ValueError(f"cannot parse {query} as json")
+
 
 def run_main():
     """
     inspect the caller's frame for runnable target and design path.
     delegates its execution to fire.Fire.
+
+    I want to resolve the override, but we don't know which protocol we should use.
 
     get the file this is run,
     find the runnables
@@ -635,7 +674,7 @@ def run_main():
     from loguru import logger
     cmd = (instances(
         root_frame=inspect.currentframe().f_back,
-        logger=logger
+        logger=logger,
     ) + providers(
         module_path=provide_module_path,
         main_targets=provide_runnables,
