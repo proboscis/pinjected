@@ -367,7 +367,7 @@ class DependencyResolver:
                 res = self.provide(dv.eval(), scope)
             case Injected():
                 from loguru import logger
-                logger.warning(f"unhandled injected type:{type(tgt)}")
+                logger.info(f"default injected type:{type(tgt)}")
                 provider = tgt.get_provider()
                 key = provider.__name__ + "#" + str(id(tgt))
                 res = provide_injected(tgt, key)

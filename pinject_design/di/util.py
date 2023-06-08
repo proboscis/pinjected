@@ -383,7 +383,7 @@ class Design:
         :param modules: modules to use for graph construction
         :return:
         """
-        return self.to_graph(modules=modules, classes=classes).provide(target,level=3)
+        return self.to_graph(modules=modules, classes=classes).provide(target,level=4)
 
     @staticmethod
     def gather_spec(b: BindingSpec) -> "Design":
