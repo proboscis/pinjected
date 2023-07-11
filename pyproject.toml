@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pinject-design"
-version = "0.1.59"
+version = "0.1.73"
 description = "immutable wrapper for pinject"
 authors = [ "proboscis <nameissoap@gmail.com>",]
 license = "MIT"
@@ -23,6 +23,9 @@ cytoolz = "*"
 frozendict = "*"
 fire = "*"
 pyyaml = "*"
+pydantic = "*"
+networkx = "*"
+pyvis = "*"
 
 [tool.poetry.dev-dependencies]
 

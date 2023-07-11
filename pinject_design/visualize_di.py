@@ -3,6 +3,7 @@ import platform
 import uuid
 from dataclasses import dataclass
 from itertools import chain
+from pathlib import Path
 from pprint import pformat
 from typing import Callable, List, Any, Dict, Union
 
@@ -70,8 +71,9 @@ class DIGraph:
         self.implicit_mappings = dict(self.helper.get_implicit_mapping())
         self.pinject_mappings = dict(self._get_configured())
         # we want to know if the binding is InjectedProvider or not
-        self.explicit_mappings: Dict[str, Bind] = {k: b for k, b in self.src.bindings.items() if
-                                                   k not in self.pinject_mappings}
+        self.explicit_mappings: Dict[str, Injected] = {k: b.to_injected() for k, b in self.src.bindings.items() if
+                                                       k not in self.pinject_mappings}
+        self.explicit_mappings.update(**self.helper.total_mappings())
         self.multi_mappings = {k: b for k, b in self.src.multi_binds.items()}
 
         self.direct_injected = dict()
@@ -83,10 +85,11 @@ class DIGraph:
                 src = src.replace("provide_", "")
             if src in self.explicit_mappings:
                 em = self.explicit_mappings[src]
-                if isinstance(em, InjectedProvider):
-                    return self.resolve_injected(em.src)
-                else:
-                    return em.to_injected().dependencies()
+                return self.resolve_injected(em)
+                # if isinstance(em, InjectedProvider):
+                #     return self.resolve_injected(em.src)
+                # else:
+                #     return em.to_injected().dependencies()
             elif src in self.implicit_mappings:
                 return Injected.bind(self.implicit_mappings[src]).dependencies()
             elif src in self.pinject_mappings:
@@ -105,7 +108,7 @@ class DIGraph:
         self.deps_impl = deps_impl
 
     def resolve_injected(self, i: Injected) -> List[str]:
-        "give new name to unknown manual injected valus and return dependencies"
+        "give new name to unknown manual injected values and return dependencies"
         # i needs to be hashable
         if i not in self.injected_to_id:
             self.injected_to_id[i] = str(uuid.uuid4())[:6]
@@ -156,6 +159,8 @@ class DIGraph:
         item = getitem(
             self.src.bindings, key
         ).lash(
+            lambda e: getitem(self.explicit_mappings, key)
+        ).lash(
             lambda e: getitem(self.implicit_mappings, key)
         ).lash(
             lambda e: getitem(self.pinject_mappings, key)
@@ -181,6 +186,7 @@ class DIGraph:
             return res
 
         def dfs(prev, current, trace=[]):
+            assert current not in trace[:-1], f"cycle detected! trace:{trace}, current:{current}"
             try:
                 nexts: List[str] = self.dependencies_of(current)
             except Exception as e:
@@ -237,39 +243,75 @@ class DIGraph:
             res = f"failed:{f} from {f}"
 
         res = res.replace("<", "").replace(">", "")
+        from loguru import logger
+        res = res.replace("\t", "....").replace(" ", ".")
+        # logger.info(f"extracted sources:\n{res}")
         return res
 
     def parse_injected(self, tgt: Injected):
         # from archpainter.my_artifacts.artifact_object import IArtifactObject
-        return match(tgt,
-                     InjectedWithDefaultDesign, lambda iwdd: self.parse_injected(iwdd.src),
-                     InjectedFunction,
-                     lambda injected: ("injected",
-                                       f"Injected:{safe(getattr)(injected.target_function, '__name__').value_or(repr(injected.target_function))}",
-                                       self.get_source(injected.target_function)),
-                     InjectedPure,
-                     lambda injected: (
-                         "injected",
-                         f"Pure:{injected.value}",
-                         self.get_source(injected.value)
-                         if isinstance(injected, Callable)
-                         else str(injected.value)
-                     ),
-                     PartialInjectedFunction,lambda injected: ("injected",f"partial=>{injected.src.target_function.__name__}",self.get_source(injected.src.target_function)),
-                     MappedInjected,
-                     lambda injected: ("injected", f"{injected.__class__.__name__}", self.get_source(injected.f)),
-                     ZippedInjected,
-                     lambda injected: ("injected", f"{injected.__class__.__name__}", "zipped"),
-                     MZippedInjected,
-                     lambda injected: ("injected", f"{injected.__class__.__name__}", "mzipped"),
-                     # IArtifactObject,
-                     # lambda injected: ("injected", f"artifact:{injected.metadata.identifier}", str(injected)),
-                     InjectedByName,
-                     lambda injected: (
-                         "injected", f"name:{injected.name}", f"injected by name:{injected.name}"),
-                     Injected,
-                     lambda injected: ("injected", f"{injected.__class__.__name__}", str(injected)),
-                     )
+        match tgt:
+            case InjectedWithDefaultDesign(src, default_design):
+                return self.parse_injected(src)
+            case InjectedFunction(f):
+                desc = f"Injected:{safe(getattr)(f, '__name__').value_or(repr(f))}"
+                return ("injected", desc, self.get_source(f))
+            case InjectedPure(v):
+                desc = f"Pure:{v}"
+                return ("injected", desc, self.get_source(v) if isinstance(v, Callable) else str(v))
+            case PartialInjectedFunction(InjectedFunction(src)):
+                desc = f"partial=>{src.__name__}"
+                return ("injected", desc, self.get_source(src))
+            case PartialInjectedFunction(src):
+                desc = f"partial=>{src}"
+                return ("injected", desc, self.get_source(src))
+            case MappedInjected(src, mapping) as mi:
+                desc = f"{mi.__class__.__name__}"
+                return ("injected", desc, self.get_source(mapping))
+            case ZippedInjected(srcs) as zi:
+                desc = f"{zi.__class__.__name__}"
+                return ("injected", desc, "zipped")
+            case MZippedInjected(srcs) as mzi:
+                desc = f"{mzi.__class__.__name__}"
+                return ("injected", desc, "mzipped")
+            case InjectedByName(name):
+                desc = f"{name}"
+                return ("injected", desc, "by_name")
+            case Injected() as injected:
+                desc = f"{injected.__class__.__name__}"
+                return ("injected", desc, str(injected))
+        #
+        # return match(tgt,
+        #              InjectedWithDefaultDesign, lambda iwdd: self.parse_injected(iwdd.src),
+        #              InjectedFunction,
+        #              lambda injected: ("injected",
+        #                                f"Injected:{safe(getattr)(injected.target_function, '__name__').value_or(repr(injected.target_function))}",
+        #                                self.get_source(injected.target_function)),
+        #              InjectedPure,
+        #              lambda injected: (
+        #                  "injected",
+        #                  f"Pure:{injected.value}",
+        #                  self.get_source(injected.value)
+        #                  if isinstance(injected, Callable)
+        #                  else str(injected.value)
+        #              ),
+        #              PartialInjectedFunction,
+        #              lambda injected: ("injected", f"partial=>{injected.src.target_function.__name__}",
+        #                                self.get_source(injected.src.target_function)),
+        #              MappedInjected,
+        #              lambda injected: ("injected", f"{injected.__class__.__name__}", self.get_source(injected.f)),
+        #              ZippedInjected,
+        #              lambda injected: ("injected", f"{injected.__class__.__name__}", "zipped"),
+        #              MZippedInjected,
+        #              lambda injected: ("injected", f"{injected.__class__.__name__}", "mzipped"),
+        #              # IArtifactObject,
+        #              # lambda injected: ("injected", f"artifact:{injected.metadata.identifier}", str(injected)),
+        #              InjectedByName,
+        #              lambda injected: (
+        #                  "injected", f"name:{injected.name}", f"injected by name:{injected.name}"),
+        #              Injected,
+        #              lambda injected: ("injected", f"{injected.__class__.__name__}", str(injected)),
+        #              )
 
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
                                          replace_missing=True
@@ -281,19 +323,19 @@ class DIGraph:
             replace_missing=replace_missing
         )
 
-    def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> NxGraphUtil:
-        if isinstance(roots, str):
-            roots = [roots]
-        # hmm,
+    def create_graph_from_nodes(self, nodes: List[str], replace_missing=True):
         from loguru import logger
-        logger.info(f"making dependency graph for {roots}.")
+        logger.info(f"making dependency graph for {nodes}.")
         nx_graph = nx.DiGraph()
         # why am I seeing no deps?
-        for root in roots:
-            for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
-                #logger.info(f"adding {b} -> {a}")
+        for node in nodes:
+            nx_graph.add_node(node)
+            for a, b, trc in self.di_dfs(node, replace_missing=replace_missing):
                 nx_graph.add_edge(b, a)
+        self.stylize_graph(nx_graph, replace_missing=replace_missing)
+        return NxGraphUtil(nx_graph)
 
+    def get_node_to_sl(self, nx_graph, replace_missing):
         @memoize
         def node_to_sl(n):
             def parse(tgt):
@@ -327,15 +369,32 @@ class DIGraph:
                 mass=n_edges * 0.5 + 1,
             )
 
-        for root in roots:
-            nx_graph.add_node(root)
+        return node_to_sl
 
+    def stylize_graph(self, nx_graph, replace_missing):
+        node_to_sl = self.get_node_to_sl(nx_graph, replace_missing)
         for n in nx_graph.nodes:
             assert isinstance(n, str)
             attrs = node_to_sl(n)
             node = nx_graph.nodes[n]
             for k, v in attrs.items():
                 node[k] = v
+        return nx_graph
+
+    def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> NxGraphUtil:
+        if isinstance(roots, str):
+            roots = [roots]
+        # hmm,
+        from loguru import logger
+        logger.info(f"making dependency graph for {roots}.")
+        nx_graph = nx.DiGraph()
+        # why am I seeing no deps?
+        for root in roots:
+            for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
+                nx_graph.add_edge(b, a)
+            nx_graph.add_node(root)
+
+        self.stylize_graph(nx_graph, replace_missing)
 
         for root in roots:
             nx_graph.nodes[root]["group"] = "root"
@@ -360,9 +419,9 @@ class DIGraph:
         nt.prep_notebook()
         return nt.show("__notebook__.html")
 
-    def save_as_html(self, roots: Union[str, List[str]], dst_path: str, visualize_missing=True):
-        nt = self.create_dependency_network(roots, replace_missing=visualize_missing)
-        nt.show(dst_path)
+    def save_as_html(self, tgt: Injected, name: str, visualize_missing=True, show=True):
+        nx = self.create_dependency_digraph_rooted(tgt, replace_missing=visualize_missing)
+        nx.save_as_html(name, show=show)
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():
@@ -377,7 +436,6 @@ class DIGraph:
         g.show_html()
 
     def show_injected_html(self, tgt: Injected, name: str = None):
-
         assert isinstance(tgt, Injected)
         assert platform.system().lower() == "darwin"
         nx_graph = self.create_dependency_digraph_rooted(tgt, name or "__root__", replace_missing=True)

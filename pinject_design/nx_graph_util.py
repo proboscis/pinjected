@@ -3,8 +3,10 @@ import platform
 import tempfile
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import networkx as nx
+from loguru import logger
 from networkx.drawing.nx_agraph import graphviz_layout
 from pyvis.network import Network
 
@@ -26,8 +28,11 @@ class NxGraphUtil:
         nx.draw(G, with_labels=True, pos=pos)
         plt.show()
 
-    def save_as_html(self,dst_path):
-        self.to_physics_network().show(dst_path)
+    def save_as_html(self,name:str,show=True):
+        assert isinstance(name,str)
+        self.to_physics_network().show(name)
+        if "darwin" in platform.system().lower() and show:
+            os.system(f"open {name}")
 
     def show_html(self):
         if "darwin" in platform.system().lower():
@@ -45,7 +50,7 @@ class NxGraphUtil:
         with tempfile.TemporaryDirectory() as temp_dir:
             os.chdir(temp_dir)
             temp_file_path = "temp.html"
-            nt.show(temp_file_path)
+            nt.write_html(temp_file_path, local=True, notebook=False)
             os.system(f"open {temp_file_path}")
             time.sleep(5)
         os.chdir(org_dir)

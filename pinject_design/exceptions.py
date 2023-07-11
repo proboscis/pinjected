@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import List, Any
 
 
+
 @dataclass
 class DependencyResolutionFailure:
     key: str
@@ -17,6 +18,10 @@ class DependencyResolutionFailure:
     def __repr__(self):
         return f"DependencyResolutionFailure(key:{self.key}\t,trace:{self.trace_str()},cause: ({self.cause})"
 
+class DependencyResolutionError(RuntimeError):
+    def __init__(self, msg: str, causes: List[DependencyResolutionFailure]):
+        super().__init__(msg)
+        self.causes = causes.copy()
 
 class _MissingDepsError(RuntimeError):
     def __init__(self, msg: str, name: str, trace: List[str]):
