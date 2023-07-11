@@ -1,10 +1,10 @@
 from pinject_design import Injected
 from pinject_design.di.util import instances
-from pinject_design.run_config_utils import create_configurations, run_injected, find_module_attr
+from pinject_design.run_config_utils import create_idea_configurations, run_injected, find_module_attr
 
 
 def test_create_configurations():
-    create_configurations(
+    create_idea_configurations(
         "/Users/kento/repos/archpainter/archpainter/style_transfer/iccv_artifacts.py",
         default_design_path="dummy_path"
     )
