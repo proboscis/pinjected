@@ -15,6 +15,28 @@ When you request for a final object, this library will automatically create all 
 - Run configuration creation for intellij idea
 - Functional Depndency Injection Composition
 
+# The Problem
+When you write a machine learning code, you often need to create a lot of objects and compose them to create a final object.
+For example, you may need to create a model, a dataset, an optimizer, a loss calculator, a trainer, and an evaluator.
+You may also need to create a saver and a loader to save and load the model.
+
+Typically these objects creations are controlled by a configuration file like yaml.
+A configuration file gets loaded at the top of code and passed to each object creation function.
+This make all the codes depend on the configuration file, requring to have 'cfg' as an argument. 
+As a result, all the codes heavily depend on the structure of a cfg, and becomes impossible to be used without a cfg object.
+This makes it hard to reuse the code, and makes it hard to change the structure of the code too. Also, simple testing becomes hard because you need to write a object creation code with its configuration file for each component you want to test.
+
+# The Solution
+Pinject-Design solves this problem by providing a way to create a final object without passing a configuration object to each object creation function.
+Instead, this library will automatically create all the dependencies and compose them to create the final object following the dependency graph.
+The only thing you need to do is to define a dependency graph and a way to create each object.
+This library will take care of the rest.
+
+This library also provides a way to modify and combine dependency graphs, so that hyperparameter management becomes easy and portable. 
+By introducing Single Responsibility Principle, and Dependency Inversion Principle, your code becomes more modular and reusable.
+To this end, this library introduces a concept of Design, which is a collection of objects and their dependencies, 
+and also Injected object, which models an object created by a Design.
+
 # Use Case
 So, how is that useful to machine learning experiments? Here's an example.
 
