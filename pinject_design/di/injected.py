@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import functools
+import hashlib
 import inspect
 import sys
 from copy import copy
@@ -12,6 +13,7 @@ from makefun import create_function
 from pinject_design.di.implicit_globals import IMPLICIT_BINDINGS
 from pinject_design.di.injected_analysis import get_instance_origin
 from pinject_design.di.proxiable import DelegatedVar
+from loguru import logger
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -276,6 +278,13 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def dependencies(self) -> Set[str]:
         pass
 
+    def dynamic_dependencies(self) -> Set[str]:
+        """
+        :return: a set of dependencies which are not statically known. mainly used for analysis.
+        use this to express an injected that conditionally depends on something, such as caches.
+        """
+        return self.dependencies()
+
     def get_signature(self):
         sig = f"""{self.fname}({",".join(self.dependencies())})"""
         # logger.warning(sig)
@@ -386,6 +395,73 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     #
     # def __getitem__(self, item):
     #     return self.proxy[item]
+
+
+@dataclass
+class ConditionalInjected(Injected):
+    condition: Injected[bool]
+    true: Injected
+    false: Injected
+
+    def dependencies(self) -> Set[str]:
+        return self.condition.dependencies()
+
+    def get_provider(self):
+        def task(session: "IObjectGraph", condition: bool):
+            if condition:
+                return session[self.true]
+            else:
+                return session[self.false]
+
+        return Injected.bind(task, condition=self.condition).get_provider()
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.condition.dynamic_dependencies() | \
+            self.true.dynamic_dependencies() | \
+            self.false.dynamic_dependencies()
+
+
+@dataclass
+class InjectedCache(Injected[T]):
+    cache: Injected[Dict]
+    program: Injected[T]
+    program_dependencies: List[Injected]
+
+    def __post_init__(self):
+        def impl(session, cache: Dict, *deps):
+            logger.info(f"Checking for cache with deps:{deps}")
+            sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
+            hash_key = sha256_key
+            if hash_key not in cache:
+                logger.info(f"Cache miss for {deps}")
+                data = session[self.program]
+                cache[hash_key] = data
+            else:
+                logger.info(f"Cache hit for {deps},loading ...")
+            res = cache[hash_key]
+            logger.info(f"Cache hit for {deps}, loaded")
+            return res
+
+        self.impl = Injected.list(
+            Injected.by_name("session"),
+            self.cache,
+            *self.program_dependencies
+        ).map(
+            lambda t: impl(*t)
+        )
+
+    def get_provider(self):
+        return self.impl.get_provider()
+
+    def dependencies(self) -> Set[str]:
+        return self.impl.dependencies()
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.impl.dynamic_dependencies() | \
+            self.program.dynamic_dependencies()
+
+    def __hash__(self):
+        return hash(self.impl)
 
 
 class GeneratedInjected(Injected):

@@ -89,16 +89,16 @@ class DIGraph:
                 # if isinstance(em, InjectedProvider):
                 #     return self.resolve_injected(em.src)
                 # else:
-                #     return em.to_injected().dependencies()
+                #     return em.to_injected().dynamic_dependencies()
             elif src in self.implicit_mappings:
-                return Injected.bind(self.implicit_mappings[src]).dependencies()
+                return Injected.bind(self.implicit_mappings[src]).dynamic_dependencies()
             elif src in self.pinject_mappings:
                 pp: PinProvider = self.pinject_mappings[src]
-                deps = [d for d in Injected.bind(pp.src).dependencies() if
+                deps = [d for d in Injected.bind(pp.src).dynamic_dependencies() if
                         d not in pp.non_injectables.value_or([])]
                 return deps
             elif src in self.multi_mappings:
-                return list(set(chain(*[Injected.bind(tgt).dependencies() for tgt in self.multi_mappings[src]])))
+                return list(set(chain(*[Injected.bind(tgt).dynamic_dependencies() for tgt in self.multi_mappings[src]])))
             elif src in self.direct_injected:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
@@ -151,7 +151,7 @@ class DIGraph:
                 res.append(sn)
             return res
         else:
-            return list(i.dependencies())
+            return list(i.dynamic_dependencies())
 
     def __getitem__(self, key):
         if "provide_" in key:
