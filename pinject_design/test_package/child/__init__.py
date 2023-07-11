@@ -1,5 +1,4 @@
-
-from pinject_design.di.util import instances
-__meta_design__ = instances(
-    name="test_package.child.__init__"
-)
+from pinject_design import injected_function, Injected
+from pinject_design.di.util import instances, providers
+from pinject_design.module_inspector import ModuleVarSpec
+from pinject_design.run_config_utils import IdeaRunConfiguration
