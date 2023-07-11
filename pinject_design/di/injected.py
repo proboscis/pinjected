@@ -75,6 +75,7 @@ class ParamInfo:
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
     this class is actually an abstraction of fucntion partial application.
+    TODO I need a way to store dynamic dependencies
     """
 
     @staticmethod
@@ -172,7 +173,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 return original_function(*bind_result.args, **bind_result.kwargs)
 
             from loguru import logger
-            #logger.info(f"injected.partial -> {new_func_sig} ")
+            # logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
                 new_func_sig,
                 func_gets_called_after_injection_impl,
@@ -301,15 +302,33 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return InjectedByName(name, )
 
     def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
-        return ZippedInjected(self, other, )
+        assert isinstance(self, Injected)
+        assert isinstance(other, Injected)
+        return ZippedInjected(self, other)
 
     @staticmethod
     def mzip(*srcs: "Injected"):
+        srcs = [Injected.ensure_injected(s) for s in srcs]
         return MZippedInjected(*srcs)
 
     @staticmethod
     def list(*srcs: "Injected"):
         return Injected.mzip(*srcs).map(list)
+
+    @staticmethod
+    def map_elements(f: "Injected[Callable]", elements: "Injected[Iterable]") -> "Injected[Iterable]":
+        """
+        for (
+            f <- f,
+            elements <- elements
+            ) yield map(f,elements)
+        :param f:
+        :param elements:
+        :return:
+        """
+        return Injected.mzip(
+            f, elements
+        ).map(lambda x: map(x[0], x[1]))
 
     # this is ap of applicative functor.
     def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
@@ -582,6 +601,8 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
     def __init__(self, a: Injected[A], b: Injected[B]):
         super().__init__()
+        assert isinstance(a, Injected), f"got {type(a)} for a"
+        assert isinstance(b, Injected), f"got {type(b)} for b"
         self.a = a
         self.b = b
 
@@ -715,6 +736,14 @@ def injected_function(f) -> PartialInjectedFunction:
     IMPLICIT_BINDINGS[f.__name__] = new_f
 
     return new_f
+
+
+def injected_instance(f) -> Injected:
+    sig: inspect.Signature = inspect.signature(f)
+    tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
+    instance = Injected.partial(f, **tgts)().eval()
+    IMPLICIT_BINDINGS[f.__name__] = instance
+    return instance
 
 
 def injected_method(f):

@@ -32,9 +32,11 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from pprint import pformat
 from typing import Optional, List, Dict, Coroutine, Union, OrderedDict
 
+import fire
 import loguru
 import returns.maybe as raybe
 from expression import Nothing
@@ -317,17 +319,17 @@ def run_anything(cmd: str, var_path, design_path):
             res = design.provide(var)()
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
-            logger.info(f"run_injected result:\n{res}")
+            logger.info(f"run_injected call result:\n{res}")
         elif cmd == 'get':
             res = design.provide(var)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
-            logger.info(f"run_injected result:\n{res}")
+            logger.info(f"run_injected get result:\n{pformat(res)}")
         elif cmd == 'fire':
             res = design.provide(var)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
-            logger.info(f"run_injected result:\n{res}")
+            logger.info(f"run_injected fire result:\n{res}")
         elif cmd == 'visualize':
             from loguru import logger
             logger.info(f"visualizing {var_path} with design {design_path}")
@@ -336,7 +338,7 @@ def run_anything(cmd: str, var_path, design_path):
     except Exception as e:
         notify(f"Run failed with error:\n{e}", sound='Frog')
         raise e
-    notify(f"Run result:\n{res}")
+    notify(f"Run result:\n{str(res)[:100]}")
 
 
 @dataclass
@@ -449,7 +451,9 @@ def find_module_attr(file_path: str, attr_name: str) -> Optional[str]:
 
     relative_path = os.path.relpath(file_path, root_module_path)
     module_name = os.path.splitext(relative_path.replace(os.sep, '.'))[0]
+    logger.info(f"module spec from:{module_name}, {file_path}")
     spec = importlib.util.spec_from_file_location(module_name, file_path)
+    logger.info(f"looking for module from spec:{spec}")
     module = importlib.util.module_from_spec(spec)
     logger.info(f"importing {module_name}")
     sys.modules[module_name] = module
@@ -499,7 +503,8 @@ def create_configurations(
         default_design_path=None,
         entrypoint_path=None,
         interpreter_path=None,
-        working_dir=None
+        working_dir=None,
+        print_to_stdout=True,
 ):
     from loguru import logger
     import sys
@@ -527,7 +532,10 @@ def create_configurations(
     g = design.to_graph()
     configs: IdeaRunConfigurations = g[inspect_and_make_configurations](module_path)
     pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = True
-    print(configs.json())
+    if print_to_stdout:
+        print(configs.json())
+    else:
+        return configs
 
 
 SANDBOX_TEMPLATE = """
@@ -584,23 +592,37 @@ def create_main_command(
     return main
 
 
+@dataclass
+class RunnablePair:
+    target: Injected
+    design: Design
+
+    def run(self):
+        return self.design.to_graph()[self.target]
+
+    def save_html(self, name: str = None, show=True):
+        if name is None:
+            name = "graph.html"
+        self.design.to_vis_graph().save_as_html(self.target, name, show=show)
+
+
 @injected_function
-def main_command(
+def create_runnable_pair(
         main_targets: OrderedDict[str, Injected],
         main_design_paths: OrderedDict[str, str],
         main_override_resolver,
         /,
         target: str,
         design_path: Optional[str] = None,
-        overrides:str = None
-):
+        overrides: str = None,
+        show_graph: bool = False
+) -> Optional[RunnablePair]:
     """
     :param main_targets:
     :param main_design_paths:
     :param target:
     :param design_path:
     :param overrides:
-        -
     :return:
     """
 
@@ -609,8 +631,13 @@ def main_command(
         design_path = main_design_paths[list(main_design_paths.keys())[0]]
     main_overrides = main_override_resolver(overrides)
     design = load_variable_by_module_path(design_path) + main_overrides
-    cmd = design.to_graph()[tgt]
-    return cmd
+    pair = RunnablePair(target=tgt, design=design)
+    if show_graph:
+        pair.save_html()
+    else:
+        return pair.run()
+    # cmd = design.to_graph()[tgt]
+    # return cmd
 
 
 def provide_module_path(logger, root_frame):
@@ -633,8 +660,9 @@ def provide_design_paths(logger, module_path) -> OrderedDict[str, str]:
     logger.info(f"main design paths:{pformat(design_paths.keys())}")
     return design_paths
 
+
 @injected_function
-def main_override_resolver(query)->Design:
+def main_override_resolver(query) -> Design:
     """
     :param query: can be filename with .json, .yaml.
     we can also try parsing it as json.
@@ -672,15 +700,16 @@ def run_main():
     import inspect
     import fire
     from loguru import logger
-    cmd = (instances(
+    runnable: RunnablePair = (instances(
         root_frame=inspect.currentframe().f_back,
         logger=logger,
     ) + providers(
         module_path=provide_module_path,
         main_targets=provide_runnables,
         main_design_paths=provide_design_paths
-    )).provide(main_command)
-    fire.Fire(cmd)
+    )).provide(create_runnable_pair)
+    fire.Fire(runnable)
+
 
 def main():
     import fire
@@ -694,8 +723,31 @@ def main():
     })
 
 
-# I need a function that converts an injected function into a fire command
-# I want it to find a default design and then use it and pass it to fire
+def pinject_main():
+    """
+    finds any runnable in the caller's file
+    and runs it with default design with fire
+    :return:
+    """
+    import inspect
+    caller_frame = inspect.stack()[1]
+    caller_file = caller_frame.filename
+    confs: IdeaRunConfigurations = create_configurations(
+        caller_file,
+        print_to_stdout=False
+    )
+
+    def make_enetrypoint(conf):
+        return lambda: run_idea_conf(conf)
+
+    return fire.Fire({
+        k: make_enetrypoint(conf[0]) for k, conf in confs.configs.items()
+    })
+
+
+def run_idea_conf(conf: IdeaRunConfiguration):
+    args = conf.arguments[1:]
+    return run_injected(*args)
 
 
 if __name__ == '__main__':

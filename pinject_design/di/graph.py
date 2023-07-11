@@ -8,7 +8,7 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from pprint import pformat
-from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable, Set
+from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable, Set, Dict
 
 import yaml
 from makefun import create_function
@@ -18,7 +18,7 @@ from pinject.errors import NothingInjectableForArgError, OnlyInstantiableViaProv
 from pinject.object_graph import ObjectGraph
 from pinject.object_providers import ObjectProvider
 from returns.maybe import Nothing, Maybe, Some
-from returns.result import safe
+from returns.result import safe, Result, Failure, Success
 
 from pinject_design.di.app_injected import EvaledInjected
 from pinject_design.di.ast import Expr
@@ -28,7 +28,7 @@ from pinject_design.di.injected import Injected, InjectedByName, InjectedFunctio
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.session import OverridenBindableScopes, SessionScope, ISessionScope
 from pinject_design.di.sessioned import Sessioned
-from pinject_design.exceptions import DependencyResolutionFailure
+from pinject_design.exceptions import DependencyResolutionFailure, DependencyResolutionError
 from pinject_design.graph_inspection import DIGraphHelper
 
 T = TypeVar("T")
@@ -252,6 +252,8 @@ class DependencyResolver:
 
         @lru_cache()
         def _memoized_deps(tgt: str):
+            if tgt not in self.mapping:
+                raise KeyError(f"target {tgt} is not in the dependency injection mapping.")
             return self.mapping[tgt].dependencies()
 
         self.memoized_deps = _memoized_deps
@@ -267,27 +269,54 @@ class DependencyResolver:
         for dep in deps:
             yield from self._dfs(dep, visited)
 
-    def _dependency_tree(self, tgt: str, trace: list[str] = None):
+    def _dependency_tree(self, tgt: str, trace: list[str] = None) -> Result[Dict[str, Result], Exception]:
         trace = trace or [tgt]
         try:
             res = dict()
             deps = self.memoized_deps(tgt)
             for d in deps:
+                assert d not in trace, f"cycle detected: {d} is requested in {' -> '.join(trace)}"
                 res[d] = self._dependency_tree(d, trace + [d])
-            return res
+            return Success(res)
         except KeyError as ke:
             from loguru import logger
-            msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
-            raise RuntimeError(msg) from ke
+            # msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
+            return Failure(DependencyResolutionFailure(tgt, trace, ke))
 
-    def dependency_tree(self, providable: Providable):
+            # raise RuntimeError(msg) from ke
+
+    def dependency_tree(self, providable: Providable) -> Result[Dict[str, Result], Exception]:
         match providable:
             case str():
-                return {providable: self._dependency_tree(providable)}
+                return Success({providable: self._dependency_tree(providable)})
             case _:
                 tgt: Injected = self._to_injected(providable)
 
-                return {t: self._dependency_tree(t) for t in tgt.dependencies()}
+                return Success({t: self._dependency_tree(t) for t in tgt.dependencies()})
+
+    @staticmethod
+    def unresult_tree(tree:Result[Dict[str, Result], Exception])->Dict:
+        if isinstance(tree, Failure):
+            return dict(error=tree)
+        else:
+            return {k: DependencyResolver.unresult_tree(v) for k, v in tree.unwrap().items()}
+
+
+    def find_failures(self, tree: Result[Dict[str, Result], Exception]):
+        """
+        recursively dig into the tree and find all failures
+        :param tree:
+        :return:
+        """
+
+        def dig(t):
+            match t:
+                case Success(items):
+                    return list(chain(*[dig(item) for item in items.values()]))
+                case Failure(e):
+                    return [e]
+
+        return dig(tree)
 
     def sorted_dependencies(self, providable: Providable) -> List[Set[str]]:
         match self._to_injected(providable):
@@ -337,7 +366,9 @@ class DependencyResolver:
                 try:
                     return provider(**kwargs)
                 except Exception as e:
-                    raise RuntimeError(f"failed to provide {key} due to an exception!") from e
+                    logger.error(f"failed to provide {key} with {kwargs} \n -> {e}")
+                    raise e
+                    #raise RuntimeError(f"failed to provide {key} due to an exception!") from e
                 # I think we need to give a unique name to this injected so that the value will be cached
                 # check if we are in the loop or not
 
@@ -460,8 +491,14 @@ class MyObjectGraph(IObjectGraph):
         # I need to get the filename and line number of the caller
 
         fn, ln = get_caller_info(level).value_or(("unknown_function", "unknown_line"))
+        dep_tree = self.resolver.dependency_tree(target)
+        dep_tree = DependencyResolver.unresult_tree(dep_tree)
         logger.debug(
-            f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(self.resolver.dependency_tree(target))}")
+            f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(dep_tree)}")
+        failures = self.resolver.find_failures(dep_tree)
+        if failures:
+            logger.error(f"DI failures: \n{pformat(failures)}")
+            raise DependencyResolutionError(f"DI failures: \n{pformat(failures)}", failures)
         res = self.resolver.provide(target, self.scope)
         # flattened = list(chain(*self.resolver.sorted_dependencies(target)))
         # resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
