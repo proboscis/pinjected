@@ -4,6 +4,7 @@ import sys
 from typing import List, Generic, TypeVar, Any, Callable
 
 import fire
+from cytoolz import memoize
 from pydantic import BaseModel
 from pydantic.dataclasses import dataclass
 
@@ -15,7 +16,7 @@ class ModuleVarSpec(Generic[T]):
     var: T
     var_path: str
 
-
+@memoize
 def get_project_root(start_path: str) -> str:
     from loguru import logger
     current_path = os.path.dirname(os.path.abspath(start_path))

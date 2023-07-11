@@ -789,6 +789,9 @@ class PinjectProviderBind(Bind):
 
 
 def instances(**kwargs):
+    for k,v in kwargs.items():
+        assert not isinstance(v, DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
+        assert not isinstance(v, Injected), f"passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
     return Design().bind_instance(**kwargs)
 
 
