@@ -2,7 +2,8 @@ from pathlib import Path
 from pprint import pprint
 
 from pinject_design.module_inspector import get_project_root
-from pinject_design.run_config_utils import walk_module_attr, gather_meta_design, create_idea_configurations
+from pinject_design.run_config_utils import create_idea_configurations
+from pinject_design.helpers import walk_module_attr, gather_meta_design
 
 
 def test_get_project_root():

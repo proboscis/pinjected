@@ -1,6 +1,7 @@
 from pinject_design import Injected
 from pinject_design.di.util import instances
-from pinject_design.run_config_utils import create_idea_configurations, run_injected, find_module_attr
+from pinject_design.run_config_utils import create_idea_configurations, run_injected
+from pinject_design.helpers import find_module_attr
 
 
 def test_create_configurations():
