@@ -30,6 +30,7 @@ import inspect
 import json
 import os
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -226,7 +227,7 @@ def injected_to_idea_configs(
         case Success({"default_design_path": ddp}):
             ddps.append(ddp)
     ddps += default_design_paths
-    results = dict()
+    results = defaultdict(list)
     for ddp in ddps:
         args = extract_args_for_runnable(tgt, ddp, meta)
         # this, viz_branch should not be created by this function, but an injected function.
