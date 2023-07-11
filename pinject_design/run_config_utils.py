@@ -24,35 +24,34 @@ Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
 import asyncio
-import importlib
-import importlib.util
 import inspect
 import json
 import os
-import sys
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-from typing import Optional, List, Dict, Coroutine, Union, OrderedDict, Callable
+from typing import Optional, List, Dict, Coroutine, OrderedDict, Callable
 
 import fire
 import loguru
 import returns.maybe as raybe
 from cytoolz import memoize
 from expression import Nothing
-from pydantic import BaseModel, validator
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
 import pinject_design.global_configs
-from pinject_design import Injected, Design, Designed, EmptyDesign
-from pinject_design.di.app_injected import InjectedEvalContext
+from pinject_design import Injected, Design
 from pinject_design.di.injected import injected_function
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.di.util import instances, providers
+from pinject_design.helper_structure import IdeaRunConfigurations, RunnablePair, RunnableValue, \
+    IdeaRunConfiguration
+from pinject_design.helpers import inspect_and_make_configurations, load_variable_by_module_path, \
+    get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_design
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
+from pinject_design.run_config_utils_v2 import RunInjected
 
 
 def maybe__or__(self, other):
@@ -74,65 +73,7 @@ def maybe_filter(self: Maybe, flag_to_keep):
 Maybe.__or__ = maybe__or__
 Maybe.filter = maybe_filter
 
-
-class RunnableValue(BaseModel):
-    """
-    I think it is easier to make as much configuration as possible on this side.
-    """
-    src: ModuleVarSpec[Union[Injected, Designed]]
-    design_path: str
-
-    @validator('src')
-    def validate_src_type(cls, value):
-        match value:
-            case ModuleVarSpec(Injected(), _):
-                return value
-            case ModuleVarSpec(Designed(), _):
-                return value
-            case _:
-                raise ValueError(f"src must be an instance of Injected of ModuleVarSpec, but got {value}")
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
-class IdeaRunConfiguration(BaseModel):
-    name: str
-    script_path: str
-    interpreter_path: str
-    arguments: List[str]
-    working_dir: str
-    # we need dependency python librarrie's paths.
-    # this needs to be checked from intellij side
-
-
-class IdeaRunConfigurations(BaseModel):
-    configs: Dict[str, List[IdeaRunConfiguration]]
-
-
 safe_getattr = safe(getattr)
-
-
-def get_runnables(module_path) -> List[ModuleVarSpec]:
-    def accept(name, tgt):
-        match (name, tgt):
-            case (n, _) if n.startswith("provide"):
-                return True
-            case (_, Injected()):
-                return True
-            case (_, Designed()):
-                return True
-            case (_, DelegatedVar(value, cxt)) if cxt == InjectedEvalContext:
-                return True
-            case (_, DelegatedVar(value, cxt)):
-                return False
-            case (_, item) if hasattr(item, "__runnable_metadata__") and isinstance(item.__runnable_metadata__, dict):
-                return True
-            case _:
-                return False
-
-    runnables = inspect_module_for_type(module_path, accept)
-    return runnables
 
 
 @injected_function
@@ -219,7 +160,7 @@ def injected_to_idea_configs(
         /,
         tgt: ModuleVarSpec
 ):
-    logger.info(f"using custom_idea_config_creator {custom_idea_config_creator}")
+    logger.info(f"using custom_idea_config_creator {custom_idea_config_creator} for {tgt}")
     name = tgt.var_path.split(".")[-1]
     config_args = {
         'script_path': entrypoint_path,
@@ -260,39 +201,6 @@ def injected_to_idea_configs(
         logger.warning(f"Failed to create custom idea configs for {tgt} because {e}")
         raise RuntimeError(f"Failed to create custom idea configs for {tgt} because {e}") from e
     return IdeaRunConfigurations(configs=results)
-
-
-@injected_function
-def inspect_and_make_configurations(
-        injected_to_idea_configs,
-        logger,
-        /,
-        module_path
-) -> IdeaRunConfigurations:
-    runnables = get_runnables(module_path)
-    logger.info(f"Found {len(runnables)} injecteds")
-    results = dict()
-    logger.info(f"found {len(runnables)} injecteds")
-    for tgt in runnables:
-        if isinstance(tgt, ModuleVarSpec):
-            results.update(injected_to_idea_configs(tgt).configs)
-    return IdeaRunConfigurations(configs=results)
-
-
-def load_variable_by_module_path(full_module_path):
-    from loguru import logger
-    logger.info(f"loading {full_module_path}")
-    module_path_parts = full_module_path.split('.')
-    variable_name = module_path_parts[-1]
-    module_path = '.'.join(module_path_parts[:-1])
-
-    # Import the module
-    module = importlib.import_module(module_path)
-
-    # Retrieve the variable using getattr()
-    variable = getattr(module, variable_name)
-
-    return variable
 
 
 notification_sounds = [
@@ -383,51 +291,6 @@ def run_anything(cmd: str, var_path, design_path, *args, **kwargs):
     notify(f"Run result:\n{str(res)[:100]}")
 
 
-@dataclass
-class RunInjected:
-    var_path: str
-    design_path: str = None
-
-    def __post_init__(self):
-        if self.design_path is None:
-            self.design_path = get_design_path_from_var_path(self.var_path)
-
-    def _var_design(self):
-        var: Injected = Injected.ensure_injected(load_variable_by_module_path(self.var_path))
-        design: Design = load_variable_by_module_path(self.design_path)
-        return var, design
-
-    def _get(self):
-        var, design = self._var_design()
-        return design.provide(var)
-
-    def chain_call(self, *args, **kwargs):
-        res = self._get()(*args, **kwargs)
-        if isinstance(res, Coroutine):
-            res = asyncio.run(res)
-        return res
-
-    def chain_get(self):
-        res = self._get()
-        if isinstance(res, Coroutine):
-            res = asyncio.run(res)
-        return res
-
-    def get(self):
-        from loguru import logger
-        logger.info(f"injected get result\n{self.chain_get()}")
-
-    def call(self, *args, **kwargs):
-        from loguru import logger
-        logger.info(f"injected get result\n{self.chain_call(*args, **kwargs)}")
-
-    def visualize(self):
-        from loguru import logger
-        logger.info(f"visualizing {self.var_path} with design {self.design_path}")
-        var, design = self._var_design()
-        design.to_vis_graph().show_injected_html(var)
-
-
 def run_injected(
         cmd,
         var_path,
@@ -438,21 +301,6 @@ def run_injected(
         design_path = get_design_path_from_var_path(var_path)
     assert design_path, f"design path must be a valid module path, got:{design_path}"
     return run_anything(cmd, var_path, design_path, *args, **kwargs)
-
-
-def get_design_path_from_var_path(var_path):
-    from loguru import logger
-    logger.info(f"looking for default design paths from {var_path}")
-    module_path = ".".join(var_path.split(".")[:-1])
-    # we need to get the file path from var path
-    logger.info(f"loading module:{module_path}")
-    # Import the module
-    module = importlib.import_module(module_path)
-    module_path = module.__file__
-    design_paths = find_default_design_paths(module_path, None)
-    assert design_paths
-    design_path = design_paths[0]
-    return design_path
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
@@ -476,94 +324,11 @@ def send_kotlin_code(address: str, code: str):
     return response
 
 
-def find_default_design_path(file_path: str) -> Optional[str]:
-    from loguru import logger
-    logger.info(f"looking for default design_path")
-    return find_module_attr(file_path, '__default_design_path__')
-
-
-def find_default_working_dir(file_path: str) -> Optional[str]:
-    from loguru import logger
-    logger.info(f"looking for default working dir")
-    return find_module_attr(file_path, '__default_working_dir__')
-
-
-def find_module_attr(file_path: str, attr_name: str, root_module_path: str = None) -> Optional[str]:
-    for item in walk_module_attr(Path(file_path), attr_name, root_module_path):
-        return item.var
-
-
-def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
-    """
-    walk down from a root module to the file_path, while looking for the attr_name and yielding the found variable as ModuleVarSpec
-    :param file_path:
-    :param attr_name:
-    :return:
-    """
-    from loguru import logger
-    if root_module_path is None:
-        root_module_path = Path(get_project_root(str(file_path)))
-    if not str(file_path).startswith(str(root_module_path)):
-        return
-
-    relative_path = file_path.relative_to(root_module_path)
-    module_name = os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
-    if module_name not in sys.modules:
-        logger.info(f"importing module: {module_name}")
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-    module = sys.modules[module_name]
-    if hasattr(module, attr_name):
-        yield ModuleVarSpec(
-            var=getattr(module, attr_name),
-            var_path=module_name + '.' + attr_name,
-        )
-
-    parent_dir = file_path.parent
-    if parent_dir != root_module_path:
-        parent_file_path = parent_dir / '__init__.py'
-        if parent_file_path.exists() and parent_file_path != file_path:
-            yield from walk_module_attr(parent_file_path, attr_name, root_module_path)
-        else:
-            grandparent_dir = parent_dir.parent
-            grandparent_file_path = grandparent_dir / '__init__.py'
-            if grandparent_file_path.exists():
-                yield from walk_module_attr(grandparent_file_path, attr_name, root_module_path)
-
-
-def gather_meta_design(file_path: Path, meta_design_name: str = "__meta_design__"):
-    designs = list(walk_module_attr(file_path, meta_design_name))
-    designs.reverse()
-    res = Design()
-    for item in designs:
-        res = res + item.var
-    return res
-
-
 def find_injecteds(
         module_path
 ):
     injecteds = get_runnables(module_path)
     return print(json.dumps([i.var_path for i in injecteds]))
-
-
-def find_default_design_paths(module_path, default_design_path: Optional[str]) -> list[str]:
-    """
-    :param module_path: absolute file path.("/")
-    :param default_design_path: absolute module path (".")
-    :return:
-    """
-    default_design_paths: list[str] = maybe(find_module_attr)(module_path, '__default_design_paths__').value_or([])
-    default_design_path: list[str] = (
-            maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
-        lambda p: [p]).value_or([])
-    from loguru import logger
-    logger.debug(f"default design paths:{default_design_paths}")
-    logger.debug(f"default design path:{default_design_path}")
-    default_design_paths = default_design_paths + default_design_path
-    return default_design_paths
 
 
 def create_idea_configurations(
@@ -578,6 +343,7 @@ def create_idea_configurations(
     import sys
     pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = False
     logger.debug(f"python paths:{sys.path}")
+    project_root = get_project_root(module_path)
     # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
     entrypoint_path = entrypoint_path or __file__
     interpreter_path = interpreter_path or sys.executable
@@ -589,7 +355,7 @@ def create_idea_configurations(
     # for example by looking at a config file in the project root
     # 1. look for default design path string
     # 2. look for default working dir string
-    meta_design = gather_meta_design(Path(module_path))
+    meta_context = gather_meta_design(Path(module_path))
 
     design = instances(
         entrypoint_path=entrypoint_path,
@@ -598,8 +364,10 @@ def create_idea_configurations(
         default_working_dir=default_working_dir,
         logger=loguru.logger,
         custom_idea_config_creator=lambda x: [],  # type ConfigCreator
-    ) + meta_design
-    logger.info(f"using meta design:{meta_design}")
+        meta_context=meta_context,
+        project_root=Path(project_root),
+    ) + meta_context.accumulated
+    logger.info(f"using meta design:{meta_context.accumulated}")
     logger.info(f"custom_idea_config_creator:{design['custom_idea_config_creator']}")
     g = design.to_graph()
     configs: IdeaRunConfigurations = g[inspect_and_make_configurations(module_path)]
@@ -662,20 +430,6 @@ def create_main_command(
         return cmd
 
     return main
-
-
-@dataclass
-class RunnablePair:
-    target: Injected
-    design: Design
-
-    def run(self):
-        return self.design.to_graph()[self.target]
-
-    def save_html(self, name: str = None, show=True):
-        if name is None:
-            name = "graph.html"
-        self.design.to_vis_graph().save_as_html(self.target, name, show=show)
 
 
 @injected_function
@@ -810,16 +564,41 @@ def pinject_main():
     )
 
     def make_enetrypoint(conf):
-        return lambda *args,**kwargs: run_idea_conf(conf,*args,**kwargs)
+        return lambda *args, **kwargs: run_idea_conf(conf, *args, **kwargs)
 
     return fire.Fire({
         k: make_enetrypoint(conf[0]) for k, conf in confs.configs.items()
     })
 
 
-def run_idea_conf(conf: IdeaRunConfiguration,*args,**kwargs):
+def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
     pre_args = conf.arguments[1:]
-    return run_injected(*pre_args,*args,**kwargs)
+    return run_injected(*pre_args, *args, **kwargs)
+
+@memoize
+def get_designs_from_module(module_path: Path):
+    from loguru import logger
+    logger.info(f"trying to import designs from {module_path}")
+
+    def accept(name, x):
+        return isinstance(x, Design) and name != "__meta_design__"
+
+    return inspect_module_for_type(module_path, accept)
+
+
+@injected_function
+def get_designs_from_meta_var(
+        var_path_to_file_path,
+        /,
+        meta: ModuleVarSpec
+) -> List[ModuleVarSpec]:
+    return get_designs_from_module(var_path_to_file_path(meta.var_path))
+
+
+@injected_function
+def var_path_to_file_path(project_root: Path, /, var_path: str) -> Path:
+    module_path = '.'.join(var_path.split(".")[:-1])
+    return Path(str(project_root / module_path.replace(".", os.path.sep)) + ".py")
 
 
 if __name__ == '__main__':

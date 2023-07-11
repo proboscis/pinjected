@@ -1,7 +1,8 @@
 import importlib.util
 import os
 import sys
-from typing import List, Generic, TypeVar, Any, Callable
+from typing import List, Generic, TypeVar, Any, Callable, Union
+from pathlib import Path
 
 import fire
 from cytoolz import memoize
@@ -15,6 +16,7 @@ T = TypeVar("T")
 class ModuleVarSpec(Generic[T]):
     var: T
     var_path: str
+
 
 @memoize
 def get_project_root(start_path: str) -> str:
@@ -36,21 +38,22 @@ def get_module_path(root_path, module_path):
     return without_extension.replace(os.path.sep, ".")
 
 
-def inspect_module_for_type(module_path: str, accept: Callable[[str, Any], bool]) -> List[ModuleVarSpec[T]]:
+def inspect_module_for_type(module_path: Union[str, Path], accept: Callable[[str, Any], bool]) -> List[
+    ModuleVarSpec[T]]:
+    if isinstance(module_path, Path):
+        module_path = str(module_path)
     from loguru import logger
     project_root = get_project_root(os.path.dirname(module_path))
     logger.info(f"project_root:{project_root}")
     module_name = get_module_path(project_root, module_path)
     logger.info(f"module_name:{module_name}")
-
-
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    # Register the module in sys.modules
-    sys.modules[module_name] = module
-
+    if module_name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        # Register the module in sys.modules
+        sys.modules[module_name] = module
+    module = sys.modules[module_name]
     # Iterate through the module's attributes to find instances of tgt_type
     results = []
     for attr_name, attr_value in vars(module).items():
