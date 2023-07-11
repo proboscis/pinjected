@@ -331,7 +331,7 @@ def notify(text, sound='Glass') -> str:
 
 # maybe we want to distinguish the error with its complexity and pass it to gpt if required.
 
-def run_anything(cmd: str, var_path, design_path):
+def run_anything(cmd: str, var_path, design_path, *args, **kwargs):
     # TODO pass the resulting errors into gpt to give better error messages.
     # for that, I need to capture the stderr/stdout
     # get the var and design
@@ -358,7 +358,7 @@ def run_anything(cmd: str, var_path, design_path):
     res = None
     try:
         if cmd == 'call':
-            res = design.provide(var)()
+            res = design.provide(var)(*args, **kwargs)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
             logger.info(f"run_injected call result:\n{res}")
@@ -490,7 +490,7 @@ def find_default_working_dir(file_path: str) -> Optional[str]:
 
 def find_module_attr(file_path: str, attr_name: str, root_module_path: str = None) -> Optional[str]:
     for item in walk_module_attr(Path(file_path), attr_name, root_module_path):
-        return item.var_path
+        return item.var
 
 
 def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
@@ -558,8 +558,10 @@ def find_default_design_paths(module_path, default_design_path: Optional[str]) -
     default_design_paths: list[str] = maybe(find_module_attr)(module_path, '__default_design_paths__').value_or([])
     default_design_path: list[str] = (
             maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
-        lambda p: [p]).value_or([]
-                                )
+        lambda p: [p]).value_or([])
+    from loguru import logger
+    logger.debug(f"default design paths:{default_design_paths}")
+    logger.debug(f"default design path:{default_design_path}")
     default_design_paths = default_design_paths + default_design_path
     return default_design_paths
 
@@ -808,16 +810,16 @@ def pinject_main():
     )
 
     def make_enetrypoint(conf):
-        return lambda: run_idea_conf(conf)
+        return lambda *args,**kwargs: run_idea_conf(conf,*args,**kwargs)
 
     return fire.Fire({
         k: make_enetrypoint(conf[0]) for k, conf in confs.configs.items()
     })
 
 
-def run_idea_conf(conf: IdeaRunConfiguration):
-    args = conf.arguments[1:]
-    return run_injected(*args)
+def run_idea_conf(conf: IdeaRunConfiguration,*args,**kwargs):
+    pre_args = conf.arguments[1:]
+    return run_injected(*pre_args,*args,**kwargs)
 
 
 if __name__ == '__main__':
