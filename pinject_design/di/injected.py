@@ -6,7 +6,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict
+from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any
 
 from makefun import create_function
 
@@ -428,6 +428,7 @@ class InjectedCache(Injected[T]):
     program_dependencies: List[Injected]
 
     def __post_init__(self):
+        self.program = Injected.ensure_injected(self.program)
         def impl(session, cache: Dict, *deps):
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -449,6 +450,8 @@ class InjectedCache(Injected[T]):
         ).map(
             lambda t: impl(*t)
         )
+        assert isinstance(self.impl, Injected)
+        assert isinstance(self.program, Injected)
 
     def get_provider(self):
         return self.impl.get_provider()
@@ -837,3 +840,11 @@ def injected_class(cls):
 
 def injected(name: str):
     return Injected.by_name(name).proxy
+
+def add_viz_metadata(metadata: Dict[str, Any]):
+    def impl(tgt:Injected):
+        if not hasattr(tgt, '__viz_metadata__'):
+            tgt.__viz_metadata__ = dict()
+        tgt.__viz_metadata__.update(metadata)
+        return tgt
+    return impl

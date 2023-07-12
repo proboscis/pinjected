@@ -123,11 +123,14 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
 
 
 def bind_to_injected(bind: Bind):
-    if isinstance(bind, PinjectBind) and "to_class" in bind.kwargs:
-        cls = bind.kwargs["to_class"]
-        return Injected.bind(cls)
-    elif isinstance(bind, InjectedProvider):
-        return bind.src
+    match bind:
+        case PinjectBind(kwargs={"to_class": cls}):
+            return Injected.bind(cls)
+        case InjectedProvider(src):
+            return src
+        case PinjectBind(kwargs={"to_instance": instance}):
+            return Injected.pure(instance)
+
     pb = bind.to_pinject_binding()
     provider = pinject_to_provider(pb)
     provider = remove_kwargs_from_func(provider, ["self"])
@@ -233,9 +236,11 @@ class PinjectBind(Bind):
     def to_pinject_binding(self) -> Union[PinjectConfigure, PinjectProvider]:
         return PinjectConfigure(self.kwargs)
 
+
 @dataclass
 class MetaBind(Bind):
-    src:Bind
-    metadata:dict
+    src: Bind
+    metadata: dict
+
     def to_pinject_binding(self) -> Union[PinjectConfigure, PinjectProvider]:
         return self.src.to_pinject_binding()
