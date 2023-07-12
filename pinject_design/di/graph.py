@@ -142,6 +142,11 @@ class IObjectGraph(metaclass=ABCMeta):
     def design(self):
         pass
 
+    @property
+    @abstractmethod
+    def resolver(self)->"DependencyResolver":
+        pass
+
 
 # using async was not a good Idea since all the function needs to be assumed a coroutine.
 # we don't assume the provider function is a coroutine.
@@ -216,6 +221,25 @@ class MChildScope(IScope):
 
 
 @dataclass
+class OverridingScope(IScope):
+    """
+    This class overrides a given scope with a given set of keys.
+    The overriden values will be returned if asked, instead of the original scope.
+    """
+    src: IScope
+    overrides: Dict[str, Any]
+
+    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+        if key in self.overrides:
+            return self.overrides[key]
+        else:
+            return self.src.provide(key, provider_func, trace)
+
+    def __contains__(self, item):
+        return item in self.overrides or item in self.src
+
+
+@dataclass
 class DependencyResolver:
     """
     okey I want to make a variant that uses IMPLICIT_BINDINGS when the target is not in the mapping.
@@ -250,8 +274,12 @@ class DependencyResolver:
 
         self.memoized_provider = _memoized_provider
 
+        predefined = {"__final_target__"}
+
         @lru_cache()
         def _memoized_deps(tgt: str):
+            if tgt in predefined:
+                return []
             if tgt not in self.mapping:
                 raise KeyError(f"target {tgt} is not in the dependency injection mapping.")
             return self.mapping[tgt].dependencies()
@@ -295,12 +323,11 @@ class DependencyResolver:
                 return Success({t: self._dependency_tree(t) for t in tgt.dependencies()})
 
     @staticmethod
-    def unresult_tree(tree:Result[Dict[str, Result], Exception])->Dict:
+    def unresult_tree(tree: Result[Dict[str, Result], Exception]) -> Dict:
         if isinstance(tree, Failure):
             return dict(error=tree)
         else:
             return {k: DependencyResolver.unresult_tree(v) for k, v in tree.unwrap().items()}
-
 
     def find_failures(self, tree: Result[Dict[str, Result], Exception]):
         """
@@ -351,6 +378,10 @@ class DependencyResolver:
         # because asyncio does not support creating new loop in a thread
         # which means that we cannot use asyncio.run in a cooruntine
         tgt: Injected = self._to_injected(providable)
+        # TODO I want to bind a special key that is only available in this 'provide' scope.
+        scope = OverridingScope(scope, overrides=dict(
+            __final_target__=tgt,
+        ))
 
         def provide_injected(tgt: Injected, key: str):
             assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
@@ -368,7 +399,7 @@ class DependencyResolver:
                 except Exception as e:
                     logger.error(f"failed to provide {key} with {kwargs} \n -> {e}")
                     raise e
-                    #raise RuntimeError(f"failed to provide {key} due to an exception!") from e
+                    # raise RuntimeError(f"failed to provide {key} due to an exception!") from e
                 # I think we need to give a unique name to this injected so that the value will be cached
                 # check if we are in the loop or not
 
@@ -413,7 +444,9 @@ class DependencyResolver:
         if overrides is None:
             from pinject_design import Design
             overrides = Design()
-        child_design = self.src + overrides.bind_provider(session=session_provider)
+        child_design = self.src + overrides.bind_provider(
+            session=session_provider
+        )
         child_resolver = DependencyResolver(child_design)
         return child_resolver
 
@@ -461,12 +494,16 @@ def get_caller_info(level: int):
 
 @dataclass
 class MyObjectGraph(IObjectGraph):
-    resolver: DependencyResolver
+    _resolver: DependencyResolver
     src_design: "Design"
     scope: IScope
 
     def __post_init__(self):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
+
+    @property
+    def resolver(self) ->"DependencyResolver":
+        return self._resolver
 
     @property
     def factory(self) -> IObjectGraphFactory:
@@ -476,9 +513,11 @@ class MyObjectGraph(IObjectGraph):
     def root(design: "Design") -> "MyObjectGraph":
         scope = MScope()
         graph = MyObjectGraph(None, design, scope)
-        design = design.bind_instance(session=graph)
+        design = design.bind_instance(
+            session=graph
+        )
         resolver = DependencyResolver(design)
-        graph.resolver = resolver
+        graph._resolver = resolver
         return graph
 
     def provide(self, target: Providable, level: int = 2):
@@ -518,6 +557,7 @@ class MyObjectGraph(IObjectGraph):
     @property
     def design(self):
         return self.src_design
+
 
 
 class ExtendedObjectGraph(IObjectGraph):

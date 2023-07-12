@@ -3,7 +3,7 @@ from typing import Set
 
 from pinject_design import Injected
 from pinject_design.di.applicative import Applicative
-from pinject_design.di.injected import InjectedPure, InjectedFunction
+from pinject_design.di.injected import InjectedPure, InjectedFunction,InjectedByName
 from pinject_design.di.proxiable import T, DelegatedVar
 from pinject_design.di.static_proxy import eval_app, ast_proxy, \
     AstProxyContextImpl
@@ -61,10 +61,12 @@ def reduce_injected_expr(expr: Expr):
             return reduce_injected_expr(Object(dv.eval()))
         case Object(EvaledInjected() as ei):
             return ei.repr_ast()
+        case Object(InjectedByName(name)):
+            return f"$('{name}')"
         case Object(Injected() as i):
             return f"<{i.__class__.__name__}>"
-        case Object(x):
-            return f"???:{type(x)}"
+        # case Object(x):
+        #     return f"Unknown:{x}"
 
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:

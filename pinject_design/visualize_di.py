@@ -98,7 +98,8 @@ class DIGraph:
                         d not in pp.non_injectables.value_or([])]
                 return deps
             elif src in self.multi_mappings:
-                return list(set(chain(*[Injected.bind(tgt).dynamic_dependencies() for tgt in self.multi_mappings[src]])))
+                return list(
+                    set(chain(*[Injected.bind(tgt).dynamic_dependencies() for tgt in self.multi_mappings[src]])))
             elif src in self.direct_injected:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
@@ -280,38 +281,8 @@ class DIGraph:
             case Injected() as injected:
                 desc = f"{injected.__class__.__name__}"
                 return ("injected", desc, str(injected))
-        #
-        # return match(tgt,
-        #              InjectedWithDefaultDesign, lambda iwdd: self.parse_injected(iwdd.src),
-        #              InjectedFunction,
-        #              lambda injected: ("injected",
-        #                                f"Injected:{safe(getattr)(injected.target_function, '__name__').value_or(repr(injected.target_function))}",
-        #                                self.get_source(injected.target_function)),
-        #              InjectedPure,
-        #              lambda injected: (
-        #                  "injected",
-        #                  f"Pure:{injected.value}",
-        #                  self.get_source(injected.value)
-        #                  if isinstance(injected, Callable)
-        #                  else str(injected.value)
-        #              ),
-        #              PartialInjectedFunction,
-        #              lambda injected: ("injected", f"partial=>{injected.src.target_function.__name__}",
-        #                                self.get_source(injected.src.target_function)),
-        #              MappedInjected,
-        #              lambda injected: ("injected", f"{injected.__class__.__name__}", self.get_source(injected.f)),
-        #              ZippedInjected,
-        #              lambda injected: ("injected", f"{injected.__class__.__name__}", "zipped"),
-        #              MZippedInjected,
-        #              lambda injected: ("injected", f"{injected.__class__.__name__}", "mzipped"),
-        #              # IArtifactObject,
-        #              # lambda injected: ("injected", f"artifact:{injected.metadata.identifier}", str(injected)),
-        #              InjectedByName,
-        #              lambda injected: (
-        #                  "injected", f"name:{injected.name}", f"injected by name:{injected.name}"),
-        #              Injected,
-        #              lambda injected: ("injected", f"{injected.__class__.__name__}", str(injected)),
-        #              )
+            case unknown:
+                raise ValueError(f"unknown injected type {unknown}")
 
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
                                          replace_missing=True
@@ -339,21 +310,27 @@ class DIGraph:
         @memoize
         def node_to_sl(n):
             def parse(tgt):
-                return match(tgt,
-                             Injected, self.parse_injected,
-                             InjectedProvider(Injected), self.parse_injected,
-                             PinjectProviderBind, lambda ppb: ("function", ppb.f.__name__, self.get_source(ppb.f)),
-                             DirectPinjectProvider,
-                             lambda dpp: ("method", dpp.method.__name__, self.get_source(dpp.method)),
-                             PinjectBind({"to_instance": callable}), lambda i: ("instance", str(i), self.get_source(i)),
-                             PinjectBind({"to_instance": Any}),
-                             lambda i: ("instance", str(i), f"instance:{pformat(i)}"),
-                             PinjectBind({"to_class": Any}), lambda i: ("class", i.__name__, self.get_source(i)),
-                             type, lambda cls: ("class", cls.__name__, self.get_source(cls)),
-                             list, lambda providers: ("multi_binding", repr(providers), repr(providers)),
-                             # MetaBind, lambda mb: (mb.metadata["src"],parse(mb.src)[1],mb.metadata["src"]),
-                             Any, lambda a: ("unknown", str(a), f"unknown-type:{type(a)}=>{a}")
-                             )
+                match tgt:
+                    case Injected():
+                        return self.parse_injected(tgt)
+                    case InjectedProvider(Injected() as _tgt):
+                        return self.parse_injected(_tgt)
+                    case PinjectProviderBind():
+                        return ("function", tgt.f.__name__, self.get_source(tgt.f))
+                    case DirectPinjectProvider():
+                        return ("method", tgt.method.__name__, self.get_source(tgt.method))
+                    case PinjectBind({"to_instance": callable_ob}) if callable(callable_ob):
+                        return ("instance", str(tgt.to_instance), self.get_source(callable_ob))
+                    case PinjectBind({"to_instance": any}):
+                        return ("instance", str(any), f"instance:{pformat(any)}")
+                    case PinjectBind({"to_class": cls}):
+                        return ("class", cls.__name__, self.get_source(cls))
+                    case cls if isinstance(cls, type):
+                        return ("class", cls.__name__, self.get_source(cls))
+                    case [*providers]:
+                        return ("multi_binding", repr(providers), repr(providers))
+                    case _:
+                        return ("unknown", repr(tgt), repr(tgt))
 
             if replace_missing and not is_successful(safe(self.__getitem__)(n)):
                 group, short, long = "missing", f"missing_{n}", f"missing_{n}"
