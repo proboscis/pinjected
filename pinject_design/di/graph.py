@@ -551,7 +551,7 @@ class MyObjectGraph(IObjectGraph):
         child_scope = MChildScope(self.scope, set(overrides.keys()))
         child_graph = MyObjectGraph(None, self.design + overrides, child_scope)
         child_resolver = self.resolver.child(lambda: child_graph, overrides)
-        child_graph.resolver = child_resolver
+        child_graph._resolver = child_resolver
         return child_graph
 
     @property

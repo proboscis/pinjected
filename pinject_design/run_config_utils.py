@@ -24,6 +24,7 @@ Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
 import asyncio
+import importlib
 import inspect
 import json
 import os
@@ -443,14 +444,6 @@ def create_runnable_pair(
         overrides: str = None,
         show_graph: bool = False
 ) -> Optional[RunnablePair]:
-    """
-    :param main_targets:
-    :param main_design_paths:
-    :param target:
-    :param design_path:
-    :param overrides:
-    :return:
-    """
 
     tgt = main_targets[target]
     if design_path is None:
@@ -486,7 +479,6 @@ def provide_design_paths(logger, module_path) -> OrderedDict[str, str]:
     logger.info(f"main design paths:{pformat(design_paths.keys())}")
     return design_paths
 
-
 @injected_function
 def main_override_resolver(query) -> Design:
     """
@@ -494,13 +486,19 @@ def main_override_resolver(query) -> Design:
     we can also try parsing it as json.
     :return:
     """
-    if query is None:
+    if isinstance(query,dict):
+        return instances(**query)
+    elif query is None:
         return Design()
     elif query.endswith('.json'):
         import json
+        if not Path(query).exists():
+            raise ValueError(f"cannot find {query} for configuration.")
         return instances(**json.load(open(query)))
     elif query.endswith('.yaml'):
         import yaml
+        if not Path(query).exists():
+            raise ValueError(f"cannot find {query} for configuration.")
         return instances(**yaml.load(open(query), Loader=yaml.SafeLoader))
     else:
         try:
@@ -508,6 +506,21 @@ def main_override_resolver(query) -> Design:
             return instances(**json.loads(query))
         except:
             raise ValueError(f"cannot parse {query} as json")
+
+
+def load_variable_from_script(script_file: Path, varname: str):
+    spec = importlib.util.spec_from_file_location("module.name", script_file)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, varname)
+
+
+def parse_override_path(p) -> Design:
+    if "::" in p:
+        file, varname = p.split("::")
+        return load_variable_by_module_path(Path(file), varname)
+    else:
+        load_variable_by_module_path(p)
 
 
 def run_main():
@@ -521,6 +534,13 @@ def run_main():
     find the runnables
     find the designs
     pass it to fire.
+
+    The protocol to override design:
+    1. python file
+    - /path/to/config.py::design_name
+    2. python module path
+    - my.package.design_name
+    3. yaml or json file
     :return:
     """
     import inspect
@@ -574,6 +594,7 @@ def pinject_main():
 def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
     pre_args = conf.arguments[1:]
     return run_injected(*pre_args, *args, **kwargs)
+
 
 @memoize
 def get_designs_from_module(module_path: Path):
