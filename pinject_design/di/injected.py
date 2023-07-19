@@ -396,6 +396,35 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     # def __getitem__(self, item):
     #     return self.proxy[item]
 
+    @staticmethod
+    def conditional(condition: "Injected[bool]", true_case: "Injected", false_case: "Injected"):
+        return ConditionalInjected(condition, true_case, false_case)
+
+    @staticmethod
+    def procedure(*targets: "Injected"):
+        """
+        Runs the targets in order, and returns the last one.
+        This is useful for running injecteds which performs side effects.
+        :param targets:
+        :return:
+        """
+        return Injected.list(*targets).map(lambda items: items[-1])
+
+    @staticmethod
+    def conditional_preparation(
+            condition: "Injected[bool]",
+            preparation: "Injected",
+            utilization: "Injected"
+    ):
+        return Injected.conditional(
+            condition,
+            utilization,
+            Injected.procedure(
+                preparation,
+                utilization
+            )
+        )
+
 
 @dataclass
 class ConditionalInjected(Injected):
@@ -429,6 +458,7 @@ class InjectedCache(Injected[T]):
 
     def __post_init__(self):
         self.program = Injected.ensure_injected(self.program)
+
         def impl(session, cache: Dict, *deps):
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -841,10 +871,12 @@ def injected_class(cls):
 def injected(name: str):
     return Injected.by_name(name).proxy
 
+
 def add_viz_metadata(metadata: Dict[str, Any]):
-    def impl(tgt:Injected):
+    def impl(tgt: Injected):
         if not hasattr(tgt, '__viz_metadata__'):
             tgt.__viz_metadata__ = dict()
         tgt.__viz_metadata__.update(metadata)
         return tgt
+
     return impl
