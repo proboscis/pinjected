@@ -11,8 +11,8 @@ from pinject_design.di.app_injected import InjectedEvalContext
 from pinject_design.di.proxiable import DelegatedVar
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 from pinject_design.helper_structure import IdeaRunConfigurations, MetaContext
-
-
+from loguru import logger
+from dataclasses import dataclass
 @injected_function
 def inspect_and_make_configurations(
         injected_to_idea_configs,
@@ -29,6 +29,16 @@ def inspect_and_make_configurations(
             results.update(injected_to_idea_configs(tgt).configs)
     return IdeaRunConfigurations(configs=results)
 
+
+@dataclass
+class ModulePath:
+    """
+    represents a path where a variable is defined.
+    like a.b.c.d
+    """
+    path:str
+    def load(self):
+        return load_variable_by_module_path(self.path)
 
 def load_variable_by_module_path(full_module_path):
     from loguru import logger
@@ -127,14 +137,22 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
     from loguru import logger
     if root_module_path is None:
         root_module_path = Path(get_project_root(str(file_path)))
+    file_path = file_path.absolute()
+    assert str(file_path).endswith(".py"),f"a python file path must be provided, got:{file_path}"
+    logger.debug(f"project root path:{root_module_path}")
     if not str(file_path).startswith(str(root_module_path)):
+        # logger.error(f"file path {file_path} is not under root module path {root_module_path}")
         return
 
     relative_path = file_path.relative_to(root_module_path)
+    logger.debug(f"relative path:{relative_path}")
     module_name = os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
     if module_name not in sys.modules:
         logger.info(f"importing module: {module_name}")
         spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None:
+            logger.error(f"cannot find spec for {module_name} at {file_path}")
+            return
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
@@ -162,6 +180,7 @@ def gather_meta_design(file_path: Path, meta_design_name: str = "__meta_design__
     designs.reverse()
     res = Design()
     for item in designs:
+        logger.debug(f"{meta_design_name} at :{item.var_path}")
         res = res + item.var
     return MetaContext(
         trace=designs,
