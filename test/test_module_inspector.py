@@ -3,7 +3,7 @@ from pprint import pprint
 
 from pinject_design.module_inspector import get_project_root
 from pinject_design.run_config_utils import create_idea_configurations
-from pinject_design.helpers import walk_module_attr, gather_meta_design
+from pinject_design.helpers import walk_module_attr, gather_meta_context
 
 
 def test_get_project_root():
@@ -23,7 +23,7 @@ def test_walk_module_attr():
 
 def test_gather_meta_design():
     test_file = "/Users/s22625/repos/pinject-design/pinject_design/test_package/child/module1.py"
-    d = gather_meta_design(Path(test_file))
+    d = gather_meta_context(Path(test_file))
     print(d.provide('name'))
 
 
