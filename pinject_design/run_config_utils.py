@@ -50,7 +50,7 @@ from pinject_design.di.util import instances, providers
 from pinject_design.helper_structure import IdeaRunConfigurations, RunnablePair, RunnableValue, \
     IdeaRunConfiguration
 from pinject_design.helpers import inspect_and_make_configurations, load_variable_by_module_path, \
-    get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_design
+    get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_context
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 from pinject_design.run_config_utils_v2 import RunInjected
 
@@ -148,7 +148,6 @@ def extract_args_for_runnable(
 
 IdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
 
-
 @injected_function
 def injected_to_idea_configs(
         entrypoint_path: str,
@@ -161,6 +160,7 @@ def injected_to_idea_configs(
         /,
         tgt: ModuleVarSpec
 ):
+    # question is: how can we pass the override to run_injected?
     logger.info(f"using custom_idea_config_creator {custom_idea_config_creator} for {tgt}")
     name = tgt.var_path.split(".")[-1]
     config_args = {
@@ -356,7 +356,7 @@ def create_idea_configurations(
     # for example by looking at a config file in the project root
     # 1. look for default design path string
     # 2. look for default working dir string
-    meta_context = gather_meta_design(Path(module_path))
+    meta_context = gather_meta_context(Path(module_path))
 
     design = instances(
         entrypoint_path=entrypoint_path,

@@ -175,7 +175,7 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
                 yield from walk_module_attr(grandparent_file_path, attr_name, root_module_path)
 
 
-def gather_meta_design(file_path: Path, meta_design_name: str = "__meta_design__") -> MetaContext:
+def gather_meta_context(file_path: Path, meta_design_name: str = "__meta_design__") -> MetaContext:
     designs = list(walk_module_attr(file_path, meta_design_name))
     designs.reverse()
     res = Design()
