@@ -28,12 +28,14 @@ import importlib
 import inspect
 import json
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
 from typing import Optional, List, Dict, Coroutine, OrderedDict, Callable
 
+from loguru import logger
 import fire
 import loguru
 import returns.maybe as raybe
@@ -53,6 +55,7 @@ from pinject_design.helpers import inspect_and_make_configurations, load_variabl
     get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_context
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 from pinject_design.run_config_utils_v2 import RunInjected
+from dataclasses import dataclass
 
 
 def maybe__or__(self, other):
@@ -148,6 +151,7 @@ def extract_args_for_runnable(
 
 IdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
 
+
 @injected_function
 def injected_to_idea_configs(
         entrypoint_path: str,
@@ -240,7 +244,7 @@ def notify(text, sound='Glass') -> str:
 
 # maybe we want to distinguish the error with its complexity and pass it to gpt if required.
 
-def run_anything(cmd: str, var_path, design_path, *args, **kwargs):
+def run_anything(cmd: str, var_path, design_path, return_result=False, *args, **kwargs):
     # TODO pass the resulting errors into gpt to give better error messages.
     # for that, I need to capture the stderr/stdout
     # get the var and design
@@ -262,7 +266,7 @@ def run_anything(cmd: str, var_path, design_path, *args, **kwargs):
     design = design + overrides
     # if you return python object, fire will try to use it as a command object
     # we need to inspect __runnable_metadata__
-    logger.info(f"running target:{var}")
+    logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     logger.info(f"metadata obtained from injected: {meta}")
     res = None
     try:
@@ -290,18 +294,21 @@ def run_anything(cmd: str, var_path, design_path, *args, **kwargs):
         notify(f"Run failed with error:\n{e}", sound='Frog')
         raise e
     notify(f"Run result:\n{str(res)[:100]}")
+    if return_result:
+        return res
 
 
 def run_injected(
         cmd,
         var_path,
         design_path: str = None,
+        return_result=False,
         *args, **kwargs
 ):
     if design_path is None:
         design_path = get_design_path_from_var_path(var_path)
     assert design_path, f"design path must be a valid module path, got:{design_path}"
-    return run_anything(cmd, var_path, design_path, *args, **kwargs)
+    return run_anything(cmd, var_path, design_path,return_result=return_result, *args, **kwargs)
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
@@ -332,6 +339,37 @@ def find_injecteds(
     return print(json.dumps([i.var_path for i in injecteds]))
 
 
+@dataclass
+class ConfigCreationArgs:
+    module_path: str
+    default_design_path: str = None
+    entrypoint_path: str = None
+    interpreter_path: str = None
+    working_dir: str = None
+
+    def to_design(self):
+        logger.debug(f"python paths:{sys.path}")
+        meta_context = gather_meta_context(Path(self.module_path))
+
+        design = providers(
+            project_root=lambda: Path(get_project_root(self.module_path)),
+            entrypoint_path=lambda: self.entrypoint_path or __file__,
+            interpreter_path=lambda: self.interpreter_path or sys.executable,
+            default_design_paths=lambda: find_default_design_paths(self.module_path, self.default_design_path),
+            default_working_dir=lambda project_root: maybe(lambda: self.working_dir)() | Some(
+                str(project_root)),
+            default_design_path=lambda default_design_paths: default_design_paths[0]
+        ) + instances(
+            logger=loguru.logger,
+            custom_idea_config_creator=lambda x: [],  # type ConfigCreator
+            meta_context=meta_context,
+        ) + meta_context.accumulated
+        logger.info(f"using meta design:{meta_context.accumulated}")
+        logger.info(f"custom_idea_config_creator:{design['custom_idea_config_creator']}")
+        return design
+
+
+# since this is an entrypoint, we can't use @injected_function here.
 def create_idea_configurations(
         module_path,
         default_design_path=None,
@@ -340,36 +378,15 @@ def create_idea_configurations(
         working_dir=None,
         print_to_stdout=True,
 ):
-    from loguru import logger
-    import sys
     pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = False
-    logger.debug(f"python paths:{sys.path}")
-    project_root = get_project_root(module_path)
-    # logger.debug(f"env python_path:{os.environ['PYTHONPATH']}")
-    entrypoint_path = entrypoint_path or __file__
-    interpreter_path = interpreter_path or sys.executable
-    logger.info(f"looking for default design paths from {module_path}")
-    default_design_paths = find_default_design_paths(module_path, default_design_path)
-    default_working_dir = maybe(lambda: working_dir)() | maybe(get_project_root)(module_path)
-
-    # somehow find the default design
-    # for example by looking at a config file in the project root
-    # 1. look for default design path string
-    # 2. look for default working dir string
-    meta_context = gather_meta_context(Path(module_path))
-
-    design = instances(
+    args = ConfigCreationArgs(
+        module_path=module_path,
+        default_design_path=default_design_path,
         entrypoint_path=entrypoint_path,
         interpreter_path=interpreter_path,
-        default_design_paths=default_design_paths,
-        default_working_dir=default_working_dir,
-        logger=loguru.logger,
-        custom_idea_config_creator=lambda x: [],  # type ConfigCreator
-        meta_context=meta_context,
-        project_root=Path(project_root),
-    ) + meta_context.accumulated
-    logger.info(f"using meta design:{meta_context.accumulated}")
-    logger.info(f"custom_idea_config_creator:{design['custom_idea_config_creator']}")
+        working_dir=working_dir,
+    )
+    design = args.to_design()
     g = design.to_graph()
     configs: IdeaRunConfigurations = g[inspect_and_make_configurations(module_path)]
     pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = True
@@ -395,12 +412,21 @@ def retrieve_design_path_from_injected(tgt: Injected):
             return design_path
 
 
-def make_sandbox(module_file_path, var_name):
-    tgts = get_runnables(module_file_path)
+def get_var_spec_from_module_path_and_name(module_path: str, var_name: str) -> ModuleVarSpec:
+    tgts = get_runnables(module_path)
     name_to_tgt = {tgt.var_path.split(".")[-1]: tgt for tgt in tgts}
     tgt: ModuleVarSpec = name_to_tgt[var_name]
-    default_design_paths = find_default_design_paths(module_file_path, None)
-    default_design_path = default_design_paths[0]
+    return tgt
+
+
+@injected_function
+def _make_sandbox_impl(
+        default_design_path: str,
+        /,
+        module_file_path: str,
+        var_name: str,
+):
+    tgt: ModuleVarSpec = get_var_spec_from_module_path_and_name(module_file_path, var_name)
     default_design_path_parent = ".".join(default_design_path.split('.')[:-1])
     var_path_parent = ".".join(tgt.var_path.split('.')[:-1])
     # let's make a file for sandbox,
@@ -416,6 +442,19 @@ def make_sandbox(module_file_path, var_name):
             var_name=var_name
         ))
     print(sandbox_path)
+
+
+def make_sandbox(module_file_path, var_name):
+    args = ConfigCreationArgs(
+        module_path=module_file_path,
+        default_design_path=None,
+        entrypoint_path=None,
+        interpreter_path=None,
+        working_dir=None,
+    )
+    design = args.to_design()
+    g = design.to_graph()
+    return g[_make_sandbox_impl](module_file_path=module_file_path, var_name=var_name)
 
 
 def create_main_command(
@@ -444,7 +483,6 @@ def create_runnable_pair(
         overrides: str = None,
         show_graph: bool = False
 ) -> Optional[RunnablePair]:
-
     tgt = main_targets[target]
     if design_path is None:
         design_path = main_design_paths[list(main_design_paths.keys())[0]]
@@ -479,6 +517,7 @@ def provide_design_paths(logger, module_path) -> OrderedDict[str, str]:
     logger.info(f"main design paths:{pformat(design_paths.keys())}")
     return design_paths
 
+
 @injected_function
 def main_override_resolver(query) -> Design:
     """
@@ -486,7 +525,7 @@ def main_override_resolver(query) -> Design:
     we can also try parsing it as json.
     :return:
     """
-    if isinstance(query,dict):
+    if isinstance(query, dict):
         return instances(**query)
     elif query is None:
         return Design()
@@ -593,7 +632,7 @@ def pinject_main():
 
 def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
     pre_args = conf.arguments[1:]
-    return run_injected(*pre_args, *args, **kwargs)
+    return run_injected(*pre_args,return_result=True, *args, **kwargs)
 
 
 @memoize
