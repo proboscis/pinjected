@@ -255,6 +255,8 @@ class DependencyResolver:
                 return Injected.bind(tgt)
             case Injected():
                 return tgt
+            case Designed():
+                raise TypeError(f"cannot use Designed here, since Designed cannot become an Injected.")
             case DelegatedVar(value, cxt):
                 return self._to_injected(tgt.eval())
             case f if callable(f):
@@ -528,6 +530,8 @@ class MyObjectGraph(IObjectGraph):
         """
         from loguru import logger
         # I need to get the filename and line number of the caller
+        if isinstance(target,Designed):
+            return self.child_session(target.design)[target.internal_injected]
 
         fn, ln = get_caller_info(level).value_or(("unknown_function", "unknown_line"))
         dep_tree = self.resolver.dependency_tree(target)
