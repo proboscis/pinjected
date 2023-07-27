@@ -684,26 +684,6 @@ class DynamicSpec(BindingSpec, metaclass=abc.ABCMeta):
     def dependencies(self):
         return self._dependencies
 
-
-def _patched_provide(self, binding_key, default_provider_fn):
-    with self._rlock:
-        d: dict = self._binding_key_to_instance
-        if binding_key not in d:
-            val = default_provider_fn()
-            d[binding_key] = val
-        return d[binding_key]
-
-
-def patch_pinject_singleton_scope():
-    from loguru import logger
-    logger.warning(f"patching pinject's SingletonScope to produce better exception")
-    SingletonScope.provide = _patched_provide
-    logger.warning(f"patching done")
-
-
-patch_pinject_singleton_scope()
-
-
 def _get_external_type_name(thing):
     """patch pinject's _get_external_type_name to accept pickled function"""
     qualifier = thing.__qualname__

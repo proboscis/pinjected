@@ -1,6 +1,7 @@
 import inspect
 import platform
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -22,6 +23,7 @@ from pinject_design.di.injected import Injected, InjectedFunction, InjectedPure,
 from pinject_design.di.util import Design, DirectPinjectProvider, PinjectProviderBind
 from pinject_design.exceptions import DependencyResolutionFailure, _MissingDepsError
 from pinject_design.graph_inspection import DIGraphHelper
+from pinject_design.helpers import ModulePath
 from pinject_design.nx_graph_util import NxGraphUtil
 
 
@@ -357,6 +359,60 @@ class DIGraph:
             for k, v in attrs.items():
                 node[k] = v
         return nx_graph
+
+
+
+    def to_python_script(self,
+                         root_path: Union[str, ModulePath],
+                         design_path: Union[str, ModulePath]
+                         ):
+        # we assume that __target__ is already added to this design...
+        from loguru import logger
+        graph = defaultdict(list)
+        if not isinstance(design_path, ModulePath):
+            design_path = ModulePath(design_path)
+        if not isinstance(root_path, ModulePath):
+            root_path = ModulePath(root_path)
+        script = f"""
+from pinject_design.di.util import Design,providers
+{design_path.to_import_line()}
+{root_path.to_import_line()}
+d:Design = {design_path.var_name} + providers(
+    __target__= {root_path.var_name}
+)
+"""
+        tgt: Injected = Injected.ensure_injected(root_path.load())
+        for dep in tgt.dependencies():
+            graph["__target__"].append(dep)
+            for a, b, trc in self.di_dfs(dep, replace_missing=True):
+                graph[a].append(b)
+
+        written = set()
+
+        def resolve_node(node,args):
+            match (node,args):
+                case _,[] if node in self.explicit_mappings:
+                    tgt = self.explicit_mappings[node]
+                    match tgt:
+                        case InjectedPure(str(value)):
+                            return f"{node}=\"{value}\"\n"
+                        case InjectedPure(value):
+                            return f"{node}={value}\n"
+            args = ",".join(args)
+            return f"{node} = d['{node}']({args})\n"
+
+        def dfs_write(node):
+            nonlocal script
+            if node in written:
+                return
+            deps = graph[node]
+            for m in deps:
+                dfs_write(m)
+            script += resolve_node(node,deps)
+            written.add(node)
+
+        dfs_write("__target__")
+        return script
 
     def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> NxGraphUtil:
         if isinstance(roots, str):
