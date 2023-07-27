@@ -72,6 +72,9 @@ class Bind(Generic[T], metaclass=abc.ABCMeta):
     def to_injected(self) -> Injected:
         return bind_to_injected(self)
 
+    def __call__(self, *args, **kwargs):
+        self.to_injected().get_provider()(*args,**kwargs)
+
 
 def map_wrap(src, f):
     @wraps(src)

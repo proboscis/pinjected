@@ -37,8 +37,29 @@ class ModulePath:
     like a.b.c.d
     """
     path:str
+
+    def __post_init__(self):
+        assert self.module_name is not None
+        assert self.var_name is not None
     def load(self):
         return load_variable_by_module_path(self.path)
+
+    @property
+    def module_name(self):
+        module = ".".join(self.path.split(".")[:-1])
+        return module
+    @property
+    def var_name(self):
+        return self.path.split(".")[-1]
+
+    def to_import_line(self):
+        return f"from {self.module_name} import {self.var_name}"
+
+    @staticmethod
+    def from_local_variable(var_name):
+        # get parent frame
+        # then return a ModulePath
+        raise NotImplementedError
 
 def load_variable_by_module_path(full_module_path):
     from loguru import logger

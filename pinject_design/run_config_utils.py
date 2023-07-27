@@ -290,6 +290,12 @@ def run_anything(cmd: str, var_path, design_path, return_result=False, *args, **
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{var.dependencies()}")
             design.to_vis_graph().show_injected_html(var)
+        elif cmd == 'to_script':
+            from loguru import logger
+            d = design + providers(
+                __root__=var
+            )
+            print(d.to_vis_graph().to_python_script(var_path, design_path=design_path))
     except Exception as e:
         notify(f"Run failed with error:\n{e}", sound='Frog')
         raise e
@@ -308,7 +314,7 @@ def run_injected(
     if design_path is None:
         design_path = get_design_path_from_var_path(var_path)
     assert design_path, f"design path must be a valid module path, got:{design_path}"
-    return run_anything(cmd, var_path, design_path,return_result=return_result, *args, **kwargs)
+    return run_anything(cmd, var_path, design_path, return_result=return_result, *args, **kwargs)
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
@@ -352,7 +358,7 @@ class ConfigCreationArgs:
         meta_context = gather_meta_context(Path(self.module_path))
 
         design = providers(
-            project_root=lambda: Path(get_project_root(self.module_path)),
+            project_root=lambda module_path: Path(get_project_root(module_path)),
             entrypoint_path=lambda: self.entrypoint_path or __file__,
             interpreter_path=lambda: self.interpreter_path or sys.executable,
             default_design_paths=lambda: find_default_design_paths(self.module_path, self.default_design_path),
@@ -363,6 +369,7 @@ class ConfigCreationArgs:
             logger=loguru.logger,
             custom_idea_config_creator=lambda x: [],  # type ConfigCreator
             meta_context=meta_context,
+            module_path=self.module_path,
         ) + meta_context.accumulated
         logger.info(f"using meta design:{meta_context.accumulated}")
         logger.info(f"custom_idea_config_creator:{design['custom_idea_config_creator']}")
@@ -475,7 +482,7 @@ def create_main_command(
 @injected_function
 def create_runnable_pair(
         main_targets: OrderedDict[str, Injected],
-        main_design_paths: OrderedDict[str, str],
+        default_design_paths: List[str],
         main_override_resolver,
         /,
         target: str,
@@ -485,7 +492,7 @@ def create_runnable_pair(
 ) -> Optional[RunnablePair]:
     tgt = main_targets[target]
     if design_path is None:
-        design_path = main_design_paths[list(main_design_paths.keys())[0]]
+        design_path = default_design_paths[0]
     main_overrides = main_override_resolver(overrides)
     design = load_variable_by_module_path(design_path) + main_overrides
     pair = RunnablePair(target=tgt, design=design)
@@ -585,14 +592,24 @@ def run_main():
     import inspect
     import fire
     from loguru import logger
-    runnable: RunnablePair = (instances(
-        root_frame=inspect.currentframe().f_back,
+    module_path = provide_module_path(logger, inspect.currentframe().f_back)
+    cfg = ConfigCreationArgs(
+        module_path=module_path,
+    )
+    # runnable: RunnablePair = (instances(
+    #     root_frame=inspect.currentframe().f_back,
+    #     logger=logger,
+    # ) + providers(
+    #     module_path=provide_module_path,
+    #     main_targets=provide_runnables,
+    #     main_design_paths=provide_design_paths
+    # )).provide(create_runnable_pair)
+    d = cfg.to_design() + instances(
         logger=logger,
     ) + providers(
-        module_path=provide_module_path,
         main_targets=provide_runnables,
-        main_design_paths=provide_design_paths
-    )).provide(create_runnable_pair)
+    )
+    runnable: RunnablePair = d.provide(create_runnable_pair)
     fire.Fire(runnable)
 
 
@@ -612,6 +629,7 @@ def pinject_main():
     """
     finds any runnable in the caller's file
     and runs it with default design with fire
+    # TODO make this able to override design
     :return:
     """
     import inspect
@@ -632,7 +650,7 @@ def pinject_main():
 
 def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
     pre_args = conf.arguments[1:]
-    return run_injected(*pre_args,return_result=True, *args, **kwargs)
+    return run_injected(*pre_args, return_result=True, *args, **kwargs)
 
 
 @memoize
