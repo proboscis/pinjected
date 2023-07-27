@@ -6,7 +6,7 @@ from pinject.bindings import default_get_arg_names_from_class_name
 from pinject.finding import find_classes
 
 from pinject_design import Injected
-from pinject_design.di.design import Bind
+from pinject_design.di.bindings import Bind
 
 
 @dataclass

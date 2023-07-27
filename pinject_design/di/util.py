@@ -1,8 +1,6 @@
-import abc
 import inspect
 from copy import copy
 from dataclasses import dataclass, field, replace
-from functools import wraps
 from itertools import chain
 from pprint import pformat
 from typing import Union, Type, TypeVar, Callable, Dict, Any
@@ -10,18 +8,14 @@ from typing import Union, Type, TypeVar, Callable, Dict, Any
 import cloudpickle
 import pinject
 from cytoolz import merge
-from makefun import create_function, wraps
+from makefun import create_function
 from pampy import match
-from pinject import BindingSpec
-from pinject.scoping import SingletonScope, BindableScopes, SINGLETON
 from returns.result import safe, Failure, Success
 
-from pinject_design.di.design import Bind, FunctionProvider, ProviderTrait, InjectedProvider, PinjectConfigure, \
-    PinjectProvider, ensure_self_arg, PinjectBind
-from pinject_design.di.graph import ExtendedObjectGraph, MyObjectGraph, IObjectGraph
-from pinject_design.di.injected import Injected
+from pinject_design.di.bindings import InjectedBind, Bind
+from pinject_design.di.graph import MyObjectGraph, IObjectGraph
+from pinject_design.di.injected import Injected, InjectedPure, InjectedFunction
 from pinject_design.di.proxiable import DelegatedVar
-from pinject_design.di.session import SessionScope
 
 prototype = pinject.provides(in_scope=pinject.PROTOTYPE)
 # is it possible to create a binding class which also has an ability to dynamically add..?
@@ -48,16 +42,19 @@ def rec_val_filter(f, tgt: dict):
             res[k] = v
     return res
 
+
 class ErrorWithTrace(BaseException):
-    def __init__(self,src: BaseException, trace: str):
+    def __init__(self, src: BaseException, trace: str):
         super().__init__()
         self.src = src
         self.trace = trace
+
     def __reduce__(self):
         return (ErrorWithTrace, (self.src, self.trace))
 
     def __str__(self):
         return f"{self.src}\n {self.trace}"
+
 
 def my_safe(f):
     def impl(*args, **kwargs):
@@ -71,7 +68,9 @@ def my_safe(f):
                 e,
                 trace
             ))
+
     return impl
+
 
 def check_picklable(tgt: dict):
     cloud_dumps_try = my_safe(cloudpickle.dumps)
@@ -134,16 +133,15 @@ class DesignBindContext:
         self.src = src
         self.key = key
 
-    def to_class(self, cls: type, **kwargs):
+    def to_class(self, cls: type):
         assert isinstance(cls, type), f"binding must be a class! got:{cls} for key:{self.src}"
-        return self.src.bind_imm(self.key, to_class=cls, **kwargs)
+        return self.src + Design({self.key:InjectedBind(Injected.bind(cls))})
 
-    def to_instance(self, instance, **kwargs):
-        return self.src.bind_imm(self.key, to_instance=instance, **kwargs)
+    def to_instance(self, instance):
+        return self.src + Design({self.key:InjectedBind(Injected.pure(instance))})
 
-    def to_provider(self, provider, all_except=None, arg_names=None, in_scope=None):
-        return self.src.bind_provider_imm(self.key, provider, all_except=all_except, arg_names=arg_names,
-                                          in_scope=in_scope)
+    def to_provider(self,provider):
+        return self.src + Design({self.key:InjectedBind(Injected.bind(provider))})
 
 
 def extract_argnames(func):
@@ -163,14 +161,13 @@ def getitem_opt(o, k):
 
 
 def to_readable_name(o):
-    from pampy import match, _
-    return match(o,
-                 DirectPinjectProvider(_), lambda method: method.__name__,
-                 PinjectProviderBind, lambda ppb: (ppb.f.__name__),
-                 PinjectBind({"to_instance": _}), lambda i: i,
-                 PinjectBind({"to_class": _}), lambda c: c.__name__,
-                 Any, lambda x: x
-                 )
+    match o:
+        case InjectedBind(InjectedFunction(func, _)):
+            return func.__name__
+        case InjectedBind(InjectedPure(value)):
+            return value
+        case any:
+            return any
 
 
 def try_import_subject():
@@ -244,17 +241,15 @@ class Design:
         for k, v in state.items():
             setattr(self, k, v)
 
-    def __add__(self, other: Union["Design", BindingSpec, Dict[str, Bind]]):
+    def __add__(self, other: Union["Design", Dict[str, Bind]]):
         other = self._ensure_dbc(other)
         return self.merged(other)
 
     def bind(self, key: str) -> DesignBindContext:
         return DesignBindContext(self, key)
 
-    def _ensure_dbc(self, other: Union["Design", BindingSpec, Dict[str, Bind]]):
+    def _ensure_dbc(self, other: Union["Design", Dict[str, Bind]]):
         match other:
-            case BindingSpec():
-                return Design.gather_spec(other)
             case Design():
                 return other
             case dict() if all([isinstance(v, Bind) for v in other.values()]):
@@ -285,35 +280,13 @@ class Design:
         )
         return res
 
-    def bind_provider_imm(self, key, f, all_except=None, arg_names=None, in_scope=None):
-        def raise_unhandled(any):
-            raise RuntimeError(f"unknown input type for bind_provider_imm! key:{key}, provider:{f}")
-
-        bind = match(f,
-                     Injected, lambda i: Design({key: InjectedProvider(i)}),
-                     ProviderTrait, lambda pt: Design({key: pt}),
-                     DelegatedVar, lambda dv: Design({key: InjectedProvider(dv.eval())}),
-                     callable, lambda c: Design(
-                {key: PinjectProviderBind(f, all_except=all_except, arg_names=arg_names, in_scope=in_scope)}),
-                     Any, raise_unhandled
-                     )
-        res = self + bind
-        return res
-
-    def bind_imm(self, key, **kwargs):
-        from pampy import _
-        return self + match(kwargs,
-                            {"to_class": Injected}, lambda injected: Design(bindings={key: InjectedProvider(injected)}),
-                            _, Design(bindings={key: PinjectBind(kwargs)})
-                            )
-
     def bind_instance(self, **kwargs):
         x = self
         for k, v in kwargs.items():
             if isinstance(v, type):
                 from loguru import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
-            x = x.bind(k).to_instance(v)
+            x += Design({k: InjectedBind(InjectedPure(v))})
         return x
 
     def bind_provider(self, **kwargs: Union[Callable, Injected]):
@@ -352,27 +325,12 @@ class Design:
         return x
 
     def to_graph(self, modules=None, classes=None) -> IObjectGraph:
-        #So MyObjectGraph's session is still corrupt?
+        # So MyObjectGraph's session is still corrupt?
         design = self + Design(
             modules=modules or [],
             classes=classes or []
         )
         return MyObjectGraph.root(design)
-
-    def _old_to_graph(self,modules=None, classes=None) -> IObjectGraph:
-        from loguru import logger
-        modules = self.modules + (modules or [])
-        classes = self.classes + (classes or [])
-        logger.info(f"to_graph:\n\t{pformat(modules)}\n\t{pformat(classes)}")
-        g = pinject.new_object_graph(
-            modules=modules,
-            binding_specs=[self.to_binding_spec()],
-            classes=classes
-        )
-        g._obj_provider._bindable_scopes = BindableScopes(
-            id_to_scope={SINGLETON: SessionScope()}
-        )
-        return ExtendedObjectGraph(self, g)
 
     def run(self, f, modules=None, classes=None):
         return self.to_graph(modules, classes).run(f)
@@ -383,56 +341,7 @@ class Design:
         :param modules: modules to use for graph construction
         :return:
         """
-        return self.to_graph(modules=modules, classes=classes).provide(target,level=4)
-
-    @staticmethod
-    def gather_spec(b: BindingSpec) -> "Design":
-        assert isinstance(b, BindingSpec)
-        dep_spec = Design()
-        for dep in b.dependencies() or []:
-            spec = Design.gather_spec(dep)
-            # logger.debug(f"dependency:{spec}")
-            dep_spec += spec
-        spec = Design()
-
-        if hasattr(b, "configure"):
-            @safe
-            def accumulate():
-                def binder(key, **kwargs):
-                    nonlocal spec
-                    spec = spec.bind_imm(key, **kwargs)
-
-                # logger.debug(f"configuring binder:{b}")
-                b.configure(binder)
-
-            accumulate()
-        for item in dir(b):
-            if item.startswith("provide"):
-                method = getattr(b, item)
-                if callable(method):
-                    # logger.debug(f"binding from spec:{item}")
-                    k = item.replace("provide_", "", 1)
-                    spec = spec + Design({k: DirectPinjectProvider(getattr(b, item))})
-                    assert k in spec
-        res = dep_spec + spec
-        debug = res.to_binding_spec()
-        for item in dir(b):
-            if item.startswith("provide"):  # and callable(getattr(b,item)):
-                k = item.replace("provide_", "", 1)
-                # how the hell a function is not callable
-                # ok the item is PinjectProvider, not function.
-                # how can BindingSpec have an attribute as PinjectProvider?
-                assert k in res, f"{k} not in res. key in spec?={k in spec},obj:{getattr(b, item)},callable:{callable(getattr(b, item))}"
-                assert item in dir(debug)
-        return res
-
-    @staticmethod
-    def traverse_specs(*bindings: BindingSpec):
-        spec = Design()
-        for b in bindings:
-            spec = spec + b
-        # logger.debug(f"traversed binding:\n\t{spec}")
-        return spec
+        return self.to_graph(modules=modules, classes=classes).provide(target, level=4)
 
     def copy(self):
         return self.__class__(
@@ -487,15 +396,14 @@ class Design:
 
     def to_str_dict(self):
         res = dict()
-        from pampy import _
         for k, v in self.bindings.items():
-            res[k] = match(v,
-                           FunctionProvider, lambda fp: fp.f.__name__,
-                           InjectedProvider, lambda i: str(i),
-                           PinjectBind({'to_class': _}), lambda cls: str(cls),
-                           PinjectBind({'to_instance': _}), lambda ins: str(ins),
-                           _, lambda any: str(any)
-                           )
+            match v:
+                case InjectedBind(InjectedFunction(f, args)):
+                    res[k] = f.__name__
+                case InjectedBind(InjectedPure(value)):
+                    res[k] = str(value)
+                case any:
+                    res[k] = str(any)
         return res
 
     def build(self):
@@ -507,35 +415,6 @@ class Design:
             else:
                 design = self._add_multi_binding(design, k, providers)
         return design
-
-    def to_binding_spec(self):
-        """Generate a BindingSpec class for pinject and returns its instance."""
-
-        design = self.build()
-        bindings = {k: v.to_pinject_binding() for k, v in design.bindings.items()}
-        configures = {k: v for k, v in bindings.items() if isinstance(v, PinjectConfigure)}
-        # configures = bindings.filter(lambda k, v: isinstance(v, PinjectConfigure))
-        providers = {k: v for k, v in bindings.items() if isinstance(v, PinjectProvider)}
-        providers = {k: self._ensure_provider_name(k, v.method) for k, v in providers.items()}
-
-        # providers = itemmap(lambda t: self._ensure_provider_name(t[0], t[1].method), providers)
-
-        # providers = bindings.filter(lambda k, v: isinstance(v, PinjectProvider)).map(
-        #     lambda k, v: self._ensure_provider_name(k, v.method)
-        # )
-
-        def configure(self, bind):
-            for c, v in dict(configures).items():
-                # logger.info(f"bind :{v.kwargs}")
-                bind(c, **v.kwargs)
-
-        DynamicBinding = type("DynamicBinding", (BindingSpec,),
-                              {
-                                  "configure": configure,
-                                  **{f"provide_{k}": v for k, v in providers.items()},
-                              })
-
-        return DynamicBinding()
 
     def _ensure_provider_name(self, k, method):
         """set appropriate name for provider function to be recognized by pinject"""
@@ -651,38 +530,11 @@ class Design:
 EmptyDesign = Design()
 
 
-@dataclass
-class DirectPinjectProvider(Bind):
-    method: Callable
-
-    def to_pinject_binding(self) -> Union[PinjectConfigure, PinjectProvider]:
-        return PinjectProvider(self.method)
-
-    def __hash__(self):
-        return hash(self.method)
-
-
 # mapping is another layer of complication.
 # good way is to create a MappedDesign class which is not a subclass of a Design
 # only MappedDesign or Design can be __add__ ed to this class
 # calling to_design converts all lazy mapping into providers
 # so if anything is missing then fails.
-
-class DynamicSpec(BindingSpec, metaclass=abc.ABCMeta):
-    def __init__(self):
-        container = Design()
-        container = self.dynamic_configure(container)
-        self._dependencies = [container.to_binding_spec()]
-
-    @abc.abstractmethod
-    def dynamic_configure(self, binder: Design) -> Design:
-        pass
-
-    def configure(self, bind):
-        pass
-
-    def dependencies(self):
-        return self._dependencies
 
 def _get_external_type_name(thing):
     """patch pinject's _get_external_type_name to accept pickled function"""
@@ -709,69 +561,12 @@ def patch_pinject_get_external_type_name():
 patch_pinject_get_external_type_name()
 
 
-# patch_pinject_singleton_scope()
-@dataclass
-class PinjectProviderBind(Bind):
-    """use this to keep things picklable"""
-    f: Callable
-    all_except: Any
-    arg_names: Any
-    in_scope: Any
-
-    def __post_init__(self):
-        assert self.f is not None, "PinjectProviderBind cannot have None as f."
-        if self.f.__name__ == "<lambda>":
-            self.f.__name__ = "_lambda_"
-        self._fname = self.f.__name__
-        assert self._fname is not None, f"provided function has no name.:{self.f}"
-        self._signature = inspect.signature(self.f)
-
-    def provider_for_binding_spec(self):
-        # so first you need to convert a method in to function
-        assert self.f is not None
-        f = self.f
-        if "__name__" not in dir(f):
-            f = method_to_function(f)
-        # now ensure the function has self arg
-        f = ensure_self_arg(f, fname=self._fname)
-
-        @wraps(f)  # called 78 times
-        def wrapper(*args, **kwargs):
-            return f(*args, **kwargs)
-
-        wrapper.__name__ = f.__name__
-        all_except = self.all_except
-        arg_names = self.arg_names
-        in_scope = self.in_scope
-        if all_except is not None or arg_names is not None:
-            wrapper = inject_proto(all_except=all_except, arg_names=arg_names)(wrapper)
-        if in_scope is not None:
-            wrapper = pinject.provides(in_scope=in_scope)(wrapper)
-        return wrapper
-
-    def to_pinject_binding(self) -> Union[PinjectConfigure, PinjectProvider]:
-        return PinjectProvider(self.provider_for_binding_spec())
-
-    def __getstate__(self):
-        return dict(
-            f=self.f,
-            all_except=self.all_except,
-            arg_names=self.arg_names,
-            in_scope=self.in_scope,
-            _fname=self._fname,
-            _signature=self._signature
-        )
-
-    def __setstate__(self, state):
-        for k, v in state.items():
-            setattr(self, k, v)
-        assert self.f is not None
-
-
 def instances(**kwargs):
-    for k,v in kwargs.items():
-        assert not isinstance(v, DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
-        assert not isinstance(v, Injected), f"passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
+    for k, v in kwargs.items():
+        assert not isinstance(v,
+                              DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
+        assert not isinstance(v,
+                              Injected), f"passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
     return Design().bind_instance(**kwargs)
 
 
