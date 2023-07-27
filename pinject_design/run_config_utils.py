@@ -55,7 +55,7 @@ from pinject_design.helpers import inspect_and_make_configurations, load_variabl
     get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_context
 from pinject_design.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 from pinject_design.run_config_utils_v2 import RunInjected
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def maybe__or__(self, other):
@@ -78,6 +78,7 @@ Maybe.__or__ = maybe__or__
 Maybe.filter = maybe_filter
 
 safe_getattr = safe(getattr)
+
 
 
 @injected_function

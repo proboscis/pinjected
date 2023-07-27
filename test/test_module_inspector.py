@@ -1,12 +1,14 @@
 from pathlib import Path
 from pprint import pprint
 
+from pinject_design.helper_structure import MetaContext
 from pinject_design.module_inspector import get_project_root
 from pinject_design.run_config_utils import create_idea_configurations
 from pinject_design.helpers import walk_module_attr, gather_meta_context
 
 
 def test_get_project_root():
+    # this is a host dependent test...
     root = get_project_root(
         "/Users/s22625/repos/archpainter/archpainter/style_transfer/iccv_artifacts.py",
     )
@@ -23,8 +25,8 @@ def test_walk_module_attr():
 
 def test_gather_meta_design():
     test_file = "/Users/s22625/repos/pinject-design/pinject_design/test_package/child/module1.py"
-    d = gather_meta_context(Path(test_file))
-    print(d.provide('name'))
+    mc:MetaContext = gather_meta_context(Path(test_file))
+    print(mc.accumulated.provide('name'))
 
 
 def test_config_creator():
