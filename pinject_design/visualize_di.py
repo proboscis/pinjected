@@ -4,23 +4,19 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
-from pathlib import Path
-from pprint import pformat
-from typing import Callable, List, Any, Dict, Union
+from typing import Callable, List, Dict, Union
 
 import networkx as nx
 from cytoolz import memoize
 from loguru import logger
-
-from pampy import match
 from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
-from pinject_design.di.design import PinjectBind, Bind, InjectedProvider
+from pinject_design.di.bindings import InjectedBind
 from pinject_design.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
-from pinject_design.di.util import Design, DirectPinjectProvider, PinjectProviderBind
+from pinject_design.di.util import Design
 from pinject_design.exceptions import DependencyResolutionFailure, _MissingDepsError
 from pinject_design.graph_inspection import DIGraphHelper
 from pinject_design.helpers import ModulePath
@@ -58,12 +54,6 @@ class PinProvider:
 class DIGraph:
     src: Design
 
-    def _get_configured(self):
-        for k, b in self.src.bindings.items():
-            if isinstance(b, DirectPinjectProvider) and hasattr(b.method, "_pinject_is_wrapper"):
-                pp = PinProvider(b.method)
-                yield k, pp
-
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
@@ -71,10 +61,9 @@ class DIGraph:
         self.src = self.src.bind_instance(session='DummyForVisualization').build()
         self.helper = DIGraphHelper(self.src)
         self.implicit_mappings = dict(self.helper.get_implicit_mapping())
-        self.pinject_mappings = dict(self._get_configured())
         # we want to know if the binding is InjectedProvider or not
-        self.explicit_mappings: Dict[str, Injected] = {k: b.to_injected() for k, b in self.src.bindings.items() if
-                                                       k not in self.pinject_mappings}
+        self.explicit_mappings: Dict[str, Injected] = {k: b.to_injected() for k, b in self.src.bindings.items()}
+
         self.explicit_mappings.update(**self.helper.total_mappings())
         self.multi_mappings = {k: b for k, b in self.src.multi_binds.items()}
 
@@ -123,12 +112,15 @@ class DIGraph:
             deps = []
             for k, v in i.kwargs_mapping.items():
                 dep_name = f"{k}_{_id}"
-                injected = match(v,
-                                 str, Injected.by_name,
-                                 type, Injected.bind,
-                                 callable, Injected.bind,
-                                 Injected, lambda i: i
-                                 )
+                match v:
+                    case str():
+                        injected = Injected.by_name(v)
+                    case type():
+                        injected = Injected.bind(v)
+                    case f if callable(f):
+                        injected = Injected.bind(f)
+                    case Injected():
+                        injected = v
                 self.direct_injected[dep_name] = injected
 
                 # logger.info(f"add direct injected node:\n{tabulate.tabulate(list(self.direct_injected.items()))}")
@@ -246,7 +238,6 @@ class DIGraph:
             res = f"failed:{f} from {f}"
 
         res = res.replace("<", "").replace(">", "")
-        from loguru import logger
         res = res.replace("\t", "....").replace(" ", ".")
         # logger.info(f"extracted sources:\n{res}")
         return res
@@ -315,18 +306,8 @@ class DIGraph:
                 match tgt:
                     case Injected():
                         return self.parse_injected(tgt)
-                    case InjectedProvider(Injected() as _tgt):
-                        return self.parse_injected(_tgt)
-                    case PinjectProviderBind():
-                        return ("function", tgt.f.__name__, self.get_source(tgt.f))
-                    case DirectPinjectProvider():
-                        return ("method", tgt.method.__name__, self.get_source(tgt.method))
-                    case PinjectBind({"to_instance": callable_ob}) if callable(callable_ob):
-                        return ("instance", str(tgt.to_instance), self.get_source(callable_ob))
-                    case PinjectBind({"to_instance": any}):
-                        return ("instance", str(any), f"instance:{pformat(any)}")
-                    case PinjectBind({"to_class": cls}):
-                        return ("class", cls.__name__, self.get_source(cls))
+                    case InjectedBind(tgt):
+                        return self.parse_injected(tgt)
                     case cls if isinstance(cls, type):
                         return ("class", cls.__name__, self.get_source(cls))
                     case [*providers]:
@@ -360,14 +341,11 @@ class DIGraph:
                 node[k] = v
         return nx_graph
 
-
-
     def to_python_script(self,
                          root_path: Union[str, ModulePath],
                          design_path: Union[str, ModulePath]
                          ):
         # we assume that __target__ is already added to this design...
-        from loguru import logger
         graph = defaultdict(list)
         if not isinstance(design_path, ModulePath):
             design_path = ModulePath(design_path)
@@ -389,9 +367,9 @@ d:Design = {design_path.var_name} + providers(
 
         written = set()
 
-        def resolve_node(node,args):
-            match (node,args):
-                case _,[] if node in self.explicit_mappings:
+        def resolve_node(node, args):
+            match (node, args):
+                case _, [] if node in self.explicit_mappings:
                     tgt = self.explicit_mappings[node]
                     match tgt:
                         case InjectedPure(str(value)):
@@ -408,7 +386,7 @@ d:Design = {design_path.var_name} + providers(
             deps = graph[node]
             for m in deps:
                 dfs_write(m)
-            script += resolve_node(node,deps)
+            script += resolve_node(node, deps)
             written.add(node)
 
         dfs_write("__target__")
