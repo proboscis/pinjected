@@ -1,6 +1,6 @@
-# Pinject-Design
+# Pinjected
 
-Pinject-Design is a dependency injection / dependency resolver library inspired by [pinject](https://github.com/google/pinject).
+Pinjected is a dependency injection / dependency resolver library inspired by [pinject](https://github.com/google/pinject).
 
 This library makes it easy to compose mutliple python objects to create a final object. 
 When you request for a final object, this library will automatically create all the dependencies and compose them to create the final object.
