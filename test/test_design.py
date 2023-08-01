@@ -1,5 +1,5 @@
-from pinject_design import Design, Injected, EmptyDesign
-from pinject_design.di.designed import Designed
+from pinjected import Design, Injected, EmptyDesign
+from pinjected.di.designed import Designed
 
 
 def test_designed():

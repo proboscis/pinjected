@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import loguru
 
-from pinject_design import injected_function
-from pinject_design.di.util import instances
+from pinjected import injected_function
+from pinjected.di.util import instances
 
 @injected_function
 async def async_run(thread_pool, logger, /, fn, *args, **kwargs):

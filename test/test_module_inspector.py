@@ -1,10 +1,10 @@
 from pathlib import Path
 from pprint import pprint
 
-from pinject_design.helper_structure import MetaContext
-from pinject_design.module_inspector import get_project_root
-from pinject_design.run_config_utils import create_idea_configurations
-from pinject_design.helpers import walk_module_attr, gather_meta_context
+from pinjected.helper_structure import MetaContext
+from pinjected.module_inspector import get_project_root
+from pinjected.run_config_utils import create_idea_configurations
+from pinjected.helpers import walk_module_attr, gather_meta_context
 
 
 def test_get_project_root():

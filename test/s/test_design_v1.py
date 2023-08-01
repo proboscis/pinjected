@@ -1,9 +1,9 @@
 from returns.maybe import Some, Nothing
 from returns.result import safe, Failure
 
-from pinject_design import Injected
-from pinject_design.di.implicit_globals import IMPLICIT_BINDINGS
-from pinject_design.di.permissioned.blueprint import Blueprint, ResourceManifest, BindingKey, Binding, \
+from pinjected import Injected
+from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
+from pinjected.di.permissioned.blueprint import Blueprint, ResourceManifest, BindingKey, Binding, \
     RequesterManifest, Resolver, PermissionManager, ResourcePathManifest, RequesterPathManifest, binding
 
 x_key = BindingKey("x", ResourcePathManifest(
