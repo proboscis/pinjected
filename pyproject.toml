@@ -3,8 +3,8 @@ requires = [ "poetry-core>=1.0.0",]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "pinject-design"
-version = "0.1.107"
+name = "pinjected"
+version = "0.1.110"
 description = "immutable wrapper for pinject"
 authors = [ "proboscis <nameissoap@gmail.com>",]
 license = "MIT"
@@ -26,7 +26,7 @@ makefun = "^1.15.1"
 loguru = "^0.7.0"
 
 [tool.poetry.scripts]
-pinject_design_config = "pinject_design.run_config_utils:main"
+pinject_design_config = "pinjected.run_config_utils:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

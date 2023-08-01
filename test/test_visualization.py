@@ -1,5 +1,5 @@
-from pinject_design import Design, injected_function
-from pinject_design.helpers import ModulePath
+from pinjected import Design, injected_function
+from pinjected.helpers import ModulePath
 
 test_design=Design()
 __default_design_paths__ = ['test.test_visualization.test_design']

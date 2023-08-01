@@ -40,17 +40,11 @@ and also Injected object, which models an object created by a Design.
 # Use Case
 So, how is that useful to machine learning experiments? Here's an example.
 
-This is a typical machine learning training procedure, implemented with pytorch and our library.
+Let's start from a typical machine learning code.
+
 ```python
 from dataclasses import dataclass
-def provide_optimizer(learning_rate):
-    return Adam(lr=learning_rate)
-def provide_dataset(batch_size,image_w):
-    return MyDataset(batch_size,image_w)
-def provide_model():
-    return Sequential()
-def provide_loss_calculator():
-    return MyLoss()
+
 from abc import ABC,abstractmethod
 class IoInterface(ABC): # interface for IO used by saver/loader
     @abstractmethod
@@ -72,19 +66,6 @@ class Loader(ABC):
     io_interface : IoInterface # try to only depend on interface so that actual implementation can be changed later
     def load(self,identifier):
         return self.io_interface.load(identifier)
-
-conf = Design().bind_instance(
-    learning_rate = 0.001,
-    batch_size = 128,
-    image_w = 256,
-).bind_provider(
-    optimizer = provide_optimizer,
-    dataset = provide_dataset,
-    model = provide_model,
-    loss_calculator = provide_loss_calculator
-).bind_class(
-    io_interface = LocalIo# use local file system by default
-)
 
 @dataclass
 class Trainer: # try to keep a class as small as possible to keep composability. 
@@ -111,7 +92,49 @@ class Evaluator:
     def evaluate(self):
         model = self.loader.load(self.model_identifier)
         # do evaluation using loaded model and dataset
-# create an object graph
+        
+learning_rate = 0.001
+batch_size = 128
+image_w = 256
+optimizer = Adam(lr=learning_rate)
+dataset = MyDataset(batch_size,image_w)
+model = Sequential()
+loss = MyLoss()
+saver = Saver(LocalIo())
+loader = Loader(LocalIo())
+trainer = Trainer(model,optimizer,loss,dataset,saver,"model1")
+evaluator = Evaluator(dataset,"model1",loader)
+trainer.train()
+evaluator.evaluate()
+```
+Although the code is modular, it is hard to construct all the objects and compose them to create a final object.
+Moreover, changing parameters and components requires to change the code itself, which makes it hard to reuse the code.
+
+Instead, we offer a different approach that automatically composes objects from a design object.
+```python
+from dataclasses import dataclass
+def provide_optimizer(learning_rate):
+    return Adam(lr=learning_rate)
+def provide_dataset(batch_size,image_w):
+    return MyDataset(batch_size,image_w)
+def provide_model():
+    return Sequential()
+def provide_loss_calculator():
+    return MyLoss()
+
+conf = Design().bind_instance(
+    learning_rate = 0.001,
+    batch_size = 128,
+    image_w = 256,
+).bind_provider(
+    optimizer = provide_optimizer,
+    dataset = provide_dataset,
+    model = provide_model,
+    loss_calculator = provide_loss_calculator
+).bind_class(
+    io_interface = LocalIo# use local file system by default
+)
+
 g = conf.to_graph()
 #lets see model structure
 print(g.provide("model"))
@@ -196,7 +219,7 @@ If you dont like the fact some code pieces are repeated from original Trainer, y
 
 ## Add bindings
 ```python
-from pinject_design.di.util import Design
+from pinjected.di.util import Design
 from dataclasses import dataclass
 @dataclass
 class DepObject:
@@ -260,8 +283,8 @@ d.provide("r") != d.provide("r")# it is random. should rarely be the same.
 `Injected` is a python object that represents a variable that requires injection.
 It has a set of dependencies that are required to be created, and a provider function that creates the variable.
 ```python
-from pinject_design.di.util import Injected
-from pinject_design import Design
+from pinjected.di.util import Injected
+from pinjected import Design
 def provide_ab(a:int,b:int):
     return a+b
 # Injected.bind can convert a provider function to an Injected object.
@@ -278,8 +301,8 @@ assert design.to_graph()[injected] == 3
 ### map
 You can map an Injected to create another injected instance.
 ```python
-from pinject_design.di.util import Injected,instances
-from pinject_design import Design
+from pinjected.di.util import Injected,instances
+from pinjected import Design
 design:Design = instances( # same as Design().bind_instance
     a=1,
 )
@@ -293,8 +316,8 @@ assert g[a] + 1  == g[b]
 You can combine multiple injected instances into one. 
 The dependencies of the new Injected will be the union of the dependencies of the original Injected.
 ```python
-from pinject_design.di.util import Injected
-from pinject_design import Design
+from pinjected.di.util import Injected
+from pinjected import Design
 def provide_ab(a:int,b:int):
     return a+b
 design = Design().bind_instance(
@@ -315,9 +338,9 @@ assert g[ab_zip] == (1,2)
 ```
 
 ### dict/list
-since we have map and zip, we can create dict and list from Injected.
+since we have map and zip, we can create dict and list from pinjected.
 ```python
-from pinject_design.di.util import Injected,instances
+from pinjected.di.util import Injected,instances
 design = instances(
     a=1,
     b=2
@@ -335,8 +358,8 @@ This turns a Callable into Injected[Callable].
 The separation between the arguments meant to be injected and the arguments that are not meant to be injected is 
 done by a `/` in the argument list. So all the positional-only arguments become the dependencies of the Injected.
 ```python
-from pinject_design.di.util import Injected,instances
-from pinject_design.di.injected import injected_function
+from pinjected.di.util import Injected,instances
+from pinjected.di.injected import injected_function
 from typing import Callable
 
 @injected_function
@@ -359,8 +382,8 @@ assert g[add](3) == 6
 ## Constructing a tree of injected
 We can also form a syntax tree of injected functions, to create another injected instance.
 ```python
-from pinject_design.di.util import Injected, instances
-from pinject_design.di.injected import injected_function
+from pinjected.di.util import Injected, instances
+from pinjected.di.injected import injected_function
 from typing import Callable
 
 
@@ -391,8 +414,8 @@ This means that we can chain as many injected functions as we want, and the depe
 ## Using Injected as a provider
 Injected can be used as a provider function in a design.
 ```python
-from pinject_design.di.util import Injected, instances, providers
-from pinject_design.di.injected import injected_function, injected_instance
+from pinjected.di.util import Injected, instances, providers
+from pinjected.di.injected import injected_function, injected_instance
 
 
 @injected_instance
@@ -442,7 +465,7 @@ d = Design().bind_instance(
 but you want to override the provider function to use a specific value rather than a value from DI.
 You can do as follows:
 ```python
-from pinject_design.di.util import Injected
+from pinjected.di.util import Injected
 overriden:Injected = Injected.bind(provide_c,a=Injected.pure("hello"))
 d2 = d.bind_provider(
     c= overriden
@@ -481,8 +504,8 @@ Compatible with dill and cloudpickle as long as the bound objects are picklable.
 # Rewriting the example in the beginning with injected_function
 
 ```python
-from pinject_design.di.util import Injected, instances, providers
-from pinject_design.di.injected import injected_function, injected_instance
+from pinjected.di.util import Injected, instances, providers
+from pinjected.di.injected import injected_function, injected_instance
 from dataclasses import dataclass
 
 
@@ -632,7 +655,7 @@ some_class.foo
 ```
 ## pinject-design version
 ```python
-from pinject_design.di.util import Design
+from pinjected.di.util import Design
 from dataclasses import dataclass
 @dataclass
 class SomeClass(object):

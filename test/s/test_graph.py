@@ -1,8 +1,8 @@
 from pprint import pprint
 
-from pinject_design import Design, injected_function, Injected
-from pinject_design.di.graph import MyObjectGraph, IObjectGraph
-from pinject_design.di.util import instances
+from pinjected import Design, injected_function, Injected
+from pinjected.di.graph import MyObjectGraph, IObjectGraph
+from pinjected.di.util import instances
 
 
 
