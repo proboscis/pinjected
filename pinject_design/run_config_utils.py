@@ -200,6 +200,10 @@ def injected_to_idea_configs(
             )
             results[name].append(IdeaRunConfiguration(**config))
             results[name].append(IdeaRunConfiguration(**viz_config))
+        else:
+            logger.warning(f"skipping {tgt.var_path} because it has no __runnable_metadata__")
+    if not ddps:
+        logger.warning(f"no default design path provided for {tgt.var_path}")
     try:
         for configs in custom_idea_config_creator(tgt):
             results[name].append(configs)
@@ -398,8 +402,9 @@ def create_idea_configurations(
     g = design.to_graph()
     configs: IdeaRunConfigurations = g[inspect_and_make_configurations(module_path)]
     pinject_design.global_configs.PINJECT_DESIGN_TRACK_ORIGIN = True
+    logger.info(f"configs:{configs}")
     if print_to_stdout:
-        print(configs.json())
+        print(configs.model_dump_json())
     else:
         return configs
 

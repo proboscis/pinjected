@@ -69,7 +69,7 @@ class ModulePath:
 @dataclass
 class RunnableSpec:
     tgt_path: ModulePath
-    design_path: ModulePath = field(default=ModulePath("pinject_design.di.util.EmptyDesign"))
+    design_path: ModulePath = field(default_factory=lambda:ModulePath("pinject_design.di.util.EmptyDesign"))
 
     @property
     def target_name(self):

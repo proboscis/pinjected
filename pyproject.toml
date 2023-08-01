@@ -4,30 +4,29 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pinject-design"
-version = "0.1.99"
+version = "0.1.107"
 description = "immutable wrapper for pinject"
 authors = [ "proboscis <nameissoap@gmail.com>",]
 license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-makefun = "*"
-loguru = "*"
-pampy = "*"
-pinject = "*"
-returns = "*"
-expression = "*"
-cloudpickle = "*"
-tabulate = "*"
-cytoolz = "*"
-frozendict = "*"
-fire = "*"
-pyyaml = "*"
-pydantic = "*"
-networkx = "*"
-pyvis = "*"
-
-[tool.poetry.dev-dependencies]
+returns = "^0.21.0"
+expression = "^4.2.4"
+cloudpickle = "^2.2.1"
+tabulate = "^0.9.0"
+cytoolz = "^0.12.2"
+frozendict = "^2.3.8"
+fire = "^0.5.0"
+pyyaml = "^6.0.1"
+pydantic = "^2.1.1"
+networkx = "^3.1"
+pyvis = "^0.3.2"
+makefun = "^1.15.1"
+loguru = "^0.7.0"
 
 [tool.poetry.scripts]
 pinject_design_config = "pinject_design.run_config_utils:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"

@@ -39,15 +39,20 @@ class RunnablePair:
             name = "graph.html"
         self.design.to_vis_graph().save_as_html(self.target, name, show=show)
 
+try:
+    # pydantic over version 2
+    from pydantic import field_validator
+except ImportError:
+    from pydantic import validator as field_validator
 
 class RunnableValue(BaseModel):
     """
     I think it is easier to make as much configuration as possible on this side.
     """
-    src: ModuleVarSpec[Union[Injected, Designed]]
+    src: ModuleVarSpec
     design_path: str
 
-    @validator('src')
+    @field_validator('src')
     def validate_src_type(cls, value):
         match value:
             case ModuleVarSpec(Injected(), _):

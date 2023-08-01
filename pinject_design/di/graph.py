@@ -8,25 +8,17 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from pprint import pformat
-from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Awaitable, Set, Dict
+from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Set, Dict
 
 import yaml
-from makefun import create_function
-from pinject import binding_keys, locations, SINGLETON
-from pinject.bindings import default_get_arg_names_from_class_name, BindingMapping, new_binding_to_instance
-from pinject.errors import NothingInjectableForArgError, OnlyInstantiableViaProviderFunctionError
-from pinject.object_graph import ObjectGraph
-from pinject.object_providers import ObjectProvider
 from returns.maybe import Nothing, Maybe, Some
 from returns.result import safe, Result, Failure, Success
 
 from pinject_design.di.app_injected import EvaledInjected
 from pinject_design.di.ast import Expr
-# from pinject_design import Design
 from pinject_design.di.designed import Designed
 from pinject_design.di.injected import Injected, InjectedByName, InjectedFunction
 from pinject_design.di.proxiable import DelegatedVar
-from pinject_design.di.session import OverridenBindableScopes, SessionScope, ISessionScope
 from pinject_design.di.sessioned import Sessioned
 from pinject_design.exceptions import DependencyResolutionFailure, DependencyResolutionError
 from pinject_design.graph_inspection import DIGraphHelper
@@ -564,135 +556,6 @@ class MyObjectGraph(IObjectGraph):
 
 
 
-class ExtendedObjectGraph(IObjectGraph):
-    """
-    an object graph which can also provide instances based on its name not only from class object.
-    TODO I need to change the implementation to not to use pinject, so that I can provide async providers
-    """
-
-    @property
-    def design(self):
-        return self._design
-
-    def __init__(self, design: "Design", src: ObjectGraph):
-        self._design = design
-        back_frame = locations.get_back_frame_loc()
-        session_binding = new_binding_to_instance(
-            binding_keys.new("session"),
-            to_instance=self,
-            in_scope=SINGLETON,
-            get_binding_loc_fn=lambda: back_frame
-        )
-        src._obj_provider._binding_mapping._binding_key_to_binding.update(
-            {session_binding.binding_key: session_binding}
-        )
-        self.src = src
-
-    def _provide(self, target: Providable) -> Union[object, T]:
-        """
-        Hacks pinject to provide from string. by creating a new class.
-        :param targe
-        :return:
-        """
-        match target:
-            case str():
-                return self._provide(Injected.by_name(target))
-            case type():
-                return self.src.provide(target)
-            case Injected():
-                return self._provide_injected(target)
-            case Designed():
-                return self.child_session(target.design)[target.internal_injected]
-            case DelegatedVar():
-                return self._provide(target.eval())
-            case _ if callable(target):
-                assert not isinstance(target, DelegatedVar), str(target)
-                return self.run(target)
-            case _:
-                raise TypeError(f"target must be either class or a string or Injected. got {target}")
-
-    def _provide_injected(self, injected: Injected[T]) -> T:
-        deps = injected.dependencies()
-        if 'self' in deps:
-            deps.remove('self')
-        signature = f"""__init__(self,{','.join(deps)})"""
-
-        def impl(self, **kwargs):
-            self.data = injected.get_provider()(**kwargs)
-
-        __init__ = create_function(signature, func_impl=impl)
-        Request = type("Request", (object,), dict(__init__=__init__))
-        return self.src.provide(Request).data
-
-    def provide(self, target: Providable, level: int) -> Union[object, T]:
-        try:
-            return self._provide(target)
-        except NothingInjectableForArgError as e:
-            missings = self._inspect_dependencies(target)
-            if missings:
-                for missing in missings:
-                    from loguru import logger
-                    logger.error(f"failed to find dependency:{missing}")
-                raise MissingDependencyException.create(missings)
-            raise e
-        except OnlyInstantiableViaProviderFunctionError as e:
-            from loguru import logger
-            logger.error(f"failed to provide target:{target}.")
-            logger.error(f"probably caused by errors inside provider function implementations.")
-            logger.error(f"context:{e.__context__}")
-            # TODO I feel like I should implement the DI by myself rather than using pinject.
-            raise e
-        except Exception as e:
-            from loguru import logger
-            import traceback
-            trace = traceback.format_exc()
-            logger.error(f"failed to provide target:{target} due to {e}. Traceback:{trace}")
-            raise e
-
-    def _inspect_dependencies(self, target: Providable):
-        # preventing circular import
-        from pinject_design.visualize_di import DIGraph
-        deps, design = self._extract_dependencies(target)
-        missings = DIGraph(design).find_missing_dependencies(deps)
-        return missings
-
-    def _extract_dependencies(self, target: Providable):
-        match target:
-            case type():
-                deps = [default_get_arg_names_from_class_name(target.__name__)[0]]
-                from pinject_design import Design
-                return deps, self.design + Design(classes=[target])
-            case Injected():
-                return target.dependencies(), self.design
-            case str():
-                return [target], self.design
-            case Designed():
-                deps, d = self._extract_dependencies(target.internal_injected)
-                return deps, d + target.design
-            case DelegatedVar():
-                return self._extract_dependencies(target.eval())
-            case x if callable(x):
-                return self._extract_dependencies(Injected.bind(x))
-            case other:
-                raise TypeError(f"cannot extract dependencies. unsupported :{target}")
-
-    def __repr__(self):
-        return f"ExtendedObjectGraph({self.design})"
-
-    def child_session(self, overrides: "Design" = None) -> "ChildGraph":
-        """
-        bindings that are explicit in the overrides are always recreated.
-        implicit bindings are created if it is not created in parent. and will be discarded after session.
-        else from parent.
-        so, implicit bindings that are instantiated at the moment this function is called will be used if not explicitly overriden.
-        invalidation is not implemented yet.
-        I want the bindings that are dependent on the overriden keys to be reconstructed.
-        :param overrides:
-        :return:
-        """
-        return ChildGraph(self.src, self.design, overrides)
-
-
 def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):
     from pinject_design.di.dynamic_proxy import DynamicProxyContextImpl
     return DynamicProxyContextImpl(
@@ -704,50 +567,6 @@ def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):
         ),
         "SessionValueProxy"
     )
-
-
-def _merged_binding_mapping(src_graph: ObjectGraph, child_graph: ObjectGraph):
-    src: BindingMapping = src_graph._obj_provider._binding_mapping
-    child: BindingMapping = child_graph._obj_provider._binding_mapping
-    return BindingMapping(
-        {**src._binding_key_to_binding, **child._binding_key_to_binding},
-        {**src._collided_binding_key_to_bindings, **child._collided_binding_key_to_bindings}
-    )
-
-
-class ChildGraph(ExtendedObjectGraph):
-    def __init__(self, src: ObjectGraph, design: "Design", overrides: "Design" = None):
-        """
-        :param src:
-        :param design:
-        :param overrides: an overriding design to provide for creating new graph.
-        """
-        if overrides is None:
-            from pinject_design import Design
-            overrides = Design()
-            # binding_mapping:BindingMapping = design_to_binding_keys(overrides)
-        child_graph = overrides.to_graph().src
-        override_keys = set(child_graph._obj_provider._binding_mapping._binding_key_to_binding.keys())
-        new_mapping = _merged_binding_mapping(src, child_graph)
-        new_scopes = OverridenBindableScopes(src._obj_provider._bindable_scopes, override_keys)
-        # now we need overriden child scope
-        child_obj_provider = ObjectProvider(
-            binding_mapping=new_mapping,
-            bindable_scopes=new_scopes,
-            allow_injecting_none=src._obj_provider._allow_injecting_none
-        )
-        child_obj_graph = ObjectGraph(
-            obj_provider=child_obj_provider,
-            injection_context_factory=src._injection_context_factory,
-            is_injectable_fn=src._is_injectable_fn,
-            use_short_stack_traces=src._use_short_stack_traces
-        )
-        super().__init__(
-            design + overrides,
-            child_obj_graph,
-        )
-        self.overrides = overrides
-        self.scopes = new_scopes
 
 
 @dataclass

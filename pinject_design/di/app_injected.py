@@ -5,7 +5,7 @@ from pinject_design import Injected
 from pinject_design.di.applicative import Applicative
 from pinject_design.di.injected import InjectedPure, InjectedFunction,InjectedByName
 from pinject_design.di.proxiable import T, DelegatedVar
-from pinject_design.di.static_proxy import eval_app, ast_proxy, \
+from pinject_design.di.static_proxy import eval_applicative, ast_proxy, \
     AstProxyContextImpl
 from pinject_design.di.ast import Expr, Object, show_expr
 
@@ -70,7 +70,7 @@ def reduce_injected_expr(expr: Expr):
 
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
-    return EvaledInjected(eval_app(expr, ApplicativeInjected), expr)
+    return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
 
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:

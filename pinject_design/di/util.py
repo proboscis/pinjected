@@ -6,10 +6,8 @@ from pprint import pformat
 from typing import Union, Type, TypeVar, Callable, Dict, Any
 
 import cloudpickle
-import pinject
 from cytoolz import merge
 from makefun import create_function
-from pampy import match
 from returns.result import safe, Failure, Success
 
 from pinject_design.di.bindings import InjectedBind, Bind
@@ -17,7 +15,6 @@ from pinject_design.di.graph import MyObjectGraph, IObjectGraph
 from pinject_design.di.injected import Injected, InjectedPure, InjectedFunction
 from pinject_design.di.proxiable import DelegatedVar
 
-prototype = pinject.provides(in_scope=pinject.PROTOTYPE)
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
 T = TypeVar("T")
@@ -91,13 +88,7 @@ def check_picklable(tgt: dict):
     # logger.info(res)
 
 
-def inject_proto(all_except=None, arg_names=None):
-    """injects provider with prototype context"""
 
-    def _inner(f):
-        return pinject.inject(all_except=all_except, arg_names=arg_names)(prototype(f))
-
-    return _inner
 
 
 def method_to_function(method):
@@ -192,13 +183,13 @@ def get_dict_diff(a: dict, b: dict):
 
         ak = getitem_opt(a, k).map(to_readable_name).value_or(None)
         bk = getitem_opt(b, k).map(to_readable_name).value_or(None)
-        flag = match((ak, bk),
-                     (Subject, Subject), lambda a, b: True,
-                     # (np.ndarray, np.ndarray), lambda a, b: (a != b).any(),
-                     # (np.ndarray, Any),lambda a,b:False,
-                     # (Any,np.ndarray),lambda a,b:False,
-                     (Any, Any), lambda a, b: a != b
-                     )
+        match (ak,bk):
+            case (Subject(),Subject()):
+                flag = True
+            case (a,b):
+                flag = a != b
+            case _:
+                raise RuntimeError("this should not happen")
         if flag:
             data.append((k, ak, bk))
 
@@ -549,16 +540,6 @@ def _get_external_type_name(thing):
     if res is None:
         return "unknown_module"
     return res.__name__
-
-
-def patch_pinject_get_external_type_name():
-    import pinject.locations
-    from loguru import logger
-    logger.warning(f"patching pinject's _get_external_type_name to accept pickled function")
-    pinject.locations._get_external_type_name = _get_external_type_name
-
-
-patch_pinject_get_external_type_name()
 
 
 def instances(**kwargs):
