@@ -84,7 +84,7 @@ def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
     return DelegatedVar(Object(tgt), cxt)
 
 
-def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
+def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
     def _eval(expr):
         def eval_tuple(expr):
             return tuple(_eval(i) for i in expr)
@@ -118,6 +118,7 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                 injected_func: "T[Callable]" = _eval(f)
                 args = app.zip(*eval_tuple(args))
                 kwargs: "T[dict]" = app.dict(**eval_dict(kwargs))
+
                 # now we are all in the world of injected. how can I combine them all?
                 # so all the arguments are converted into Injected if not, then combined together
                 # so if you are to pass an Injected as an argument, you must wrap it with Injected.pure
@@ -125,7 +126,8 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                     from loguru import logger
                     func, args, kwargs = t
                     return func(*args, **kwargs)
-                applied = app.map(app.zip(injected_func, args, kwargs),apply)
+
+                applied = app.map(app.zip(injected_func, args, kwargs), apply)
                 return applied
             case Attr(Expr() as data, str() as attr_name):
                 injected_data = _eval(data)
@@ -141,12 +143,24 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
                     app.zip(injected_data, injected_key),
                     lambda t: t[0][t[1]]
                 )
-            case BiOp('+', Expr() as left, Expr() as right):
+            # case BiOp('+', Expr() as left, Expr() as right):
+            #     injected_left = _eval(left)
+            #     injected_right = _eval(right)
+            #     return app.map(
+            #         app.zip(injected_left, injected_right),
+            #         lambda t: t[0] + t[1]
+            #     )
+            case BiOp(op, Expr() as left, Expr() as right):
                 injected_left = _eval(left)
                 injected_right = _eval(right)
+
+                def eval_biop(t):
+                    x, y = t
+                    return eval("x " + op + " y", __locals=dict(x=x, y=y))
+
                 return app.map(
                     app.zip(injected_left, injected_right),
-                    lambda t: t[0] + t[1]
+                    eval_biop
                 )
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)},{expr}")
@@ -155,4 +169,3 @@ def eval_app(expr: Expr[T], app: Applicative[T]) -> T:
         return _eval(expr)
     except AttributeError as e:
         raise RuntimeError(f"failed to evaluate {expr}") from e
-

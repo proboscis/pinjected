@@ -16,7 +16,7 @@ def dummy_config_creator_for_test(
     logger.info(f"custom config creator called")
     return [
         IdeaRunConfiguration(
-            name="test_package.child.__init__",
+            name="dummy for test_package.child.__init__",
             script_path=entrypoint_path,
             interpreter_path=interpreter_path,
             arguments=[],

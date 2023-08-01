@@ -4,7 +4,7 @@ from typing import Generic, TypeVar
 from pinject_design.di.designed import Designed
 from pinject_design.di.injected import Injected
 from pinject_design.di.applicative import Applicative
-from pinject_design.di.static_proxy import AstProxyContextImpl, eval_app
+from pinject_design.di.static_proxy import AstProxyContextImpl, eval_applicative
 from pinject_design.di.ast import Expr
 
 T = TypeVar("T")
@@ -13,7 +13,7 @@ T = TypeVar("T")
 @dataclass
 class Sessioned(Generic[T]):
     """a value that holds designed instance, and evetually uses this designed to be run on the applied graph"""
-    parent: "ExtendedObjectGraph"
+    parent: "IObjectGraph"
     designed: Designed[T]
 
     def map(self, f):
@@ -39,7 +39,7 @@ class Sessioned(Generic[T]):
 
 @dataclass
 class ApplicativeSesionedImpl(Applicative[Sessioned]):
-    parent: "ExtendedObjectGraph"
+    parent: "IObjectGraph"
 
     def map(self, target: Sessioned, f) -> Sessioned:
         return target.map(f)
@@ -59,10 +59,10 @@ class ApplicativeSesionedImpl(Applicative[Sessioned]):
 
 
 def eval_sessioned(expr: Expr[Sessioned], app: Applicative[Sessioned]) -> Sessioned:
-    return eval_app(expr, app)
+    return eval_applicative(expr, app)
 
 
-def sessioned_ast_context(session: "ExtendedObjectGraph"):
+def sessioned_ast_context(session: "IObjectGraph"):
     app = ApplicativeSesionedImpl(session)
     return AstProxyContextImpl(
         lambda expr: eval_sessioned(expr, app),
