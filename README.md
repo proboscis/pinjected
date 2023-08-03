@@ -6,7 +6,7 @@ This library makes it easy to compose mutliple python objects to create a final 
 When you request for a final object, this library will automatically create all the dependencies and compose them to create the final object.
 
 # Installation
-`pip install pinject-design`
+`pip install pinjected`
 
 # Features
 - Dependency Injection via Constructor
@@ -27,7 +27,7 @@ As a result, all the codes heavily depend on the structure of a cfg, and becomes
 This makes it hard to reuse the code, and makes it hard to change the structure of the code too. Also, simple testing becomes hard because you need to write a object creation code with its configuration file for each component you want to test.
 
 # The Solution
-Pinject-Design solves this problem by providing a way to create a final object without passing a configuration object to each object creation function.
+Pinjected solves this problem by providing a way to create a final object without passing a configuration object to each object creation function.
 Instead, this library will automatically create all the dependencies and compose them to create the final object following the dependency graph.
 The only thing you need to do is to define a dependency graph and a way to create each object.
 This library will take care of the rest.
@@ -653,7 +653,7 @@ print
 some_class.foo
 'a-foo'
 ```
-## pinject-design version
+## Pinjected version
 ```python
 from pinjected.di.util import Design
 from dataclasses import dataclass

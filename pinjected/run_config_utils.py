@@ -404,7 +404,10 @@ def create_idea_configurations(
     pinjected.global_configs.pinjected_TRACK_ORIGIN = True
     logger.info(f"configs:{configs}")
     if print_to_stdout:
-        print(configs.model_dump_json())
+        try:
+            print(configs.model_dump_json())
+        except Exception as e:
+            print(configs.json())
     else:
         return configs
 
