@@ -38,17 +38,15 @@ def getitem(tgt, name):
     return tgt[name]
 
 
-# %%
-@dataclass
-class PinProvider:
-    src: Callable
+import colorsys
 
-    def __post_init__(self):
-        # self.arg_binding_keys:Result = safe_attr(self.src, "_pinject_arg_binding_keys")
-        self.non_injectables: Result = safe_attr(self.src, "_pinject_non_injectables")
-        # self.orig_f:Result = safe_attr(self.src, "_pinject_orig_fn")
-        # self.provider_decorations:Result = safe_attr(self.src, "_pinject_provider_decorations")
+def rgb_to_hex(rgb):
+    return '#%02x%02x%02x' % rgb
 
+def get_color(n_edges):
+    h = (1.0 - max(0,min(10,n_edges)) / 10.0) * 0.67  # 0.67 is the hue for blue in the HSV color system.
+    rgb = [int(x * 255) for x in colorsys.hsv_to_rgb(h, 1.0, 1.0)]  # convert hsv color (h,1,1) to rgb then multiply by 255
+    return rgb_to_hex(tuple(rgb))
 
 @dataclass
 class DIGraph:
@@ -60,10 +58,9 @@ class DIGraph:
     def __post_init__(self):
         self.src = self.src.bind_instance(session='DummyForVisualization').build()
         self.helper = DIGraphHelper(self.src)
+        # TODO combine these mappings into one. the keys must not override each other
         self.implicit_mappings = dict(self.helper.get_implicit_mapping())
-        # we want to know if the binding is InjectedProvider or not
         self.explicit_mappings: Dict[str, Injected] = {k: b.to_injected() for k, b in self.src.bindings.items()}
-
         self.explicit_mappings.update(**self.helper.total_mappings())
         self.multi_mappings = {k: b for k, b in self.src.multi_binds.items()}
 
@@ -77,17 +74,8 @@ class DIGraph:
             if src in self.explicit_mappings:
                 em = self.explicit_mappings[src]
                 return self.resolve_injected(em)
-                # if isinstance(em, InjectedProvider):
-                #     return self.resolve_injected(em.src)
-                # else:
-                #     return em.to_injected().dynamic_dependencies()
             elif src in self.implicit_mappings:
                 return Injected.bind(self.implicit_mappings[src]).dynamic_dependencies()
-            elif src in self.pinject_mappings:
-                pp: PinProvider = self.pinject_mappings[src]
-                deps = [d for d in Injected.bind(pp.src).dynamic_dependencies() if
-                        d not in pp.non_injectables.value_or([])]
-                return deps
             elif src in self.multi_mappings:
                 return list(
                     set(chain(*[Injected.bind(tgt).dynamic_dependencies() for tgt in self.multi_mappings[src]])))
@@ -157,8 +145,6 @@ class DIGraph:
             lambda e: getitem(self.explicit_mappings, key)
         ).lash(
             lambda e: getitem(self.implicit_mappings, key)
-        ).lash(
-            lambda e: getitem(self.pinject_mappings, key)
         ).lash(
             lambda e: getitem(self.multi_mappings, key)
         ).lash(
@@ -321,12 +307,14 @@ class DIGraph:
                 group, short, long = parse(self[n])
             short = str(short).replace("<", "").replace(">", "")[:100]
             n_edges = len(list(nx_graph.neighbors(n))) + safe(self.dependencies_of)(n).map(len).value_or(0)
+
+
             return dict(
                 label=f"{n}\n{short}",
                 title=long,
-                group=group,
                 value=n_edges,
                 mass=n_edges * 0.5 + 1,
+                color=get_color(n_edges),
             )
 
         return node_to_sl
