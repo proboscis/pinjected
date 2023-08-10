@@ -384,6 +384,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return self.zip(other).map(lambda t: t[0] + t[1])
 
     def desync(self):
+
         return self.map(lambda coroutine: asyncio.run(coroutine))
 
     def __len__(self):

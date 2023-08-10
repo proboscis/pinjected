@@ -230,6 +230,10 @@ class OverridingScope(IScope):
     def __contains__(self, item):
         return item in self.overrides or item in self.src
 
+class NoMappingError(Exception):
+    def __init__(self,key):
+        super().__init__(f"No mapping found for DI:{key}")
+        self.key=key
 
 @dataclass
 class DependencyResolver:
@@ -275,7 +279,7 @@ class DependencyResolver:
             if tgt in predefined:
                 return []
             if tgt not in self.mapping:
-                raise KeyError(f"target {tgt} is not in the dependency injection mapping.")
+                raise NoMappingError(f"target {tgt} is not in the dependency injection mapping.")
             return self.mapping[tgt].dependencies()
 
         self.memoized_deps = _memoized_deps
@@ -300,7 +304,7 @@ class DependencyResolver:
                 assert d not in trace, f"cycle detected: {d} is requested in {' -> '.join(trace)}"
                 res[d] = self._dependency_tree(d, trace + [d])
             return Success(res)
-        except KeyError as ke:
+        except NoMappingError as ke:
             from loguru import logger
             # msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
             return Failure(DependencyResolutionFailure(tgt, trace, ke))
@@ -353,7 +357,15 @@ class DependencyResolver:
             trace = []
         assert isinstance(tgt, str)
         from loguru import logger
-        deps = [self._provide(d, scope, trace + [d]) for d in self.memoized_deps(tgt)]
+
+        try:
+            deps = [self._provide(d, scope, trace + [d]) for d in self.memoized_deps(tgt)]
+        except NoMappingError as ke:
+            logger.error(f"failed to find dependency for {tgt} in {' -> '.join(trace)}")
+            raise DependencyResolutionError(
+                f"failed to find dependency for {tgt} in {' -> '.join(trace)}",
+                [DependencyResolutionFailure(ke.key, trace, ke)]
+            )
 
         def provider_impl():
             provider = self.memoized_provider(tgt)
