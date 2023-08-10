@@ -206,7 +206,8 @@ class DIGraph:
 
         yield from dfs(src, [src])
 
-    def get_source(self, f):
+    @staticmethod
+    def get_source(f):
         try:
             if hasattr(f, "__original_file__"):
                 file = f.__original_file__
@@ -364,7 +365,7 @@ d:Design = {design_path.var_name} + providers(
                             return f"{node}=\"{value}\"\n"
                         case InjectedPure(value):
                             return f"{node}={value}\n"
-            args = ",".join(args)
+            args = ",".join(set(args))
             return f"{node} = d['{node}']({args})\n"
 
         def dfs_write(node):

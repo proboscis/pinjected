@@ -33,7 +33,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-from typing import Optional, List, Dict, Coroutine, OrderedDict, Callable
+from typing import Optional, List, Dict, Coroutine, OrderedDict, Callable, Any
 
 from loguru import logger
 import fire
@@ -46,13 +46,13 @@ from returns.result import safe, Success, Failure
 
 import pinjected.global_configs
 from pinjected import Injected, Design
-from pinjected.di.injected import injected_function
+from pinjected.di.injected import injected_function, PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, RunnableValue, \
     IdeaRunConfiguration
 from pinjected.helpers import inspect_and_make_configurations, load_variable_by_module_path, \
-    get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_context
+    get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_context, ModulePath
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 from pinjected.run_config_utils_v2 import RunInjected
 from dataclasses import dataclass, field
@@ -415,7 +415,11 @@ def create_idea_configurations(
 SANDBOX_TEMPLATE = """
 from {design_path} import {design_name}
 from {var_path} import {var_name}
-g = {design_name}.to_graph()
+d = {design_name} 
+g = d.to_graph()
+{deps}
+#%%
+{extras}
 tgt = g[{var_name}]
 """
 
@@ -434,10 +438,22 @@ def get_var_spec_from_module_path_and_name(module_path: str, var_name: str) -> M
     tgt: ModuleVarSpec = name_to_tgt[var_name]
     return tgt
 
+@injected_function
+def make_sandbox_extra(tgt):
+    from pinjected.visualize_di import DIGraph
+    match tgt:
+        case PartialInjectedFunction(InjectedFunction(object(__original_code__=code),args)) :
+            return f"""
+{code}
+"""
+        case _:
+            return ""
+
 
 @injected_function
 def _make_sandbox_impl(
         default_design_path: str,
+        make_sandbox_extra:Callable[[Any],str],
         /,
         module_file_path: str,
         var_name: str,
@@ -448,15 +464,29 @@ def _make_sandbox_impl(
     # let's make a file for sandbox,
     # format datetime like 20230101_010101
     datetime_str_as_name = datetime.now().strftime("%Y%m%d_%H%M%S")
-    sandbox_name = f"{var_name}_sandbox_{datetime_str_as_name}.py"
+    sandbox_name = f"__sandbox__{var_name}_{datetime_str_as_name}.py"
     sandbox_path = os.path.join(os.path.dirname(module_file_path), sandbox_name)
+
+    logger.info(f"inspecting {var_name} to make sandbox")
+    injected:Injected = Injected.ensure_injected(tgt.var)
+    dependencies = injected.dependencies()
+    extras = make_sandbox_extra(tgt.var)
+
     with open(sandbox_path, 'w') as f:
+
+        deps = ""
+        for d in dependencies:
+            deps += f"{d} = g['{d}']\n"
+
         f.write(SANDBOX_TEMPLATE.format(
             design_path=default_design_path_parent,
             design_name=default_design_path.split('.')[-1],
             var_path=var_path_parent,
-            var_name=var_name
+            var_name=var_name,
+            deps=deps,
+            extras=extras,
         ))
+
     print(sandbox_path)
 
 
