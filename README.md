@@ -11,8 +11,9 @@ When you request for a final object, this library will automatically create all 
 # Features
 - Dependency Injection via Constructor
 - Object Dependency Resolution
-- Dependency Graph Visualization
-- Run configuration creation for intellij idea
+- Dependency Graph Visualization ... for Mac OS
+- Run configuration creation for intellij idea ... Coming Soon
+- CLI Support
 - Functional Depndency Injection Composition
 
 # The Problem
