@@ -23,6 +23,8 @@ Hmm, an easy way is to add some metadata though..
 Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
+from contextlib import contextmanager
+
 import asyncio
 import importlib
 import inspect
@@ -33,6 +35,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
+from returns.pipeline import is_successful
 from typing import Optional, List, Dict, Coroutine, OrderedDict, Callable, Any
 
 from loguru import logger
@@ -46,13 +49,14 @@ from returns.result import safe, Success, Failure
 
 import pinjected.global_configs
 from pinjected import Injected, Design
+from pinjected.di.ast import Expr, Call, Object
 from pinjected.di.injected import injected_function, PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, RunnableValue, \
-    IdeaRunConfiguration
+    IdeaRunConfiguration, MetaContext
 from pinjected.helpers import inspect_and_make_configurations, load_variable_by_module_path, \
-    get_design_path_from_var_path, get_runnables, find_default_design_paths, gather_meta_context, ModulePath
+    get_design_path_from_var_path, get_runnables, find_default_design_paths, ModuleVarPath
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
 from pinjected.run_config_utils_v2 import RunInjected
 from dataclasses import dataclass, field
@@ -78,7 +82,6 @@ Maybe.__or__ = maybe__or__
 Maybe.filter = maybe_filter
 
 safe_getattr = safe(getattr)
-
 
 
 @injected_function
@@ -205,6 +208,8 @@ def injected_to_idea_configs(
     if not ddps:
         logger.warning(f"no default design path provided for {tgt.var_path}")
     try:
+        cfgs = custom_idea_config_creator(tgt)
+        assert cfgs is not None, f"custom_idea_config_creator {custom_idea_config_creator} returned None for {tgt}. return [] if you have no custom configs."
         for configs in custom_idea_config_creator(tgt):
             results[name].append(configs)
     except Exception as e:
@@ -249,30 +254,57 @@ def notify(text, sound='Glass') -> str:
 
 # maybe we want to distinguish the error with its complexity and pass it to gpt if required.
 
-def run_anything(cmd: str, var_path, design_path, return_result=False, *args, **kwargs):
-    # TODO pass the resulting errors into gpt to give better error messages.
-    # for that, I need to capture the stderr/stdout
-    # get the var and design
-    # then run it based on cmd with args/kwargs
-    # TODO I need a way to hook the run configurations
-    # 1. add hooks for create_configurations => let the create_configurations load hook_design.
-    # - this can make it possible to return a design runner that submits the design to cluster / local / docker etc.
-    # 2. add hooks for run_injected => let the run_injected us hook_design for running the Injected.
-    #
+@contextmanager
+def disable_internal_logging():
+    #logger.info(f"disabling internal logging")
+    names = [
+        'pinjected.di.graph',
+        'pinjected.helpers',
+        'pinjected.module_inspector',
+        'pinjected'
+    ]
+    for n in names:
+        logger.disable(n)
+    yield
+    for n in names:
+        logger.enable(n)
+    #logger.info(f"enabling internal logging")
+
+def run_anything(
+        cmd: str,
+        var_path,
+        design_path,
+        overrides = instances(),
+        *args,
+        **kwargs):
+    if "return_result" in kwargs:
+        return_result = kwargs.pop("return_result")
+    else:
+        return_result = False
 
     from loguru import logger
-    loaded_var = load_variable_by_module_path(var_path)
-    meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
-    if not isinstance(meta, dict):
-        meta = {}
-    overrides = meta.get("overrides", instances())
-    var: Injected = Injected.ensure_injected(load_variable_by_module_path(var_path))
-    design: Design = load_variable_by_module_path(design_path)
+    with disable_internal_logging():
+        loaded_var = load_variable_by_module_path(var_path)
+        meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
+        if not isinstance(meta, dict):
+            meta = {}
+        overrides += meta.get("overrides", instances())
+
+        meta_cxt: MetaContext = MetaContext.gather_from_path(ModuleVarPath(var_path).module_file_path)
+        if design_path is None:
+            design_path = meta_cxt.accumulated.provide("default_design_paths")[0]
+
+        var: Injected = Injected.ensure_injected(load_variable_by_module_path(var_path))
+        design: Design = load_variable_by_module_path(design_path)
+        meta_design = instances(overrides=instances()) + meta_cxt.accumulated
+        overrides += meta_design.provide("overrides")
+
+
     design = design + overrides
-    # if you return python object, fire will try to use it as a command object
-    # we need to inspect __runnable_metadata__
-    logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
-    logger.info(f"metadata obtained from pinjected: {meta}")
+    logger.info(f"running target:{var} with {design_path} + {overrides}")
+    #logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
+    #logger.info(f"metadata obtained from pinjected: {meta}")
+
     res = None
     try:
         if cmd == 'call':
@@ -284,7 +316,8 @@ def run_anything(cmd: str, var_path, design_path, return_result=False, *args, **
             res = design.provide(var)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
-            logger.info(f"run_injected get result:\n{pformat(res)}")
+            if not return_result:
+                logger.info(f"run_injected get result:\n{pformat(res)}")
         elif cmd == 'fire':
             res = design.provide(var)
             if isinstance(res, Coroutine):
@@ -302,7 +335,10 @@ def run_anything(cmd: str, var_path, design_path, return_result=False, *args, **
             )
             print(d.to_vis_graph().to_python_script(var_path, design_path=design_path))
     except Exception as e:
+        import traceback
         notify(f"Run failed with error:\n{e}", sound='Frog')
+        trace = traceback.format_exc()
+        Path(f"run_failed_{var_path}.txt").write_text(str(e) + "\n" + trace)
         raise e
     notify(f"Run result:\n{str(res)[:100]}")
     if return_result:
@@ -313,13 +349,28 @@ def run_injected(
         cmd,
         var_path,
         design_path: str = None,
-        return_result=False,
-        *args, **kwargs
+        *args,
+        **kwargs
 ):
-    if design_path is None:
-        design_path = get_design_path_from_var_path(var_path)
-    assert design_path, f"design path must be a valid module path, got:{design_path}"
-    return run_anything(cmd, var_path, design_path, return_result=return_result, *args, **kwargs)
+    with disable_internal_logging():
+        if "return_result" in kwargs:
+            return_result = kwargs.pop("return_result")
+        else:
+            return_result = False
+        if "overrides" in kwargs:
+            overrides = kwargs.pop("overrides")
+        else:
+            overrides = instances()
+
+        if design_path is None:
+            design_path = get_design_path_from_var_path(var_path)
+        logger.info(f"run_injected called with cmd:{cmd}, var_path:{var_path}, design_path:{design_path}, args:{args}, kwargs:{kwargs}")
+    return run_anything(cmd,
+                        var_path,
+                        design_path = design_path,
+                        return_result=return_result,
+                        overrides = overrides,
+                        *args, **kwargs)
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
@@ -360,7 +411,7 @@ class ConfigCreationArgs:
 
     def to_design(self):
         logger.debug(f"python paths:{sys.path}")
-        meta_context = gather_meta_context(Path(self.module_path))
+        meta_context = MetaContext.gather_from_path(Path(self.module_path))
 
         design = providers(
             project_root=lambda module_path: Path(get_project_root(module_path)),
@@ -438,13 +489,45 @@ def get_var_spec_from_module_path_and_name(module_path: str, var_name: str) -> M
     tgt: ModuleVarSpec = name_to_tgt[var_name]
     return tgt
 
+
+def extract_extra_codes(ast:Expr)->ModuleVarPath:
+    # TODO include the module path in the Inejcted Function
+    match ast:
+        case Call(
+            Object(InjectedFunction(object(__original_code__=code,__name__=name,__module__=mod),_args)),
+            args,
+            kwargs):
+            mvp = ModuleVarPath(f"{mod}.{name}")
+            return mvp
+        case _:
+            return None
+
+
 @injected_function
-def make_sandbox_extra(tgt):
+def make_sandbox_extra(tgt:ModuleVarSpec):
     from pinjected.visualize_di import DIGraph
-    match tgt:
-        case PartialInjectedFunction(InjectedFunction(object(__original_code__=code),args)) :
+    match tgt.var:
+        case DelegatedVar():
+            impl_mvp = extract_extra_codes(tgt.var.eval().ast)
+            import_lines = []
+            impl = ""
+            if impl_mvp is not None:
+                import_lines += impl_mvp.depending_import_lines()
+                impl = impl_mvp.definition_snippet()
+
+
+            mvp = ModuleVarPath(tgt.var_path)
+            import_lines += mvp.depending_import_lines()
+            import_lines = '\n'.join(import_lines)
+            usage = mvp.definition_snippet()
             return f"""
-{code}
+{import_lines}
+{impl}
+{usage}
+"""
+        case PartialInjectedFunction(InjectedFunction(object(__original_code__=usage), args)):
+            return f"""
+{usage}
 """
         case _:
             return ""
@@ -453,7 +536,7 @@ def make_sandbox_extra(tgt):
 @injected_function
 def _make_sandbox_impl(
         default_design_path: str,
-        make_sandbox_extra:Callable[[Any],str],
+        make_sandbox_extra: Callable[[Any], str],
         /,
         module_file_path: str,
         var_name: str,
@@ -468,12 +551,11 @@ def _make_sandbox_impl(
     sandbox_path = os.path.join(os.path.dirname(module_file_path), sandbox_name)
 
     logger.info(f"inspecting {var_name} to make sandbox")
-    injected:Injected = Injected.ensure_injected(tgt.var)
+    injected: Injected = Injected.ensure_injected(tgt.var)
     dependencies = injected.dependencies()
-    extras = make_sandbox_extra(tgt.var)
+    extras = make_sandbox_extra(tgt)
 
     with open(sandbox_path, 'w') as f:
-
         deps = ""
         for d in dependencies:
             deps += f"{d} = g['{d}']\n"

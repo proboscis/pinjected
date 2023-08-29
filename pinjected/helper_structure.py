@@ -1,9 +1,13 @@
+from loguru import logger
+from pathlib import Path
+
 from dataclasses import dataclass
 from typing import Dict, List, Union
 
 from pydantic import BaseModel, validator
 
 from pinjected import Design, Injected, Designed
+from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 
 
@@ -21,11 +25,37 @@ class IdeaRunConfigurations(BaseModel):
     configs: Dict[str, List[IdeaRunConfiguration]]
 
 
-
 @dataclass
 class MetaContext:
-    trace: List[ModuleVarSpec]
+    trace: List[ModuleVarSpec[Design]]
     accumulated: Design
+
+    @staticmethod
+    def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
+        if not isinstance(file_path,Path):
+            file_path = Path(file_path)
+        designs = list(walk_module_attr(file_path, meta_design_name))
+        designs.reverse()
+        res = Design()
+        overrides = Design()
+        for item in designs:
+            logger.debug(f"{meta_design_name} at :{item.var_path}")
+            res = res + item.var
+            try:
+                overrides += item.var.provide("overrides")
+            except Exception as e:
+                logger.debug(f"{item.var_path} does not contain overrides")
+        from pinjected import instances
+        res += instances(
+            overrides=overrides
+        )
+
+        return MetaContext(
+            trace=designs,
+            accumulated=res
+        )
+
+
 
 
 @dataclass

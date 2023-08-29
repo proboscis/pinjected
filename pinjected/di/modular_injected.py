@@ -6,7 +6,7 @@ from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import Expr
 from pinjected.di.injected import MappedInjected
 from pinjected.di.proxiable import DelegatedVar, T
-from pinjected.helpers import ModulePath
+from pinjected.helpers import ModuleVarPath
 
 
 @dataclass
@@ -16,7 +16,7 @@ class ModularInjected:
     so that we can generate a source code from sources.
     """
     tgt: Injected
-    imports: List[ModulePath]
+    imports: List[ModuleVarPath]
     ast: "an ast of an expression that returns Injected"
 
     def map(self, f: "ModularInjected"):
@@ -45,7 +45,7 @@ def statements_to_expr(stmt:List["Stmt"]):
 #
 
 
-def extract_modular_injected(target: ModulePath) -> ModularInjected:
+def extract_modular_injected(target: ModuleVarPath) -> ModularInjected:
     """
     given modulepath of an InjectedFunction, get the file it is defined, and parse it to gather imports.
     :param target:

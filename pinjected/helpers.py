@@ -1,18 +1,18 @@
+import ast
+
 import importlib
-import os
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from returns.maybe import maybe
 from typing import Optional, List
 
-from returns.maybe import maybe
-
-from pinjected import injected_function, Injected, Designed, Design
+from pinjected import injected_function, Injected, Designed
 from pinjected.di.app_injected import InjectedEvalContext
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
-from pinjected.helper_structure import IdeaRunConfigurations, MetaContext
-from loguru import logger
-from dataclasses import dataclass, field
+from pinjected.helper_structure import IdeaRunConfigurations
+from pinjected.module_helper import walk_module_attr
+from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
 
 
 @injected_function
@@ -32,8 +32,75 @@ def inspect_and_make_configurations(
     return IdeaRunConfigurations(configs=results)
 
 
+
+def find_var_or_func_definition_code_in_module(module_dot_path, name):
+    try:
+        module = importlib.import_module(module_dot_path)
+    except ImportError:
+        return f"Module {module_dot_path} could not be imported."
+
+    module_file_path = module.__file__
+
+    if module_file_path.endswith('.pyc'):
+        module_file_path = module_file_path[:-1]  # convert .pyc to .py
+
+    with open(module_file_path, 'r') as f:
+        lines = f.readlines()
+        tree = ast.parse(''.join(lines))
+
+    definition = None
+
+    for node in ast.walk(tree):
+        if definition is None and isinstance(node, (ast.Assign, ast.AnnAssign, ast.FunctionDef,ast.AsyncFunctionDef)):
+            targets = []
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, ast.AnnAssign):
+                targets = [node.target]
+
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id == name:
+                    start_line = node.lineno  # 1-based index
+                    end_line = getattr(node, 'end_lineno', start_line)  # Some older Python versions don't have end_lineno
+                    definition = ''.join(lines[start_line - 1:end_line]).strip()
+
+            if isinstance(node, (ast.FunctionDef,ast.AsyncFunctionDef)) and node.name == name:
+                start_line = node.lineno
+                end_line = getattr(node, 'end_lineno', start_line)
+                definition = ''.join(lines[start_line - 1:end_line]).strip()
+
+    if definition:
+        return definition
+    else:
+        raise RuntimeError(f"{name} is not defined in the given module: {module_dot_path}")
+
+
+def find_import_statements_in_module(module_dot_path):
+    try:
+        module = importlib.import_module(module_dot_path)
+    except ImportError:
+        return f"Module {module_dot_path} could not be imported."
+
+    module_file_path = module.__file__
+
+    if module_file_path.endswith('.pyc'):
+        module_file_path = module_file_path[:-1]  # convert .pyc to .py
+
+    with open(module_file_path, 'r') as f:
+        lines = f.readlines()
+        tree = ast.parse(''.join(lines))
+
+    import_statements = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            start_line = node.lineno
+            end_line = getattr(node, 'end_lineno', start_line)
+            import_statements.append(''.join(lines[start_line - 1:end_line]).strip())
+
+    return import_statements
 @dataclass
-class ModulePath:
+class ModuleVarPath:
     """
     represents a path where a variable is defined.
     like a.b.c.d
@@ -59,17 +126,36 @@ class ModulePath:
     def to_import_line(self):
         return f"from {self.module_name} import {self.var_name}"
 
+    @property
+    def module_file_path(self):
+        return sys.modules[self.module_name].__file__
+
     @staticmethod
     def from_local_variable(var_name):
         # get parent frame
         # then return a ModulePath
         raise NotImplementedError
 
+    def definition_snippet(self):
+        """
+        returns a code snippet that defines the variable
+        :return:
+        """
+        return find_var_or_func_definition_code_in_module(self.module_name, self.var_name)
+
+    def depending_import_lines(self):
+        return find_import_statements_in_module(self.module_name)
+
 
 @dataclass
 class RunnableSpec:
-    tgt_path: ModulePath
-    design_path: ModulePath = field(default_factory=lambda:ModulePath("pinjected.di.util.EmptyDesign"))
+    tgt_path: ModuleVarPath
+    design_path: ModuleVarPath = field(default_factory=lambda:ModuleVarPath("pinjected.di.util.EmptyDesign"))
+
+    def __post_init__(self):
+        # add type check
+        assert isinstance(self.tgt_path, ModuleVarPath)
+        assert isinstance(self.design_path, ModuleVarPath)
 
     @property
     def target_name(self):
@@ -106,9 +192,10 @@ def get_design_path_from_var_path(var_path):
     module = importlib.import_module(module_path)
     module_path = module.__file__
     design_paths = find_default_design_paths(module_path, None)
-    assert design_paths
-    design_path = design_paths[0]
-    return design_path
+    #assert design_paths, f"no default design paths found for {var_path}"
+    if design_paths:
+        design_path = design_paths[0]
+        return design_path
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:
@@ -167,62 +254,3 @@ def find_module_attr(file_path: str, attr_name: str, root_module_path: str = Non
         return item.var
 
 
-def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
-    """
-    walk down from a root module to the file_path, while looking for the attr_name and yielding the found variable as ModuleVarSpec
-    :param file_path:
-    :param attr_name:
-    :return:
-    """
-    from loguru import logger
-    if root_module_path is None:
-        root_module_path = Path(get_project_root(str(file_path)))
-    file_path = file_path.absolute()
-    assert str(file_path).endswith(".py"), f"a python file path must be provided, got:{file_path}"
-    logger.debug(f"project root path:{root_module_path}")
-    if not str(file_path).startswith(str(root_module_path)):
-        # logger.error(f"file path {file_path} is not under root module path {root_module_path}")
-        return
-
-    relative_path = file_path.relative_to(root_module_path)
-    logger.debug(f"relative path:{relative_path}")
-    module_name = os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
-    if module_name not in sys.modules:
-        logger.info(f"importing module: {module_name}")
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if spec is None:
-            logger.error(f"cannot find spec for {module_name} at {file_path}")
-            return
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-    module = sys.modules[module_name]
-    if hasattr(module, attr_name):
-        yield ModuleVarSpec(
-            var=getattr(module, attr_name),
-            var_path=module_name + '.' + attr_name,
-        )
-
-    parent_dir = file_path.parent
-    if parent_dir != root_module_path:
-        parent_file_path = parent_dir / '__init__.py'
-        if parent_file_path.exists() and parent_file_path != file_path:
-            yield from walk_module_attr(parent_file_path, attr_name, root_module_path)
-        else:
-            grandparent_dir = parent_dir.parent
-            grandparent_file_path = grandparent_dir / '__init__.py'
-            if grandparent_file_path.exists():
-                yield from walk_module_attr(grandparent_file_path, attr_name, root_module_path)
-
-
-def gather_meta_context(file_path: Path, meta_design_name: str = "__meta_design__") -> MetaContext:
-    designs = list(walk_module_attr(file_path, meta_design_name))
-    designs.reverse()
-    res = Design()
-    for item in designs:
-        logger.debug(f"{meta_design_name} at :{item.var_path}")
-        res = res + item.var
-    return MetaContext(
-        trace=designs,
-        accumulated=res
-    )

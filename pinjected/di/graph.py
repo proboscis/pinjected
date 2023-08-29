@@ -136,7 +136,7 @@ class IObjectGraph(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def resolver(self)->"DependencyResolver":
+    def resolver(self) -> "DependencyResolver":
         pass
 
 
@@ -230,10 +230,12 @@ class OverridingScope(IScope):
     def __contains__(self, item):
         return item in self.overrides or item in self.src
 
+
 class NoMappingError(Exception):
-    def __init__(self,key):
+    def __init__(self, key):
         super().__init__(f"No mapping found for DI:{key}")
-        self.key=key
+        self.key = key
+
 
 @dataclass
 class DependencyResolver:
@@ -244,21 +246,7 @@ class DependencyResolver:
     src: "Design"
 
     def _to_injected(self, tgt: Providable):
-        match tgt:
-            case str():
-                return Injected.by_name(tgt)
-            case type():
-                return Injected.bind(tgt)
-            case Injected():
-                return tgt
-            case Designed():
-                raise TypeError(f"cannot use Designed here, since Designed cannot become an Injected.")
-            case DelegatedVar(value, cxt):
-                return self._to_injected(tgt.eval())
-            case f if callable(f):
-                return Injected.bind(f)
-            case _:
-                raise TypeError(f"target must be either class or a string or Injected. got {tgt}")
+        return providable_to_injected(tgt)
 
     def __post_init__(self):
         # gather things to build providers graph
@@ -498,6 +486,24 @@ def get_caller_info(level: int):
     return file_name, line_number
 
 
+def providable_to_injected(tgt: Providable) -> Injected:
+    match tgt:
+        case str():
+            return Injected.by_name(tgt)
+        case type():
+            return Injected.bind(tgt)
+        case Injected():
+            return tgt
+        case Designed():
+            raise TypeError(f"cannot use Designed here, since Designed cannot become an Injected.")
+        case DelegatedVar(value, cxt):
+            return providable_to_injected(tgt.eval())
+        case f if callable(f):
+            return Injected.bind(f)
+        case _:
+            raise TypeError(f"target must be either class or a string or Injected. got {tgt}")
+
+
 @dataclass
 class MyObjectGraph(IObjectGraph):
     _resolver: DependencyResolver
@@ -508,7 +514,7 @@ class MyObjectGraph(IObjectGraph):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
 
     @property
-    def resolver(self) ->"DependencyResolver":
+    def resolver(self) -> "DependencyResolver":
         return self._resolver
 
     @property
@@ -534,14 +540,18 @@ class MyObjectGraph(IObjectGraph):
         """
         from loguru import logger
         # I need to get the filename and line number of the caller
-        if isinstance(target,Designed):
+        if isinstance(target, Designed):
             return self.child_session(target.design)[target.internal_injected]
 
+        target: Injected = providable_to_injected(target)
         fn, ln = get_caller_info(level).value_or(("unknown_function", "unknown_line"))
         dep_tree = self.resolver.dependency_tree(target)
         dep_tree = DependencyResolver.unresult_tree(dep_tree)
-        logger.debug(
-            f"{fn}:{ln} => DI blueprint for {str(target)[:100]}:\n{yaml.dump(dep_tree)}")
+        script = self.design.to_vis_graph().to_python_script(
+            root=target,
+            design_path="__dummy__.design",
+        )
+        logger.debug(f'Pseudo code of the DI graph for ({str(target)[:100]}):\n{script}')
         failures = self.resolver.find_failures(dep_tree)
         if failures:
             logger.error(f"DI failures: \n{pformat(failures)}")
@@ -565,7 +575,6 @@ class MyObjectGraph(IObjectGraph):
     @property
     def design(self):
         return self.src_design
-
 
 
 def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):

@@ -513,7 +513,7 @@ class Design:
     def add_classes(self, *classes):
         return self + Design(classes=list(classes))
 
-    def to_vis_graph(self):
+    def to_vis_graph(self)->"DIGraph":
         from pinjected.visualize_di import DIGraph
         return DIGraph(self)
 
@@ -547,7 +547,7 @@ def instances(**kwargs):
         assert not isinstance(v,
                               DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
         assert not isinstance(v,
-                              Injected), f"passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
+                              Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
     return Design().bind_instance(**kwargs)
 
 

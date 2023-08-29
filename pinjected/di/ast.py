@@ -199,7 +199,6 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
         reduced = custom(expr)
         if reduced:
             return reduced
-
         match expr:
             case Object(str() as x):
                 return f'"{x}"'
@@ -220,6 +219,7 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
             case DelegatedVar(wrapped, cxt):
                 return f"{_show_expr(wrapped)}"
+
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)}")
 
