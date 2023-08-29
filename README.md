@@ -499,6 +499,40 @@ Design().bind_provider(
 ).provide("a") == "aa"
 ```
 
+# CLI Support
+An Injected instance can be run from CLI with the following command.
+```
+python -m pinjected <path of a Injected variable> <path of a Design variable or null> <Optional overrides for a design>
+```
+- Variable Path: `your.package.var.name`
+- Design Path: `your.package.design.name`
+- Optional Overrides:
+```
+python -m pinjected my.package.injected_instance --name hello --yourconfig anystring
+```
+This CLI will parse any additional keyword arguments into a call of `instances` internally to be appended to the design running this injected instance.
+Which is equivalent to running following script:
+```
+from my.package import injected_instance
+design = instances(
+    name='dummy',
+    yourconfig='dummy'
+    ...
+) + instances(
+    name = 'hello',
+    yourconfig = 'anystring'
+)
+
+design.provide(injected_instance)
+```
+# IDE Support
+By installing a plugin to IDE, you can directly run the Injected variable by clicking a `Run` button associated with the Injected variable declaration line inside IDE.
+(Documentation Coming Soon for IntelliJ Idea)
+
+# Dependency Graph Visualization
+You can visualize the dependency graph of an Injected instance in web browser for better understanding of your program.
+(Documentation Coming Soon)
+
 # Picklability
 Compatible with dill and cloudpickle as long as the bound objects are picklable.
 
