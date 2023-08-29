@@ -156,7 +156,7 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
 
                 def eval_biop(t):
                     x, y = t
-                    return eval("x " + op + " y", __locals=dict(x=x, y=y))
+                    return eval("x " + op + " y", None, dict(x=x, y=y))
 
                 return app.map(
                     app.zip(injected_left, injected_right),

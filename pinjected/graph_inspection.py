@@ -76,7 +76,8 @@ class DIGraphHelper:
     def total_mappings(self) -> dict[str, Injected]:
         from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
         global_implicit_mappings = IMPLICIT_BINDINGS
-        logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
+        # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
+        logger.debug(f"using {len(global_implicit_mappings)} global implicit mappings")
         implicit_mappings = {k: Injected.bind(v) for k, v in self.get_implicit_mapping()}
         explicit_mappings = {k: bind.to_injected() for k, bind in self.get_explicit_mapping().items()}
         return {**global_implicit_mappings, **implicit_mappings, **explicit_mappings}

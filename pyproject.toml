@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pinjected"
-version = "0.1.111"
-description = "immutable wrapper for pinject"
+version = "0.1.121"
+description = "Immutable Dependency Injection for Python."
 authors = [ "proboscis <nameissoap@gmail.com>",]
 license = "MIT"
 
@@ -19,7 +19,6 @@ cytoolz = "^0.12.2"
 frozendict = "^2.3.8"
 fire = "^0.5.0"
 pyyaml = "^6.0.1"
-pydantic = "^2.1.1"
 networkx = "^3.1"
 pyvis = "^0.3.2"
 makefun = "^1.15.1"

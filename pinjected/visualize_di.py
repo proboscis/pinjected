@@ -16,10 +16,11 @@ from pinjected.di.bindings import InjectedBind
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
+from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import Design
 from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError
 from pinjected.graph_inspection import DIGraphHelper
-from pinjected.helpers import ModulePath
+from pinjected.helpers import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
 
 
@@ -40,13 +41,17 @@ def getitem(tgt, name):
 
 import colorsys
 
+
 def rgb_to_hex(rgb):
     return '#%02x%02x%02x' % rgb
 
+
 def get_color(n_edges):
-    h = (1.0 - max(0,min(10,n_edges)) / 10.0) * 0.67  # 0.67 is the hue for blue in the HSV color system.
-    rgb = [int(x * 255) for x in colorsys.hsv_to_rgb(h, 1.0, 1.0)]  # convert hsv color (h,1,1) to rgb then multiply by 255
+    h = (1.0 - max(0, min(10, n_edges)) / 10.0) * 0.67  # 0.67 is the hue for blue in the HSV color system.
+    rgb = [int(x * 255) for x in
+           colorsys.hsv_to_rgb(h, 1.0, 1.0)]  # convert hsv color (h,1,1) to rgb then multiply by 255
     return rgb_to_hex(tuple(rgb))
+
 
 @dataclass
 class DIGraph:
@@ -174,7 +179,8 @@ class DIGraph:
                 import traceback
                 trb = traceback.format_exc()
                 if replace_missing:
-                    logger.warning(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e} \n{trb}")
+                    logger.info(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e}")
+                    # logger.warning(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e} \n{trb}")
                     nexts = []
                 else:
                     raise _MissingDepsError(f"failed to get neighbors of {current} at {' => '.join(trace)}.", current,
@@ -309,7 +315,6 @@ class DIGraph:
             short = str(short).replace("<", "").replace(">", "")[:100]
             n_edges = len(list(nx_graph.neighbors(n))) + safe(self.dependencies_of)(n).map(len).value_or(0)
 
-
             return dict(
                 label=f"{n}\n{short}",
                 title=long,
@@ -331,24 +336,35 @@ class DIGraph:
         return nx_graph
 
     def to_python_script(self,
-                         root_path: Union[str, ModulePath],
-                         design_path: Union[str, ModulePath]
+                         root: Union[str, ModuleVarPath, Injected],
+                         design_path: Union[str, ModuleVarPath]
                          ):
         # we assume that __target__ is already added to this design...
         graph = defaultdict(list)
-        if not isinstance(design_path, ModulePath):
-            design_path = ModulePath(design_path)
-        if not isinstance(root_path, ModulePath):
-            root_path = ModulePath(root_path)
+        match root:
+            case (Injected() | DelegatedVar()):
+                tgt = Injected.ensure_injected(root)
+                root_path = ModuleVarPath("__dummy__.root")
+            case str():
+                root_path = ModuleVarPath(root)
+                tgt = Injected.ensure_injected(root_path.load())
+            case ModuleVarPath():
+                root_path = root
+                tgt = Injected.ensure_injected(root_path.load())
+            case _:
+                raise ValueError(f"unsupported type for root:{root}")
+
+        if not isinstance(design_path, ModuleVarPath):
+            design_path = ModuleVarPath(design_path)
         script = f"""
 from pinjected.di.util import Design,providers
-{design_path.to_import_line()}
-{root_path.to_import_line()}
+{design_path.to_import_line()} # Please correct this line as needed
+{root_path.to_import_line()} # Please correct this line as needed
 d:Design = {design_path.var_name} + providers(
     __target__= {root_path.var_name}
 )
+g = d.to_graph()
 """
-        tgt: Injected = Injected.ensure_injected(root_path.load())
         for dep in tgt.dependencies():
             graph["__target__"].append(dep)
             for a, b, trc in self.di_dfs(dep, replace_missing=True):
@@ -362,11 +378,11 @@ d:Design = {design_path.var_name} + providers(
                     tgt = self.explicit_mappings[node]
                     match tgt:
                         case InjectedPure(str(value)):
-                            return f"{node}=\"{value}\"\n"
+                            return f"{node} = \"{value}\"\n"
                         case InjectedPure(value):
-                            return f"{node}={value}\n"
-            args = ",".join(set(args))
-            return f"{node} = d['{node}']({args})\n"
+                            return f"{node} = {value}\n"
+            args = ", ".join(set(args))
+            return f"{node} = g['{node}']({args})\n"
 
         def dfs_write(node):
             nonlocal script
@@ -381,7 +397,13 @@ d:Design = {design_path.var_name} + providers(
         dfs_write("__target__")
         return script
 
-    def create_dependency_digraph(self, roots: Union[str, List[str]], replace_missing=True) -> NxGraphUtil:
+    def create_dependency_digraph(self,
+                                  roots: Union[str, List[str]],
+                                  replace_missing=True,
+                                  root_group='root',
+                                  ignore_nodes: List[str] = None
+                                  ) -> NxGraphUtil:
+        ignore_nodes = set(ignore_nodes or [])
         if isinstance(roots, str):
             roots = [roots]
         # hmm,
@@ -391,17 +413,28 @@ d:Design = {design_path.var_name} + providers(
         # why am I seeing no deps?
         for root in roots:
             for a, b, trc in self.di_dfs(root, replace_missing=replace_missing):
-                nx_graph.add_edge(b, a)
-            nx_graph.add_node(root)
+                if a not in ignore_nodes and b not in ignore_nodes:
+                    nx_graph.add_edge(b, a)
+            if root not in ignore_nodes:
+                nx_graph.add_node(root)
 
         self.stylize_graph(nx_graph, replace_missing)
 
-        for root in roots:
-            nx_graph.nodes[root]["group"] = "root"
+        if root_group:
+            for root in roots:
+                nx_graph.nodes[root]["group"] = root_group
         return NxGraphUtil(nx_graph)
 
-    def create_dependency_network(self, roots: Union[str, List[str]], replace_missing=True):
-        nx_graph = self.create_dependency_digraph(roots, replace_missing)
+    def create_dependency_network(self,
+                                  roots: Union[str, List[str]],
+                                  replace_missing=True,
+                                  ignore_nodes: List[str] = None
+                                  ):
+        nx_graph = self.create_dependency_digraph(
+            roots,
+            replace_missing,
+            ignore_nodes=ignore_nodes
+        )
         return nx_graph.to_physics_network()
 
     def find_missing_dependencies(self, roots: Union[str, List[str]]) -> List[DependencyResolutionFailure]:
@@ -436,10 +469,15 @@ d:Design = {design_path.var_name} + providers(
         g.show_html()
 
     def show_injected_html(self, tgt: Injected, name: str = None):
+        tgt = Injected.ensure_injected(tgt)
         assert isinstance(tgt, Injected)
         assert platform.system().lower() == "darwin"
         nx_graph = self.create_dependency_digraph_rooted(tgt, name or "__root__", replace_missing=True)
         nx_graph.show_html_temp()
+
+    def show_whole_html(self):
+        roots = list(self.explicit_mappings.keys())
+        self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
 # %%

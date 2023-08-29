@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from loguru import logger
 from typing import Set
 
 from pinjected import Injected
@@ -60,13 +61,13 @@ def reduce_injected_expr(expr: Expr):
         case Object(DelegatedVar() as dv):
             return reduce_injected_expr(Object(dv.eval()))
         case Object(EvaledInjected() as ei):
-            return ei.repr_ast()
+            reduced = ei.repr_ast()
+            return reduced
         case Object(InjectedByName(name)):
             return f"$('{name}')"
         case Object(Injected() as i):
             return f"<{i.__class__.__name__}>"
-        # case Object(x):
-        #     return f"Unknown:{x}"
+
 
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:

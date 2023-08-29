@@ -1,5 +1,5 @@
-from pinjected import Design, injected_function
-from pinjected.helpers import ModulePath
+from pinjected import Design, injected_function, Injected
+from pinjected.helpers import ModuleVarPath
 
 test_design=Design()
 __default_design_paths__ = ['test.test_visualization.test_design']
@@ -9,17 +9,11 @@ def a():
 
 @injected_function
 def b(a,/):
-    return a + "b"
+    return a() + "b"
 
 @injected_function
 def c(b,/):
-    return b + "c"
+    return b() + "c"
 
+d:Injected = c() + "d"
 
-def test_to_script():
-    from loguru import logger
-    script = test_design.to_vis_graph().to_python_script(
-        'test.test_visualization.c',
-        "test.test_visualization.test_design"
-    )
-    logger.info(script)

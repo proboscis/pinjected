@@ -6,6 +6,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
+from returns.result import safe
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any
 
 from makefun import create_function
@@ -108,7 +109,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             if not varg:
                 varg = [inspect.Parameter('__args', inspect.Parameter.VAR_POSITIONAL)]
             # we also need to pass varargs if there are default args..
-            new_func_sig = f"_injected_partial_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
+            new_func_sig = f"injected_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
             return new_func_sig
 
         def makefun_impl(injected_kwargs):
@@ -192,6 +193,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             return new_func
 
         makefun_impl.__name__ = original_function.__name__
+        makefun_impl.__module__ = original_function.__module__
+
         if isinstance(original_function, type):
             makefun_impl.__original_code__ = "not available"
             makefun_impl.__original_file__ = "not available"
@@ -199,9 +202,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             makefun_impl.__original_code__ = inspect.getsource(original_function.__func__)
             makefun_impl.__original_file__ = inspect.getfile(original_function.__func__)
         else:
-            makefun_impl.__original_code__ = inspect.getsource(original_function)
-            # staticmethod is not allowed?
-            makefun_impl.__original_file__ = inspect.getfile(original_function)
+            makefun_impl.__original_code__ = safe(inspect.getsource)(original_function).value_or("not available")
+            makefun_impl.__original_file__ = safe(inspect.getfile)(original_function).value_or("not available")
+
         makefun_impl.__doc__ = original_function.__doc__
         injected_kwargs = Injected.dict(**injection_targets)
         # hmm?
@@ -383,8 +386,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         other = Injected.ensure_injected(other)
         return self.zip(other).map(lambda t: t[0] + t[1])
 
-    def desync(self):
+    def __getitem__(self, item):
+        return self.map(lambda x: x[item])
 
+    def desync(self):
         return self.map(lambda coroutine: asyncio.run(coroutine))
 
     def __len__(self):
