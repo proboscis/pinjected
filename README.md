@@ -656,7 +656,7 @@ some_class.foo
 ```
 ## Pinjected version
 ```python
-from pinjected.di.util import Design
+from pinjected import Design, instances, providers
 from dataclasses import dataclass
 @dataclass
 class SomeClass(object):
@@ -664,16 +664,16 @@ class SomeClass(object):
     bar:str
 
 d = Design() # empty immutable bindings called Design
-d1 = d.bind_instance( #new Design
+d1 = instances( # new Design
     foo="a-foo",
     bar="a-bar"
 )
-d2 = d1.bind_instance( # creates new Design from d1 keeping all other bindings except overriden foo
+d2 = d1 + instances( # creates new Design on top of d1 keeping all other bindings except overriden foo
     foo="b-foo" #override foo of d1
 )
-a = d1.to_graph().provide(SomeClass)
+a = d1.to_graph()[SomeClass]
 assert(a.foo == "a-foo")
-b = d2.to_graph().provide(SomeClass)
+b = d2.to_graph()[SomeClass]
 assert(b.foo == "b-foo")
 
 ```
