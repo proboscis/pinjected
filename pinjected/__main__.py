@@ -19,7 +19,7 @@ def get_injected(
     :param design_path: the path to the design to be used: e.g. "my_module.my_design"
     :param kwargs: overrides for the design. e.g. "api_key=1234"
     """
-    from pinjected.run_config_utils import run_injected
+    from pinjected.run_helpers.run_injected import run_injected
     overrides = instances(**kwargs)
     return run_injected("get",var_path, design_path,return_result=True,overrides=overrides)
 

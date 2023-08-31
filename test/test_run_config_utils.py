@@ -2,7 +2,8 @@ from pathlib import Path
 
 from pinjected import Injected
 from pinjected.di.util import instances
-from pinjected.run_config_utils import create_idea_configurations, run_injected
+from pinjected.run_config_utils import create_idea_configurations
+from pinjected.run_helpers.run_injected import run_injected
 from pinjected.helpers import find_module_attr
 
 TEST_MODULE=Path("../pinject_design/test_package/child/module1.py")
