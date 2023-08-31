@@ -201,8 +201,6 @@ T = TypeVar("T")
 
 @dataclass
 class Design:
-    # TODO implement __getstate__ and __setstate__ with dill! so that this can be pickled.
-    # basically a State/Free Monad on Pinject's BindingSpec
     """
     This is an injection binding class which can be used to compose configures and providers.
     """
@@ -218,8 +216,6 @@ class Design:
             modules=[m.__name__ for m in self.modules],
             classes=self.classes,
         )
-        # ah, so this pickling checker is a bit of a problem
-        # check_picklable(self.bindings)
         return res
 
     def __setstate__(self, state):
@@ -249,8 +245,6 @@ class Design:
                 raise ValueError(f"cannot add {type(other)} to Design")
 
     def _merge_multi_binds(self, src, dst):
-        # src = Map.of(**src)
-        # dst = Map.of(**dst)
         keys = src.keys() | dst.keys()
         multi = {k: (
                 getitem_opt(src, k).value_or([]) +
