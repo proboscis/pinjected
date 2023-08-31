@@ -23,24 +23,20 @@ Hmm, an easy way is to add some metadata though..
 Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
-from contextlib import contextmanager
+from dataclasses import asdict
 
-import asyncio
 import importlib
 import inspect
 import json
 import os
-import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-from returns.pipeline import is_successful
-from typing import Optional, List, Dict, Coroutine, OrderedDict, Callable, Any
+from typing import Optional, List, Dict, OrderedDict, Callable, Any
 
 from loguru import logger
 import fire
-import loguru
 import returns.maybe as raybe
 from cytoolz import memoize
 from expression import Nothing
@@ -54,12 +50,14 @@ from pinjected.di.injected import injected_function, PartialInjectedFunction, In
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, RunnableValue, \
-    IdeaRunConfiguration, MetaContext
+    IdeaRunConfiguration
+from pinjected.run_helpers.config import ConfigCreationArgs
 from pinjected.helpers import inspect_and_make_configurations, load_variable_by_module_path, \
-    get_design_path_from_var_path, get_runnables, find_default_design_paths, ModuleVarPath
-from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type, get_project_root
+    get_runnables, find_default_design_paths, ModuleVarPath
+from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
 from pinjected.run_config_utils_v2 import RunInjected
-from dataclasses import dataclass, field
+
+from pinjected.run_helpers.run_injected import run_injected
 
 
 def maybe__or__(self, other):
@@ -236,141 +234,7 @@ notification_sounds = [
 ]
 
 
-def notify(text, sound='Glass') -> str:
-    """
-    pops up a notification with text
-    :param text:
-    :return: Notification result
-    """
-    import os
-    org = text
-    text = text.replace('"', '\\"')
-    text = text.replace("'", "")
-    script = f"'display notification \"{text}\" with title \"OpenAI notification\" sound name \"{sound}\"'"
-    cmd = f"""osascript -e {script} """
-    os.system(cmd)
-    return f"Notified user with text: {org}"
-
-
 # maybe we want to distinguish the error with its complexity and pass it to gpt if required.
-
-@contextmanager
-def disable_internal_logging():
-    #logger.info(f"disabling internal logging")
-    names = [
-        'pinjected.di.graph',
-        'pinjected.helpers',
-        'pinjected.module_inspector',
-        'pinjected'
-    ]
-    for n in names:
-        logger.disable(n)
-    yield
-    for n in names:
-        logger.enable(n)
-    #logger.info(f"enabling internal logging")
-
-def run_anything(
-        cmd: str,
-        var_path,
-        design_path,
-        overrides = instances(),
-        *args,
-        **kwargs):
-    if "return_result" in kwargs:
-        return_result = kwargs.pop("return_result")
-    else:
-        return_result = False
-
-    from loguru import logger
-    with disable_internal_logging():
-        loaded_var = load_variable_by_module_path(var_path)
-        meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
-        if not isinstance(meta, dict):
-            meta = {}
-        overrides += meta.get("overrides", instances())
-
-        meta_cxt: MetaContext = MetaContext.gather_from_path(ModuleVarPath(var_path).module_file_path)
-        if design_path is None:
-            design_path = meta_cxt.accumulated.provide("default_design_paths")[0]
-
-        var: Injected = Injected.ensure_injected(load_variable_by_module_path(var_path))
-        design: Design = load_variable_by_module_path(design_path)
-        meta_design = instances(overrides=instances()) + meta_cxt.accumulated
-        overrides += meta_design.provide("overrides")
-
-
-    design = design + overrides
-    logger.info(f"running target:{var} with {design_path} + {overrides}")
-    #logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
-    #logger.info(f"metadata obtained from pinjected: {meta}")
-
-    res = None
-    try:
-        if cmd == 'call':
-            res = design.provide(var)(*args, **kwargs)
-            if isinstance(res, Coroutine):
-                res = asyncio.run(res)
-            logger.info(f"run_injected call result:\n{res}")
-        elif cmd == 'get':
-            res = design.provide(var)
-            if isinstance(res, Coroutine):
-                res = asyncio.run(res)
-            if not return_result:
-                logger.info(f"run_injected get result:\n{pformat(res)}")
-        elif cmd == 'fire':
-            res = design.provide(var)
-            if isinstance(res, Coroutine):
-                res = asyncio.run(res)
-            logger.info(f"run_injected fire result:\n{res}")
-        elif cmd == 'visualize':
-            from loguru import logger
-            logger.info(f"visualizing {var_path} with design {design_path}")
-            logger.info(f"deps:{var.dependencies()}")
-            design.to_vis_graph().show_injected_html(var)
-        elif cmd == 'to_script':
-            from loguru import logger
-            d = design + providers(
-                __root__=var
-            )
-            print(d.to_vis_graph().to_python_script(var_path, design_path=design_path))
-    except Exception as e:
-        import traceback
-        notify(f"Run failed with error:\n{e}", sound='Frog')
-        trace = traceback.format_exc()
-        Path(f"run_failed_{var_path}.txt").write_text(str(e) + "\n" + trace)
-        raise e
-    notify(f"Run result:\n{str(res)[:100]}")
-    if return_result:
-        return res
-
-
-def run_injected(
-        cmd,
-        var_path,
-        design_path: str = None,
-        *args,
-        **kwargs
-):
-    with disable_internal_logging():
-        if "return_result" in kwargs:
-            return_result = kwargs.pop("return_result")
-        else:
-            return_result = False
-        if "overrides" in kwargs:
-            overrides = kwargs.pop("overrides")
-        else:
-            overrides = instances()
-
-        if design_path is None:
-            design_path = get_design_path_from_var_path(var_path)
-        logger.info(f"run_injected called with cmd:{cmd}, var_path:{var_path}, design_path:{design_path}, args:{args}, kwargs:{kwargs}")
-    return run_anything(cmd,
-                        var_path,
-                        design_path = design_path,
-                        return_result=return_result,
-                        overrides = overrides,
-                        *args, **kwargs)
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
@@ -401,37 +265,6 @@ def find_injecteds(
     return print(json.dumps([i.var_path for i in injecteds]))
 
 
-@dataclass
-class ConfigCreationArgs:
-    module_path: str
-    default_design_path: str = None
-    entrypoint_path: str = None
-    interpreter_path: str = None
-    working_dir: str = None
-
-    def to_design(self):
-        logger.debug(f"python paths:{sys.path}")
-        meta_context = MetaContext.gather_from_path(Path(self.module_path))
-
-        design = providers(
-            project_root=lambda module_path: Path(get_project_root(module_path)),
-            entrypoint_path=lambda: self.entrypoint_path or __file__,
-            interpreter_path=lambda: self.interpreter_path or sys.executable,
-            default_design_paths=lambda: find_default_design_paths(self.module_path, self.default_design_path),
-            default_working_dir=lambda project_root: maybe(lambda: self.working_dir)() | Some(
-                str(project_root)),
-            default_design_path=lambda default_design_paths: default_design_paths[0]
-        ) + instances(
-            logger=loguru.logger,
-            custom_idea_config_creator=lambda x: [],  # type ConfigCreator
-            meta_context=meta_context,
-            module_path=self.module_path,
-        ) + meta_context.accumulated
-        logger.info(f"using meta design:{meta_context.accumulated}")
-        logger.info(f"custom_idea_config_creator:{design['custom_idea_config_creator']}")
-        return design
-
-
 # since this is an entrypoint, we can't use @injected_function here.
 def create_idea_configurations(
         module_path,
@@ -455,10 +288,7 @@ def create_idea_configurations(
     pinjected.global_configs.pinjected_TRACK_ORIGIN = True
     logger.info(f"configs:{configs}")
     if print_to_stdout:
-        try:
-            print(configs.model_dump_json())
-        except Exception as e:
-            print(configs.json())
+        print(json.dumps(asdict(configs)))
     else:
         return configs
 
@@ -490,11 +320,11 @@ def get_var_spec_from_module_path_and_name(module_path: str, var_name: str) -> M
     return tgt
 
 
-def extract_extra_codes(ast:Expr)->ModuleVarPath:
+def extract_extra_codes(ast: Expr) -> ModuleVarPath:
     # TODO include the module path in the Inejcted Function
     match ast:
         case Call(
-            Object(InjectedFunction(object(__original_code__=code,__name__=name,__module__=mod),_args)),
+            Object(InjectedFunction(object(__original_code__=code, __name__=name, __module__=mod), _args)),
             args,
             kwargs):
             mvp = ModuleVarPath(f"{mod}.{name}")
@@ -504,8 +334,7 @@ def extract_extra_codes(ast:Expr)->ModuleVarPath:
 
 
 @injected_function
-def make_sandbox_extra(tgt:ModuleVarSpec):
-    from pinjected.visualize_di import DIGraph
+def make_sandbox_extra(tgt: ModuleVarSpec):
     match tgt.var:
         case DelegatedVar():
             impl_mvp = extract_extra_codes(tgt.var.eval().ast)
@@ -514,7 +343,6 @@ def make_sandbox_extra(tgt:ModuleVarSpec):
             if impl_mvp is not None:
                 import_lines += impl_mvp.depending_import_lines()
                 impl = impl_mvp.definition_snippet()
-
 
             mvp = ModuleVarPath(tgt.var_path)
             import_lines += mvp.depending_import_lines()
@@ -736,6 +564,7 @@ def run_main():
 
 def main():
     import fire
+    # maybe we should switch these commands by Injected, right?
     fire.Fire({
         'create_configurations': create_idea_configurations,
         'run_injected': run_injected,
