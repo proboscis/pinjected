@@ -1,27 +1,24 @@
+from dataclasses import dataclass
 from loguru import logger
 from pathlib import Path
-
-from dataclasses import dataclass
-from typing import Dict, List, Union
-
-from pydantic import BaseModel, validator
+from typing import Dict, List
 
 from pinjected import Design, Injected, Designed
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 
 
-class IdeaRunConfiguration(BaseModel):
+@dataclass
+class IdeaRunConfiguration:
     name: str
     script_path: str
     interpreter_path: str
     arguments: List[str]
     working_dir: str
-    # we need dependency python librarrie's paths.
-    # this needs to be checked from intellij side
 
 
-class IdeaRunConfigurations(BaseModel):
+@dataclass
+class IdeaRunConfigurations:
     configs: Dict[str, List[IdeaRunConfiguration]]
 
 
@@ -32,7 +29,7 @@ class MetaContext:
 
     @staticmethod
     def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
-        if not isinstance(file_path,Path):
+        if not isinstance(file_path, Path):
             file_path = Path(file_path)
         designs = list(walk_module_attr(file_path, meta_design_name))
         designs.reverse()
@@ -56,8 +53,6 @@ class MetaContext:
         )
 
 
-
-
 @dataclass
 class RunnablePair:
     target: Injected
@@ -78,8 +73,8 @@ try:
 except ImportError:
     from pydantic import validator as field_validator
 
-
-class RunnableValue(BaseModel):
+@dataclass
+class RunnableValue:
     """
     I think it is easier to make as much configuration as possible on this side.
     """
@@ -98,3 +93,5 @@ class RunnableValue(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+
+

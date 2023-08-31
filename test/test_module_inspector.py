@@ -4,7 +4,6 @@ from pprint import pprint
 from pinjected.helper_structure import MetaContext
 from pinjected.module_inspector import get_project_root
 from pinjected.run_config_utils import create_idea_configurations
-from pinjected.helpers import gather_meta_context
 from pinjected.module_helper import walk_module_attr
 
 
@@ -26,7 +25,7 @@ def test_walk_module_attr():
 
 def test_gather_meta_design():
     test_file = "/Users/s22625/repos/pinject-design/pinject_design/test_package/child/module1.py"
-    mc:MetaContext = gather_meta_context(Path(test_file))
+    mc: MetaContext = MetaContext.gather_from_path(Path(test_file))
     print(mc.accumulated.provide('name'))
 
 
