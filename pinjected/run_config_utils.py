@@ -23,7 +23,7 @@ Hmm, an easy way is to add some metadata though..
 Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
-from dataclasses import asdict
+import loguru
 
 import importlib
 import inspect
@@ -37,50 +37,30 @@ from typing import Optional, List, Dict, OrderedDict, Callable, Any
 
 from loguru import logger
 import fire
-import returns.maybe as raybe
 from cytoolz import memoize
-from expression import Nothing
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
-import pinjected.global_configs
 from pinjected import Injected, Design
 from pinjected.di.ast import Expr, Call, Object
 from pinjected.di.injected import injected_function, PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
+#from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, RunnableValue, \
     IdeaRunConfiguration
+from pinjected.maybe_patch import patch_maybe
 from pinjected.run_helpers.config import ConfigCreationArgs
-from pinjected.helpers import inspect_and_make_configurations, load_variable_by_module_path, \
+from pinjected.helpers import load_variable_by_module_path, \
     get_runnables, find_default_design_paths, ModuleVarPath
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
 from pinjected.run_config_utils_v2 import RunInjected
 
 from pinjected.run_helpers.run_injected import run_injected
 
-
-def maybe__or__(self, other):
-    match self:
-        case Some(x):
-            return self
-        case raybe.Nothing:
-            return other
-
-
-def maybe_filter(self: Maybe, flag_to_keep):
-    match self.map(flag_to_keep):
-        case Some(True):
-            return self
-        case _:
-            return Nothing
-
-
-Maybe.__or__ = maybe__or__
-Maybe.filter = maybe_filter
-
 safe_getattr = safe(getattr)
 
+patch_maybe()
 
 @injected_function
 def extract_runnables(
@@ -156,7 +136,7 @@ IdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
 
 @injected_function
 def injected_to_idea_configs(
-        entrypoint_path: str,
+        runner_script_path: str,
         interpreter_path: str,
         default_design_paths: List[str],
         default_working_dir: Maybe[str],
@@ -169,11 +149,14 @@ def injected_to_idea_configs(
     # question is: how can we pass the override to run_injected?
     logger.info(f"using custom_idea_config_creator {custom_idea_config_creator} for {tgt}")
     name = tgt.var_path.split(".")[-1]
+    # runner_script_path corresponds to the script's path which gets passed to idea.
+    # so it must be the path which has run_injected command
     config_args = {
-        'script_path': entrypoint_path,
+        'script_path': runner_script_path,
         'interpreter_path': interpreter_path,
         'working_dir': default_working_dir.value_or(os.getcwd())
     }
+
     assert isinstance(tgt, ModuleVarSpec)
     meta = safe_getattr(tgt.var, "__runnable_metadata__")
     # so we need to gather the possible design paths from the metadata too.
@@ -266,32 +249,23 @@ def find_injecteds(
 
 
 # since this is an entrypoint, we can't use @injected_function here.
-def create_idea_configurations(
-        module_path,
-        default_design_path=None,
-        entrypoint_path=None,
-        interpreter_path=None,
-        working_dir=None,
-        print_to_stdout=True,
-):
-    pinjected.global_configs.pinjected_TRACK_ORIGIN = False
-    args = ConfigCreationArgs(
-        module_path=module_path,
-        default_design_path=default_design_path,
-        entrypoint_path=entrypoint_path,
-        interpreter_path=interpreter_path,
-        working_dir=working_dir,
-    )
-    design = args.to_design()
-    g = design.to_graph()
-    configs: IdeaRunConfigurations = g[inspect_and_make_configurations(module_path)]
-    pinjected.global_configs.pinjected_TRACK_ORIGIN = True
-    logger.info(f"configs:{configs}")
-    if print_to_stdout:
-        print(json.dumps(asdict(configs)))
-    else:
-        return configs
 
+
+default_design = design = providers(
+    # project_root=lambda module_path: Path(get_project_root(module_path)),
+    # runner_script_path=lambda: self.runner_script_path or __file__,
+    # interpreter_path=lambda: self.interpreter_path or sys.executable,
+    # default_design_paths=lambda: find_default_design_paths(self.module_path, self.default_design_path),
+    # default_working_dir=lambda project_root: maybe(lambda: self.working_dir)() | Some(
+    #    str(project_root)),
+    # default_design_path=lambda default_design_paths: default_design_paths[0]
+) + instances(
+    logger=loguru.logger,
+    custom_idea_config_creator=lambda x: [],  # type ConfigCreator
+    # meta_context=meta_context,
+    # module_path=self.module_path,
+    #
+)
 
 SANDBOX_TEMPLATE = """
 from {design_path} import {design_name}
@@ -361,6 +335,7 @@ def make_sandbox_extra(tgt: ModuleVarSpec):
             return ""
 
 
+
 @injected_function
 def _make_sandbox_impl(
         default_design_path: str,
@@ -404,7 +379,7 @@ def make_sandbox(module_file_path, var_name):
     args = ConfigCreationArgs(
         module_path=module_file_path,
         default_design_path=None,
-        entrypoint_path=None,
+        runner_script_path=None,
         interpreter_path=None,
         working_dir=None,
     )
@@ -565,36 +540,15 @@ def run_main():
 def main():
     import fire
     # maybe we should switch these commands by Injected, right?
+    # we want each implementations to have design...
+    # well, we can use python -m pinjected .... for these commands as well ,right?
     fire.Fire({
-        'create_configurations': create_idea_configurations,
+        #'create_configurations': create_idea_configurations,
         'run_injected': run_injected,
         'run_injected2': RunInjected,
         'run_with_kotlin': run_with_kotlin,
         'find_injecteds': find_injecteds,
         'make_sandbox': make_sandbox,
-    })
-
-
-def pinject_main():
-    """
-    finds any runnable in the caller's file
-    and runs it with default design with fire
-    # TODO make this able to override design
-    :return:
-    """
-    import inspect
-    caller_frame = inspect.stack()[1]
-    caller_file = caller_frame.filename
-    confs: IdeaRunConfigurations = create_idea_configurations(
-        caller_file,
-        print_to_stdout=False
-    )
-
-    def make_enetrypoint(conf):
-        return lambda *args, **kwargs: run_idea_conf(conf, *args, **kwargs)
-
-    return fire.Fire({
-        k: make_enetrypoint(conf[0]) for k, conf in confs.configs.items()
     })
 
 

@@ -1,9 +1,13 @@
-from pinjected import instances
+from pinjected import instances, Design, Injected
+from pinjected.di.proxiable import DelegatedVar
+from pinjected.helpers import ModuleVarPath
+from pinjected.run_helpers.run_injected import run_injected
 
 
 def get_injected(
-        var_path:str,
-        design_path:str=None,
+        var_path: str,
+        design_path: str = None,
+        _overrides_: str = None,
         **kwargs
 ):
     """
@@ -17,13 +21,38 @@ def get_injected(
 
     :param var_path: the path to the variable to be injected: e.g. "my_module.my_var"
     :param design_path: the path to the design to be used: e.g. "my_module.my_design"
+    :param _overrides_: a string that can be converted to an Design in some way. This will gets concatenated to the design.
     :param kwargs: overrides for the design. e.g. "api_key=1234"
+
     """
-    from pinjected.run_helpers.run_injected import run_injected
-    overrides = instances(**kwargs)
-    return run_injected("get",var_path, design_path,return_result=True,overrides=overrides)
+    # TODO parse overrides
+    instance_overrides = instances(**kwargs)
+    overrides = parse_overrides(_overrides_)
+    overrides += instance_overrides
+    return run_injected("get", var_path, design_path, return_result=True, overrides=overrides)
+
+
+def parse_overrides(overrides) -> Design:
+    match overrides:
+        case str() if ':' in overrides:  # this needs to be a complete call to run_injected, at least, we need to take arguments...
+            # hmm at this point, we should just run a script ,right?
+            design, var = overrides.split(':')
+            resolved = run_injected("get", var, design, return_result=True)
+            assert isinstance(resolved, Design), f"expected {design} to be a design, but got {resolved}"
+            return resolved
+        case str() as path:  # a path of a design/injected
+            var = ModuleVarPath(path).load()
+            if isinstance(var, Design):
+                return var
+            elif isinstance(var, (Injected, DelegatedVar)):
+                resolved = run_injected("get", path, return_result=True)
+                assert isinstance(resolved, Design), f"expected {path} to be a design, but got {resolved}"
+                return resolved
+        case None:
+            return instances()
 
 
 if __name__ == '__main__':
     import fire
+
     fire.Fire(get_injected)

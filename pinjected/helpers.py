@@ -11,9 +11,10 @@ from pinjected import injected_function, Injected, Designed
 from pinjected.di.app_injected import InjectedEvalContext
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import IdeaRunConfigurations
+from pinjected.maybe_patch import patch_maybe
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
-
+patch_maybe()
 
 @injected_function
 def inspect_and_make_configurations(

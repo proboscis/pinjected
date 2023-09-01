@@ -194,6 +194,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         makefun_impl.__name__ = original_function.__name__
         makefun_impl.__module__ = original_function.__module__
+        makefun_impl.__original__ = original_function
 
         if isinstance(original_function, type):
             makefun_impl.__original_code__ = "not available"
@@ -732,6 +733,7 @@ class ZippedInjected(Injected[Tuple[A, B]]):
             b = self.b.get_provider()(**b_kwargs)
             return a, b
 
+
         signature = self.get_signature()
         # logger.info(f"created signature:{signature} for ZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
@@ -749,6 +751,7 @@ class MZippedInjected(Injected):
         res = set()
         for s in self.srcs:
             res |= s.dependencies()
+
         return res
 
     def get_provider(self):
