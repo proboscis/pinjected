@@ -6,7 +6,7 @@ from pinjected.helper_structure import IdeaRunConfiguration
 
 @injected_function
 def dummy_config_creator_for_test(
-        entrypoint_path,
+        runner_script_path,
         interpreter_path,
         default_working_dir,
         logger,
@@ -17,7 +17,7 @@ def dummy_config_creator_for_test(
     return [
         IdeaRunConfiguration(
             name="dummy for test_package.child.__init__",
-            script_path=entrypoint_path,
+            script_path=runner_script_path,
             interpreter_path=interpreter_path,
             arguments=[],
             working_dir=default_working_dir.value_or("."),
