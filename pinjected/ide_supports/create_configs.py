@@ -123,6 +123,7 @@ def list_completions(
         default_design_paths: list[str]
 ):
     """
+    An API to be called from IDE to return completions, based on __meta_design__.
     :param default_design_paths:
     :return:[
         {name,description,tail}
@@ -154,3 +155,10 @@ def list_completions(
 
     completions = [key_to_completion(key) for key in helper.total_mappings().keys()]
     print(json.dumps(completions))
+
+# TODO implement a provider of documentations
+# TODO implement a provider for jump to definition, s that I can click on the injected variables to see the definition.
+# TODO automatically add the injected variable key to the argument list when the user selects to use it.
+# TODO show a list of injectable variables in the side bar, or the structure view
+# TODO detect a variable assign ment from 'injected' functions and any calls that involve DelegatedVar or injected functions
+# TODO make a PartialInjectedAsyncFunction and a proxy for it.

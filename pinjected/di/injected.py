@@ -329,6 +329,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.mzip(*srcs).map(list)
 
     @staticmethod
+    def async_gather(*srcs: "Injected[Awaitable]"):
+        def gather(coros):
+            async def wait():
+                return await asyncio.gather(*coros)
+            return asyncio.run(wait())
+        return Injected.mzip(*srcs).map(gather)
+
+    @staticmethod
     def map_elements(f: "Injected[Callable]", elements: "Injected[Iterable]") -> "Injected[Iterable]":
         """
         for (
@@ -733,7 +741,6 @@ class ZippedInjected(Injected[Tuple[A, B]]):
             b = self.b.get_provider()(**b_kwargs)
             return a, b
 
-
         signature = self.get_signature()
         # logger.info(f"created signature:{signature} for ZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
@@ -877,8 +884,13 @@ def injected_class(cls):
     return injected_function(cls)
 
 
-def injected(name: str):
-    return Injected.by_name(name).proxy
+def injected(tgt: Union[str, type, Callable]):
+    if isinstance(tgt, str):
+        return Injected.by_name(tgt).proxy
+    elif isinstance(tgt, type):
+        return injected_function(tgt)
+    elif callable(tgt):
+        return injected_function(tgt)
 
 
 def add_viz_metadata(metadata: Dict[str, Any]):
@@ -889,3 +901,6 @@ def add_viz_metadata(metadata: Dict[str, Any]):
         return tgt
 
     return impl
+
+
+instance = injected_instance
