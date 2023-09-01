@@ -20,6 +20,7 @@ def run_injected(
         cmd,
         var_path,
         design_path: str = None,
+        notifier=notify,
         *args,
         **kwargs
 ):
@@ -44,6 +45,7 @@ def run_injected(
                         overrides=overrides,
                         call_args=args,
                         call_kwargs=kwargs,
+                        notify=notifier
                         )
 
 
@@ -55,6 +57,7 @@ def run_anything(
         return_result=False,
         call_args=None,
         call_kwargs=None,
+        notify=lambda msg:notify(msg)
 ):
     from loguru import logger
     with disable_internal_logging():
@@ -75,6 +78,7 @@ def run_anything(
 
     design = design + overrides
     logger.info(f"running target:{var} with {design_path} + {overrides}")
+    logger.debug(design.keys())
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
 
@@ -113,7 +117,7 @@ def run_anything(
         import traceback
         notify(f"Run failed with error:\n{e}", sound='Frog')
         trace = traceback.format_exc()
-        Path(f"run_failed_{var_path}.txt").write_text(str(e) + "\n" + trace)
+        Path(f"run_failed_{var_path}.err.log").write_text(str(e) + "\n" + trace)
         raise e
     notify(f"Run result:\n{str(res)[:100]}")
     if return_result:

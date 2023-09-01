@@ -1,0 +1,156 @@
+import inspect
+import json
+from pathlib import Path
+from typing import Mapping
+
+import loguru
+import sys
+from dataclasses import asdict
+from loguru import logger
+from returns.maybe import Nothing, Some
+
+import pinjected
+import pinjected.global_configs
+from pinjected import injected_function, instances, providers, injected_instance, Injected
+from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
+from pinjected.graph_inspection import DIGraphHelper
+from pinjected.helper_structure import MetaContext
+from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths, ModuleVarPath
+from pinjected.module_inspector import get_project_root
+from pinjected.run_config_utils import injected_to_idea_configs
+
+__meta_design__ = instances(
+    default_design_paths=["pinjected.ide_supports.create_configs.my_design"]
+)
+
+from pinjected.run_helpers.run_injected import run_injected
+
+
+def run_with_meta_context(
+        var_path: str,
+        context_module_file_path: str,
+        design_path: str = None,
+        **kwargs
+):
+    """
+    This is for running a injected with __meta_design__ integrated.
+    :param var_path:
+    :param context_module_file_path:
+    :param design_path:
+    :param kwargs:
+    :return:
+    """
+    meta_context = MetaContext.gather_from_path(context_module_file_path)
+    instance_overrides = instances(
+        module_path=context_module_file_path,
+        interpreter_path=sys.executable,
+    ) + instances(**kwargs)
+    return run_injected("get", var_path, design_path, return_result=True,
+                        overrides=meta_context.accumulated + instance_overrides,
+                        notifier=logger.info
+                        )
+
+
+@injected_function
+def load_meta_context(
+        module_path
+):
+    meta_context = MetaContext.gather_from_path(module_path)
+    return meta_context
+
+
+my_design = instances(
+    logger=loguru.logger,
+    runner_script_path=pinjected.run_config_utils.__file__,
+    custom_idea_config_creator=lambda spec: [],  # type ConfigCreator
+    # this becomes recursive and overflows if we call meta_session inside a parent design...
+    default_design_path=None,
+    print_to_stdout=True
+) + providers(
+    inspect_and_make_configurations=inspect_and_make_configurations,
+    injected_to_idea_configs=injected_to_idea_configs,
+    default_design_paths=lambda module_path, default_design_path: find_default_design_paths(module_path,
+                                                                                            default_design_path),
+    project_root = lambda module_path: Path(get_project_root(module_path)),
+    default_working_dir=lambda project_root: Some(str(project_root)),
+)
+
+
+@injected_function
+def create_idea_configurations(
+        inspect_and_make_configurations,
+        module_path,
+        print_to_stdout,
+        /
+):
+    pinjected.global_configs.pinjected_TRACK_ORIGIN = False
+    configs = inspect_and_make_configurations(module_path)
+    pinjected.global_configs.pinjected_TRACK_ORIGIN = True
+    logger.info(f"configs:{configs}")
+    if print_to_stdout:
+        print(json.dumps(asdict(configs)))
+    else:
+        return configs
+
+
+@injected_instance
+def list_injected_keys(
+        default_design_paths: list[str]
+):
+    helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
+    print(json.dumps(sorted(list(helper.total_mappings().keys()))))
+
+
+def get_filtered_signature(func):
+    # Get the original signature
+    original_signature = inspect.signature(func)
+
+    # Filter out positional-only parameters
+    filtered_params = {
+        name: param for name, param in original_signature.parameters.items() if param.kind != inspect.Parameter.POSITIONAL_ONLY
+    }
+
+    # Create a new signature with the filtered parameters
+    new_signature = original_signature.replace(parameters=filtered_params.values())
+
+    # Convert the new signature to a string
+    new_signature_str = str(new_signature)
+    return func.__name__, new_signature_str
+
+
+@injected_instance
+def list_completions(
+        default_design_paths: list[str]
+):
+    """
+    :param default_design_paths:
+    :return:[
+        {name,description,tail}
+    ]
+    """
+    helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
+    total_mappings: Mapping[str, Injected] = helper.total_mappings()
+
+    def key_to_completion(key):
+        tgt = total_mappings[key]
+        match tgt:
+            case PartialInjectedFunction(InjectedFunction(object(__original__=func), kw_mapping)):
+                name, signature = get_filtered_signature(func)
+                return dict(
+                    name=name,
+                    description="injected function",
+                    tail=signature
+                )
+
+        return dict(
+            name=key,
+            description=f"injected {key}",  # the type text
+            tail=f""  # a function signature
+        )
+
+    # so, I want to extract the return type, and the function signature.
+    # for this, we can utilize the llm.
+    # the bindings are mostly PartialInjectedFunction and its proxy.
+
+    completions = [key_to_completion(key) for key in helper.total_mappings().keys()]
+    print(json.dumps(completions))

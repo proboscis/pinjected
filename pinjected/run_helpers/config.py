@@ -17,7 +17,7 @@ from pinjected.module_inspector import get_project_root
 class ConfigCreationArgs:
     module_path: str
     default_design_path: str = None
-    entrypoint_path: str = None
+    runner_script_path: str = None
     interpreter_path: str = None
     working_dir: str = None
 
@@ -27,7 +27,7 @@ class ConfigCreationArgs:
 
         design = providers(
             project_root=lambda module_path: Path(get_project_root(module_path)),
-            entrypoint_path=lambda: self.entrypoint_path or __file__,
+            runner_script_path=lambda: self.runner_script_path or __file__,
             interpreter_path=lambda: self.interpreter_path or sys.executable,
             default_design_paths=lambda: find_default_design_paths(self.module_path, self.default_design_path),
             default_working_dir=lambda project_root: maybe(lambda: self.working_dir)() | Some(
