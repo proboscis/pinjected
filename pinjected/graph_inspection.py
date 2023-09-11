@@ -5,7 +5,8 @@ from pprint import pformat
 
 from loguru import logger
 from pinjected import Injected
-from pinjected.di.bindings import Bind
+from pinjected.di.bindings import Bind, InjectedBind
+
 
 def default_get_arg_names_from_class_name(class_name):
     """Converts normal class names into normal arg names.
@@ -34,6 +35,7 @@ def default_get_arg_names_from_class_name(class_name):
         return []
     return ['_'.join(part.lower() for part in parts)]
 
+
 def find_classes(modules, classes):
     if classes is not None:
         all_classes = set(classes)
@@ -44,6 +46,7 @@ def find_classes(modules, classes):
         if module is not None:
             all_classes |= _find_classes_in_module(module)
     return all_classes
+
 
 def _get_explicit_or_default_modules(modules):
     if modules is None:
@@ -74,10 +77,16 @@ class DIGraphHelper:
         return {k: b for k, b in self.src.bindings.items()}
 
     def total_mappings(self) -> dict[str, Injected]:
+        return {k: v.to_injected() for k, v in self.total_bindings().items()}
+
+    def total_bindings(self) -> dict[str, Bind]:
         from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
         global_implicit_mappings = IMPLICIT_BINDINGS
+        global_implicit_mappings = {k: InjectedBind(v) for k, v in global_implicit_mappings.items()}
+        # TODO add the qualified name for the global_implicit_mappings. but how?
+
         # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
         logger.debug(f"using {len(global_implicit_mappings)} global implicit mappings")
-        implicit_mappings = {k: Injected.bind(v) for k, v in self.get_implicit_mapping()}
-        explicit_mappings = {k: bind.to_injected() for k, bind in self.get_explicit_mapping().items()}
+        implicit_mappings = {k: InjectedBind(Injected.bind(v)) for k, v in self.get_implicit_mapping()}
+        explicit_mappings = self.get_explicit_mapping()
         return {**global_implicit_mappings, **implicit_mappings, **explicit_mappings}

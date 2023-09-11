@@ -1,19 +1,25 @@
+import ast
 import inspect
+import textwrap
 from copy import copy
 from dataclasses import dataclass, field, replace
 from itertools import chain
+from pathlib import Path
 from pprint import pformat
-from typing import Union, Type, TypeVar, Callable, Dict, Any
+from types import FrameType
+from typing import Union, Type, TypeVar, Callable, Dict
 
 import cloudpickle
-from cytoolz import merge
+from cytoolz import merge, memoize
+from loguru import logger
 from makefun import create_function
-from returns.maybe import maybe
+from returns.maybe import Some
 from returns.result import safe, Failure, Success
 
-from pinjected.di.bindings import InjectedBind, Bind
+from pinjected.di.bindings import InjectedBind, Bind, BindMetadata
 from pinjected.di.graph import MyObjectGraph, IObjectGraph
 from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
+from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.proxiable import DelegatedVar
 
 # is it possible to create a binding class which also has an ability to dynamically add..?
@@ -89,9 +95,6 @@ def check_picklable(tgt: dict):
     # logger.info(res)
 
 
-
-
-
 def method_to_function(method):
     """
     converts a class method to a function
@@ -127,13 +130,13 @@ class DesignBindContext:
 
     def to_class(self, cls: type):
         assert isinstance(cls, type), f"binding must be a class! got:{cls} for key:{self.src}"
-        return self.src + Design({self.key:InjectedBind(Injected.bind(cls))})
+        return self.src + Design({self.key: InjectedBind(Injected.bind(cls))})
 
     def to_instance(self, instance):
-        return self.src + Design({self.key:InjectedBind(Injected.pure(instance))})
+        return self.src + Design({self.key: InjectedBind(Injected.pure(instance))})
 
-    def to_provider(self,provider):
-        return self.src + Design({self.key:InjectedBind(Injected.bind(provider))})
+    def to_provider(self, provider):
+        return self.src + Design({self.key: InjectedBind(Injected.bind(provider))})
 
 
 def extract_argnames(func):
@@ -184,10 +187,10 @@ def get_dict_diff(a: dict, b: dict):
 
         ak = getitem_opt(a, k).map(to_readable_name).value_or(None)
         bk = getitem_opt(b, k).map(to_readable_name).value_or(None)
-        match (ak,bk):
-            case (Subject(),Subject()):
+        match (ak, bk):
+            case (Subject(), Subject()):
                 flag = True
-            case (a,b):
+            case (a, b):
                 flag = a != b
             case _:
                 raise RuntimeError("this should not happen")
@@ -267,22 +270,19 @@ class Design:
         )
         return res
 
-    def bind_instance(self,*,__binding_metadata__=None,**kwargs,):
+    def bind_instance(self, **kwargs, ):
         """
         Here, I need to find the CodeLocation for each binding.
         :param kwargs:
         :param __binding_metadata__: a dict of [str,BindMetadata]
         :return:
         """
-        if __binding_metadata__ is None:
-            __binding_metadata__ = dict()
         x = self
         for k, v in kwargs.items():
             if isinstance(v, type):
                 from loguru import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
-            meta = maybe(__binding_metadata__.__getitem__)(k)
-            x += Design({k: InjectedBind(InjectedPure(v), metadata=meta)})
+            x += Design({k: InjectedBind(InjectedPure(v))})
         return x
 
     def bind_provider(self, **kwargs: Union[Callable, Injected]):
@@ -319,6 +319,14 @@ class Design:
             else:
                 x = x.bind(k).to_class(v)
         return x
+
+    def add_metadata(self, **kwargs: "BindMetadata") -> "Design":
+        res = self
+        for k, meta in kwargs.items():
+            res += Design(
+                bindings={k: InjectedBind(self[k].to_injected(), metadata=Some(meta))}
+            )
+        return res
 
     def to_graph(self, modules=None, classes=None) -> IObjectGraph:
         # So MyObjectGraph's session is still corrupt?
@@ -520,7 +528,7 @@ class Design:
     def add_classes(self, *classes):
         return self + Design(classes=list(classes))
 
-    def to_vis_graph(self)->"DIGraph":
+    def to_vis_graph(self) -> "DIGraph":
         from pinjected.visualize_di import DIGraph
         return DIGraph(self)
 
@@ -555,15 +563,78 @@ def instances(**kwargs):
                               DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
         assert not isinstance(v,
                               Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
-    return Design().bind_instance(**kwargs)
+
+    d = Design().bind_instance(**kwargs)
+    return add_code_locations(d, kwargs, inspect.currentframe())
 
 
 def providers(**kwargs):
-    return Design().bind_provider(**kwargs)
+    d = Design().bind_provider(**kwargs)
+    # let's add the metadata for code_location here.
+    # to do so, I need to get the source code of the parent frame
+    # and then parse it to get the code_location.
+    return add_code_locations(d, kwargs, inspect.currentframe())
+
+
+def add_code_locations(design, kwargs, frame):
+    locs = get_code_locations(list(kwargs.keys()), frame)
+    metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
+    return design.add_metadata(**metas)
+
+
+@memoize
+def try_parse(source: str, trials: int = 3) -> ast.AST:
+    """
+    Attempt to parse the source code, dedenting it if necessary.
+
+    Args:
+    - source (str): The source code to be parsed.
+    - trials (int, optional): The maximum number of dedent trials. Defaults to 3.
+
+    Returns:
+    - ast.AST: The parsed AST of the source code.
+    """
+    try:
+        return ast.parse(source)
+    except IndentationError:
+        if trials <= 0:
+            raise  # re-raise the last IndentationError if max trials are exhausted
+        return try_parse(textwrap.dedent(source), trials - 1)
+
+
+def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocation]:
+    parent_frame = frame.f_back
+    lines, start_line = inspect.getsourcelines(parent_frame)
+    source = ''.join(lines)
+    # logger.info(f"parsing:{source}")
+    node = try_parse(source)
+
+    locations = {}
+
+    class ArgumentVisitor(ast.NodeVisitor):
+        def visit_Call(self, node: ast.Call):
+            node_lineno = node.lineno + start_line
+            # parent_frame_lineno = parent_frame.f_lineno
+            # print(f'node_match? {node_lineno} == {parent_frame_lineno} ?')
+            # print(f"visit_Call:{node.lineno},{node.col_offset},{node},{start_line}, {parent_frame.f_lineno}")
+            # print(f"node keywords:{node.keywords}")
+            if node_lineno == parent_frame.f_lineno:  # The specific call that initiated the child frame
+                for keyword in node.keywords:
+                    if keyword.arg in keys:
+                        locations[keyword.arg] = ModuleVarLocation(
+                            Path(parent_frame.f_code.co_filename),
+                            keyword.lineno + start_line,
+                            keyword.col_offset+1,
+                        )
+
+    ArgumentVisitor().visit(node)
+    # print(locations)
+    return locations
 
 
 def classes(**kwargs):
-    return Design().bind_class(**kwargs)
+    d = Design().bind_class(**kwargs)
+    return add_code_locations(d, kwargs, inspect.currentframe())
 
 
 def injecteds(**kwargs):

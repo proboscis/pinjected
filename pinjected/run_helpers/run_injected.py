@@ -11,7 +11,8 @@ from returns.result import safe
 
 from pinjected import instances, Injected, Design, providers
 from pinjected.helper_structure import MetaContext
-from pinjected.helpers import get_design_path_from_var_path, load_variable_by_module_path, ModuleVarPath
+from pinjected.helpers import get_design_path_from_var_path
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.notification import notify
 
