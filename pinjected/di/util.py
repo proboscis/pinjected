@@ -8,6 +8,7 @@ from typing import Union, Type, TypeVar, Callable, Dict, Any
 import cloudpickle
 from cytoolz import merge
 from makefun import create_function
+from returns.maybe import maybe
 from returns.result import safe, Failure, Success
 
 from pinjected.di.bindings import InjectedBind, Bind
@@ -203,6 +204,7 @@ T = TypeVar("T")
 class Design:
     """
     This is an injection binding class which can be used to compose configures and providers.
+    TODO add metadata of the binding frame, which can be switched between contexts.
     """
     bindings: Dict[str, Bind] = field(default_factory=dict)
     multi_binds: dict = field(default_factory=dict)
@@ -265,13 +267,22 @@ class Design:
         )
         return res
 
-    def bind_instance(self, **kwargs):
+    def bind_instance(self,*,__binding_metadata__=None,**kwargs,):
+        """
+        Here, I need to find the CodeLocation for each binding.
+        :param kwargs:
+        :param __binding_metadata__: a dict of [str,BindMetadata]
+        :return:
+        """
+        if __binding_metadata__ is None:
+            __binding_metadata__ = dict()
         x = self
         for k, v in kwargs.items():
             if isinstance(v, type):
                 from loguru import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
-            x += Design({k: InjectedBind(InjectedPure(v))})
+            meta = maybe(__binding_metadata__.__getitem__)(k)
+            x += Design({k: InjectedBind(InjectedPure(v), metadata=meta)})
         return x
 
     def bind_provider(self, **kwargs: Union[Callable, Injected]):
@@ -347,7 +358,9 @@ class Design:
 
     def apply_injected_func(self, key: str, injected_func: Injected[Callable]):
         bind = self.bindings[key]
-        applied_bind = Bind.injected(bind.to_injected().apply_injected_function(injected_func))
+        applied_bind = InjectedBind(
+            bind.to_injected().apply_injected_function(injected_func),
+        )
         return self + Design({key: applied_bind})
 
     def keys(self):
