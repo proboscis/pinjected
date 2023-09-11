@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from typing import Callable, Generic, TypeVar, Optional
+from typing import Callable, Generic, TypeVar
 
 from returns.maybe import Maybe, Nothing
 

@@ -82,7 +82,7 @@ class DIGraphHelper:
     def total_bindings(self) -> dict[str, Bind]:
         from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
         global_implicit_mappings = IMPLICIT_BINDINGS
-        global_implicit_mappings = {k: InjectedBind(v) for k, v in global_implicit_mappings.items()}
+        global_implicit_mappings = {k: v for k, v in global_implicit_mappings.items()}
         # TODO add the qualified name for the global_implicit_mappings. but how?
 
         # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")

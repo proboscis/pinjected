@@ -1,24 +1,24 @@
 import inspect
 import json
+import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import Mapping
 
 import loguru
-import sys
-from dataclasses import asdict
 from loguru import logger
-from returns.maybe import Nothing, Some
+from returns.maybe import Some
 
 import pinjected
 import pinjected.global_configs
-from pinjected import injected_function, instances, providers, injected_instance, Injected, Design
-from pinjected.di.injected import PartialInjectedFunction, InjectedFunction, instance
+from pinjected import injected_function, instances, providers, injected_instance, Injected, Design, instance
+from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import MetaContext
 from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths
-from pinjected.module_var_path import ModuleVarPath
 from pinjected.module_inspector import get_project_root
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_config_utils import injected_to_idea_configs
 
 __meta_design__ = instances(
