@@ -1,10 +1,24 @@
 import abc
 from dataclasses import dataclass
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, Optional
+
+from returns.maybe import Maybe, Nothing
 
 from pinjected import Injected
+from pinjected.di.metadata.location_data import CodeLocation
 
 T, U = TypeVar("T"), TypeVar("U")
+
+
+@dataclass
+class BindMetadata:
+    """
+    This is the metadata of a bind.
+    """
+    code_location: Maybe[CodeLocation] = None
+    """
+    The location of the binding location, this will be used by the IDE to jump to the binding location.
+    """
 
 
 class Bind(Generic[T], metaclass=abc.ABCMeta):
@@ -35,10 +49,15 @@ class Bind(Generic[T], metaclass=abc.ABCMeta):
     def __call__(self, *args, **kwargs):
         return self.to_injected().get_provider()(*args, **kwargs)
 
+    @property
+    def metadata(self) -> Maybe[BindMetadata]:
+        return Nothing
+
 
 @dataclass
 class InjectedBind(Bind):
     src: Injected
+    metadata: Maybe[BindMetadata] = Nothing
 
     def to_injected(self) -> Injected:
         return self.src
@@ -48,3 +67,10 @@ class InjectedBind(Bind):
 class MappedBind(Bind[U]):
     src: Bind[T]
     f: Callable[[T], U]
+
+    def to_injected(self) -> Injected:
+        return self.src.to_injected().map(self.f)
+
+    @property
+    def metadata(self) -> Maybe[BindMetadata]:
+        return self.src.metadata
