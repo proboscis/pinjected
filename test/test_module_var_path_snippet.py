@@ -1,4 +1,4 @@
-from pinjected.helpers import ModuleVarPath
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_config_utils import extract_extra_codes
 
 

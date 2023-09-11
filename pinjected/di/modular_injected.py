@@ -6,7 +6,7 @@ from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import Expr
 from pinjected.di.injected import MappedInjected
 from pinjected.di.proxiable import DelegatedVar, T
-from pinjected.helpers import ModuleVarPath
+from pinjected.module_var_path import ModuleVarPath
 
 
 @dataclass

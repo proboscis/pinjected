@@ -54,8 +54,11 @@ For callable type signature, use T->U to represent a function that takes a T and
 """
     return await a_cached_smart_llm(prompt)
 
+
+
 @injected
-def test_function(dep1,/,x):
+def test_function(smart_prompt_helper,/,x):
+    print(smart_prompt_helper)
     return x
 
 
