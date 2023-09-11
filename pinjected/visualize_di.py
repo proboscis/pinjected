@@ -13,6 +13,7 @@ from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
 from pinjected.di.bindings import InjectedBind
+from pinjected.di.graph import Providable, providable_to_injected
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
@@ -164,6 +165,7 @@ class DIGraph:
 
     def di_dfs(self, src, replace_missing=False):
         ignore_list = ["mzip_src_", "mapped_src_", "injected_kwargs_"]
+        #ignore_list = []
 
         def filter(node):
             res = any([ignore in node for ignore in ignore_list])
@@ -211,6 +213,24 @@ class DIGraph:
                 yield from dfs(n, trace + [n])
 
         yield from dfs(src, [src])
+
+    def distilled(self,tgt:Providable)->Design:
+        match tgt:
+            case str():
+                deps = set([t[1] for t in self.di_dfs(tgt)])
+                nodes = set([t[0] for t in self.di_dfs(tgt)])
+                distilled = Design(
+                    {k: self.src[k] for k in deps | nodes}
+                )
+                return distilled
+
+            case _:
+                _injected = providable_to_injected(tgt)
+                tmp_design = self.src.bind_provider(
+                    __target__=_injected
+                )
+                return tmp_design.to_vis_graph().distilled("__target__")
+
 
     @staticmethod
     def get_source(f):
@@ -480,7 +500,6 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-# %%
 def create_dependency_graph(d: Design, roots: List[str], output_file="dependencies.html"):
     dig = DIGraph(d.bind_instance(
         job_type="net_visualization"
@@ -488,11 +507,3 @@ def create_dependency_graph(d: Design, roots: List[str], output_file="dependenci
     nt = dig.create_dependency_network(roots)
     nt.show(output_file)
     return nt
-
-# %%
-# import os
-#
-# d = find_cfg_by_alias("ceylon").exp_design()
-# create_dependency_graph(d, "rgb_to_xyz_training", "out.html")
-#
-# os.system("open out.html")

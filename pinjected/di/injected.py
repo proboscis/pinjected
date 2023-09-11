@@ -363,7 +363,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         )
 
     @staticmethod
-    def dict(**kwargs: "Injected") -> "Injected[Dict]":
+    def dict(data=None,**kwargs: "Injected") -> "Injected[Dict]":
         keys = list(kwargs.keys())
         return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
 
