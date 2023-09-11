@@ -18,7 +18,7 @@ from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, Mapp
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.di.util import Design
+from pinjected import Design
 from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.module_var_path import ModuleVarPath

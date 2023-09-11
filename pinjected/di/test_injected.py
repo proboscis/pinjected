@@ -3,8 +3,9 @@ from typing import Callable, Any
 
 from loguru import logger
 
-from pinjected.di.injected import Injected, injected_function
-from pinjected.di.util import Design, instances
+from pinjected.di.injected import Injected
+from pinjected.di.util import instances
+from pinjected import Design, injected_function
 
 
 def _factory(a, b, y=0, x=7):
