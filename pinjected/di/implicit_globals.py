@@ -1,3 +1,2 @@
-from typing import Callable
+IMPLICIT_BINDINGS:dict[str,"Bind"] = dict()
 
-IMPLICIT_BINDINGS:dict[str,Callable] = dict()

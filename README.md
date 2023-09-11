@@ -219,26 +219,35 @@ If you dont like the fact some code pieces are repeated from original Trainer, y
 # Examples
 
 ## Add bindings
+
 ```python
-from pinjected.di.util import Design
+
+from pinjected import Design
 from dataclasses import dataclass
+
+
 @dataclass
 class DepObject:
-    a:int
-    b:int 
-    c:int
-    d:int
+    a: int
+    b: int
+    c: int
+    d: int
+
+
 @dataclass
 class App:
-    dep:DepObject
+    dep: DepObject
+
     def run(self):
-        print(self.dep.a+self.dep.b+self.dep.c+self.dep.d)
+        print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
+
+
 d = Design().bind_instance(
-    a = 0,
-    b = 1
+    a=0,
+    b=1
 ).bind_provider(
-    c = lambda a,b :a + b,
-    d = lambda a,b,c:a+b+c
+    c=lambda a, b: a + b,
+    d=lambda a, b, c: a + b + c
 ).bind_class(
     dep=DepObject
 )
@@ -358,22 +367,26 @@ Now the fun part begins. we can partially inject a function to receive some of i
 This turns a Callable into Injected[Callable].
 The separation between the arguments meant to be injected and the arguments that are not meant to be injected is 
 done by a `/` in the argument list. So all the positional-only arguments become the dependencies of the Injected.
+
 ```python
-from pinjected.di.util import Injected,instances
-from pinjected.di.injected import injected_function
+from pinjected.di.util import Injected, instances
+from pinjected import injected_function
 from typing import Callable
 
+
 @injected_function
-def add(a:int,b:int,/,c:int):
+def add(a: int, b: int, /, c: int):
     # a and b before / gets injected.
     # c must be provided when calling the function.
-    return a+b+c
+    return a + b + c
+
+
 design = instances(
     a=1,
     b=2,
 )
-add_func:Injected[Callable[[int],int]] = add
-total:Injected[int] = add(c=3) # can be add_func(c=3) or add_func(3) or add(3)
+add_func: Injected[Callable[[int], int]] = add
+total: Injected[int] = add(c=3)  # can be add_func(c=3) or add_func(3) or add(3)
 g = design.to_graph()
 assert g[total] == 6
 assert g[add(3)] == 6
@@ -382,9 +395,10 @@ assert g[add](3) == 6
 
 ## Constructing a tree of injected
 We can also form a syntax tree of injected functions, to create another injected instance.
+
 ```python
 from pinjected.di.util import Injected, instances
-from pinjected.di.injected import injected_function
+from pinjected import injected_function
 from typing import Callable
 
 
@@ -414,9 +428,10 @@ This means that we can chain as many injected functions as we want, and the depe
 
 ## Using Injected as a provider
 Injected can be used as a provider function in a design.
+
 ```python
 from pinjected.di.util import Injected, instances, providers
-from pinjected.di.injected import injected_function, injected_instance
+from pinjected import injected_function, injected_instance
 
 
 @injected_instance
@@ -540,7 +555,7 @@ Compatible with dill and cloudpickle as long as the bound objects are picklable.
 
 ```python
 from pinjected.di.util import Injected, instances, providers
-from pinjected.di.injected import injected_function, injected_instance
+from pinjected import injected_function, injected_instance
 from dataclasses import dataclass
 
 
@@ -608,6 +623,7 @@ default_conf = instances(
     image_w=256,
 ) + local_save_conf  # or use mongodb_save_conf
 
+
 # now we don't need a trainer class.
 @injected_function
 def train(
@@ -626,6 +642,7 @@ def train(
             loss.backward()
             optimizer.step()
             save(model, model_identifier)
+
 
 # no evaluator classes too.
 @injected_function

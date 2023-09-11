@@ -41,9 +41,9 @@ from cytoolz import memoize
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
-from pinjected import Injected, Design
+from pinjected import Injected, Design, injected_function
 from pinjected.di.ast import Expr, Call, Object
-from pinjected.di.injected import injected_function, PartialInjectedFunction, InjectedFunction
+from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
 #from pinjected.ide_supports.create_configs import create_idea_configurations

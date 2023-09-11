@@ -6,15 +6,14 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from returns.result import safe
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any
 
+from loguru import logger
 from makefun import create_function
+from returns.result import safe
 
-from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
-from loguru import logger
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -175,7 +174,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # Ah, since the target_function is async, we can't catch...
                 return original_function(*bind_result.args, **bind_result.kwargs)
 
-            from loguru import logger
             # logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
                 new_func_sig,
@@ -839,60 +837,6 @@ class PartialInjectedFunction(Injected):
         return hash(self.src)
 
 
-def injected_function(f) -> PartialInjectedFunction:
-    """
-    any args starting with "_" or positional_only kwargs is considered to be injected.
-    :param f:
-    :return:
-    """
-    # How can we make this work on a class method?
-    sig: inspect.Signature = inspect.signature(f)
-    tgts = dict()
-    for k, v in sig.parameters.items():
-        # does this contain self?
-        # assert k != 'self', f"self is not allowed in injected_function... for now:{f}"
-        #
-        if k.startswith("_"):
-            tgts[k] = Injected.by_name(k[1:])
-        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
-            tgts[k] = Injected.by_name(k)
-    new_f = Injected.partial(f, **tgts)
-
-    IMPLICIT_BINDINGS[f.__name__] = new_f
-
-    return new_f
-
-
-def injected_instance(f) -> Injected:
-    sig: inspect.Signature = inspect.signature(f)
-    tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
-    instance = Injected.partial(f, **tgts)().eval()
-    IMPLICIT_BINDINGS[f.__name__] = instance
-    return instance
-
-
-def injected_method(f):
-    _impl = injected_function(f)
-
-    def impl(self, *args, **kwargs):
-        return _impl(self, *args, **kwargs)
-
-    return impl
-
-
-def injected_class(cls):
-    return injected_function(cls)
-
-
-def injected(tgt: Union[str, type, Callable]):
-    if isinstance(tgt, str):
-        return Injected.by_name(tgt).proxy
-    elif isinstance(tgt, type):
-        return injected_function(tgt)
-    elif callable(tgt):
-        return injected_function(tgt)
-
-
 def add_viz_metadata(metadata: Dict[str, Any]):
     def impl(tgt: Injected):
         if not hasattr(tgt, '__viz_metadata__'):
@@ -903,4 +847,3 @@ def add_viz_metadata(metadata: Dict[str, Any]):
     return impl
 
 
-instance = injected_instance
