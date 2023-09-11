@@ -3,7 +3,7 @@ from loguru import logger
 from pathlib import Path
 from typing import Dict, List
 
-from pinjected import Design, Injected, Designed
+from pinjected import Design, Injected
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 
@@ -72,26 +72,5 @@ try:
     from pydantic import field_validator
 except ImportError:
     from pydantic import validator as field_validator
-
-@dataclass
-class RunnableValue:
-    """
-    I think it is easier to make as much configuration as possible on this side.
-    """
-    src: ModuleVarSpec
-    design_path: str
-
-    @field_validator('src')
-    def validate_src_type(cls, value):
-        match value:
-            case ModuleVarSpec(Injected(), _):
-                return value
-            case ModuleVarSpec(Designed(), _):
-                return value
-            case _:
-                raise ValueError(f"src must be an instance of Injected of ModuleVarSpec, but got {value}")
-
-    class Config:
-        arbitrary_types_allowed = True
 
 

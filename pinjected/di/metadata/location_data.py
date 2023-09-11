@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
 
-from pinjected.helpers import ModuleVarPath
+from pinjected.module_var_path import ModuleVarPath
 
 
 @dataclass

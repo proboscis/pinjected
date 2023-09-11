@@ -1,6 +1,6 @@
 from pinjected import instances, Design, Injected
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.helpers import ModuleVarPath
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
 
 

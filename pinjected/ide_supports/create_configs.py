@@ -11,11 +11,13 @@ from returns.maybe import Nothing, Some
 
 import pinjected
 import pinjected.global_configs
-from pinjected import injected_function, instances, providers, injected_instance, Injected
-from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
+from pinjected import injected_function, instances, providers, injected_instance, Injected, Design
+from pinjected.di.injected import PartialInjectedFunction, InjectedFunction, instance
+from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import MetaContext
-from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths, ModuleVarPath
+from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.module_inspector import get_project_root
 from pinjected.run_config_utils import injected_to_idea_configs
 
@@ -131,6 +133,7 @@ def list_completions(
     """
     helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
     total_mappings: Mapping[str, Injected] = helper.total_mappings()
+    logger.info(f"total_mappings:{total_mappings}")
 
     def key_to_completion(key):
         tgt = total_mappings[key]
@@ -155,6 +158,48 @@ def list_completions(
 
     completions = [key_to_completion(key) for key in helper.total_mappings().keys()]
     print(json.dumps(completions))
+
+@instance
+def design_metadata(
+        default_design_paths: list[str]
+):
+    d:Design = ModuleVarPath(default_design_paths[0]).load()
+    # we load design, so we need to be careful with not to running things...
+    """
+    protocol->
+    meta:{
+        key:str
+        location: str
+    }
+    location:{
+        type: (path | coordinates)
+        value: qualified_name | file_path:line_no:col_no
+    }
+    structure = list[meta]
+    """
+    helper= DIGraphHelper(d)
+    metas = []
+    for k,bind in helper.total_bindings().items():
+        match bind.metadata.bind(lambda m:m.code_location):
+            case Some(ModuleVarPath(qualified_name)):
+                metas.append(dict(
+                    key=k,
+                    location=dict(
+                        type="path",
+                        value=qualified_name
+                    )
+                ))
+            case Some(ModuleVarLocation(fp,line,col)):
+                metas.append(dict(
+                    key=k,
+                    location=dict(
+                        type="coordinates",
+                        value=f'{fp}:{line}:{col}'
+                    )
+                ))
+    logger.info(f"metas:{metas}")
+    print(json.dumps(metas))
+
 
 # TODO implement a provider of documentations
 # TODO implement a provider for jump to definition, s that I can click on the injected variables to see the definition.
