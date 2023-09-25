@@ -7,9 +7,11 @@ from pinjected import Injected
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import PartialInjectedFunction
 from pinjected.di.util import get_code_location
+import functools
+import asyncio
 
 
-def injected_function(f,parent_frame=None) -> PartialInjectedFunction:
+def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     """
     any args starting with "_" or positional_only kwargs is considered to be injected.
     :param f:
@@ -41,6 +43,10 @@ def injected_function(f,parent_frame=None) -> PartialInjectedFunction:
 
 
 def injected_instance(f) -> Injected:
+    # check f is an async function
+    if inspect.iscoroutinefunction(f):
+        f = cached_coroutine(f)
+
     sig: inspect.Signature = inspect.signature(f)
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
     instance = Injected.partial(f, **tgts)().eval()
@@ -73,6 +79,33 @@ def injected_method(f):
         return _impl(self, *args, **kwargs)
 
     return impl
+
+
+class CachedAwaitable:
+    def __init__(self, coro):
+        self.coro = coro
+        self._cache = None
+        self._has_run = False
+        self._lock = asyncio.Lock()
+
+    def __await__(self):
+        return self._get_result().__await__()
+
+    async def _get_result(self):
+        async with self._lock:
+            if not self._has_run:
+                self._cache = await self.coro
+                self._has_run = True
+        return self._cache
+
+
+def cached_coroutine(coro_func):
+    @functools.wraps(coro_func)
+    def wrapper(*args, **kwargs):
+        return CachedAwaitable(coro_func(*args, **kwargs))
+
+    functools.update_wrapper(wrapper, coro_func)
+    return wrapper
 
 
 instance = injected_instance

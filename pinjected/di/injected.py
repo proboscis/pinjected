@@ -6,7 +6,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any
+from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any,Awaitable
 
 from loguru import logger
 from makefun import create_function
@@ -331,7 +331,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         def gather(coros):
             async def wait():
                 return await asyncio.gather(*coros)
+
             return asyncio.run(wait())
+
         return Injected.mzip(*srcs).map(gather)
 
     @staticmethod
@@ -361,7 +363,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         )
 
     @staticmethod
-    def dict(data=None,**kwargs: "Injected") -> "Injected[Dict]":
+    def dict(data=None, **kwargs: "Injected") -> "Injected[Dict]":
         keys = list(kwargs.keys())
         return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
 
@@ -397,7 +399,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return self.map(lambda x: x[item])
 
     def desync(self):
-        return self.map(lambda coroutine: asyncio.run(coroutine))
+        async def impl(awaitable):
+            return await awaitable
+        return self.map(lambda coroutine: asyncio.run(impl(coroutine)))
 
     def __len__(self):
         return self.map(len)
@@ -493,6 +497,81 @@ class InjectedCache(Injected[T]):
         ).map(
             lambda t: impl(*t)
         )
+        assert isinstance(self.impl, Injected)
+        assert isinstance(self.program, Injected)
+
+    def get_provider(self):
+        return self.impl.get_provider()
+
+    def dependencies(self) -> Set[str]:
+        return self.impl.dependencies()
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.impl.dynamic_dependencies() | \
+            self.program.dynamic_dependencies()
+
+    def __hash__(self):
+        return hash(self.impl)
+
+
+class IAsyncDict(abc.ABC):
+    @abc.abstractmethod
+    async def get(self, key):
+        pass
+
+    @abc.abstractmethod
+    async def set(self, key, value):
+        pass
+
+    @abc.abstractmethod
+    async def delete(self, key):
+        pass
+
+    @abc.abstractmethod
+    async def contains(self, key):
+        pass
+
+
+
+
+@dataclass
+class AsyncInjectedCache(Injected[T]):
+    """
+    A cache designed for use with a singleton instance.
+    depends on keys which are from design, not the func arguments.
+    """
+    cache: Injected[IAsyncDict]
+    program: Injected[Awaitable[T]]
+    program_dependencies: list[Injected]
+
+    def __post_init__(self):
+        self.program = Injected.ensure_injected(self.program)
+        assert isinstance(self.program, Injected)
+        assert isinstance(self.program_dependencies,list),f"program_dependencies:{self.program_dependencies}"
+
+        from pinjected.di.decorators import cached_coroutine
+        @cached_coroutine
+        async def impl(session, cache: IAsyncDict, *deps):
+            assert isinstance(cache, IAsyncDict)
+            logger.info(f"Checking cache for {self.program} with deps:{deps}")
+            sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
+            hash_key = sha256_key
+            if not await cache.contains(hash_key):
+                logger.info(f"Cache miss for {deps}")
+                data = await session[self.program]
+                await cache.set(hash_key, data)
+            else:
+                logger.info(f"Cache hit for {deps},loading ...")
+            res = await cache.get(hash_key)
+            logger.info(f"Cache hit for {deps}, loaded")
+            return res
+
+        deps = Injected.list(
+            Injected.by_name("session"),
+            self.cache,
+            *self.program_dependencies
+        )
+        self.impl = deps.map(lambda t: impl(*t))
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 
@@ -627,7 +706,6 @@ class InjectedFunction(Injected[T]):
         self.target_function = target_function
         self.kwargs_mapping = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
-            assert v is not None, f"injected got None binding for key:{k}"
             assert_kwargs_type(v)
             if isinstance(v, DelegatedVar):
                 self.kwargs_mapping[k] = v.eval()
@@ -845,5 +923,3 @@ def add_viz_metadata(metadata: Dict[str, Any]):
         return tgt
 
     return impl
-
-

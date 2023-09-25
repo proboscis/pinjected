@@ -178,7 +178,10 @@ class MScope(IScope):
         res = provider()
         self.cache[key] = res
         res = self.cache[key]
-        logger.info(f"{' <- '.join(trace)} = {repr(res)[:100]}")
+        if isinstance(res,list) and len(res) > 100:
+            logger.info(f"{' <- '.join(trace)} = LARGE LIST({len(res)} items)")
+        else:
+            logger.info(f"{' <- '.join(trace)} = {repr(res)[:100]}")
         #
         return self.cache[key]
 

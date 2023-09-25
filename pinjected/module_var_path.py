@@ -65,6 +65,8 @@ def load_variable_by_module_path(full_module_path):
     # Retrieve the variable using getattr()
     variable = getattr(module, variable_name)
 
+    logger.info(f"loaded {full_module_path}")
+
     return variable
 
 

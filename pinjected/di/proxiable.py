@@ -2,7 +2,6 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar, Any
 
-
 T = TypeVar("T")
 
 
@@ -52,6 +51,7 @@ class IProxyContext(Generic[T]):
         """
         raise NotImplementedError()
 
+
 @dataclass
 class DelegatedVar(Generic[T]):
     # Generic Var Type that delegates all implementations to cxt.
@@ -88,3 +88,12 @@ class DelegatedVar(Generic[T]):
 
     def __add__(self, other):
         return self.cxt.biop_impl('+', self.value, other)
+
+    def __mul__(self, other):
+        return self.cxt.biop_impl('*', self.value, other)
+
+    def __truediv__(self, other):
+        return self.cxt.biop_impl('/', self.value, other)
+
+    def __mod__(self, other):
+        return self.cxt.biop_impl('%', self.value, other)
