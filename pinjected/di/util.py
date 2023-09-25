@@ -4,7 +4,7 @@ import textwrap
 from pathlib import Path
 from pprint import pformat
 from types import FrameType
-from typing import TypeVar, Dict
+from typing import TypeVar, Dict, Union
 
 import cloudpickle
 from cytoolz import memoize
@@ -203,7 +203,9 @@ def _get_external_type_name(thing):
     return res.__name__
 
 
-def instances(**kwargs):
+def instances(**kwargs: Union[
+    str, int, float, bool, dict, list, tuple, bytes, bytearray,object
+]):
     for k, v in kwargs.items():
         assert not isinstance(v,
                               DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
@@ -270,12 +272,13 @@ def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocat
                         locations[keyword.arg] = ModuleVarLocation(
                             Path(parent_frame.f_code.co_filename),
                             keyword.lineno + start_line,
-                            keyword.col_offset+1,
+                            keyword.col_offset + 1,
                         )
 
     ArgumentVisitor().visit(node)
     # print(locations)
     return locations
+
 
 def get_code_location(frame):
     return ModuleVarLocation(
