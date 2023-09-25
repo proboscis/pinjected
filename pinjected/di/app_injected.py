@@ -26,7 +26,7 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
         return isinstance(item, Injected)
 
 
-@dataclass(frozen=True)
+@dataclass
 class EvaledInjected(Injected[T]):
     # TODO I think this class has issue with serialization of ast.
     value: Injected[T]

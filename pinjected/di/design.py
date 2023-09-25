@@ -396,4 +396,7 @@ class DesignBindContext:
         return self.src + Design({self.key: InjectedBind(Injected.pure(instance))})
 
     def to_provider(self, provider):
-        return self.src + Design({self.key: InjectedBind(Injected.bind(provider))})
+        if isinstance(provider, Injected):
+            return self.src + Design({self.key: InjectedBind(provider)})
+        else:
+            return self.src + Design({self.key: InjectedBind(Injected.bind(provider))})

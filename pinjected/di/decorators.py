@@ -44,7 +44,8 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
 
 def injected_instance(f) -> Injected:
     # check f is an async function
-    if inspect.iscoroutinefunction(f):
+    is_coroutine = inspect.iscoroutinefunction(f)
+    if is_coroutine:
         f = cached_coroutine(f)
 
     sig: inspect.Signature = inspect.signature(f)
@@ -56,6 +57,7 @@ def injected_instance(f) -> Injected:
         instance,
         Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
     )
+    instance.__is_awaitable__ = is_coroutine
     return instance
 
 
