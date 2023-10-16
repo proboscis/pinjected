@@ -53,8 +53,83 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
 @dataclass
 class Design:
     """
-    This is an injection binding class which can be used to compose configures and providers.
-    TODO add metadata of the binding frame, which can be switched between contexts.
+    The ``Design`` class acts as a central registry for managing and applying dependency injection
+    within your application. It allows for the binding of various components, instances, and providers,
+    enabling a cohesive and flexible way to handle dependencies. The class is integral in constructing
+    applications that adhere to the Dependency Inversion Principle, fostering a decoupled and easily
+    maintainable codebase.
+
+    Basic Usage:
+    ------------
+
+    **Adding Bindings:**
+
+    The ``Design`` class allows for the binding of instances, providers, and classes.
+    Each type of binding adds different kinds of objects to the design, contributing
+    to the overall dependency structure.
+
+    .. code-block:: python
+
+        from pinjected import Design
+        from dataclasses import dataclass
+
+        @dataclass
+        class DepObject:
+            a: int
+            b: int
+            c: int
+            d: int
+
+        @dataclass
+        class App:
+            dep: DepObject
+
+            def run(self):
+                print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
+
+        d = Design().bind_instance(
+            a=0,
+            b=1
+        ).bind_provider(
+            c=lambda a, b: a + b,
+            d=lambda a, b, c: a + b + c
+        ).bind_class(
+            dep=DepObject
+        )
+
+        # The `to_graph` method compiles the bindings into a graph structure, which can then provide
+        # the necessary components for your application.
+        d.to_graph().provide(App).run()
+
+    Advanced Usage:
+    ---------------
+
+    **Combining Multiple Designs:**
+
+    In more complex scenarios, you might need to combine multiple ``Design`` instances.
+    This could be necessary if different modules or components of your application require
+    different dependency configurations. The ``Design`` class supports the combination of instances,
+    allowing for the overlaying and overriding of bindings.
+
+    .. code-block:: python
+
+        d1 = Design().bind_instance(
+            a=0
+        )
+        d2 = Design().bind_instance(
+            b=1
+        )
+        d3 = Design().bind_instance(
+            b=0
+        )
+
+        # The `+` operator combines designs. If the same binding exists in both designs,
+        # the one from the rightmost design (latest) will take precedence.
+        assert (d1 + d2).provide("b") == 1  # 'b' from d2 takes precedence
+        assert (d1 + d2 + d3).provide("b") == 0  # 'b' from d3 overrides the others
+
+    This feature ensures that ``Design`` instances are composable and adaptable, providing
+    a robust foundation for building complex, modular applications with dependency injection.
     """
     bindings: Dict[str, Bind] = field(default_factory=dict)
     multi_binds: dict = field(default_factory=dict)
