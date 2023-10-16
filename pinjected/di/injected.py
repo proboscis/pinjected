@@ -594,6 +594,45 @@ class ConditionalInjected(Injected):
 
 @dataclass
 class InjectedCache(Injected[T]):
+    """
+    A specialized Injected class that handles the caching of program execution results.
+
+    The InjectedCache class is designed to manage caching within a dependency injection framework. It ensures that if a program's execution result, based on certain dependencies, is already known (cached), it does not need to be recalculated. This mechanism is particularly useful for operations that are computationally expensive or require resources that are costly to access repeatedly.
+
+    Attributes:
+    -----------
+    cache : Injected[Dict]
+        An Injected dictionary that represents the cache storage.
+
+    program : Injected[T]
+        The program whose result needs to be cached. This is typically a complex operation or query.
+
+    program_dependencies : List[Injected]
+        A list of dependencies required by the program. These dependencies are monitored for changes that might invalidate the cache.
+
+    Methods:
+    --------
+    __post_init__(self):
+        Ensures the 'program' attribute is of type 'Injected' and sets up the internal caching mechanism.
+
+    get_provider(self):
+        Retrieves the provider for the Injected instance, which is the caching mechanism itself in this case.
+
+    dependencies(self) -> Set[str]:
+        Returns the set of dependencies' names required by the caching mechanism.
+
+    dynamic_dependencies(self) -> Set[str]:
+        Computes and returns a set of dynamic dependencies by combining the cache's own dependencies and the program's dynamic dependencies.
+
+    __hash__(self):
+        Returns the hash of the 'impl' attribute, which represents the unique configuration of the cache.
+
+    Usage:
+    ------
+    The InjectedCache is not typically created directly by users. Instead, it's often part of a larger dependency injection framework where caching is required. When a certain condition or set of conditions is met, the InjectedCache object checks its internal storage (the 'cache' attribute) to determine whether the current operation's result already exists. If it does, the cached result is returned, saving time and resources. Otherwise, the operation is performed, and the result is stored in the cache for future use.
+
+    This class significantly optimizes performance, especially in scenarios where operations are repeated with the same parameters or contexts, and computational resources are scarce or expensive.
+    """
     cache: Injected[Dict]
     program: Injected[T]
     program_dependencies: List[Injected]
@@ -665,8 +704,45 @@ async def auto_await(tgt):
 @dataclass
 class AsyncInjectedCache(Injected[T]):
     """
-    A cache designed for use with a singleton instance.
-    depends on keys which are from design, not the func arguments.
+    Represents a specialized caching mechanism within an asynchronous dependency injection system.
+
+    This class manages the caching of results from asynchronous operations or programs. By monitoring dependencies defined in the system's design, it optimizes resource usage and performance, ensuring that results for repeated operations are reused when applicable.
+
+    Attributes:
+    -----------
+    cache : Injected[IAsyncDict]
+        An asynchronous dictionary acting as the cache storage.
+
+    program : Injected[Awaitable[T]]
+        The main program or operation whose results are to be cached. It is wrapped in an `Injected` to ensure compatibility with the dependency injection system.
+
+    program_dependencies : list[Injected]
+        Specific dependencies that the program relies on, which may influence the caching mechanism.
+
+    Methods:
+    --------
+    __post_init__(self):
+        Initializes the internal structures and ensures the 'program' is of type 'Injected'. Sets up the asynchronous caching strategy.
+
+    get_provider(self):
+        Retrieves the provider function responsible for fetching or computing the necessary data, handling caching logic in the background.
+
+    dependencies(self) -> Set[str]:
+        Identifies and returns a set of static dependencies required by the caching system.
+
+    dynamic_dependencies(self) -> Set[str]:
+        Determines and returns a set of dynamic dependencies that can change over runtime, affecting the caching mechanism.
+
+    __hash__(self):
+        Provides a unique hash representing the current state of the cache configuration, aiding in cache invalidation and recognition.
+
+    Usage:
+    ------
+    The `AsyncInjectedCache` class is particularly useful in scenarios involving repetitive asynchronous operations where results can be cached to improve performance. It intercepts calls to the encapsulated 'program', checks the 'cache' for existing results, and either returns the cached data or proceeds with the operation, caching the new results. This process is seamless to the user, ensuring efficient use of resources and faster data retrieval, thanks to asynchronous processing.
+
+    Note:
+    -----
+    This class requires careful handling of dependencies, especially when they are awaitable. The caching mechanism relies on the consistency and predictability of these dependencies to function correctly.
     """
     cache: Injected[IAsyncDict]
     program: Injected[Awaitable[T]]
