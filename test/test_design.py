@@ -1,4 +1,4 @@
-from pinjected import Design, Injected, EmptyDesign
+from pinjected import Design, Injected, EmptyDesign, instances, providers
 from pinjected.di.designed import Designed
 
 
@@ -30,3 +30,15 @@ def test_injected_proxy():
     assert design.provide("y") == "hello"
     assert design.provide("z") == 2
 
+def test_design():
+    d = instances(
+        x = 0
+    ) + providers(
+        y = lambda x: x + 1,
+        z = lambda y: y + 1
+    )
+    g = d.to_graph()
+    assert g['z'] == 2
+
+if __name__ == '__main__':
+    test_design()

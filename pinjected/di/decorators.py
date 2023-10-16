@@ -85,6 +85,8 @@ def injected_method(f):
 
 class CachedAwaitable:
     def __init__(self, coro):
+        from loguru import logger
+        #logger.warning(f'CachedAwaitable created with {coro}')
         self.coro = coro
         self._cache = None
         self._has_run = False
@@ -94,10 +96,20 @@ class CachedAwaitable:
         return self._get_result().__await__()
 
     async def _get_result(self):
+        from loguru import logger
+        #logger.warning(f"accessing cached coroutine:{self.coro}")
         async with self._lock:
             if not self._has_run:
-                self._cache = await self.coro
-                self._has_run = True
+                try:
+                    self._cache = await self.coro
+                except Exception as e:
+                    logger.error(f"cached coroutine failed with {e},{self.coro}")
+                    self._cache = e
+                    raise e
+                finally:
+                    self._has_run = True
+        if isinstance(self._cache, Exception):
+            raise self._cache
         return self._cache
 
 

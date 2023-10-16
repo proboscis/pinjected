@@ -730,3 +730,12 @@ assert(b.foo == "b-foo")
 ```
 This library makes pinject's binding more portable and easy to extend.
 
+# Visualization (Supported after 0.1.128)
+Pinjected supports visualization of dependency graph.
+```bash
+pinjected run_injected visualize <full.path.of.Injected.variable> <full.path.of.Design.variable>
+```
+For example:
+```bash
+pinjected run_injected visualize pinjected.test_package.child.module1.test_viz_target pinjected.test_package.child.module1.viz_target_design
+```

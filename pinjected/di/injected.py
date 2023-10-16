@@ -6,7 +6,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any,Awaitable
+from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable
 
 from loguru import logger
 from makefun import create_function
@@ -401,6 +401,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def desync(self):
         async def impl(awaitable):
             return await awaitable
+
         return self.map(lambda coroutine: asyncio.run(impl(coroutine)))
 
     def __len__(self):
@@ -531,8 +532,11 @@ class IAsyncDict(abc.ABC):
     async def contains(self, key):
         pass
 
-
-
+async def auto_await(tgt):
+    if inspect.isawaitable(tgt):
+        return await tgt
+    else :
+        return tgt
 
 @dataclass
 class AsyncInjectedCache(Injected[T]):
@@ -547,29 +551,34 @@ class AsyncInjectedCache(Injected[T]):
     def __post_init__(self):
         self.program = Injected.ensure_injected(self.program)
         assert isinstance(self.program, Injected)
-        assert isinstance(self.program_dependencies,list),f"program_dependencies:{self.program_dependencies}"
+        assert isinstance(self.program_dependencies, list), f"program_dependencies:{self.program_dependencies}"
 
         from pinjected.di.decorators import cached_coroutine
         @cached_coroutine
         async def impl(session, cache: IAsyncDict, *deps):
+            from loguru import logger
+            # deps can be awaitable, so beware...
             assert isinstance(cache, IAsyncDict)
+            deps = await asyncio.gather(*[auto_await(t) for t in deps])
             logger.info(f"Checking cache for {self.program} with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
             hash_key = sha256_key
             if not await cache.contains(hash_key):
-                logger.info(f"Cache miss for {deps}")
+                logger.info(f"Cache miss for {deps} in {cache}")
                 data = await session[self.program]
+                logger.info(f"Cache miss for {deps}, tried {cache}, writing...")
                 await cache.set(hash_key, data)
+                logger.info(f"Writen to cache for {deps} to {cache}")
             else:
-                logger.info(f"Cache hit for {deps},loading ...")
+                logger.info(f"Cache hit for {deps},loading from {cache}")
             res = await cache.get(hash_key)
-            logger.info(f"Cache hit for {deps}, loaded")
+            logger.info(f"Cache hit for {deps}, loaded from {cache}")
             return res
 
         deps = Injected.list(
             Injected.by_name("session"),
             self.cache,
-            *self.program_dependencies
+            *self.program_dependencies,
         )
         self.impl = deps.map(lambda t: impl(*t))
         assert isinstance(self.impl, Injected)
@@ -687,7 +696,7 @@ def assert_kwargs_type(v):
     if isinstance(v, Injected):
         return
     else:
-        raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected]")
+        raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
 
 
 class InjectedFunction(Injected[T]):
