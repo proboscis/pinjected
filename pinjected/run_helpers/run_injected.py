@@ -132,6 +132,9 @@ def run_anything(
         notify(f"Run failed with error:\n{e}", sound='Frog')
         trace = traceback.format_exc()
         Path(f"run_failed_{var_path}.err.log").write_text(str(e) + "\n" + trace)
+        from rich.console import Console
+        console = Console()
+        console.print_exception(show_locals=True)
         raise e
     notify(f"Run result:\n{str(res)[:100]}")
     if return_result:

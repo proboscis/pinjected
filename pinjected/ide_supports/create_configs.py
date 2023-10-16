@@ -42,6 +42,8 @@ def run_with_meta_context(
     :param kwargs:
     :return:
     """
+    if not "__meta_design__" in Path(context_module_file_path).read_text():
+        raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
     meta_context = MetaContext.gather_from_path(context_module_file_path)
     instance_overrides = instances(
         module_path=context_module_file_path,
@@ -164,6 +166,7 @@ def list_completions(
 def design_metadata(
         default_design_paths: list[str]
 ):
+
     d:Design = ModuleVarPath(default_design_paths[0]).load()
     # we load design, so we need to be careful with not to running things...
     """
