@@ -34,5 +34,5 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 autodoc_default_options = {
     'members': True,
-    'undoc-members': True,  # Include members without docstrings
+    'undoc-members': False,  # Include members without docstrings
 }

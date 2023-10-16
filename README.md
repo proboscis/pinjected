@@ -370,11 +370,11 @@ done by a `/` in the argument list. So all the positional-only arguments become 
 
 ```python
 from pinjected.di.util import Injected, instances
-from pinjected import injected_function
+from pinjected import injected
 from typing import Callable
 
 
-@injected_function
+@injected
 def add(a: int, b: int, /, c: int):
     # a and b before / gets injected.
     # c must be provided when calling the function.
@@ -398,17 +398,17 @@ We can also form a syntax tree of injected functions, to create another injected
 
 ```python
 from pinjected.di.util import Injected, instances
-from pinjected import injected_function
+from pinjected import injected
 from typing import Callable
 
 
-@injected_function
+@injected
 def x(logger, /, a: int):
     logger.info("x called")
     return a + 1
 
 
-@injected_function
+@injected
 def y(logger, database_connection, /, x: int):
     logger.info(f"y called with x, using {database_connection}")
     return x + 1
@@ -431,7 +431,7 @@ Injected can be used as a provider function in a design.
 
 ```python
 from pinjected.di.util import Injected, instances, providers
-from pinjected import injected_function, injected_instance
+from pinjected import injected, injected_instance
 
 
 @injected_instance
@@ -442,12 +442,12 @@ def d_plus_one(d):
 # you can use injected_instance as decorator when you don't need any non_injected arguments.
 # now get_d_plus_one is Injected[int], so an integer will be created when it is injected by DI.
 # don't forgeet to add slash in the argument list, or the arguments will not be injected.
-@injected_function
+@injected
 def calc_d_plus_one(d: int, /, ):
     return d + 1
 
 
-# you can use injected_function as decorator when you need non_injected arguments.
+# you can use injected as decorator when you need non_injected arguments.
 # if you don't provide non_injected arguments, it will a injected function that does not take any arguments when injected.
 # now get_d_plus_one is Injected[Callable[[],int]], so a callable will be created when it is injected by DI.
 
@@ -551,11 +551,11 @@ You can visualize the dependency graph of an Injected instance in web browser fo
 # Picklability
 Compatible with dill and cloudpickle as long as the bound objects are picklable.
 
-# Rewriting the example in the beginning with injected_function
+# Rewriting the example in the beginning with injected
 
 ```python
 from pinjected.di.util import Injected, instances, providers
-from pinjected import injected_function, injected_instance
+from pinjected import injected, injected_instance
 from dataclasses import dataclass
 
 
@@ -579,25 +579,25 @@ def loss_calculator():
     return MyLoss()
 
 
-@injected_function
+@injected
 def save_local(local_dir, /, model, identifier):
     # save model locally
     pass
 
 
-@injected_function
+@injected
 def load_local(local_dir, /, identifier):
     # load model locally
     pass
 
 
-@injected_function
+@injected
 def save_mongodb(mongodb_conn, /, model, identifier):
     # save model to mongodb
     pass
 
 
-@injected_function
+@injected
 def load_mongodb(mongodb_conn, /, identifier):
     # load model from mongodb
     pass
@@ -625,7 +625,7 @@ default_conf = instances(
 
 
 # now we don't need a trainer class.
-@injected_function
+@injected
 def train(
         model: Module,
         optimizer: Optimizer,
@@ -645,7 +645,7 @@ def train(
 
 
 # no evaluator classes too.
-@injected_function
+@injected
 def evaluate(
         model: Module,
         dataset: Dataset,

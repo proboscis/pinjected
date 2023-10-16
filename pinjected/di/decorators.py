@@ -13,9 +13,31 @@ import asyncio
 
 def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     """
-    any args starting with "_" or positional_only kwargs is considered to be injected.
-    :param f:
-    :return:
+    Wraps a function, injecting dependencies for parameters that start with an underscore or are positional-only.
+    This enhanced version supports class methods, recognizing and bypassing the 'self' parameter automatically.
+    The function also registers the newly created function in the ``IMPLICIT_BINDINGS`` global dictionary.
+
+    :param f: The target function where dependencies will be injected. This can be a standard function or a class method.
+    :param parent_frame: The parent frame to inspect for getting the code location. If not provided, the system automatically determines the appropriate frame.
+    :return: A new function with dependencies injected, suitable for both standalone functions and class methods.
+
+    **Example Usage:**
+
+    Given a class with a method that requires dependency injection:
+
+    .. code-block:: python
+        @injected_function
+        class MyClass:
+            dependency1: object
+            def my_method(self, arg2):
+                # Method implementation here
+                # use self.dependency1
+
+        # now we have Injected[Callable[[],MyClass]]
+        g[MyClass]() # returns an instance of MyClass with dependency1 injected
+
+    .. note::
+        The function or a class will be automatically registered with its name, in the global ``IMPLICIT_BINDINGS`` dictionary, making it recognizable by the system's dependency injection mechanisms.
     """
     # How can we make this work on a class method?
     sig: inspect.Signature = inspect.signature(f)
@@ -23,9 +45,6 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     if parent_frame is None:
         parent_frame = inspect.currentframe().f_back
     for k, v in sig.parameters.items():
-        # does this contain self?
-        # assert k != 'self', f"self is not allowed in injected_function... for now:{f}"
-        #
         if k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
@@ -100,9 +119,45 @@ def injected_instance(f) -> Injected:
 
 def injected(tgt: Union[str, type, Callable]):
     """
-    injected is a decorator that creates Injected function from a function or a class or a string
-    :param tgt: Union[str, type, Callable]
-    :return:
+    The ``injected`` decorator automates dependency injection, transforming a target (string, class, or callable) 
+    into an ``Injected`` instance. It specifically treats positional-only parameters as dependencies, 
+    automatically injecting them. In contrast, non-positional-only parameters are left as-is for later 
+    specification during function or method invocation.
+
+    :param tgt: The target indicating what is to be injected. This can be:
+                1. ``str``: the name of a dependency.
+                2. ``type``: a class that needs automated dependency injection for instantiation.
+                3. ``Callable``: a function or method requiring dependencies.
+    :return: An appropriate ``Injected`` instance, proxy, or wrapped entity with dependencies injected, 
+             contingent on the nature of ``tgt``.
+
+    **Usage Example:**
+
+    .. code-block:: python
+
+        @injected
+        def function_requiring_dependencies(dependency1: Type1, /, normal_param: Type2):
+            # Function body here. 'dependency1' is injected, 'normal_param' must be provided during call.
+
+        @injected
+        class ClassRequiringDependencies:
+            def __init__(self, dependency1: Type1, /, normal_param: Type2):
+                # Constructor body. 'dependency1' is injected, 'normal_param' is left for object creation time.
+
+        # For direct dependency retrieval via a string identifier.
+        dependency_instance = injected("dependency_key")
+
+    In these examples, ``dependency1`` is a positional-only parameter and treated as a dependency to be 
+    automatically injected. On the other hand, ``normal_param`` is a non-positional-only parameter. It's 
+    not considered a dependency within the automatic injection process, and thus, must be specified 
+    during the routine call or object instantiation.
+    
+
+    .. note::
+        This approach enforces clear demarcation between automatically resolved dependencies 
+        (positional-only) and those parameters that developers need to provide explicitly during 
+        function/method invocation or class instantiation. This strategy enhances code readability 
+        and ensures that the dependency injection framework adheres to explicit programming practices.
     """
     if isinstance(tgt, str):
         return Injected.by_name(tgt).proxy

@@ -76,20 +76,140 @@ class ParamInfo:
 
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
-    this class is actually an abstraction of fucntion partial application.
-    TODO I need a way to store dynamic dependencies
+    The ``Injected`` class represents a sophisticated dependency injection mechanism in Python.
+    It encapsulates an object that requires certain dependencies to be resolved. The class maintains
+    a set of dependencies necessary for the object's creation and utilizes a provider function that
+    generates the desired variable with its dependencies satisfied.
+
+    Basic Usage:
+    ------------
+
+    .. code-block:: python
+
+        from pinjected.di.util import Injected
+        from pinjected import Design
+
+        def provide_ab(a:int, b:int) -> int:
+            return a + b
+
+        # The bind method creates an Injected object from a provider function, using the function's
+        # arguments as dependencies.
+        injected: Injected[int] = Injected.bind(provide_ab)
+
+        design = Design().bind_instance(a=1, b=2)
+        assert design.to_graph()[injected] == 3
+
+    Advanced Features:
+    ------------------
+
+    **Composition:**
+
+    ``Injected`` instances can be manipulated and combined in several ways to build complex dependency structures.
+
+    1. **map**: Transform the result of an ``Injected`` instance.
+
+        .. code-block:: python
+
+            from pinjected.di.util import Injected, instances
+            from pinjected import Design
+
+            design: Design = instances(a=1)  # Shortcut for binding instances
+            a: Injected[int] = Injected.by_name('a')
+            b: Injected[int] = a.map(lambda x: x + 1)  # b is now a + 1
+
+            g = design.to_graph()
+            assert g[a] + 1 == g[b]
+
+    2. **zip/mzip**: Combine multiple ``Injected`` instances.
+
+        .. code-block:: python
+
+            from pinjected.di.util import Injected
+            from pinjected import Design
+
+            design = Design().bind_instance(a=1, b=2)
+            g = design.to_graph()
+
+            a = Injected.by_name('a')
+            b = Injected.by_name('b')
+            c = a.map(lambda x: x + 2)
+            abc = Injected.mzip(a, b, c)  # Combine more than two Injected instances
+            ab_zip = Injected.zip(a, b)   # Standard zip for two Injected instances
+
+            assert g[abc] == (1, 2, 3)
+            assert g[ab_zip] == (1, 2)
+
+    3. **dict/list**: Create a dictionary or list from multiple ``Injected`` instances.
+
+        .. code-block:: python
+
+            from pinjected.di.util import Injected, instances
+
+            design = instances(a=1, b=2)
+            a = Injected.by_name('a')
+            b = Injected.by_name('b')
+            c = a.map(lambda x: x + 2)
+
+            injected_dict: Injected[dict] = Injected.dict(a=a, b=b, c=c)  # Creates {'a':1, 'b':2, 'c':3}
+            injected_list: Injected[list] = Injected.list(a, b, c)  # Creates [1, 2, 3]
+
+    These composition tools enhance the flexibility of dependency injection, enabling more complex
+    and varied structures to suit diverse programming needs. By allowing transformations and combinations
+    of ``Injected`` instances, they provide powerful ways to manage and utilize dependencies within
+    your applications.
     """
 
     @staticmethod
     def partial(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
-        use this to partially inject specified params, and leave the other parameters to be provided after injection is resolved.
-        This implementation is very ugly.
-        :param original_function: Callable
-        :param injection_targets: specific parameters to make injected automatically
-        :return: Injected[Callable[(params which were not specified in injection_targets)=>Any]]
+        Partially injects dependencies into the parameters of the target function.
+
+        This utility allows for specific arguments of a callable to be automatically populated with injected dependencies,
+        leaving the remainder to be supplied at the point of invocation. It facilitates a cleaner separation of concerns
+        by decoupling the resolution of dependencies from the function's implementation.
+
+        Parameters:
+        original_function (Callable): The original function into which dependencies are to be injected. This function
+                                      maintains its original signature, with certain parameters now automatically resolved
+                                      via injection.
+        injection_targets (dict): A mapping of parameter names to their injected dependencies. Each entry corresponds to
+                                  a specific argument of `original_function` and the dependency to be injected into it.
+                                  These parameters will be automatically populated when the returned function is invoked.
+
+        Returns:
+        Injected[Callable]: A wrapped version of `original_function` that, when called, will receive the injected
+                            dependencies specified in `injection_targets`. The callable requires the remaining parameters
+                            that were not part of `injection_targets`, maintaining the order and names as in the original
+                            function's signature.
+
+        Note:
+        The implementation focuses on flexibility and separation of concerns at the cost of some complexity in the
+        function's wrapping mechanics. This design choice prioritizes decoupling over simplicity to ensure that functions
+        can be composed and dependencies managed outside of the business logic.
+
+        :Example:
+
+        .. code-block:: python
+
+            def f(a, b, c):
+                return a + b + c
+
+            # Creating a partially injected function
+            injected_func = Injected.partial(f, a=1, b=2)  # 'a' and 'b' are injected, 'c' is left to be provided later.
+
+            # Using the partially injected function
+            result = injected_func(c=3)  # Now we provide 'c', and the function executes with all parameters.
+            assert result == 6  # The result is 6 since 1 + 2 + 3 = 6
+
+            # Alternatively, using different syntax or within different contexts, the following are equivalent:
+            assert Injected.pure(6) == result  # Comparing with a pure value
+            assert g[Injected.partial(f, a=1, b=2)](c=3) == 6  # Using the function within a context 'g'
+            assert g[Injected.partial(f, a=1, b=2)(c=3)] == 6  # Immediate invocation within a context 'g'
+
+        These examples illustrate how `partial` is used to pre-fill certain parameters of a function, allowing the
+        remaining ones to be specified at a later point in the code or within different execution contexts.
         """
-        # TODO WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
+        # WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
 
         # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
@@ -283,6 +403,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def dynamic_dependencies(self) -> Set[str]:
         """
         :return: a set of dependencies which are not statically known. mainly used for analysis.
+
         use this to express an injected that conditionally depends on something, such as caches.
         """
         return self.dependencies()
@@ -339,13 +460,16 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def map_elements(f: "Injected[Callable]", elements: "Injected[Iterable]") -> "Injected[Iterable]":
         """
-        for (
-            f <- f,
-            elements <- elements
-            ) yield map(f,elements)
+        .. code-block:: python
+            for (
+                f <- f,
+                elements <- elements
+                ) yield map(f,elements)
+
         :param f:
         :param elements:
         :return:
+
         """
         return Injected.mzip(
             f, elements
