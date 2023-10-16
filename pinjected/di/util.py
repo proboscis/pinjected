@@ -203,9 +203,53 @@ def _get_external_type_name(thing):
     return res.__name__
 
 
-def instances(**kwargs: Union[
-    str, int, float, bool, dict, list, tuple, bytes, bytearray,object
-]):
+def instances(**kwargs):
+    """
+    Registers multiple concrete instances or values to a new ``Design`` instance and adds their respective code locations.
+
+    This function is utilized for binding actual instances, as opposed to providers or factories, directly into a ``Design``. This is particularly useful for constants or already-constructed objects that you wish to make available for dependency injection. Each instance's code location is automatically registered, aiding in debugging and system introspection by maintaining information about where each instance was defined.
+
+    The function performs assertions to ensure that no ``DelegatedVar`` or ``Injected`` instances are passed, preventing common errors.
+
+    Parameters:
+    -----------
+    **kwargs : dict
+        Arbitrary keyword arguments representing the instances to be bound.
+        Each key represents the name of the dependency, and the value is the corresponding concrete instance or value.
+        The function asserts that none of the values are instances of ``DelegatedVar`` or ``Injected``,
+        raising an assertion error if this case is encountered to prevent misuse.
+
+    Returns:
+    --------
+    Design
+        A ``Design`` instance with the concrete objects or values bound and their code locations registered.
+
+    Raises:
+    -------
+    AssertionError
+        If any value in ``kwargs`` is an instance of ``DelegatedVar`` or ``Injected``, an assertion error is raised,
+        indicating that such usage is forbidden to prevent errors in binding.
+
+    Example:
+    --------
+    .. code-block:: python
+
+        # Pre-constructed objects or constants
+        database_connection = create_database_connection()
+        constant_value = 42
+
+        # Create a design with instances registered
+        design_with_instances = instances(
+            database_connection=database_connection,
+            constant=constant_value
+        )
+
+        # The 'design_with_instances' now has 'database_connection' and 'constant_value'
+        # registered as concrete instances, along with their code locations.
+
+    By enforcing constraints and adding code locations, this function helps maintain a clear and error-resistant
+    system design, ensuring that the dependency injection mechanism is used appropriately and effectively.
+    """
     for k, v in kwargs.items():
         assert not isinstance(v,
                               DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
@@ -217,10 +261,50 @@ def instances(**kwargs: Union[
 
 
 def providers(**kwargs):
+    """
+    Register multiple providers or `Injected` instances to a new `Design` instance, automatically adding code locations.
+
+    This utility function simplifies the process of creating a `Design` instance and binding providers to it. It accepts both regular functions and instances of `Injected` as providers. These functions can be ones that require dependencies for their computations or `Injected` objects that encapsulate the dependency requirements.
+
+    Each provider is automatically associated with its code location, aiding in system introspection and debugging by keeping track of where each provider was defined.
+
+    Parameters:
+    -----------
+    **kwargs : dict
+        Arbitrary keyword arguments. Each key represents the name of the dependency, and the value can be either:
+        1. A provider function, which is a callable that returns the necessary object for the dependency. This function can itself require other dependencies.
+        2. An `Injected` instance which encapsulates both the creation of the dependency and its own dependencies.
+
+    Returns:
+    --------
+    Design
+        A `Design` instance with the providers or `Injected` instances bound and their code locations registered.
+
+    Example:
+    --------
+    .. code-block:: python
+
+        from pinjected.di.util import Injected
+
+        def provide_database_connection():
+            # logic to initiate a database connection
+            pass
+
+        injected_query_executor = Injected.bind(lambda connection: connection.execute_query())
+
+        # Create a design with various types of providers
+        design_with_providers = providers(
+            database_connection=provide_database_connection,
+            query_executor=injected_query_executor
+        )
+
+        # The 'design_with_providers' has the 'provide_database_connection' function and
+        # 'injected_query_executor' Injected instance registered as providers for 'database_connection'
+        # and 'query_executor', respectively, along with their code locations.
+
+    This approach consolidates the registration of dependencies, streamlining the setup process and enhancing the traceability and debuggability of the system components.
+    """
     d = Design().bind_provider(**kwargs)
-    # let's add the metadata for code_location here.
-    # to do so, I need to get the source code of the parent frame
-    # and then parse it to get the code_location.
     return add_code_locations(d, kwargs, inspect.currentframe())
 
 
@@ -289,6 +373,37 @@ def get_code_location(frame):
 
 
 def classes(**kwargs):
+    """
+    Binds classes to a new ``Design`` instance, adding code locations for reference.
+
+    This function is a utility for binding classes to a new design, making them available for dependency injection. It also registers their code locations, aiding in debugging by preserving the origin information of each class.
+
+    Parameters:
+    -----------
+    **kwargs : dict
+        Arbitrary keyword arguments. Each key is a string that represents the dependency name, and the value is the class to be bound.
+
+    Returns:
+    --------
+    Design
+        Returns a new ``Design`` instance with the specified classes bound.
+
+    Example:
+    --------
+    .. code-block:: python
+
+        class MyClass:
+            pass
+
+        # Binding the class within a new design
+        design_with_class = classes(MyClass=MyClass)
+
+        # 'design_with_class' now has 'MyClass' available for dependency injection.
+
+    Note:
+    -----
+    The function automatically adds code locations for the classes, making it easier to track the source of each dependency within the system.
+    """
     d = Design().bind_class(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
