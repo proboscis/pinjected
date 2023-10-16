@@ -7,9 +7,11 @@ from pinjected.di.designed import Designed
 
 __all__ = [
     "Injected",
+    "Design",
     "EmptyDesign",
     "instances",
     "providers",
     "classes",
-    "Designed",
+    "instance",
+    "injected",
 ]

@@ -43,7 +43,44 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
 
 
 def injected_instance(f) -> Injected:
-    # check f is an async function
+    """
+    The ``injected_instance`` (also accessible as ``instance``) is a decorator that creates an
+    ``Injected`` instance from a function. This function essentially converts a regular function
+    that returns an instance into an ``Injected`` type that can be used for dependency injection,
+    particularly within the context of a design setup.
+
+    :param f: The function that generates an instance, typically utilizing dependencies.
+    :type f: Function
+
+    :return: An instance of ``Injected`` that wraps the provided function.
+    :rtype: Injected
+
+    :Example:
+
+    .. code-block:: python
+
+        @instance
+        def logger(dep1, dep2):
+            from logging import getLogger
+            # maybe use dep1, dep2...
+            return getLogger(__name__)
+
+        # Now, 'logger' is an instance of 'Injected' specialized with 'Logger'.
+        assert type(logger) == Injected  # True for Injected[Logger]
+
+        # This 'Injected' instance can be contributed to a design like so:
+        design = providers(
+            logger=logger
+        )
+
+        # Usage of the designed provider
+        _logger = design.provide('logger')  # returns a Logger instance
+        _logger.info('hello world')
+
+    This approach allows the function to be integrated into a dependency injection system easily,
+    with the ``Injected`` instance handling the complexities of resolving and managing dependencies.
+    """
+
     is_coroutine = inspect.iscoroutinefunction(f)
     if is_coroutine:
         f = cached_coroutine(f)
@@ -62,6 +99,11 @@ def injected_instance(f) -> Injected:
 
 
 def injected(tgt: Union[str, type, Callable]):
+    """
+    injected is a decorator that creates Injected function from a function or a class or a string
+    :param tgt: Union[str, type, Callable]
+    :return:
+    """
     if isinstance(tgt, str):
         return Injected.by_name(tgt).proxy
     elif isinstance(tgt, type):
@@ -123,3 +165,4 @@ def cached_coroutine(coro_func):
 
 
 instance = injected_instance
+
