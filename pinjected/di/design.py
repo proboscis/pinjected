@@ -17,6 +17,7 @@ from pinjected.di.injected import extract_dependency_including_self, InjectedPur
 from pinjected.di.proxiable import DelegatedVar
 #from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
 from pinjected.di.monadic import getitem_opt
+from pinjected.graph_inspection import DIGraphHelper
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -133,11 +134,11 @@ class Design:
         return x
 
     def bind_provider(self, **kwargs: Union[Callable, Injected]):
-        from loguru import logger
         x = self
         for k, v in kwargs.items():
             # logger.info(f"binding provider:{k}=>{v}")
             def parse(item):
+                from loguru import logger
                 match item:
                     case type():
                         logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
@@ -228,6 +229,7 @@ class Design:
             return replace(self,
                            bindings=copied
                            )
+        return self
 
     def __contains__(self, item):
         return item in self.bindings
@@ -271,7 +273,6 @@ class Design:
 
     def _ensure_provider_name(self, k, method):
         """set appropriate name for provider function to be recognized by pinject"""
-        from loguru import logger
         name = f"provide_{k}"
         if not method.__name__ == name:
             # there are cases where you cannot directly set __name__ attribute.
@@ -281,6 +282,7 @@ class Design:
                 method.__name__ = name
                 return method
             except AttributeError as ae:
+                from loguru import logger
                 logger.warning(f"somehow failed to assign new name to a provider function. trying to wrap.")
 
                 def _wrapper(self, *args, **kwargs):
@@ -381,6 +383,17 @@ class Design:
     def to_vis_graph(self) -> "DIGraph":
         from pinjected.visualize_di import DIGraph
         return DIGraph(self)
+
+    def purify(self,target:"Providable"):
+        """
+        given an injected, returns a minimized design which can provide the target.
+        :param target:
+        :return:
+        """
+        # ah sometimes the deps require 'session'
+        # and we don't know if the session has enough bindings to provide the target.
+
+        return self.to_graph().resolver.purified_design(target).unbind('session')
 
 
 class DesignBindContext:

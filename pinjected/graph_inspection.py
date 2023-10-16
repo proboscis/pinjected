@@ -67,7 +67,6 @@ class DIGraphHelper:
     src: "Design"
 
     def get_implicit_mapping(self) -> dict[str, type]:
-        from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
         classes = find_classes(self.src.modules, self.src.classes)
         for c in classes:
             for name in default_get_arg_names_from_class_name(c.__name__):
@@ -90,3 +89,4 @@ class DIGraphHelper:
         implicit_mappings = {k: InjectedBind(Injected.bind(v)) for k, v in self.get_implicit_mapping()}
         explicit_mappings = self.get_explicit_mapping()
         return {**global_implicit_mappings, **implicit_mappings, **explicit_mappings}
+

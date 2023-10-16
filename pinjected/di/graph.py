@@ -10,9 +10,10 @@ from pathlib import Path
 from pprint import pformat
 from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Set, Dict
 
-import yaml
 from returns.maybe import Nothing, Maybe, Some
 from returns.result import safe, Result, Failure, Success
+from rich.console import Console
+from rich.panel import Panel
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import Expr
@@ -142,6 +143,12 @@ class IObjectGraph(metaclass=ABCMeta):
 
 # using async was not a good Idea since all the function needs to be assumed a coroutine.
 # we don't assume the provider function is a coroutine.
+@dataclass
+class ProvideEvent:
+    trace: list[str]
+    kind: str
+    data: Any = field(default=None)
+
 
 class IScope:
     @abstractmethod
@@ -151,6 +158,18 @@ class IScope:
     @abstractmethod
     def __contains__(self, item):
         raise NotImplementedError()
+
+    def _default_trace_logger(self, event: ProvideEvent):
+        from loguru import logger
+        match event:
+            case ProvideEvent(trace, "request", data=None):
+                logger.info(f"{' -> '.join(trace)}")
+            case ProvideEvent(trace, "provide", data=[*items]) if len(items) > 100:
+                logger.info(f"{' <- '.join(trace)} = LARGE LIST({len(items)} items)")
+            case ProvideEvent(trace, "provide", data=[*items]):
+                logger.info(f"{' <- '.join(trace)} = {pformat(items)[:100]}")
+            case ProvideEvent(trace, "provide", data=data):
+                logger.info(f"{' <- '.join(trace)} = {str(data)[:100]}")
 
 
 def trace_string(trace: list[str]):
@@ -162,28 +181,47 @@ def trace_string(trace: list[str]):
 
 
 @dataclass
+class RichTraceLogger:
+    from rich.console import Console
+    console: Console = field(default_factory=lambda: Console(stderr=True))
+
+    def __call__(self, event: ProvideEvent):
+        match event:
+            case ProvideEvent(trace, "request", data=None):
+                self.console.log(f"provide trace:{trace}")
+                self.console.log(Panel(trace_string(trace)))
+            case ProvideEvent(trace, "provide", data):
+                key = trace[-1]
+                self.console.log(Panel(trace_string(trace)))
+                self.console.log(Panel(pformat(data)))
+                # self.console.log(self.value_table(self.values))
+
+
+@dataclass
 class MScope(IScope):
     cache: dict[str, Any] = field(default_factory=dict)
+    trace_logger: Callable[[ProvideEvent], None] = field(default=None)
+
+    def __post_init__(self):
+        self.trace_logger = self.trace_logger or self._default_trace_logger
+        # self.trace_logger = self.trace_logger or RichTraceLogger()
 
     def __getstate__(self):
         raise NotImplementedError("MScope is not serializable")
 
     def provide(self, key, provider: Callable[[], Any], trace: List) -> Any:
-        from loguru import logger
         # with self.lock:
+        self.trace_logger(ProvideEvent(trace, "request"))
         if key in self.cache:
+            self.trace_logger(ProvideEvent(trace, "provide", data=self.cache[key]))
             return self.cache[key]
         assert isinstance(trace, list) and all(isinstance(item, str) for item in trace)
-        logger.info(trace_string(trace))
+        assert trace[-1] == key
         res = provider()
         self.cache[key] = res
         res = self.cache[key]
-        if isinstance(res,list) and len(res) > 100:
-            logger.info(f"{' <- '.join(trace)} = LARGE LIST({len(res)} items)")
-        else:
-            logger.info(f"{' <- '.join(trace)} = {repr(res)[:100]}")
-        #
-        return self.cache[key]
+        self.trace_logger(ProvideEvent(trace, "provide", data=res))
+        return res
 
     def __contains__(self, item):
         return item in self.cache
@@ -194,19 +232,25 @@ class MChildScope(IScope):
     parent: IScope
     override_targets: set
     cache: dict[str, Any] = field(default_factory=dict)
+    trace_logger: Callable[[ProvideEvent], None] = field(default=None)
+
+    def __post_init__(self):
+        self.trace_logger = self.trace_logger or self._default_trace_logger
+        # self.trace_logger = self.trace_logger or RichTraceLogger()
 
     def __getstate__(self):
         raise NotImplementedError("MChildScope is not serializable")
 
     def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
-        from loguru import logger
         if key not in self.cache:
             if key in self.override_targets or key not in self.parent:
-                logger.info(f"providing from child:{' -> '.join(trace)}")
+                # logger.info(f"providing from child:{' -> '.join(trace)}")
+                self.trace_logger(ProvideEvent(trace, "request"))
                 res = provider_func()
                 self.cache[key] = res
                 res = self.cache[key]
-                logger.info(f"provided from child: {' <- '.join(trace)} = {str(res)[:100]}")
+                self.trace_logger(ProvideEvent(trace, "provide", data=res))
+                # logger.info(f"provided from child: {' <- '.join(trace)} = {str(res)[:100]}")
             else:
                 self.cache[key] = self.parent.provide(key, provider_func, trace)
         return self.cache[key]
@@ -266,25 +310,40 @@ class DependencyResolver:
         predefined = {"__final_target__"}
 
         @lru_cache()
-        def _memoized_deps(tgt: str):
+        def _memoized_deps(tgt: str,include_dynamic=False):
             if tgt in predefined:
                 return []
             if tgt not in self.mapping:
                 raise NoMappingError(f"target {tgt} is not in the dependency injection mapping.")
-            return self.mapping[tgt].dependencies()
+
+            deps = self.mapping[tgt].dependencies()
+            if include_dynamic:
+                deps = set(deps) | set(self.mapping[tgt].dynamic_dependencies())
+            return deps
 
         self.memoized_deps = _memoized_deps
 
-    def _dfs(self, tgt: str, visited: set[str] = None):
+    def _dfs(self, tgt: str, visited: set[str] = None,include_dynamic=False):
         if visited is None:
             visited = set()
         if tgt in visited:
             return
         visited.add(tgt)
-        deps = self.memoized_deps(tgt)
+        deps = self.memoized_deps(tgt,include_dynamic=include_dynamic)
         yield tgt
         for dep in deps:
-            yield from self._dfs(dep, visited)
+            yield from self._dfs(dep, visited,include_dynamic=include_dynamic)
+
+    def required_dependencies(self, providable: Providable,include_dynamic=False) -> Set[str]:
+        tgt: Injected = self._to_injected(providable)
+        return set(chain(*[self._dfs(d,include_dynamic=include_dynamic) for d in tgt.dependencies()]))
+
+    def purified_design(self,providable:Providable):
+        from pinjected import providers
+        deps = self.required_dependencies(providable,include_dynamic=True)
+        deps = {k:self.mapping[k] for k in deps}
+        return providers(**deps)
+
 
     def _dependency_tree(self, tgt: str, trace: list[str] = None) -> Result[Dict[str, Result], Exception]:
         trace = trace or [tgt]
@@ -555,6 +614,12 @@ class MyObjectGraph(IObjectGraph):
             design_path="__dummy__.design",
         )
         logger.debug(f'Pseudo code of the DI graph for ({str(target)[:100]}):\n{script}')
+        # logger.debug(f"Pseudo code of the DI graph:")
+        # console = Console(stderr=True)
+        # script = Syntax(script, "python", theme="ansi_dark", line_numbers=True)
+        # console.log(script)
+        # rich.print(script)
+
         failures = self.resolver.find_failures(dep_tree)
         if failures:
             logger.error(f"DI failures: \n{pformat(failures)}")
@@ -578,6 +643,39 @@ class MyObjectGraph(IObjectGraph):
     @property
     def design(self):
         return self.src_design
+
+    @property
+    def design_with_implicits(self):
+        from pinjected import providers
+        return providers(**DIGraphHelper(self.design).total_mappings()).unbind('session')
+
+    def __repr__(self):
+        return f"MyObjectGraph({self.design})"
+
+    def auto_sync(self,rejector=None):
+        return AutoSyncGraph(self,rejector)
+
+
+@dataclass
+class AutoSyncGraph:
+    src: IObjectGraph
+    rejector:Callable[[Any],bool] = field(default=None)
+    """
+    if rejector returns true for an item, it will not be awaited
+    """
+    def __post_init__(self):
+        if self.rejector is None:
+            self.rejector = lambda x:False
+
+    def __getitem__(self, item):
+        item = self.src[item]
+        if not self.rejector(item) and inspect.isawaitable(item):
+            async def waiter():
+                return await item
+            # I need to distinguish if it's Var or not...
+
+            return asyncio.run(waiter())
+        return item
 
 
 def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):

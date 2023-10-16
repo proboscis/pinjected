@@ -294,3 +294,11 @@ Resolver(AsyncResolver(bp)).provide('test4')  # calling test returns a coroutine
 # TODO fix things annotated in @instance to return object rather than coroutine.
 # also, the providers needs to omit awaits.
 # %%
+# In order to fully switch to async design, I need to ...
+"""
+1. implement visualizer -> 3 hours
+2. implement partial injection annotator -> 3 hours
+3. implement run_main with meta-design -> 1 day
+4. implement plugins  -> 3 hours
+-> total 2 days of work. hmm....
+"""

@@ -4,7 +4,7 @@ from typing import Set
 
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
-from pinjected.di.injected import InjectedPure, InjectedFunction,InjectedByName
+from pinjected.di.injected import InjectedPure, InjectedFunction, InjectedByName
 from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, \
     AstProxyContextImpl
@@ -50,6 +50,9 @@ class EvaledInjected(Injected[T]):
     def repr_ast(self):
         return show_expr(self.ast, reduce_injected_expr)
 
+    def __hash__(self):
+        return hash((self.value, self.ast))
+
 
 def reduce_injected_expr(expr: Expr):
     match expr:
@@ -67,7 +70,6 @@ def reduce_injected_expr(expr: Expr):
             return f"$('{name}')"
         case Object(Injected() as i):
             return f"<{i.__class__.__name__}>"
-
 
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
