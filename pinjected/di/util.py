@@ -213,7 +213,7 @@ def instances(**kwargs):
 
     Parameters:
     -----------
-    **kwargs : dict
+    \*\*kwargs : dict
         Arbitrary keyword arguments representing the instances to be bound.
         Each key represents the name of the dependency, and the value is the corresponding concrete instance or value.
         The function asserts that none of the values are instances of ``DelegatedVar`` or ``Injected``,
@@ -270,7 +270,7 @@ def providers(**kwargs):
 
     Parameters:
     -----------
-    **kwargs : dict
+    \*\*kwargs : dict
         Arbitrary keyword arguments. Each key represents the name of the dependency, and the value can be either:
         1. A provider function, which is a callable that returns the necessary object for the dependency. This function can itself require other dependencies.
         2. An `Injected` instance which encapsulates both the creation of the dependency and its own dependencies.
@@ -380,7 +380,7 @@ def classes(**kwargs):
 
     Parameters:
     -----------
-    **kwargs : dict
+    \*\*kwargs : dict
         Arbitrary keyword arguments. Each key is a string that represents the dependency name, and the value is the class to be bound.
 
     Returns:
