@@ -169,18 +169,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         by decoupling the resolution of dependencies from the function's implementation.
 
         Parameters:
-        original_function (Callable): The original function into which dependencies are to be injected. This function
-                                      maintains its original signature, with certain parameters now automatically resolved
-                                      via injection.
-        injection_targets (dict): A mapping of parameter names to their injected dependencies. Each entry corresponds to
-                                  a specific argument of `original_function` and the dependency to be injected into it.
-                                  These parameters will be automatically populated when the returned function is invoked.
+        original_function (Callable): The original function into which dependencies are to be injected. This function maintains its original signature, with certain parameters now automatically resolved via injection.
+        injection_targets (dict): A mapping of parameter names to their injected dependencies. Each entry corresponds to a specific argument of `original_function` and the dependency to be injected into it. These parameters will be automatically populated when the returned function is invoked.
 
         Returns:
-        Injected[Callable]: A wrapped version of `original_function` that, when called, will receive the injected
-                            dependencies specified in `injection_targets`. The callable requires the remaining parameters
-                            that were not part of `injection_targets`, maintaining the order and names as in the original
-                            function's signature.
+        Injected[Callable]: A wrapped version of `original_function` that, when called, will receive the injected dependencies specified in `injection_targets`. The callable requires the remaining parameters that were not part of `injection_targets`, maintaining the order and names as in the original function's signature.
 
         Note:
         The implementation focuses on flexibility and separation of concerns at the cost of some complexity in the
@@ -460,11 +453,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def map_elements(f: "Injected[Callable]", elements: "Injected[Iterable]") -> "Injected[Iterable]":
         """
-        .. code-block:: python
-            for (
-                f <- f,
-                elements <- elements
-                ) yield map(f,elements)
+        # for (
+        #     f <- f,
+        #     elements <- elements
+        #     ) yield map(f,elements)
 
         :param f:
         :param elements:
