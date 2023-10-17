@@ -12,7 +12,7 @@ sphinx:
 build:
   os: ubuntu-20.04  # You can specify the operating system here (e.g., ubuntu-20.04)
   tools:
-    pip:
+    python:
       version: latest
   commands:
     - echo "This is a custom build command"

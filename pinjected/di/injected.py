@@ -198,11 +198,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             injected_func = Injected.partial(f, a=1, b=2)  # 'a' and 'b' are injected, 'c' is left to be provided later.
 
             # Using the partially injected function
-            result = injected_func(c=3)  # Now we provide 'c', and the function executes with all parameters.
-            assert result == 6  # The result is 6 since 1 + 2 + 3 = 6
+            result:Injected[int] = injected_func(c=3)  # Now we provide 'c', and the function executes with all parameters.
+            g[result] == 6  # The result is 6. g[] is a syntax sugar for g.provide(result)
 
             # Alternatively, using different syntax or within different contexts, the following are equivalent:
-            assert Injected.pure(6) == result  # Comparing with a pure value
+            assert g[Injected.pure(6)] == g[result]  # Comparing with a pure value
             assert g[Injected.partial(f, a=1, b=2)](c=3) == 6  # Using the function within a context 'g'
             assert g[Injected.partial(f, a=1, b=2)(c=3)] == 6  # Immediate invocation within a context 'g'
 
