@@ -13,8 +13,6 @@ build:
   os: ubuntu-20.04  # You can specify the operating system here (e.g., ubuntu-20.04)
   tools:
     python: "3.10"
-  commands:
-    - echo "This is a custom build command"
 
 # Optionally set the version of Python and requirements required to build your docs
 python:
