@@ -14,6 +14,10 @@ build:
   tools:
     python: "3.10"
 
+python:
+  version: 3.10  # This should be the version of Python your project requires.
+  install:
+    - requirements: docs/requirements.txt
 # Optionally set the version of Python and requirements required to build your docs
 #python:
 #  version: 3.8
