@@ -5,8 +5,13 @@ Pinjected is a dependency injection / dependency resolver library inspired by [p
 This library makes it easy to compose mutliple python objects to create a final object. 
 When you request for a final object, this library will automatically create all the dependencies and compose them to create the final object.
 
+
 # Installation
 `pip install pinjected`
+
+# Documentations
+Please read the following for tutorials and examples.
+For more specific api documentation, please look at [documentation](https://pinjected.readthedocs.io/en/latest/)
 
 # Features
 - Dependency Injection via Constructor
