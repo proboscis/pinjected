@@ -366,6 +366,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.bind(_target_function, **en_injected, **already_injected)
 
     def _faster_get_fname(self):
+
         try:
             frame = sys._getframe().f_back.f_back.f_back.f_back
             mod = frame.f_globals["__name__"]

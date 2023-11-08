@@ -40,5 +40,6 @@ def test_design():
     g = d.to_graph()
     assert g['z'] == 2
 
+
 if __name__ == '__main__':
     test_design()
