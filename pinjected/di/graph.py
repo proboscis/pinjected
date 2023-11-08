@@ -145,9 +145,9 @@ class IObjectGraph(metaclass=ABCMeta):
 # we don't assume the provider function is a coroutine.
 @dataclass
 class ProvideEvent:
-    trace: list[str]
-    kind: str
-    data: Any = field(default=None)
+    trace: list[str]  # stack of keys currently being provided
+    kind: str  # "provide" or "request"
+    data: Any = field(default=None)  # provided data when kind == "provide"
 
 
 class IScope:
@@ -159,7 +159,13 @@ class IScope:
     def __contains__(self, item):
         raise NotImplementedError()
 
-    def _default_trace_logger(self, event: ProvideEvent):
+    @property
+    @abstractmethod
+    def trace_logger(self):
+        pass
+
+    @staticmethod
+    def default_trace_logger(event: ProvideEvent):
         from loguru import logger
         match event:
             case ProvideEvent(trace, "request", data=None):
@@ -200,11 +206,15 @@ class RichTraceLogger:
 @dataclass
 class MScope(IScope):
     cache: dict[str, Any] = field(default_factory=dict)
-    trace_logger: Callable[[ProvideEvent], None] = field(default=None)
+    _trace_logger: Callable[[ProvideEvent], None] = field(default=None)
 
     def __post_init__(self):
-        self.trace_logger = self.trace_logger or self._default_trace_logger
+        self._trace_logger = self._trace_logger or self.default_trace_logger
         # self.trace_logger = self.trace_logger or RichTraceLogger()
+
+    @property
+    def trace_logger(self):
+        return self._trace_logger
 
     def __getstate__(self):
         raise NotImplementedError("MScope is not serializable")
@@ -232,11 +242,15 @@ class MChildScope(IScope):
     parent: IScope
     override_targets: set
     cache: dict[str, Any] = field(default_factory=dict)
-    trace_logger: Callable[[ProvideEvent], None] = field(default=None)
+    _trace_logger: Callable[[ProvideEvent], None] = field(default=None)
 
     def __post_init__(self):
-        self.trace_logger = self.trace_logger or self._default_trace_logger
+        self._trace_logger = self._trace_logger or self.default_trace_logger
         # self.trace_logger = self.trace_logger or RichTraceLogger()
+
+    @property
+    def trace_logger(self):
+        return self._trace_logger
 
     def __getstate__(self):
         raise NotImplementedError("MChildScope is not serializable")
@@ -310,7 +324,7 @@ class DependencyResolver:
         predefined = {"__final_target__"}
 
         @lru_cache()
-        def _memoized_deps(tgt: str,include_dynamic=False):
+        def _memoized_deps(tgt: str, include_dynamic=False):
             if tgt in predefined:
                 return []
             if tgt not in self.mapping:
@@ -323,27 +337,26 @@ class DependencyResolver:
 
         self.memoized_deps = _memoized_deps
 
-    def _dfs(self, tgt: str, visited: set[str] = None,include_dynamic=False):
+    def _dfs(self, tgt: str, visited: set[str] = None, include_dynamic=False):
         if visited is None:
             visited = set()
         if tgt in visited:
             return
         visited.add(tgt)
-        deps = self.memoized_deps(tgt,include_dynamic=include_dynamic)
+        deps = self.memoized_deps(tgt, include_dynamic=include_dynamic)
         yield tgt
         for dep in deps:
-            yield from self._dfs(dep, visited,include_dynamic=include_dynamic)
+            yield from self._dfs(dep, visited, include_dynamic=include_dynamic)
 
-    def required_dependencies(self, providable: Providable,include_dynamic=False) -> Set[str]:
+    def required_dependencies(self, providable: Providable, include_dynamic=False) -> Set[str]:
         tgt: Injected = self._to_injected(providable)
-        return set(chain(*[self._dfs(d,include_dynamic=include_dynamic) for d in tgt.dependencies()]))
+        return set(chain(*[self._dfs(d, include_dynamic=include_dynamic) for d in tgt.dependencies()]))
 
-    def purified_design(self,providable:Providable):
+    def purified_design(self, providable: Providable):
         from pinjected import providers
-        deps = self.required_dependencies(providable,include_dynamic=True)
-        deps = {k:self.mapping[k] for k in deps}
+        deps = self.required_dependencies(providable, include_dynamic=True)
+        deps = {k: self.mapping[k] for k in deps}
         return providers(**deps)
-
 
     def _dependency_tree(self, tgt: str, trace: list[str] = None) -> Result[Dict[str, Result], Exception]:
         trace = trace or [tgt]
@@ -567,10 +580,36 @@ def providable_to_injected(tgt: Providable) -> Injected:
 
 
 @dataclass
+class EventDistributor:
+    """
+    This class is intended to be a hub for a user to subscribe to events.
+    I actually hope use rx.Subjects for this purpose; however, their api changes once a year and I cannot ask user to rely on it.
+    Therefore, we just prepare callback system for the user.
+    The instance of this class can be retrieved via __pinjected_events__ in the dependency injection.
+    """
+    callbacks: List[Callable[[...], None]] = field(default_factory=list)
+    event_history: list[object] = field(default_factory=list)
+
+    def register(self, callback: Callable[[...], None]):
+        self.callbacks.append(callback)
+        for event in self.event_history:
+            callback(event)
+
+    def unregister(self, callback: Callable[[...], None]):
+        self.callbacks.remove(callback)
+
+    def emit(self, event: object):
+        self.event_history.append(event)
+        for callback in self.callbacks:
+            callback(event)
+
+
+@dataclass
 class MyObjectGraph(IObjectGraph):
     _resolver: DependencyResolver
     src_design: "Design"
     scope: IScope
+    event_distributor: EventDistributor = field(default_factory=EventDistributor)
 
     def __post_init__(self):
         assert isinstance(self.resolver, DependencyResolver) or self.resolver is None
@@ -584,11 +623,21 @@ class MyObjectGraph(IObjectGraph):
         return OGFactoryByDesign(self.src_design)
 
     @staticmethod
-    def root(design: "Design") -> "MyObjectGraph":
-        scope = MScope()
-        graph = MyObjectGraph(None, design, scope)
+    def root(design: "Design", trace_logger=None) -> "MyObjectGraph":
+        distributor = EventDistributor()
+
+        def _trace_logger(event):
+            distributor.emit(event)
+            if trace_logger is not None:
+                trace_logger(event)
+            else:
+                IScope.default_trace_logger(event)
+
+        scope = MScope(_trace_logger=_trace_logger)
+        graph = MyObjectGraph(None, design, scope, distributor)
         design = design.bind_instance(
-            session=graph
+            session=graph,
+            __pinjected_events__=graph.event_distributor,
         )
         resolver = DependencyResolver(design)
         graph._resolver = resolver
@@ -630,11 +679,12 @@ class MyObjectGraph(IObjectGraph):
         # logger.debug(f"DI blueprint resolution result:\n{pformat(resolved)}")
         return res
 
-    def child_session(self, overrides: "Design" = None):
+    def child_session(self, overrides: "Design" = None, trace_logger=None):
         if overrides is None:
             from pinjected import Design
             overrides = Design()
-        child_scope = MChildScope(self.scope, set(overrides.keys()))
+        child_scope = MChildScope(self.scope, set(overrides.keys()),
+                                  _trace_logger=trace_logger or self.scope.trace_logger)
         child_graph = MyObjectGraph(None, self.design + overrides, child_scope)
         child_resolver = self.resolver.child(lambda: child_graph, overrides)
         child_graph._resolver = child_resolver
@@ -652,26 +702,28 @@ class MyObjectGraph(IObjectGraph):
     def __repr__(self):
         return f"MyObjectGraph({self.design})"
 
-    def auto_sync(self,rejector=None):
-        return AutoSyncGraph(self,rejector)
+    def auto_sync(self, rejector=None):
+        return AutoSyncGraph(self, rejector)
 
 
 @dataclass
 class AutoSyncGraph:
     src: IObjectGraph
-    rejector:Callable[[Any],bool] = field(default=None)
+    rejector: Callable[[Any], bool] = field(default=None)
     """
     if rejector returns true for an item, it will not be awaited
     """
+
     def __post_init__(self):
         if self.rejector is None:
-            self.rejector = lambda x:False
+            self.rejector = lambda x: False
 
     def __getitem__(self, item):
         item = self.src[item]
         if not self.rejector(item) and inspect.isawaitable(item):
             async def waiter():
                 return await item
+
             # I need to distinguish if it's Var or not...
 
             return asyncio.run(waiter())
