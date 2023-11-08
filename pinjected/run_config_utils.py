@@ -40,13 +40,14 @@ import fire
 from cytoolz import memoize
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
+from snoop import snoop
 
 from pinjected import Injected, Design, injected_function
 from pinjected.di.ast import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
-#from pinjected.ide_supports.create_configs import create_idea_configurations
+# from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, IdeaRunConfiguration
 from pinjected.maybe_patch import patch_maybe
 from pinjected.run_helpers.config import ConfigCreationArgs
@@ -61,6 +62,7 @@ from pinjected.run_helpers.run_injected import run_injected
 safe_getattr = safe(getattr)
 
 patch_maybe()
+
 
 @injected_function
 def extract_runnables(
@@ -335,7 +337,6 @@ def make_sandbox_extra(tgt: ModuleVarSpec):
             return ""
 
 
-
 @injected_function
 def _make_sandbox_impl(
         default_design_path: str,
@@ -414,11 +415,15 @@ def create_runnable_pair(
         overrides: str = None,
         show_graph: bool = False
 ) -> Optional[RunnablePair]:
+    logger.info(f"creating runnable pair with {target},{design_path},{overrides}")
+    logger.info(f"main targets:{pformat(main_targets.keys())},{target}")
     tgt = main_targets[target]
     if design_path is None:
         design_path = default_design_paths[0]
     main_overrides = main_override_resolver(overrides)
     design = load_variable_by_module_path(design_path) + main_overrides
+    assert isinstance(design, Design), f"design at {design_path} must be Design, but got {design}"
+    logger.info(f"design:{design} at {design_path}")
     pair = RunnablePair(target=tgt, design=design)
     if show_graph:
         pair.save_html()
@@ -456,6 +461,8 @@ def main_override_resolver(query) -> Design:
     we can also try parsing it as json.
     :return:
     """
+    import json
+    from returns.pipeline import is_successful
     if isinstance(query, dict):
         return instances(**query)
     elif query is None:
@@ -470,12 +477,10 @@ def main_override_resolver(query) -> Design:
         if not Path(query).exists():
             raise ValueError(f"cannot find {query} for configuration.")
         return instances(**yaml.load(open(query), Loader=yaml.SafeLoader))
+    elif is_successful(safe(json.loads)(query)):
+        return instances(**json.loads(query))
     else:
-        try:
-            import json
-            return instances(**json.loads(query))
-        except:
-            raise ValueError(f"cannot parse {query} as json")
+        return ModuleVarPath(query).load()
 
 
 def load_variable_from_script(script_file: Path, varname: str):
@@ -543,7 +548,7 @@ def main():
     # we want each implementations to have design...
     # well, we can use python -m pinjected .... for these commands as well ,right?
     fire.Fire({
-        #'create_configurations': create_idea_configurations,
+        # 'create_configurations': create_idea_configurations,
         'run_injected': run_injected,
         'run_injected2': RunInjected,
         'run_with_kotlin': run_with_kotlin,
@@ -585,3 +590,7 @@ def var_path_to_file_path(project_root: Path, /, var_path: str) -> Path:
 
 if __name__ == '__main__':
     main()
+
+__meta_design__ = instances(
+    default_design_paths=["pinjected.run_config_utils.__meta_design__"]
+)

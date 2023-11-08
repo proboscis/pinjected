@@ -15,7 +15,7 @@ from pinjected.di.graph import IObjectGraph, MyObjectGraph
 
 from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
-#from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
+# from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
 from pinjected.di.monadic import getitem_opt
 from pinjected.graph_inspection import DIGraphHelper
 
@@ -251,24 +251,27 @@ class Design:
             )
         return res
 
-    def to_graph(self, modules=None, classes=None) -> IObjectGraph:
+    def to_graph(self, modules=None, classes=None, trace_logger=None) -> IObjectGraph:
         # So MyObjectGraph's session is still corrupt?
+        # TODO add special variables to monitor the state of this provider.
+        # __pinjected_events__ <= subject of events that are emitted by pinjected
+        # but I don't want to depend on rx, right?
         design = self + Design(
             modules=modules or [],
             classes=classes or []
         )
-        return MyObjectGraph.root(design)
+        return MyObjectGraph.root(design, trace_logger=trace_logger)
 
     def run(self, f, modules=None, classes=None):
         return self.to_graph(modules, classes).run(f)
 
-    def provide(self, target: Union[str, Type[T]], modules=None, classes=None) -> T:
+    def provide(self, target: Union[str, Type[T]], modules=None, classes=None, trace_logger=None) -> T:
         """
         :param target: provided name
         :param modules: modules to use for graph construction
         :return:
         """
-        return self.to_graph(modules=modules, classes=classes).provide(target, level=4)
+        return self.to_graph(modules=modules, classes=classes, trace_logger=trace_logger).provide(target, level=4)
 
     def copy(self):
         return self.__class__(
@@ -459,7 +462,7 @@ class Design:
         from pinjected.visualize_di import DIGraph
         return DIGraph(self)
 
-    def purify(self,target:"Providable"):
+    def purify(self, target: "Providable"):
         """
         given an injected, returns a minimized design which can provide the target.
         :param target:

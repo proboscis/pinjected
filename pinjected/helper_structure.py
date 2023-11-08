@@ -3,7 +3,7 @@ from loguru import logger
 from pathlib import Path
 from typing import Dict, List
 
-from pinjected import Design, Injected
+from pinjected import Design, Injected, instances
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 
@@ -59,7 +59,10 @@ class RunnablePair:
     design: Design
 
     def run(self):
-        return self.design.to_graph()[self.target]
+        logger.info(f"running {self.target}")
+        result = self.design.to_graph()[self.target]
+        logger.info(f"result: {result}")
+        return result
 
     def save_html(self, name: str = None, show=True):
         if name is None:
@@ -73,4 +76,6 @@ try:
 except ImportError:
     from pydantic import validator as field_validator
 
-
+__meta_design__ = instances(
+    default_design_paths=["pinjected.helper_structure.__meta_design__"]
+)
