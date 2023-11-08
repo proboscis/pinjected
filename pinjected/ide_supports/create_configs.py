@@ -76,7 +76,7 @@ my_design = instances(
     injected_to_idea_configs=injected_to_idea_configs,
     default_design_paths=lambda module_path, default_design_path: find_default_design_paths(module_path,
                                                                                             default_design_path),
-    project_root = lambda module_path: Path(get_project_root(module_path)),
+    project_root=lambda module_path: Path(get_project_root(module_path)),
     default_working_dir=lambda project_root: Some(str(project_root)),
 )
 
@@ -86,14 +86,25 @@ def create_idea_configurations(
         inspect_and_make_configurations,
         module_path,
         print_to_stdout,
-        /
+        /,
+        wrap_output_with_tag=True
 ):
     pinjected.global_configs.pinjected_TRACK_ORIGIN = False
     configs = inspect_and_make_configurations(module_path)
     pinjected.global_configs.pinjected_TRACK_ORIGIN = True
     logger.info(f"configs:{configs}")
+
+    # since stdout is contaminated by many other modules,
+    # We need to think of other way to pass information.
+    # should I use a tempfile?
+    # or, maybe we can use a separator... like <pinjected>...</pinjected>
+    # so that the caller must parse the output.
+
     if print_to_stdout:
-        print(json.dumps(asdict(configs)))
+        data_str = (json.dumps(asdict(configs)))
+        if wrap_output_with_tag:
+            data_str = f"<pinjected>{data_str}</pinjected>"
+        print(data_str)
     else:
         return configs
 
@@ -112,7 +123,8 @@ def get_filtered_signature(func):
 
     # Filter out positional-only parameters
     filtered_params = {
-        name: param for name, param in original_signature.parameters.items() if param.kind != inspect.Parameter.POSITIONAL_ONLY
+        name: param for name, param in original_signature.parameters.items() if
+        param.kind != inspect.Parameter.POSITIONAL_ONLY
     }
 
     # Create a new signature with the filtered parameters
@@ -160,14 +172,16 @@ def list_completions(
     # the bindings are mostly PartialInjectedFunction and its proxy.
 
     completions = [key_to_completion(key) for key in helper.total_mappings().keys()]
-    print(json.dumps(completions))
+    data_str=json.dumps(completions)
+    data_str = "<pinjected>"+data_str+"</pinjected>"
+    print(data_str)
+
 
 @instance
 def design_metadata(
         default_design_paths: list[str]
 ):
-
-    d:Design = ModuleVarPath(default_design_paths[0]).load()
+    d: Design = ModuleVarPath(default_design_paths[0]).load()
     # we load design, so we need to be careful with not to running things...
     """
     protocol->
@@ -181,10 +195,10 @@ def design_metadata(
     }
     structure = list[meta]
     """
-    helper= DIGraphHelper(d)
+    helper = DIGraphHelper(d)
     metas = []
-    for k,bind in helper.total_bindings().items():
-        match bind.metadata.bind(lambda m:m.code_location):
+    for k, bind in helper.total_bindings().items():
+        match bind.metadata.bind(lambda m: m.code_location):
             case Some(ModuleVarPath(qualified_name)):
                 metas.append(dict(
                     key=k,
@@ -193,7 +207,7 @@ def design_metadata(
                         value=qualified_name
                     )
                 ))
-            case Some(ModuleVarLocation(fp,line,col)):
+            case Some(ModuleVarLocation(fp, line, col)):
                 metas.append(dict(
                     key=k,
                     location=dict(
@@ -203,7 +217,6 @@ def design_metadata(
                 ))
     logger.info(f"metas:{metas}")
     print(json.dumps(metas))
-
 
 # TODO implement a provider of documentations
 # TODO implement a provider for jump to definition, s that I can click on the injected variables to see the definition.
