@@ -175,7 +175,11 @@ class IScope:
             case ProvideEvent(trace, "provide", data=[*items]):
                 logger.info(f"{' <- '.join(trace)} = {pformat(items)[:100]}")
             case ProvideEvent(trace, "provide", data=data):
-                logger.info(f"{' <- '.join(trace)} = {str(data)[:100]}")
+                try:
+                    buf = str(data)[:100]
+                    logger.info(f"{' <- '.join(trace)} = {buf}")
+                except Exception as e:
+                    logger.error(f"failed to log {trace} with {e}, while providing {' <- '.join(trace)}")
 
 
 def trace_string(trace: list[str]):

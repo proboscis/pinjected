@@ -131,9 +131,14 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                 return applied
             case Attr(Expr() as data, str() as attr_name):
                 injected_data = _eval(data)
+                def try_get_attr(x):
+                    try:
+                        return getattr(x, attr_name)
+                    except AttributeError as e:
+                        raise RuntimeError(f"failed to get attribute {attr_name} from {x} in AST:{data}") from e
                 return app.map(
                     injected_data,
-                    lambda x: getattr(x, attr_name)
+                    try_get_attr
                 )
 
             case GetItem(Expr() as data, Expr() as key):
