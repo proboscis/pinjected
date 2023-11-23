@@ -8,6 +8,7 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable
 
+from frozendict import frozendict
 from loguru import logger
 from makefun import create_function
 from returns.result import safe
@@ -19,6 +20,24 @@ T, U = TypeVar("T"), TypeVar("U")
 
 A = TypeVar("A")
 B = TypeVar("B")
+
+INJECTED_CONTEXT = frozendict()
+"""
+This is a global context for injected.
+This context is copied on the creation time of an Injected.
+This is useful for passing the context to the Injected instance.
+However, be careful that you pass correct context.
+For example, whe using with DelegatedVar, do keep the context in DelegatedVar and then pass the context to InjectedInstance at the end.
+Also, if beware that the context will not be propagated for operations.
+examples:
+with InjectedContext({"a":1}):
+    a = Injected.by_name("a")
+    b = a.map(lambda x:x+1) # here b will have the context {"a":1}, so it will return 2
+b = a.map(lambda x:x+1) # here the map function will not have the context {"a":1}, so it will return undefined.
+to mitigate this, we need modify all the operators to propagate the parent context, which is not easy.
+Okey, so let's implement this and be aware that the map function will erase it.
+So the use needs to be careful to add context at the very end, for running purposes.
+"""
 
 
 @dataclass
@@ -438,6 +457,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return MZippedInjected(*srcs)
 
     @staticmethod
+    def tuple(*srcs: "Injected"):
+        return Injected.mzip(*srcs).map(lambda t: tuple(t))
+
+    @staticmethod
     def list(*srcs: "Injected"):
         return Injected.mzip(*srcs).map(list)
 
@@ -688,11 +711,13 @@ class IAsyncDict(abc.ABC):
     async def contains(self, key):
         pass
 
+
 async def auto_await(tgt):
     if inspect.isawaitable(tgt):
         return await tgt
-    else :
+    else:
         return tgt
+
 
 @dataclass
 class AsyncInjectedCache(Injected[T]):

@@ -309,8 +309,14 @@ def providers(**kwargs):
 
 
 def add_code_locations(design, kwargs, frame):
-    locs = get_code_locations(list(kwargs.keys()), frame)
-    metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
+    try:
+        locs = get_code_locations(list(kwargs.keys()), frame)
+        metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
+    except OSError as ose:
+        from loguru import logger
+        logger.warning(f"failed to get code locations:{ose}")
+        metas = dict()
+
     return design.add_metadata(**metas)
 
 
@@ -336,6 +342,7 @@ def try_parse(source: str, trials: int = 3) -> ast.AST:
 
 def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocation]:
     parent_frame = frame.f_back
+    # here, we fail to get locations if its in repl
     lines, start_line = inspect.getsourcelines(parent_frame)
     source = ''.join(lines)
     # logger.info(f"parsing:{source}")
