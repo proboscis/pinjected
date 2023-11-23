@@ -146,6 +146,9 @@ def list_completions(
         {name,description,tail}
     ]
     """
+    if not default_design_paths:
+        print(f"<pinjected>{json.dumps([])}</pinjected>")
+        return
     helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
     total_mappings: Mapping[str, Injected] = helper.total_mappings()
     logger.info(f"total_mappings:{total_mappings}")

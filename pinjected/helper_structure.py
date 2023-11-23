@@ -6,6 +6,7 @@ from typing import Dict, List
 from pinjected import Design, Injected, instances
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
+from pinjected.module_var_path import load_variable_by_module_path
 
 
 @dataclass
@@ -51,6 +52,11 @@ class MetaContext:
             trace=designs,
             accumulated=res
         )
+    @property
+    def final_design(self):
+        acc = self.accumulated
+        design = load_variable_by_module_path(acc.provide('default_design_paths')[0])
+        return design + acc.provide('overrides')
 
 
 @dataclass

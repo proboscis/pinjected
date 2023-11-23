@@ -1,4 +1,5 @@
 import inspect
+from contextlib import contextmanager
 from typing import Union, Callable
 
 from returns.maybe import Some
@@ -183,7 +184,7 @@ def injected_method(f):
 class CachedAwaitable:
     def __init__(self, coro):
         from loguru import logger
-        #logger.warning(f'CachedAwaitable created with {coro}')
+        # logger.warning(f'CachedAwaitable created with {coro}')
         self.coro = coro
         self._cache = None
         self._has_run = False
@@ -194,7 +195,7 @@ class CachedAwaitable:
 
     async def _get_result(self):
         from loguru import logger
-        #logger.warning(f"accessing cached coroutine:{self.coro}")
+        # logger.warning(f"accessing cached coroutine:{self.coro}")
         async with self._lock:
             if not self._has_run:
                 try:
@@ -221,3 +222,12 @@ def cached_coroutine(coro_func):
 
 instance = injected_instance
 
+
+@contextmanager
+def reload(*targets: str):
+    """
+    A stub marker decorator for pinjected to reload the target function on console run.
+    :param targets:
+    :return:
+    """
+    yield
