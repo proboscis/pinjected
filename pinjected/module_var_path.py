@@ -2,6 +2,7 @@ import ast
 import importlib
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -63,6 +64,9 @@ def load_variable_by_module_path(full_module_path):
     module = importlib.import_module(module_path)
 
     # Retrieve the variable using getattr()
+    if not hasattr(module, variable_name):
+        logger.warning(f"Module {module_path} at {module.__file__} does not have variable {variable_name}. src = \n{Path(module.__file__).read_text()}")
+        raise RuntimeError(f"Module {module_path} at {module.__file__} does not have variable {variable_name}. but has {dir(module)}")
     variable = getattr(module, variable_name)
 
     logger.info(f"loaded {full_module_path}")

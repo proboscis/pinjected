@@ -744,3 +744,20 @@ For example:
 ```bash
 pinjected run_injected visualize pinjected.test_package.child.module1.test_viz_target pinjected.test_package.child.module1.viz_target_design
 ```
+
+
+# Advanced Features
+
+## Running an injected variable from command line
+
+### run
+
+```bash
+pinjected run 
+```
+
+### meta_run
+
+### visualize
+
+
