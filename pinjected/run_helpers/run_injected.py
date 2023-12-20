@@ -1,3 +1,5 @@
+import inspect
+from functools import wraps
 from pathlib import Path
 
 from pprint import pformat
@@ -15,6 +17,7 @@ from pinjected.helpers import get_design_path_from_var_path
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.notification import notify
+from pinjected.run_helpers.pinjected_environments import load_user_default_design, load_user_overrides_design
 
 
 def run_injected(
@@ -84,6 +87,8 @@ def run_anything(
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
 
+    # here we load the defaults and overrides from the user's environment
+    design = load_user_default_design() + design + load_user_overrides_design()
 
     res = None
     try:
@@ -113,10 +118,20 @@ def run_anything(
             if not return_result:
                 logger.info(f"run_injected get result:\n{pformat(res)}")
         elif cmd == 'fire':
+            return_result = True
             res = design.provide(var)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
             logger.info(f"run_injected fire result:\n{res}")
+            if inspect.iscoroutinefunction(res) or (hasattr(res,'__is_async__') and res.__is_async__):
+                logger.info(f'{res} is a coroutine function, wrapping it with asyncio.run')
+                src = res
+                #@wraps(res)
+                def synced(*args, **kwargs):
+                    return asyncio.run(src(*args, **kwargs))
+                res = synced
+            else:
+                logger.info(f"{res} is not a coroutine function.")
         elif cmd == 'visualize':
             from loguru import logger
             logger.info(f"visualizing {var_path} with design {design_path}")

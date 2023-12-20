@@ -549,6 +549,7 @@ def main():
     # well, we can use python -m pinjected .... for these commands as well ,right?
     fire.Fire({
         # 'create_configurations': create_idea_configurations,
+        'run': run_injected,
         'run_injected': run_injected,
         'run_injected2': RunInjected,
         'run_with_kotlin': run_with_kotlin,

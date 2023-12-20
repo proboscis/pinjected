@@ -37,7 +37,11 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
             return
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except ValueError as e:
+            logger.error(f"cannot exec module {module_name} at {file_path} due to {e}, \n source=\n{file_path.read_text()}")
+            raise e
     module = sys.modules[module_name]
     if hasattr(module, attr_name):
         yield ModuleVarSpec(
