@@ -312,6 +312,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 func_gets_called_after_injection_impl,
                 doc=original_function.__doc__,
             )
+            new_func.__is_async__ = inspect.iscoroutinefunction(original_function)
             __doc__ = original_function.__doc__
             __skeleton__ = f"""def {new_func_sig}:
     \"\"\"
@@ -591,10 +592,10 @@ class ConditionalInjected(Injected):
     false: Injected
 
     def dependencies(self) -> Set[str]:
-        return self.condition.dependencies()
+        return self.condition.dependencies() | {"session"}
 
     def get_provider(self):
-        def task(session: "IObjectGraph", condition: bool):
+        def task(condition, session: "IObjectGraph"):
             if condition:
                 return session[self.true]
             else:
@@ -605,7 +606,7 @@ class ConditionalInjected(Injected):
     def dynamic_dependencies(self) -> Set[str]:
         return self.condition.dynamic_dependencies() | \
             self.true.dynamic_dependencies() | \
-            self.false.dynamic_dependencies()
+            self.false.dynamic_dependencies() | {"session"}
 
 
 @dataclass

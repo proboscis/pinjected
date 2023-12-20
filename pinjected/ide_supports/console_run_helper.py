@@ -116,7 +116,7 @@ def extract_with_block_structure(source_code):
     return visitor.result
 
 
-def extract_assignments_with_annotations(source_code):
+def extrract_assignments(source_code):
     """
     Extract assignment statements from the given Python source code.
     Returns a dictionary with variable names as keys and the source code of the assigned value as values.
@@ -186,11 +186,11 @@ def generate_code_with_reload(
     imports = func_table['imports']
     imports = '\n'.join(imports)
     func_defs = '\n'.join(funcs_to_reload)
-    assignments: dict[str, str] = extract_assignments_with_annotations(source)
+    assignments: dict[str, str] = extrract_assignments(source)
     # logger.info(pformat(assignments))
 
     """
-    we need not only the accumulated, but also the default design
+    How can I add the child session?
     """
     code = f"""
 if '__graph__' not in globals():
