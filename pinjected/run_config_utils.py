@@ -42,7 +42,7 @@ from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 from snoop import snoop
 
-from pinjected import Injected, Design, injected_function
+from pinjected import Injected, Design, injected_function, Designed
 from pinjected.di.ast import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
@@ -57,7 +57,6 @@ from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_pat
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
 from pinjected.run_config_utils_v2 import RunInjected
 
-from pinjected.run_helpers.run_injected import run_injected
 
 safe_getattr = safe(getattr)
 
@@ -117,7 +116,10 @@ def extract_args_for_runnable(
             args = ['get', tgt.var_path, ddp]
         case (Injected(), Failure()):
             args = ['get', tgt.var_path, ddp]
-            logger.warning(f"using get for {tgt.var_path} because it has no __runnable_metadata__")
+            logger.warning(f"using get for {tgt.var_path} (type Injected) because it has no __runnable_metadata__")
+        case (Designed(),Failure()):
+            args = ['get', tgt.var_path, ddp]
+            logger.warning(f"using get for {tgt.var_path} (type Designed) because it has no __runnable_metadata__")
         case (DelegatedVar(), _):
             args = ['get', tgt.var_path, ddp]
             logger.warning(f"using get for {tgt.var_path} because it has no __runnable_metadata__")
@@ -547,6 +549,7 @@ def main():
     # maybe we should switch these commands by Injected, right?
     # we want each implementations to have design...
     # well, we can use python -m pinjected .... for these commands as well ,right?
+    from pinjected.run_helpers.run_injected import run_injected
     fire.Fire({
         # 'create_configurations': create_idea_configurations,
         'run': run_injected,
@@ -560,6 +563,7 @@ def main():
 
 def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
     pre_args = conf.arguments[1:]
+    from pinjected.run_helpers.run_injected import run_injected
     return run_injected(*pre_args, return_result=True, *args, **kwargs)
 
 
