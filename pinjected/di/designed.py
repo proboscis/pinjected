@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar, Callable, Union
 
+from pinjected.di.proxiable import DelegatedVar
+
 T = TypeVar("T")
 
 
@@ -28,10 +30,12 @@ class Designed(Generic[T], ABC):
     def bind(target: Union["Injected"]):
         from pinjected import Injected
         from pinjected.di.util import EmptyDesign
-        if isinstance(target, Callable):
-            return Designed.bind(Injected.bind(target))
-        if isinstance(target, Injected):
+        if isinstance(target, DelegatedVar):
+            return PureDesigned(EmptyDesign, Injected.ensure_injected(target))
+        elif isinstance(target, Injected):
             return PureDesigned(EmptyDesign, target)
+        elif isinstance(target, Callable):
+            return Designed.bind(Injected.bind(target))
         else:
             raise TypeError("target must be a subclass of Injected")
 
