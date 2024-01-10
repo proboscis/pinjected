@@ -435,16 +435,16 @@ This means that we can chain as many injected functions as we want, and the depe
 Injected can be used as a provider function in a design.
 
 ```python
-from pinjected.di.util import Injected, instances, providers
-from pinjected import injected, injected_instance
+from pinjected.di.util import Injected, instances, providers, Design
+from pinjected import injected, instance
 
 
-@injected_instance
+@instance
 def d_plus_one(d):
     return d + 1
 
 
-# you can use injected_instance as decorator when you don't need any non_injected arguments.
+# you can use instance as decorator when you don't need any non_injected arguments.
 # now get_d_plus_one is Injected[int], so an integer will be created when it is injected by DI.
 # don't forgeet to add slash in the argument list, or the arguments will not be injected.
 @injected
@@ -476,10 +476,11 @@ Suppose you have a provider function already as follows:
 ```python
 def provide_c(a,b):# you dont have to prefix this function name with "provide", but I suggest you use some naming convention to find this provider later on.
     return a+" "+b
-d = Design().bind_instance(
+
+d = instances(
     a = "my",
     b = "world"
-).bind_provider(
+) + providers(
     c=provide_c
 )
 ```
@@ -488,13 +489,13 @@ You can do as follows:
 ```python
 from pinjected.di.util import Injected
 overriden:Injected = Injected.bind(provide_c,a=Injected.pure("hello"))
-d2 = d.bind_provider(
+d2 = d + providers(
     c= overriden
 )
 d.provide("c") == "my world"
 d2.provide("c") == "hello world"
 ```
-so that a can be manually injected only for "c".
+so that "a" can be manually injected only for "c".
 Injected.bind takes a function and kwargs. kwargs will be used for overriding the parameter of given function.
 Overriding value must be an instance of Injected. For pure instance, use Injected.pure. If you want to give a provider function to be used for the function, use Injected.bind.
 ```python
@@ -528,12 +529,12 @@ python -m pinjected <path of a Injected variable> <path of a Design variable or 
 - Design Path: `your.package.design.name`
 - Optional Overrides:
 ```
-python -m pinjected my.package.injected_instance --name hello --yourconfig anystring
+python -m pinjected my.package.instance --name hello --yourconfig anystring
 ```
 This CLI will parse any additional keyword arguments into a call of `instances` internally to be appended to the design running this injected instance.
 Which is equivalent to running following script:
 ```
-from my.package import injected_instance
+from my.package import instance
 design = instances(
     name='dummy',
     yourconfig='dummy'
@@ -543,7 +544,7 @@ design = instances(
     yourconfig = 'anystring'
 )
 
-design.provide(injected_instance)
+design.provide(instance)
 ```
 # IDE Support
 By installing a plugin to IDE, you can directly run the Injected variable by clicking a `Run` button associated with the Injected variable declaration line inside IDE.
@@ -560,26 +561,26 @@ Compatible with dill and cloudpickle as long as the bound objects are picklable.
 
 ```python
 from pinjected.di.util import Injected, instances, providers
-from pinjected import injected, injected_instance
+from pinjected import injected, instance
 from dataclasses import dataclass
 
 
-@injected_instance
+@instance
 def optimizer(learning_rate):
     return Adam(lr=learning_rate)
 
 
-@injected_instance
+@instance
 def dataset(batch_size, image_w):
     return MyDataset(batch_size, image_w)
 
 
-@injected_instance
+@instance
 def model():
     return Sequential()
 
 
-@injected_instance
+@instance
 def loss_calculator():
     return MyLoss()
 
