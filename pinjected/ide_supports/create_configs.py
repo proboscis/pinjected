@@ -32,6 +32,7 @@ def run_with_meta_context(
         var_path: str,
         context_module_file_path: str,
         design_path: str = None,
+        # TODO add overrides_path
         **kwargs
 ):
     """
@@ -114,7 +115,8 @@ def list_injected_keys(
         default_design_paths: list[str]
 ):
     helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
-    print(json.dumps(sorted(list(helper.total_mappings().keys()))))
+    data_str = json.dumps(sorted(list(helper.total_mappings().keys())))
+    print(data_str)
 
 
 def get_filtered_signature(func):
@@ -147,7 +149,8 @@ def list_completions(
     ]
     """
     if not default_design_paths:
-        print(f"<pinjected>{json.dumps([])}</pinjected>")
+        dat_str = f"<pinjected>{json.dumps([])}</pinjected>"
+        print(dat_str)
         return
     helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
     total_mappings: Mapping[str, Injected] = helper.total_mappings()
@@ -175,8 +178,8 @@ def list_completions(
     # the bindings are mostly PartialInjectedFunction and its proxy.
 
     completions = [key_to_completion(key) for key in helper.total_mappings().keys()]
-    data_str=json.dumps(completions)
-    data_str = "<pinjected>"+data_str+"</pinjected>"
+    data_str = json.dumps(completions)
+    data_str = "<pinjected>" + data_str + "</pinjected>"
     print(data_str)
 
 
@@ -219,7 +222,9 @@ def design_metadata(
                     )
                 ))
     logger.info(f"metas:{metas}")
-    print(json.dumps(metas))
+    data_str = json.dumps(metas)
+    data_str = "<pinjected>" + data_str + "</pinjected>"
+    print(data_str)
 
 # TODO implement a provider of documentations
 # TODO implement a provider for jump to definition, s that I can click on the injected variables to see the definition.
