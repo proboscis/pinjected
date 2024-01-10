@@ -7,7 +7,7 @@ from pinjected.run_helpers.run_injected import run_injected
 def get_injected(
         var_path: str,
         design_path: str = None,
-        _overrides_: str = None,
+        overrides: str = None,
         **kwargs
 ):
     """
@@ -27,7 +27,7 @@ def get_injected(
     """
     # TODO parse overrides
     instance_overrides = instances(**kwargs)
-    overrides = parse_overrides(_overrides_)
+    overrides = parse_overrides(overrides)
     overrides += instance_overrides
     return run_injected("get", var_path, design_path, return_result=True, overrides=overrides)
 
