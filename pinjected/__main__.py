@@ -1,6 +1,6 @@
-from pinjected import instances, Design, Injected, providers
+from pinjected import instances, Design, Injected
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
 
 
@@ -26,31 +26,10 @@ def get_injected(
 
     """
     # TODO parse overrides
-    # TODO parse kwargs from cli.
-
-    kwargs_overrides = parse_kwargs_as_design(**kwargs)
+    instance_overrides = instances(**kwargs)
     overrides = parse_overrides(overrides)
-    overrides += kwargs_overrides
+    overrides += instance_overrides
     return run_injected("get", var_path, design_path, return_result=True, overrides=overrides)
-
-
-def parse_kwargs_as_design(**kwargs):
-    """
-    When a value is in '{pkg.varname}' format, we import the variable and use it as the value.
-    """
-    res = instances()
-    for k, v in kwargs.items():
-        if isinstance(v, str) and v.startswith('{') and v.endswith('}'):
-            v = v[1:-1]
-            loaded = load_variable_by_module_path(v)
-            res += providers(
-                **{k: loaded}
-            )
-        else:
-            res += instances(
-                **{k: v}
-            )
-    return res
 
 
 def parse_overrides(overrides) -> Design:
