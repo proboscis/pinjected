@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pinjected"
-version = "0.1.156"
+version = "0.1.166"
 description = "Immutable Dependency Injection for Python."
 authors = [ "proboscis <nameissoap@gmail.com>",]
 license = "MIT"
@@ -23,6 +23,9 @@ networkx = "^3.1"
 pyvis = "^0.3.2"
 makefun = "^1.15.1"
 loguru = "^0.7.0"
+rich = "*"
+pydantic = "^2.5.3"
+snoop = "^0.4.3"
 
 [tool.poetry.scripts]
 pinjected = "pinjected.run_config_utils:main"
