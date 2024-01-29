@@ -171,9 +171,6 @@ def injected_to_idea_configs(
     ddps += default_design_paths
     results = defaultdict(list)
 
-    if not ddps:
-        logger.warning(f"no default design path provided for {tgt.var_path}")
-
     for ddp in ddps:
         args = extract_args_for_runnable(tgt, ddp, meta)
         # this, viz_branch should not be created by this function, but an injected function.
@@ -193,10 +190,12 @@ def injected_to_idea_configs(
             results[name].append(IdeaRunConfiguration(**viz_config))
         else:
             logger.warning(f"skipping {tgt.var_path} because it has no __runnable_metadata__")
+    if not ddps:
+        logger.warning(f"no default design path provided for {tgt.var_path}")
     try:
         cfgs = custom_idea_config_creator(tgt)
         assert cfgs is not None, f"custom_idea_config_creator {custom_idea_config_creator} returned None for {tgt}. return [] if you have no custom configs."
-        for configs in cfgs:
+        for configs in custom_idea_config_creator(tgt):
             results[name].append(configs)
     except Exception as e:
         logger.warning(f"Failed to create custom idea configs for {tgt} because {e}")
