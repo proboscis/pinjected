@@ -10,7 +10,7 @@ import asyncio
 from typing import Coroutine, Awaitable
 
 from loguru import logger
-from returns.result import safe, Result
+from returns.result import safe
 
 from pinjected import instances, Injected, Design, providers, Designed
 from pinjected.di.proxiable import DelegatedVar
@@ -75,8 +75,7 @@ def run_anything(
         meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
         if not isinstance(meta, dict):
             meta = {}
-
-        meta_overrides = meta.get("overrides", instances())
+        overrides += meta.get("overrides", instances())
 
         meta_cxt: MetaContext = MetaContext.gather_from_path(ModuleVarPath(var_path).module_file_path)
         if design_path is None:
@@ -94,9 +93,9 @@ def run_anything(
                 var = var.internal_injected
 
         meta_design = instances(overrides=instances()) + meta_cxt.accumulated
-        meta_overrides = meta_design.provide("overrides") + meta_overrides
+        overrides += meta_design.provide("overrides")
 
-    design += (meta_overrides + overrides)
+    design += overrides
     logger.info(f"running target:{var} with {design_path} + {overrides}")
     logger.debug(design.keys())
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
@@ -185,8 +184,7 @@ def find_dot_pinjected():
     return home_dot_pinjected, current_dot_pinjected
 
 
-@safe
-def load_design_from_paths(paths, design_name) -> Result:
+def load_design_from_paths(paths, design_name) -> Design:
     res = instances()
     for path in paths:
         if path.exists():
@@ -207,11 +205,9 @@ def load_user_default_design():
     :return:
     """
     design_path = os.environ.get('PINJECTED_DEFAULT_DESIGN_PATH', "")
-    return load_design_from_paths(find_dot_pinjected(), "default_design").value_or(instances()) + _load_design(
-        design_path).value_or(instances())
+    return load_design_from_paths(find_dot_pinjected(), "default_design") + _load_design(design_path)
 
 
-@safe
 def _load_design(design_path):
     if design_path == "":
         return Design()
@@ -239,5 +235,4 @@ def load_user_overrides_design():
     :return:
     """
     design_path = os.environ.get('PINJECTED_OVERRIDE_DESIGN_PATH', "")
-    return load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(instances()) + _load_design(
-        design_path).value_or(instances())
+    return load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path)
