@@ -1,10 +1,10 @@
 from pinjected import instances, Design, Injected, providers
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
-from pinjected.run_helpers.run_injected import run_injected
+from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design
 
 
-def get_injected(
+def run(
         var_path: str,
         design_path: str = None,
         overrides: str = None,
@@ -32,6 +32,16 @@ def get_injected(
     overrides = parse_overrides(overrides)
     overrides += kwargs_overrides
     return run_injected("get", var_path, design_path, return_result=True, overrides=overrides)
+
+def check_config():
+    from loguru import logger
+    from pprint import pformat
+    default:Design = load_user_default_design()
+    overrides = load_user_overrides_design()
+    logger.info(f"displaying default design bindings:")
+    logger.info(default.table_str())
+    logger.info(f"displaying overrides design bindings:")
+    logger.info(overrides.table_str())
 
 
 def parse_kwargs_as_design(**kwargs):
@@ -76,4 +86,7 @@ def parse_overrides(overrides) -> Design:
 if __name__ == '__main__':
     import fire
 
-    fire.Fire(get_injected)
+    fire.Fire(dict(
+        run=run,
+        check_config=check_config
+    ))
