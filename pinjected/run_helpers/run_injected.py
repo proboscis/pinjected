@@ -197,7 +197,7 @@ def load_design_from_paths(paths, design_name) -> Result:
     return res
 
 
-def load_user_default_design():
+def load_user_default_design()->Design:
     """
     This function loads user specific environment data from a python file.
     the syntax is :
