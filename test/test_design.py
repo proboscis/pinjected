@@ -33,10 +33,12 @@ def test_injected_proxy():
 
 def test_design():
     from loguru import logger
+    def raise_error():
+        raise RuntimeError("dummy error")
     d = instances(
         x = 0,
-        x0 = 0
     ) + providers(
+        x0 = raise_error,
         y = lambda x: x + 1,
         z = lambda y: y + 1,
         x1 = lambda x0: x0 + 1,
