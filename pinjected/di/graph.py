@@ -487,7 +487,7 @@ class DependencyResolver:
                     try:
                         return provider(*resolved_deps)
                     except Exception as e:
-                        logger.error(f"failed to provide {current_tgt} with {resolved_deps}.\n {' -> '.join(current_trace)} \n -> {e}")
+                        logger.error(f"failed to provide {current_tgt} from deps:{resolved_deps}.\n Dependencies: {' -> '.join(current_trace)} \n Exception: {e}")
                         raise e
 
                 # Using scope.provide to get or create the resource
