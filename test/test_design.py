@@ -1,5 +1,6 @@
 from pinjected import Design, Injected, EmptyDesign, instances, providers
 from pinjected.di.designed import Designed
+from pinjected.di.graph import MyObjectGraph
 
 
 def test_designed():
@@ -31,14 +32,28 @@ def test_injected_proxy():
     assert design.provide("z") == 2
 
 def test_design():
+    from loguru import logger
     d = instances(
-        x = 0
+        x = 0,
+        x0 = 0
     ) + providers(
         y = lambda x: x + 1,
-        z = lambda y: y + 1
+        z = lambda y: y + 1,
+        x1 = lambda x0: x0 + 1,
+        x2 = lambda x1: x1 + 1,
+        x3 = lambda x2: x2 + 1,
+        x4 = lambda x3: x3 + 1,
+        x5 = lambda x4: x4 + 1,
+        x6 = lambda x5: x5 + 1,
+        x7 = lambda x6: x6 + 1,
     )
-    g = d.to_graph()
+    g:MyObjectGraph = d.to_graph()
+    logger.info(g.scope)
     assert g['z'] == 2
+    logger.info(g.scope)
+    assert g['x7'] == 7
+    logger.info(g.scope)
+
 
 
 if __name__ == '__main__':

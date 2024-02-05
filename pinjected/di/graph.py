@@ -419,32 +419,90 @@ class DependencyResolver:
                 visited = set()
                 return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
 
+    # def _provide(self, tgt: str, scope: IScope, trace: list[str] = None):
+    #     if trace is None:
+    #         trace = []
+    #     assert isinstance(tgt, str)
+    #     from loguru import logger
+    #
+    #     try:
+    #         deps = [self._provide(d, scope, trace + [d]) for d in self.memoized_deps(tgt)]
+    #     except NoMappingError as ke:
+    #         logger.error(f"failed to find dependency for {tgt} in {' -> '.join(trace)}")
+    #         raise DependencyResolutionError(
+    #             f"failed to find dependency for {tgt} in {' -> '.join(trace)}",
+    #             [DependencyResolutionFailure(ke.key, trace, ke)]
+    #         )
+    #
+    #     def provider_impl():
+    #         provider = self.memoized_provider(tgt)
+    #         try:
+    #             res = provider(*deps)
+    #         except Exception as e:
+    #             logger.error(f"failed to provide {tgt} with {deps}.\n {' -> '.join(trace)} \n -> {e}")
+    #             raise e
+    #         return res
+    #
+    #     res = scope.provide(tgt, provider_impl, trace)
+    #     return res
+
     def _provide(self, tgt: str, scope: IScope, trace: list[str] = None):
-        if trace is None:
-            trace = []
-        assert isinstance(tgt, str)
+        from collections import deque
         from loguru import logger
 
-        try:
-            deps = [self._provide(d, scope, trace + [d]) for d in self.memoized_deps(tgt)]
-        except NoMappingError as ke:
-            logger.error(f"failed to find dependency for {tgt} in {' -> '.join(trace)}")
-            raise DependencyResolutionError(
-                f"failed to find dependency for {tgt} in {' -> '.join(trace)}",
-                [DependencyResolutionFailure(ke.key, trace, ke)]
-            )
+        if trace is None:
+            trace = []
 
-        def provider_impl():
-            provider = self.memoized_provider(tgt)
+        assert isinstance(tgt, str)
+
+        # Initialize a stack for dependency resolution
+        stack = deque([(tgt, trace, None)])
+        results = {}
+
+        while stack:
+            current_tgt, current_trace, resolved_deps = stack.pop()
+
+            if current_tgt in results:
+                # Dependency already resolved
+                continue
+
             try:
-                res = provider(*deps)
-            except Exception as e:
-                logger.error(f"failed to provide {tgt} with {deps}.\n {' -> '.join(trace)} \n -> {e}")
-                raise e
-            return res
+                # If dependencies are not yet resolved, find them
+                if resolved_deps is None:
+                    deps = self.memoized_deps(current_tgt)
+                    unresolved_deps = [d for d in deps if d not in results]
 
-        res = scope.provide(tgt, provider_impl, trace)
-        return res
+                    if unresolved_deps:
+                        # If there are unresolved dependencies, push them onto the stack
+                        stack.append((current_tgt, current_trace, None))
+                        for dep in unresolved_deps:
+                            stack.append((dep, current_trace + [dep], None))
+                        continue
+
+                # All dependencies for current_tgt are resolved
+                resolved_deps = resolved_deps or [results[d] for d in self.memoized_deps(current_tgt)]
+
+                def provider_impl():
+                    provider = self.memoized_provider(current_tgt)
+                    try:
+                        return provider(*resolved_deps)
+                    except Exception as e:
+                        logger.error(f"failed to provide {current_tgt} with {resolved_deps}.\n {' -> '.join(current_trace)} \n -> {e}")
+                        raise e
+
+                # Using scope.provide to get or create the resource
+                res = scope.provide(current_tgt, provider_impl, current_trace)
+                results[current_tgt] = res
+
+            except NoMappingError as ke:
+                logger.error(f"failed to find dependency for {current_tgt} in {' -> '.join(current_trace)}")
+                raise DependencyResolutionError(
+                    f"failed to find dependency for {current_tgt} in {' -> '.join(current_trace)}",
+                    [DependencyResolutionFailure(ke.key, current_trace, ke)]
+                )
+
+        return results[tgt]
+
 
     def provide(self, providable: Providable, scope: IScope):
         # I need to make this based on Threaded Future rather than asyncio
@@ -465,7 +523,7 @@ class DependencyResolver:
 
             def get_result():
                 deps = tgt.dependencies()
-                values = [self._provide(d, scope, [key, d]) for d in tgt.dependencies()]
+                values = [self._provide(d,scope, [key, d]) for d in tgt.dependencies()]
                 kwargs = dict(zip(deps, values))
                 try:
                     return provider(**kwargs)
@@ -480,7 +538,7 @@ class DependencyResolver:
 
         match tgt:
             case InjectedByName(key):
-                res = self._provide(key, scope, trace=[key])
+                res = self._provide(key,scope, trace=[key])
             case EvaledInjected(value, ast) as e:
                 of = ast.origin_frame
                 assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
