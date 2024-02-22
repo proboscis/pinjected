@@ -547,6 +547,61 @@ design = instances(
 )
 
 design.provide(instance)
+
+### Using Injected variable in CLI argument
+We can use `{package.var.name}` to tell the cli that the additional bindings are to be imported from the specified path.
+
+Example:
+```python
+# my.module2.py
+from pinjected import instance
+@instance
+def load_hostname():
+    import socket
+    return socket.gethostname()
+```
+```python
+# my.module.py
+from pinjected import injected
+@injected
+def print_hostname(hostname):
+    print(hostname)
+```
+```bash
+python -m pinjected my.module.print_hostname --hostname my.module2.load_hostname
+```
+
+This is useful for switching complicated injected instances for running the target. The complicated injected instances can be trained ML models, etc.
+
+Example2:
+```
+# some.llm.module.py
+from pinjected import injected
+
+@injected
+def llm_openai(openai_api_key,/,prompt):
+    return "call open ai api with prompt..."
+
+@injected
+def llm_azure(azure_api_key,/,prompt):
+    return "call azure api with prompt..."
+
+@injected
+def llm_llama(llama_model_on_gpu,/,prompt):
+    return llama_model_on_gpu(prompt,configs...)
+
+@injected
+def chat(llm,/,prompt):
+    return llm(prompt)
+```
+
+```bash
+python -m pinjected run some.llm.module.chat --llm="{some.llm.module.llm_openai}" "hello!"
+```
+Now we can switch llm with llm_openai, llm_azure, llm_llama... by specifying a importable variable path.
+
+
+
 ```
 ## __meta_design__
 `pinjected run` reads __meta_design__ variables in every parent package of the target variable:
