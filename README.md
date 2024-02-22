@@ -523,11 +523,13 @@ Design().bind_provider(
 # CLI Support
 An Injected instance can be run from CLI with the following command.
 ```
-python -m pinjected <path of a Injected variable> <path of a Design variable or null> <Optional overrides for a design>
+python -m pinjected run <path of a Injected variable> <optional path of a Design variable> <Optional overrides for a design> --additional-bindings
 ```
 - Variable Path: `your.package.var.name`
 - Design Path: `your.package.design.name`
-- Optional Overrides:
+- Optional Overrides: `your.package.override_design.name`
+
+## Example CLI Calls
 ```
 python -m pinjected my.package.instance --name hello --yourconfig anystring
 ```
@@ -546,6 +548,31 @@ design = instances(
 
 design.provide(instance)
 ```
+## __meta_design__
+`pinjected run` reads __meta_design__ variables in every parent package of the target variable:
+```
+- some_package
+  | __init__.py   <-- can contain __meta_design__
+  | module1
+  | | __init__.py <-- can contain __meta_design__
+  | | util.py     <-- can contain __meta_design__
+```
+When running `python -m pinjected run some_package.module1.util.run`, all __meta_design__ in parent packages will be loaded and concatenated.
+Which in this case results in equivalent to running the following script:
+```python
+meta_design = some_package.__meta_design__ + some_package.module1.__meta_design + some_package.module1.util.__meta_design__
+overrides = meta_design['overrides']
+default_design = import_if_exist(meta_design['default_design_path'])
+g = (default_design + overrides).to_graph()
+g[some_package.module1.util.run]
+```
+
+## .pinjected.py
+Additionaly, we can place .pinjected.py file in the current directly or the home directory. a global variable named 'default_design' and 'overrides' will be automatically imported, then prepended and appended to the design before running the target.
+
+This is convinient for specifying user specific injection variables such as api keys, or some user specific functions.
+
+
 # IDE Support
 By installing a plugin to IDE, you can directly run the Injected variable by clicking a `Run` button associated with the Injected variable declaration line inside IDE.
 (Documentation Coming Soon for IntelliJ Idea)
