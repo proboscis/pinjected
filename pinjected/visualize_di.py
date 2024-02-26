@@ -13,7 +13,8 @@ from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
 from pinjected.di.bindings import InjectedBind
-from pinjected.di.graph import Providable, providable_to_injected
+from pinjected.di.graph import providable_to_injected
+from pinjected.providable import Providable
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
@@ -81,10 +82,11 @@ class DIGraph:
                 em = self.explicit_mappings[src]
                 return self.resolve_injected(em)
             elif src in self.implicit_mappings:
-                return Injected.bind(self.implicit_mappings[src]).dynamic_dependencies()
+                bind = Injected.bind(self.implicit_mappings[src])
+                return bind.complete_dependencies
             elif src in self.multi_mappings:
                 return list(
-                    set(chain(*[Injected.bind(tgt).dynamic_dependencies() for tgt in self.multi_mappings[src]])))
+                    set(chain(*[Injected.bind(tgt).complete_dependencies for tgt in self.multi_mappings[src]])))
             elif src in self.direct_injected:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
@@ -140,7 +142,7 @@ class DIGraph:
                 res.append(sn)
             return res
         else:
-            return list(i.dynamic_dependencies())
+            return list(i.complete_dependencies)
 
     def __getitem__(self, key):
         if "provide_" in key:

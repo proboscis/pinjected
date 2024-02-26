@@ -8,7 +8,7 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from pprint import pformat
-from typing import Union, Type, Callable, TypeVar, List, Any, Generic, Set, Dict
+from typing import Union, Callable, TypeVar, List, Any, Generic, Set, Dict
 
 from returns.maybe import Nothing, Maybe, Some
 from returns.result import safe, Result, Failure, Success
@@ -17,12 +17,15 @@ from rich.panel import Panel
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import Expr
+from pinjected.di.bindings import Bind, BindMetadata
 from pinjected.di.designed import Designed
 from pinjected.di.injected import Injected, InjectedByName, InjectedFunction
+from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.sessioned import Sessioned
 from pinjected.exceptions import DependencyResolutionFailure, DependencyResolutionError
 from pinjected.graph_inspection import DIGraphHelper
+from pinjected.providable import Providable
 
 T = TypeVar("T")
 
@@ -37,9 +40,6 @@ class MissingDependencyException(Exception):
     @staticmethod
     def create(deps: List[DependencyResolutionFailure]):
         return MissingDependencyException(MissingDependencyException.create_message(deps))
-
-
-Providable = Union[str, Type[T], Injected[T], Callable, Designed[T], DelegatedVar[Injected], DelegatedVar[Designed]]
 
 
 class IObjectGraphFactory(ABC):
@@ -315,9 +315,9 @@ class DependencyResolver:
 
     def __post_init__(self):
         # gather things to build providers graph
-        helper = DIGraphHelper(self.src)
+        self.helper = DIGraphHelper(self.src)
         #
-        self.mapping: dict[str, Injected] = helper.total_mappings()
+        self.mapping: dict[str, Injected] = self.helper.total_mappings()
 
         @lru_cache()
         def _memoized_provider(tgt: str):
@@ -354,7 +354,8 @@ class DependencyResolver:
 
     def required_dependencies(self, providable: Providable, include_dynamic=False) -> Set[str]:
         tgt: Injected = self._to_injected(providable)
-        return set(chain(*[self._dfs(d, include_dynamic=include_dynamic) for d in tgt.dependencies()]))
+        first_deps = tgt.complete_dependencies if include_dynamic else tgt.dependencies()
+        return set(chain(*[self._dfs(d, include_dynamic=include_dynamic) for d in first_deps]))
 
     def purified_design(self, providable: Providable):
         from pinjected import providers
@@ -487,7 +488,16 @@ class DependencyResolver:
                     try:
                         return provider(*resolved_deps)
                     except Exception as e:
-                        logger.error(f"failed to provide {current_tgt} from deps:{resolved_deps}.\n Dependencies: {' -> '.join(current_trace)} \n Exception: {e}")
+                        bind: Bind = self.helper.total_bindings()[current_tgt]
+                        match bind.metadata:
+                            case Some(BindMetadata(code_location=Some(ModuleVarLocation(path, line, column)))):
+                                location = f"{path}:{line}:{column}"
+                            case _:
+                                logger.warning(f"failed to retrieve code loc for a binding:{bind}")
+                                location = "unknown location"
+
+                        logger.error(
+                            f"failed to provide {current_tgt} at {location} from deps:\n{pformat(resolved_deps)}.\n Dependencies: {' -> '.join(current_trace)} \n Exception: {e}")
                         raise e
 
                 # Using scope.provide to get or create the resource
@@ -502,7 +512,6 @@ class DependencyResolver:
                 )
 
         return results[tgt]
-
 
     def provide(self, providable: Providable, scope: IScope):
         # I need to make this based on Threaded Future rather than asyncio
@@ -523,7 +532,7 @@ class DependencyResolver:
 
             def get_result():
                 deps = tgt.dependencies()
-                values = [self._provide(d,scope, [key, d]) for d in tgt.dependencies()]
+                values = [self._provide(d, scope, [key, d]) for d in tgt.dependencies()]
                 kwargs = dict(zip(deps, values))
                 try:
                     return provider(**kwargs)
@@ -538,13 +547,14 @@ class DependencyResolver:
 
         match tgt:
             case InjectedByName(key):
-                res = self._provide(key,scope, trace=[key])
+                res = self._provide(key, scope, trace=[key])
             case EvaledInjected(value, ast) as e:
                 of = ast.origin_frame
                 assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
                 original = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
 
-                key = Path(ast.origin_frame.filename).name + ":L" + str(ast.origin_frame.lineno) + "#" + str(id(tgt))[:6]
+                key = Path(ast.origin_frame.filename).name + ":L" + str(ast.origin_frame.lineno) + "#" + str(id(tgt))[
+                                                                                                         :6]
                 # key = f"EvaledInjected#{str(id(tgt))}"
                 from loguru import logger
                 logger.info(f"naming new key: {key} == {original}")

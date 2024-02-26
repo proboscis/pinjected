@@ -191,7 +191,13 @@ def load_design_from_paths(paths, design_name) -> Result:
     for path in paths:
         if path.exists():
             logger.info(f"loading design from {path}:{design_name}.")
-            res += load_variable_from_script(path, design_name)
+            try:
+                res += load_variable_from_script(path, design_name)
+            except Exception as e:
+                import traceback
+                logger.error(f"failed to load design from {path}:{design_name}.")
+                logger.error(e)
+                logger.error(traceback.format_exc())
         else:
             logger.debug(f"design file {path} does not exist.")
     return res

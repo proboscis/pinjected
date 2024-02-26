@@ -470,7 +470,6 @@ class Design:
         """
         # ah sometimes the deps require 'session'
         # and we don't know if the session has enough bindings to provide the target.
-
         return self.to_graph().resolver.purified_design(target).unbind('session')
 
 

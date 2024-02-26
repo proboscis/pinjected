@@ -414,13 +414,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def dependencies(self) -> Set[str]:
         pass
 
+    @abc.abstractmethod
     def dynamic_dependencies(self) -> Set[str]:
         """
         :return: a set of dependencies which are not statically known. mainly used for analysis.
 
         use this to express an injected that conditionally depends on something, such as caches.
         """
-        return self.dependencies()
+        raise NotImplementedError
+
+    @property
+    def complete_dependencies(self) -> Set[str]:
+        return self.dependencies() | self.dynamic_dependencies()
 
     def get_signature(self):
         sig = f"""{self.fname}({",".join(self.dependencies())})"""
@@ -544,6 +549,21 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             return await awaitable
 
         return self.map(lambda coroutine: asyncio.run(impl(coroutine)))
+
+    def add_dynamic_dependencies(self, *deps: Union[str,set[str]]):
+        deps_set = set()
+        for item in deps:
+            match item:
+                case str():
+                    deps_set.add(item)
+                case set():
+                    deps_set = deps_set | item
+                case [*items]:
+                    for i in items:
+                        deps_set.add(i)
+                case _:
+                    raise RuntimeError(f"item should be string or set of string, but got {item}")
+        return InjectedWithDynamicDependencies(self, deps_set)
 
     def __len__(self):
         return self.map(len)
@@ -832,6 +852,24 @@ class GeneratedInjected(Injected):
         return create_function(self.get_signature(), func_impl=self.impl)
 
 
+class InjectedWithDynamicDependencies(Injected[T]):
+    __match_args__ = ("src", "_dynamic_dependencies")
+
+    def __init__(self, src: Injected, dynamic_dependencies: Set[str]):
+        super(InjectedWithDynamicDependencies, self).__init__()
+        self.src = src
+        self._dynamic_dependencies = dynamic_dependencies
+
+    def dependencies(self) -> Set[str]:
+        return self.src.dependencies()
+
+    def get_provider(self):
+        return self.src.get_provider()
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.src.dynamic_dependencies() | self._dynamic_dependencies
+
+
 class MappedInjected(Injected):
     __match_args__ = ("src", "f")
 
@@ -851,6 +889,9 @@ class MappedInjected(Injected):
             return self.f(tmp)
 
         return create_function(self.get_signature(), func_impl=impl)
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.src.dynamic_dependencies()
 
 
 def extract_dependency_including_self(f: Union[type, Callable]):
@@ -982,6 +1023,8 @@ class InjectedFunction(Injected[T]):
 
     # def __str__(self):
     #    return f"""InjectedFunction(target={self.target_function},kwargs_mapping={self.kwargs_mapping})"""
+    def dynamic_dependencies(self) -> Set[str]:
+        return set()
 
 
 class InjectedPure(Injected[T]):
@@ -1003,6 +1046,9 @@ class InjectedPure(Injected[T]):
     def __repr__(self):
         return str(self)
 
+    def dynamic_dependencies(self) -> Set[str]:
+        return set()
+
 
 class InjectedByName(Injected[T]):
     __match_args__ = ("name",)
@@ -1022,6 +1068,9 @@ class InjectedByName(Injected[T]):
 
     def __repr__(self):
         return str(self)
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return set()
 
 
 class ZippedInjected(Injected[Tuple[A, B]]):
@@ -1048,6 +1097,9 @@ class ZippedInjected(Injected[Tuple[A, B]]):
         signature = self.get_signature()
         # logger.info(f"created signature:{signature} for ZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.a.dynamic_dependencies() | self.b.dynamic_dependencies()
 
 
 class MZippedInjected(Injected):
@@ -1078,6 +1130,13 @@ class MZippedInjected(Injected):
         # from loguru import logger
         # logger.info(f"created signature:{signature} for MZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
+
+    def dynamic_dependencies(self) -> Set[str]:
+        res = set()
+        for s in self.srcs:
+            res |= s.dynamic_dependencies()
+
+        return res
 
 
 def _injected_factory(**targets: Injected):
@@ -1141,6 +1200,9 @@ class PartialInjectedFunction(Injected):
 
     def __hash__(self):
         return hash(self.src)
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.src.dynamic_dependencies()
 
 
 def add_viz_metadata(metadata: Dict[str, Any]):
