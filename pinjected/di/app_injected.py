@@ -53,6 +53,9 @@ class EvaledInjected(Injected[T]):
     def __hash__(self):
         return hash((self.value, self.ast))
 
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.value.dynamic_dependencies()
+
 
 def reduce_injected_expr(expr: Expr):
     match expr:
