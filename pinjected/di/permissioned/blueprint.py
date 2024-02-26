@@ -7,7 +7,8 @@ from returns.maybe import Maybe, Nothing, Some
 from pinjected import Injected, injected_function
 from returns import maybe as raybe
 
-from pinjected.di.graph import IObjectGraph, Providable
+from pinjected.di.graph import IObjectGraph
+from pinjected.providable import Providable
 
 
 def maybe__or__(self, other):

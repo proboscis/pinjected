@@ -6,7 +6,8 @@ from returns.maybe import Some
 
 from pinjected import Injected
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
-from pinjected.di.injected import PartialInjectedFunction
+from pinjected.di.injected import PartialInjectedFunction, extract_dependency
+from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import get_code_location
 import functools
 import asyncio
@@ -221,6 +222,20 @@ def cached_coroutine(coro_func):
 
 
 instance = injected_instance
+
+def dynamic(*providables):
+    """
+    Use this to specify dynamic dependencies for an Injected instance.
+    """
+    def impl(tgt):
+        all_deps = set(sum([list(extract_dependency(p)) for p in providables], start = []))
+        match tgt:
+            case Injected() as i:
+                return i.add_dynamic_dependencies(*all_deps)
+            case DelegatedVar() as d:
+                return impl(d.eval()).proxy
+    return impl
+
 
 
 @contextmanager
