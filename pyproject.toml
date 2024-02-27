@@ -23,8 +23,10 @@ networkx = "^3.1"
 pyvis = "^0.3.2"
 makefun = "^1.15.1"
 loguru = "^0.7.0"
-rich = "*"
+rich = "^13.7.0"
 snoop = "^0.4.3"
+pydantic = "^2.6.2"
+astor = "^0.8.1"
 
 [tool.poetry.scripts]
 pinjected = "pinjected.run_config_utils:main"
