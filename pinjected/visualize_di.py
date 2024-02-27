@@ -233,7 +233,6 @@ class DIGraph:
                 )
                 return tmp_design.to_vis_graph().distilled("__target__")
 
-
     @staticmethod
     def get_source(f):
         try:
@@ -251,6 +250,12 @@ class DIGraph:
             from loguru import logger
             logger.warning(f"{repr(e)[:100]} error from {repr(f)[:100]}")
             res = f"failed:{f} from {f}"
+        return res
+
+
+    @staticmethod
+    def get_source_repr(f):
+        res = DIGraph.get_source(f)
 
         res = res.replace("<", "").replace(">", "")
         res = res.replace("\t", "....").replace(" ", ".")
@@ -264,19 +269,19 @@ class DIGraph:
                 return self.parse_injected(src)
             case InjectedFunction(f):
                 desc = f"Injected:{safe(getattr)(f, '__name__').value_or(repr(f))}"
-                return ("injected", desc, self.get_source(f))
+                return ("injected", desc, self.get_source_repr(f))
             case InjectedPure(v):
                 desc = f"Pure:{v}"
-                return ("injected", desc, self.get_source(v) if isinstance(v, Callable) else str(v))
+                return ("injected", desc, self.get_source_repr(v) if isinstance(v, Callable) else str(v))
             case PartialInjectedFunction(InjectedFunction(src)):
                 desc = f"partial=>{src.__name__}"
-                return ("injected", desc, self.get_source(src))
+                return ("injected", desc, self.get_source_repr(src))
             case PartialInjectedFunction(src):
                 desc = f"partial=>{src}"
-                return ("injected", desc, self.get_source(src))
+                return ("injected", desc, self.get_source_repr(src))
             case MappedInjected(src, mapping) as mi:
                 desc = f"{mi.__class__.__name__}"
-                return ("injected", desc, self.get_source(mapping))
+                return ("injected", desc, self.get_source_repr(mapping))
             case ZippedInjected(srcs) as zi:
                 desc = f"{zi.__class__.__name__}"
                 return ("injected", desc, "zipped")
@@ -324,7 +329,7 @@ class DIGraph:
                     case InjectedBind(tgt):
                         return self.parse_injected(tgt)
                     case cls if isinstance(cls, type):
-                        return ("class", cls.__name__, self.get_source(cls))
+                        return ("class", cls.__name__, self.get_source_repr(cls))
                     case [*providers]:
                         return ("multi_binding", repr(providers), repr(providers))
                     case _:
