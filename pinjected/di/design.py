@@ -3,7 +3,7 @@ from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from itertools import chain
-from typing import TypeVar, List, Dict, Union, Callable, Type
+from typing import TypeVar, List, Dict, Union, Callable, Type, Self
 
 from cytoolz import merge
 from makefun import create_function
@@ -471,6 +471,50 @@ class Design:
         # ah sometimes the deps require 'session'
         # and we don't know if the session has enough bindings to provide the target.
         return self.to_graph().resolver.purified_design(target).unbind('session')
+
+
+@dataclass
+class DesignOverrideContext:
+    src: Design
+    callback: Callable[[Self], None]
+    depth:int
+    target_vars: dict = field(default_factory=dict)
+
+    def __enter__(self):
+        frame = inspect.currentframe()
+        parent = frame.f_back
+        # get parent global variables
+        parent_globals = parent.f_globals
+        global_ids = {k:id(v) for k, v in parent_globals.items()}
+        from loguru import logger
+        logger.debug(global_ids)
+        self.last_global_ids = global_ids
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        from loguru import logger
+        frame = inspect.currentframe()
+        parent = frame.f_back
+        # get parent global variables
+        parent_globals = parent.f_globals
+        global_ids = {k:id(v) for k, v in parent_globals.items()}
+        changed_keys = []
+        for k in global_ids:
+            if k in self.last_global_ids:
+                if global_ids[k] != self.last_global_ids[k]:
+                    changed_keys.append(k)
+            else:
+                changed_keys.append(k)
+        logger.debug(f"global_ids:{global_ids}")
+        # find instance of DelegatedVar and Injected in the changed globals
+        target_vars = dict()
+        for k in changed_keys:
+            v = parent_globals[k]
+            if isinstance(v, DelegatedVar):
+                target_vars[k] = v
+            if isinstance(v, Injected):
+                target_vars[k] = v
+        self.target_vars = target_vars
+        self.callback(self)
 
 
 class DesignBindContext:

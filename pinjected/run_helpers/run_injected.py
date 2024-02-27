@@ -92,6 +92,9 @@ def run_anything(
                 design: Design = load_variable_by_module_path(design_path)
                 design += var.design
                 var = var.internal_injected
+        """
+        I need to get the design overrides from with context and add it to the overrides
+        """
 
         meta_design = instances(overrides=instances()) + meta_cxt.accumulated
         meta_overrides = meta_design.provide("overrides") + meta_overrides

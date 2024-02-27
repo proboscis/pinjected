@@ -539,10 +539,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             case int() | float() | str():
                 other = Injected.pure(other)
         other = Injected.ensure_injected(other)
-        return self.zip(other).map(lambda t: t[0] + t[1])
+        return (self.proxy + other).eval()
+        #return self.zip(other).map(lambda t: t[0] + t[1])
 
     def __getitem__(self, item):
-        return self.map(lambda x: x[item])
+        #return self.map(lambda x: x[item])
+        return self.proxy[item]
 
     def desync(self):
         async def impl(awaitable):
