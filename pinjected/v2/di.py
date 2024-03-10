@@ -11,6 +11,7 @@ from pinjected import Injected, Design, injected, instance
 from pinjected import instances as d_instances
 from pinjected import providers as d_providers
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
+from test.test_to_script import src
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -50,6 +51,7 @@ class IBind(Generic[T], ABC):
     async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
         pass
 
+    @property
     @abc.abstractmethod
     def dependencies(self) -> set[IBindKey]:
         pass
@@ -60,12 +62,12 @@ class IBind(Generic[T], ABC):
 
     @staticmethod
     def zip(*targets: 'IBind'):
-        deps = {d for t in targets for d in t.dependencies()}
+        deps = {d for t in targets for d in t.dependencies}
 
         async def impl(cxt, deps: dict):
             tasks = []
             for t in targets:
-                tasks.append(t.provide(cxt, {k: deps[k] for k in t.dependencies()}))
+                tasks.append(t.provide(cxt, {k: deps[k] for k in t.dependencies}))
             return await asyncio.gather(*tasks)
 
         return JustBind(impl, deps)
@@ -101,6 +103,7 @@ class JustBind(IBind[T]):
     async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
         return await self.impl(cxt, deps)
 
+    @property
     def dependencies(self) -> set[IBindKey]:
         return self.deps
 
@@ -121,6 +124,7 @@ class StrBind(IBind[T]):
         dep_dict = {d.name: deps[d] for d in self.keys}
         return await self.impl(**dep_dict)
 
+    @property
     def dependencies(self) -> set[IBindKey]:
         return {StrBindKey(d) for d in self.deps}
 
@@ -156,6 +160,25 @@ class StrBind(IBind[T]):
 
 
 @dataclass
+class StrBindInjected(IBind[T]):
+    src: Injected
+
+    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+        dep_dict = {d.name: deps[d] for d in self.keys}
+        func = self.src.get_provider()
+        match func:
+            case object(__is_awaitable__=True):
+                data = await func(**dep_dict)
+            case x:
+                data = func(**dep_dict)
+        return data
+
+    @property
+    def dependencies(self) -> set[IBindKey]:
+        return {StrBindKey(d) for d in self.src.dependencies()}
+
+
+@dataclass
 class MappedBind(IBind[U]):
     src: IBind[T]
     async_f: Callable[[T], Awaitable[U]]
@@ -164,8 +187,9 @@ class MappedBind(IBind[U]):
         data = self.src.provide(cxt, deps)
         return await self.async_f(data)
 
+    @property
     def dependencies(self) -> set[IBindKey]:
-        return self.src.dependencies()
+        return self.src.dependencies
 
 
 class _Injected(Generic[T]):
@@ -187,28 +211,74 @@ class Blueprint:
             case _:
                 raise TypeError(f"Blueprint can only be added with Blueprint or Design, got {other}")
 
+    def blocking_resolver(self):
+        return AsyncResolver(self).to_blocking()
+
+    def async_resolver(self):
+        return AsyncResolver(self)
+
+
+Providable = Union[str, IBindKey, Callable, IBind]
+
 
 @dataclass
 class AsyncResolver:
     blueprint: Blueprint
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
 
-    async def provide(self, key: IBindKey, cxt: ProvideContext):
+    def __post_init__(self):
+        self.objects = {
+            StrBindKey("__resolver__"): self,
+            StrBindKey("__blueprint__"): self.blueprint,
+        }
+
+    async def _provide(self, key: IBindKey, cxt: ProvideContext):
         logger.info(f"providing {key}")
         if key not in self.objects:
             tasks = []
             bind = self.blueprint.bindings[key]
-            dep_keys = list(bind.dependencies())
+            dep_keys = list(bind.dependencies)
             for key in dep_keys:
                 n_cxt = ProvideContext(key=key, parent=cxt)
-                tasks.append(self.provide(key, n_cxt))
+                tasks.append(self._provide(key, n_cxt))
             res = await asyncio.gather(*tasks)
             deps = dict(zip(dep_keys, res))
             self.objects[key] = await bind.provide(cxt, deps)
         return self.objects[key]
 
+    async def _provide_providable(self, tgt: Providable):
+        async def resolve_deps(keys: set[IBindKey]):
+            tasks = [self._provide(k, ProvideContext(key=k, parent=None)) for k in keys]
+            return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
 
-Providable = Union[str, IBindKey, Callable]
+        match tgt:
+            case str():
+                return await self._provide(StrBindKey(tgt), ProvideContext(key=StrBindKey(tgt), parent=None))
+            case IBindKey():
+                return await self._provide(tgt, ProvideContext(key=tgt, parent=None))
+            case Callable():
+                deps = inspect.signature(tgt).parameters.keys()
+                keys = {StrBindKey(d) for d in deps}
+                deps = {k: await self._provide(k, ProvideContext(key=k, parent=None)) for k in keys}
+                data = tgt(**deps)
+                if inspect.iscoroutinefunction(tgt):
+                    return await data
+                else:
+                    return data
+            case IBind():
+                deps = await resolve_deps(tgt.dependencies)
+                return await tgt.provide(ProvideContext(key=tgt, parent=None), deps)
+            case _:
+                raise TypeError(f"tgt must be str, IBindKey, Callable or IBind, got {tgt}")
+
+    async def provide(self, tgt: Providable):
+        return await self._provide_providable(tgt)
+
+    def to_blocking(self):
+        return Resolver(self)
+
+    def __getitem__(self, item):
+        return self.provide(item)
 
 
 @dataclass
@@ -216,8 +286,13 @@ class Resolver:
     resolver: AsyncResolver
 
     def provide(self, tgt: Providable):
-        cxt = ProvideContext(key=StrBindKey(tgt), parent=None)
-        return asyncio.run(self.resolver.provide(cxt.key, cxt))
+        return asyncio.run(self.resolver.provide(tgt))
+
+    def to_async(self):
+        return self.resolver
+
+    def __getitem__(self, item):
+        return self.provide(item)
 
 
 def instances(**kwargs):
@@ -248,40 +323,39 @@ by default ,convert the Injected into async func.
 """
 
 
-@injected
-async def z(x, y, /, ):
-    await asyncio.sleep(0.1)
-    return x + y
+@instance
+async def slow_1():
+    logger.info(f"running slow_1")
+    await asyncio.sleep(1)
+    logger.info(f"slow_1 done")
+    return 1
 
 
-@injected
-async def test(z, /):
-    item = await z()
-    logger.info(f"z:{item}")
-    return item
+@instance
+async def slow_data():
+    logger.info(f"running slow_data")
+    await asyncio.sleep(1)
+    logger.info(f"slow_data done")
+    return 1
 
 
-@instance  # @instance async def return a CachedAwaitable object
-async def test3(z):
-    return await z()
+@instance
+async def slow_calc(slow_data, slow_1):
+    return slow_data + slow_1
 
 
-# so, test3 is a CachedAwaitable and must be awaited.
-# this means that things from original Design must be awaited.
-async def provide_test2(test3):
-    return await test3
+@instance
+def blocking_x(slow_data, slow_1):
+    return slow_data + slow_1
 
 
 bp = providers(
-    test2=provide_test2  # async providers work fine in blueprint
 ) + d_instances(
     x='x',
     y='y'
 ) + d_providers(
-    z=z,
-    test=test,
-    test3=test3,
-    test4=test3
+    slow_1=slow_1,
+    slow_data=slow_data
 )
 
 
@@ -290,9 +364,7 @@ async def wait(t):
     return await t
 
 
-Resolver(AsyncResolver(bp)).provide('test4')  # calling test returns a coroutine, which is a correct behavior.
-# TODO fix things annotated in @instance to return object rather than coroutine.
-# also, the providers needs to omit awaits.
+bp.blocking_resolver().provide('blocking_x')
 # %%
 # In order to fully switch to async design, I need to ...
 """
@@ -301,4 +373,8 @@ Resolver(AsyncResolver(bp)).provide('test4')  # calling test returns a coroutine
 3. implement run_main with meta-design -> 1 day
 4. implement plugins  -> 3 hours
 -> total 2 days of work. hmm....
+
+Wait isnt this already done???
+You can just use the Injected, you implemented already.
+Right, and call async_resolver().provide() to get the result.
 """
