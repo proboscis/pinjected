@@ -1,11 +1,6 @@
 import asyncio
-import base64
-import io
-import re
 
-from openai import AsyncOpenAI, RateLimitError
-
-from exporter.llm_exporter import PinjectedCodeExporter
+from pinjected.exporter.llm_exporter import PinjectedCodeExporter
 from pinjected import instances, providers, injected, Design, instance
 from pinjected.run_helpers.run_injected import load_user_default_design
 from pinjected.visualize_di import DIGraph

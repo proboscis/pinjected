@@ -467,7 +467,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.mzip(*srcs).map(lambda t: tuple(t))
 
     @staticmethod
-    def list(*srcs: "Injected"):
+    def list(*srcs: Union["Injected","DelegatedVar"]):
         return Injected.mzip(*srcs).map(list)
 
     @staticmethod
