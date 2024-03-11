@@ -412,7 +412,7 @@ def classes(**kwargs):
     -----
     The function automatically adds code locations for the classes, making it easier to track the source of each dependency within the system.
     """
-    d = Design().bind_class(**kwargs)
+    d = Design().bind_provider(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
 
