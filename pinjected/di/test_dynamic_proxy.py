@@ -24,7 +24,7 @@ def test_dynamic_proxy_iterator():
 
 def test_session_value_iterator():
     d = Design().bind_instance(x=0)
-    g = d.to_graph()
+    g = d.to_resolver().to_blocking()
     session = g.child_session(EmptyDesign)
     ctx = DynamicProxyContextImpl(
         lambda a: a.value,

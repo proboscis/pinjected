@@ -5,7 +5,8 @@ from pprint import pformat
 
 from loguru import logger
 from pinjected import Injected
-from pinjected.di.bindings import Bind, InjectedBind
+from pinjected.v2.binds import IBind, BindInjected
+from pinjected.v2.keys import IBindKey, StrBindKey
 
 
 def default_get_arg_names_from_class_name(class_name):
@@ -66,27 +67,26 @@ def _find_classes_in_module(module):
 class DIGraphHelper:
     src: "Design"
 
-    def get_implicit_mapping(self) -> dict[str, type]:
-        classes = find_classes(self.src.modules, self.src.classes)
-        for c in classes:
-            for name in default_get_arg_names_from_class_name(c.__name__):
-                yield name, c
-
-    def get_explicit_mapping(self) -> dict[str, Bind]:
+    def get_explicit_mapping(self) -> dict[str, IBind]:
         return {k: b for k, b in self.src.bindings.items()}
 
     def total_mappings(self) -> dict[str, Injected]:
-        return {k: v.to_injected() for k, v in self.total_bindings().items()}
+        bindings = self.total_bindings()
+        mappings = dict()
+        for k, v in bindings.items():
+            match k, v:
+                case (StrBindKey(name), BindInjected(Injected() as injected)):
+                    mappings[name] = injected
+                case _:
+                    raise ValueError(f"unsupported key type {k} and value type {v}")
+        return mappings
 
-    def total_bindings(self) -> dict[str, Bind]:
+    def total_bindings(self) -> dict[IBindKey, IBind]:
         from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
         global_implicit_mappings = IMPLICIT_BINDINGS
-        global_implicit_mappings = {k: v for k, v in global_implicit_mappings.items()}
         # TODO add the qualified name for the global_implicit_mappings. but how?
 
         # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
         logger.debug(f"using {len(global_implicit_mappings)} global implicit mappings")
-        implicit_mappings = {k: InjectedBind(Injected.bind(v)) for k, v in self.get_implicit_mapping()}
         explicit_mappings = self.get_explicit_mapping()
-        return {**global_implicit_mappings, **implicit_mappings, **explicit_mappings}
-
+        return {**global_implicit_mappings, **explicit_mappings}

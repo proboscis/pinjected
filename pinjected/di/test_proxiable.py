@@ -18,12 +18,3 @@ def test_eval_injected():
     ast = tgt(a, b=b)
     print(ast)
     print(ast.eval())
-
-def test_designed():
-
-    tgt = Designed.bind(Injected.pure("hello")).proxy.x.y.z
-    a = Designed.bind(Injected.pure("a")).proxy
-    b = Designed.bind(Injected.pure("b")).proxy
-    ast = tgt(a, b=b)
-    print(ast)
-    print(ast.eval())

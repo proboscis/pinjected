@@ -12,6 +12,9 @@ from pinjected.di.util import get_code_location
 import functools
 import asyncio
 
+from pinjected.v2.binds import BindInjected
+from pinjected.v2.keys import StrBindKey
+
 
 def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     """
@@ -53,11 +56,10 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
             tgts[k] = Injected.by_name(k)
     new_f = Injected.partial(f, **tgts)
 
-    from pinjected.di.bindings import InjectedBind
-    from pinjected.di.bindings import BindMetadata
-    IMPLICIT_BINDINGS[f.__name__] = InjectedBind(
+    from pinjected.di.metadata.bind_metadata import BindMetadata
+    IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
         new_f,
-        metadata=Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
+        _metadata=Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
     )
 
     return new_f
@@ -103,19 +105,19 @@ def injected_instance(f) -> Injected:
     """
 
     is_coroutine = inspect.iscoroutinefunction(f)
-    if is_coroutine:
-        f = cached_coroutine(f)
+    # if is_coroutine:
+    #     f = cached_coroutine(f)
 
     sig: inspect.Signature = inspect.signature(f)
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
     instance = Injected.partial(f, **tgts)().eval()
-    from pinjected.di.bindings import InjectedBind
-    from pinjected.di.bindings import BindMetadata
-    IMPLICIT_BINDINGS[f.__name__] = InjectedBind(
-        instance,
-        Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
-    )
+    #instance = Injected.bind(f)
+    from pinjected.di.metadata.bind_metadata import BindMetadata
     instance.__is_awaitable__ = is_coroutine
+    IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
+        instance,
+        _metadata=Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
+    )
     return instance
 
 
@@ -223,19 +225,21 @@ def cached_coroutine(coro_func):
 
 instance = injected_instance
 
+
 def dynamic(*providables):
     """
     Use this to specify dynamic dependencies for an Injected instance.
     """
+
     def impl(tgt):
-        all_deps = set(sum([list(extract_dependency(p)) for p in providables], start = []))
+        all_deps = set(sum([list(extract_dependency(p)) for p in providables], start=[]))
         match tgt:
             case Injected() as i:
                 return i.add_dynamic_dependencies(*all_deps)
             case DelegatedVar() as d:
                 return impl(d.eval()).proxy
-    return impl
 
+    return impl
 
 
 @contextmanager

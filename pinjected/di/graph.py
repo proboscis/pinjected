@@ -17,15 +17,16 @@ from rich.panel import Panel
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import Expr
-from pinjected.di.bindings import Bind, BindMetadata
 from pinjected.di.designed import Designed
 from pinjected.di.injected import Injected, InjectedByName, InjectedFunction
+from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.sessioned import Sessioned
 from pinjected.exceptions import DependencyResolutionFailure, DependencyResolutionError
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.providable import Providable
+from pinjected.v2.binds import IBind
 
 T = TypeVar("T")
 
@@ -488,7 +489,7 @@ class DependencyResolver:
                     try:
                         return provider(*resolved_deps)
                     except Exception as e:
-                        bind: Bind = self.helper.total_bindings()[current_tgt]
+                        bind: IBind = self.helper.total_bindings()[current_tgt]
                         match bind.metadata:
                             case Some(BindMetadata(code_location=Some(ModuleVarLocation(path, line, column)))):
                                 location = f"{path}:{line}:{column}"

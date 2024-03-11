@@ -22,7 +22,7 @@ class PinjectedCodeExporter:
 
     def __post_init__(self):
         digraph = self.src.to_vis_graph()
-        self.mappings = {**digraph.implicit_mappings, **digraph.explicit_mappings}
+        self.mappings = {**digraph.explicit_mappings}
 
     @staticmethod
     async def to_source__instance(assign_target, tgt: InjectedPure):
@@ -67,7 +67,7 @@ class PinjectedCodeExporter:
             unparsed = ast.unparse(tree)
             logger.debug(f"un_pinjected->\n{unparsed}")
             return unparsed
-            #return astor.to_source(tree)
+            # return astor.to_source(tree)
 
     # Function to remove the @injected decorator and positional-only argument marker
     @staticmethod
@@ -75,7 +75,7 @@ class PinjectedCodeExporter:
         deletion_targets = {"injected", "instance"}
         for node in ast.walk(tree):
             # Check if the node is a function definition
-            if isinstance(node, ast.FunctionDef) or isinstance(node,ast.AsyncFunctionDef):
+            if isinstance(node, ast.FunctionDef) or isinstance(node, ast.AsyncFunctionDef):
                 # Remove @injected decorator if present
                 is_instance = bool([decorator for decorator in node.decorator_list if
                                     hasattr(decorator, 'id') and decorator.id == 'instance'])
@@ -186,7 +186,7 @@ Beware that {assign_target} name must be preserved.
         if visited is None:
             visited = set()
         code = ""
-        if isinstance(src,str):
+        if isinstance(src, str):
             src = Injected.by_name(src)
         src = Injected.ensure_injected(src)
         from loguru import logger
@@ -211,7 +211,7 @@ Beware that {assign_target} name must be preserved.
                 logger.info(value)
                 last_code = await self.expr_to_source(assign_target, tree, visited)
             case ZippedInjected(a, b):
-                left, right = self.tmp_symbol()+"left", self.tmp_symbol()+"right"
+                left, right = self.tmp_symbol() + "left", self.tmp_symbol() + "right"
                 prep = (await self.to_source(left, a, visited)
                         + "\n"
                         + await self.to_source(right, b, visited)
@@ -224,7 +224,7 @@ Beware that {assign_target} name must be preserved.
                 prep += await self.to_source(map_src, src, visited) + "\n"
                 last_code = prep + f"{assign_target} = {map_f}({map_src})\n"
             case InjectedByName(name):
-                last_code = await self.to_source(name,self.mappings[name],visited=visited)
+                last_code = await self.to_source(name, self.mappings[name], visited=visited)
             case _:
                 raise ValueError(f"Unsupported type {src}")
         code += last_code + "\n"
