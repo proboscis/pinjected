@@ -2,14 +2,11 @@ import inspect
 from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
-from itertools import chain
 from typing import TypeVar, List, Dict, Union, Callable, Type, Self
 
 from cytoolz import merge
 from makefun import create_function
-from returns.maybe import Some
 
-from pinjected.di.graph import IObjectGraph, MyObjectGraph
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import Injected
 from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFunction
@@ -211,7 +208,7 @@ class Design:
 
     def to_resolver(self):
         from pinjected.v2.resolver import AsyncResolver
-        bindings = {**self.bindings, **IMPLICIT_BINDINGS}
+        bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         return AsyncResolver(Design(bindings=bindings, modules=self.modules))
 
     def to_graph(self):
@@ -259,7 +256,7 @@ class Design:
     def __contains__(self, item: IBindKey):
         return item in self.bindings
 
-    def __getitem__(self, item: IBindKey|str):
+    def __getitem__(self, item: IBindKey | str):
         if isinstance(item, str):
             item = StrBindKey(item)
         assert isinstance(item, IBindKey), f"item must be IBindKey or a str, but got {type(item)}"

@@ -49,12 +49,11 @@ class AsyncResolver:
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
         # we need to think which one to ask provider
         # if we have the binding for the key, use our own scope
-        logger.info(f"{cxt.trace_str}")
         if key in self.objects:
             data = self.objects[key]
-            logger.info(f"{cxt.trace_str} <- {data}")
             return data
         elif key in self.design:
+            logger.info(f"{cxt.trace_str}")
             # we are responsible for providing this
             bind = self.design.bindings[key]
             dep_keys = list(bind.dependencies)
@@ -66,7 +65,7 @@ class AsyncResolver:
             deps = dict(zip(dep_keys, res))
             data = await bind.provide(cxt, deps)
             self.objects[key] = data
-            logger.info(f"{cxt.trace_str} <- {data}")
+            logger.info(f"{cxt.trace_str} := {data}")
             return data
         else:
             if self.parent is not None:

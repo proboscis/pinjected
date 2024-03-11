@@ -9,6 +9,8 @@ d = instances(
 
 @instance
 async def y(x, /):
+    from loguru import logger
+    logger.info(f"running y")
     return x + 1
 
 
