@@ -5,7 +5,8 @@ from pinjected.di.util import instances
 from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.run_helpers.run_injected import run_injected
 
-TEST_MODULE=Path("../pinject_design/test_package/child/module1.py")
+TEST_MODULE = Path("../pinject_design/test_package/child/module1.py")
+
 
 def test_create_configurations():
     create_idea_configurations(
@@ -26,5 +27,4 @@ def test_run_injected():
         return_result=True
     )
     print(res)
-    assert res=="hello world"
-
+    assert res == "hello world"

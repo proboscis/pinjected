@@ -11,6 +11,8 @@ def test_injected_proxy():
         y=hello,
         z=func_proxy(Injected.pure(1))
     )
+    from loguru import logger
+    logger.info(design.bindings)
     assert design.provide("y") == "hello"
     assert design.provide("z") == 2
 
