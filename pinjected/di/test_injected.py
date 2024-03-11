@@ -34,7 +34,7 @@ def test_injected_function():
     g = instances(
         x='x',
         y='y',
-    ).to_graph()
+    ).to_resolver().to_blocking()
     assert g[test_func](1, 2, 3, 5, 6) == 'x' + 'y' + '(1, 2, 3, 5, 6)'
 
 

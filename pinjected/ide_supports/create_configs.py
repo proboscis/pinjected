@@ -26,6 +26,8 @@ __meta_design__ = instances(
 )
 
 from pinjected.run_helpers.run_injected import run_injected
+from pinjected.v2.binds import IBind
+from pinjected.v2.keys import IBindKey
 
 
 def run_with_meta_context(
@@ -204,10 +206,11 @@ def design_metadata(
     helper = DIGraphHelper(d)
     metas = []
     for k, bind in helper.total_bindings().items():
+        k:IBindKey
         match bind.metadata.bind(lambda m: m.code_location):
             case Some(ModuleVarPath(qualified_name)):
                 metas.append(dict(
-                    key=k,
+                    key=k.ide_hint_string(),
                     location=dict(
                         type="path",
                         value=qualified_name
@@ -215,7 +218,7 @@ def design_metadata(
                 ))
             case Some(ModuleVarLocation(fp, line, col)):
                 metas.append(dict(
-                    key=k,
+                    key=k.ide_hint_string(),
                     location=dict(
                         type="coordinates",
                         value=f'{fp}:{line}:{col}'

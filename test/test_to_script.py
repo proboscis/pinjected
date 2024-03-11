@@ -1,9 +1,11 @@
 import asyncio
+from pprint import pformat
 
 from pinjected.exporter.llm_exporter import PinjectedCodeExporter
 from pinjected import instances, providers, injected, Design, instance
 from pinjected.run_helpers.run_injected import load_user_default_design
 from pinjected.visualize_di import DIGraph
+
 
 #
 # def to_content(img: "Image"):
@@ -102,16 +104,6 @@ from pinjected.visualize_di import DIGraph
 #     return await a_llm__openai(text=text, images=[], model_name="gpt-4-turbo-preview")
 
 
-llm_design = instances() + load_user_default_design()
-a_llm = llm_design.provide('a_llm__gpt4_turbo')
-# %%
-
-asyncio.run(a_llm("hello"))
-
-
-# %%
-
-
 @injected
 def f(x, /, y):
     return x + y
@@ -132,44 +124,53 @@ def alpha(CONST):
     return CONST + 1
 
 
-test_target = f(g(CONST + alpha))
+def test_something():
+    from loguru import logger
+    llm_design:Design = instances() + load_user_default_design()
+    logger.info(f"llm_design: {llm_design}")
+    logger.info(f"{pformat(llm_design.bindings)}")
+    a_llm = llm_design.provide('a_llm__gpt4_turbo')
 
-d: Design = instances(
-    x=0
-) + providers(
-    f=f,
-    v=CONST,
-    target=test_target
-)
-dig: DIGraph = d.to_vis_graph()
-dig.parse_injected(g)
-"""
-so, in order to form a script from digraph,
-I need to:
-1. make each injected as an expression.
+    test_target = f(g(CONST + alpha))
 
-The result should look like:
-Instances:
-x = 0
-y = 1
-Providers:
-def provider_func(x,y):
-    ... local variable declarations ...
-    ....
-z = provider_func(x,y)
-ASTs:
-def lambda_0(x,y):
-    __res__ = ... constructed ast ...
-    return __res__
-z = lambda_0(x,y)
+    d: Design = instances(
+        x=0
+    ) + providers(
+        f=f,
+        v=CONST,
+        target=test_target
+    )
+    dig: DIGraph = d.to_vis_graph()
+    dig.parse_injected(g)
+    """
+    so, in order to form a script from digraph,
+    I need to:
+    1. make each injected as an expression.
 
-Yeah, let's do it.
-"""
+    The result should look like:
+    Instances:
+    x = 0
+    y = 1
+    Providers:
+    def provider_func(x,y):
+        ... local variable declarations ...
+        ....
+    z = provider_func(x,y)
+    ASTs:
+    def lambda_0(x,y):
+        __res__ = ... constructed ast ...
+        return __res__
+    z = lambda_0(x,y)
 
-exporter = PinjectedCodeExporter(d, a_llm)
+    Yeah, let's do it.
+    """
 
-src = asyncio.run(exporter.export('target'))
-print(src)
+    exporter = PinjectedCodeExporter(d, a_llm)
+
+    src = asyncio.run(exporter.export('target'))
+    print(src)
+
+
 # print(f"__________________")
 # print(asyncio.run(simplify_code('target',src)))
 # print(inspect.getsource(Injected.__add__))
