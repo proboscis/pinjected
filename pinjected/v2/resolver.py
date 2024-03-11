@@ -125,7 +125,7 @@ class Resolver:
     def provide(self, tgt: Providable):
         return asyncio.run(self.resolver.provide(tgt))
 
-    def child_session(self,overrides: "Design"):
+    def child_session(self, overrides: "Design"):
         return Resolver(self.resolver.child_session(overrides))
 
     def to_async(self):

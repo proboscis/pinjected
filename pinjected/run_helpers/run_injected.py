@@ -1,6 +1,5 @@
 import inspect
 import os
-from functools import wraps
 from pathlib import Path
 
 from pprint import pformat
@@ -198,15 +197,15 @@ def load_design_from_paths(paths, design_name) -> Result:
                 res += load_variable_from_script(path, design_name)
             except Exception as e:
                 import traceback
-                logger.error(f"failed to load design from {path}:{design_name}.")
-                logger.error(e)
-                logger.error(traceback.format_exc())
+                logger.warning(f"failed to load design from {path}:{design_name}.")
+                logger.warning(e)
+                logger.warning(traceback.format_exc())
         else:
             logger.debug(f"design file {path} does not exist.")
     return res
 
 
-def load_user_default_design()->Design:
+def load_user_default_design() -> Design:
     """
     This function loads user specific environment data from a python file.
     the syntax is :
