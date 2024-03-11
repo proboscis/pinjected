@@ -217,14 +217,13 @@ class Design:
     def run(self, f, modules=None):
         return self.to_graph(modules).run(f)
 
-    def provide(self, target: Union[str, Type[T]], modules=None, trace_logger=None) -> T:
+    def provide(self, target: Union[str, Type[T]]) -> T:
         """
         :param target: provided name
         :param modules: modules to use for graph construction
         :return:
         """
         return self.to_resolver().to_blocking().provide(target)
-        # return self.to_graph(modules=modules, trace_logger=trace_logger).provide(target, level=4)
 
     def copy(self):
         return self.__class__(
