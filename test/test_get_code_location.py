@@ -6,12 +6,10 @@ design = instances(
 ) + providers(
     a=lambda: 0,
     b=lambda: 1
-) + classes(
-    d=Design
 )
 def test_get_location():
     (design+instances(
         default_design_paths=[
             "test.test_get_code_location.design"
         ]
-    )).to_graph()[design_metadata]
+    )).to_resolver().to_blocking()[design_metadata]

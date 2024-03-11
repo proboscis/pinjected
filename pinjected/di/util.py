@@ -13,11 +13,12 @@ from returns.maybe import Some
 from returns.result import Failure, Success
 
 from pinjected.di.design import Design
-from pinjected.di.bindings import InjectedBind, BindMetadata
 from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
+from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.v2.binds import BindInjected
 
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
@@ -134,9 +135,9 @@ def get_class_aware_args(f):
 
 def to_readable_name(o):
     match o:
-        case InjectedBind(InjectedFunction(func, _)):
+        case BindInjected(InjectedFunction(func, _),_):
             return func.__name__
-        case InjectedBind(InjectedPure(value)):
+        case BindInjected(InjectedPure(value),_):
             return value
         case any:
             return any

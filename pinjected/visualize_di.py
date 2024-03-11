@@ -12,7 +12,6 @@ from loguru import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
-from pinjected.di.bindings import InjectedBind
 from pinjected.di.graph import providable_to_injected
 from pinjected.providable import Providable
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
@@ -24,6 +23,7 @@ from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
+from pinjected.v2.binds import BindInjected
 
 
 def dfs(neighbors: Callable, node: str, trace=[]):
@@ -63,13 +63,8 @@ class DIGraph:
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
     def __post_init__(self):
-        self.src = self.src.bind_instance(session='DummyForVisualization').build()
         self.helper = DIGraphHelper(self.src)
-        # TODO combine these mappings into one. the keys must not override each other
-        self.implicit_mappings = dict(self.helper.get_implicit_mapping())
-        self.explicit_mappings: Dict[str, Injected] = {k: b.to_injected() for k, b in self.src.bindings.items()}
-        self.explicit_mappings.update(**self.helper.total_mappings())
-        self.multi_mappings = {k: b for k, b in self.src.multi_binds.items()}
+        self.explicit_mappings:dict[str,Injected] = self.helper.total_mappings()
 
         self.direct_injected = dict()
         self.injected_to_id = dict()
@@ -81,12 +76,6 @@ class DIGraph:
             if src in self.explicit_mappings:
                 em = self.explicit_mappings[src]
                 return self.resolve_injected(em)
-            elif src in self.implicit_mappings:
-                bind = Injected.bind(self.implicit_mappings[src])
-                return bind.complete_dependencies
-            elif src in self.multi_mappings:
-                return list(
-                    set(chain(*[Injected.bind(tgt).complete_dependencies for tgt in self.multi_mappings[src]])))
             elif src in self.direct_injected:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
@@ -152,10 +141,6 @@ class DIGraph:
         ).lash(
             lambda e: getitem(self.explicit_mappings, key)
         ).lash(
-            lambda e: getitem(self.implicit_mappings, key)
-        ).lash(
-            lambda e: getitem(self.multi_mappings, key)
-        ).lash(
             lambda e: getitem(self.direct_injected, key)
         )
         if isinstance(item, Failure):
@@ -167,7 +152,6 @@ class DIGraph:
 
     def di_dfs(self, src, replace_missing=False):
         ignore_list = ["mzip_src_", "mapped_src_", "injected_kwargs_"]
-        #ignore_list = []
 
         def filter(node):
             res = any([ignore in node for ignore in ignore_list])
@@ -326,7 +310,7 @@ class DIGraph:
                 match tgt:
                     case Injected():
                         return self.parse_injected(tgt)
-                    case InjectedBind(tgt):
+                    case BindInjected(tgt,_):
                         return self.parse_injected(tgt)
                     case cls if isinstance(cls, type):
                         return ("class", cls.__name__, self.get_source_repr(cls))
