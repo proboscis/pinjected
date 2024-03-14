@@ -7,6 +7,7 @@ from typing import TypeVar, List, Dict, Union, Callable, Type, Self
 from cytoolz import merge
 from makefun import create_function
 
+from pinjected.di.graph import DependencyResolver
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import Injected
 from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFunction
@@ -177,7 +178,7 @@ class Design:
             from loguru import logger
             match v:
                 case type():
-                    logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
+                    #logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
                     bindings[StrBindKey(k)] = BindInjected(Injected.bind(v))
                 case Injected():
                     bindings[StrBindKey(k)] = BindInjected(v)
@@ -334,7 +335,8 @@ class Design:
         """
         # ah sometimes the deps require 'session'
         # and we don't know if the session has enough bindings to provide the target.
-        return self.to_graph().resolver.purified_design(target).unbind('session')
+        resolver = DependencyResolver(self)
+        return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
 
 
 @dataclass
