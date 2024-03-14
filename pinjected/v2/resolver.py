@@ -35,12 +35,19 @@ class ScopeNode(IScope):
 @dataclass
 class AsyncResolver:
     design: "Design"
-    # objects: Dict[IBindKey, Any] = field(default_factory=dict)
     parent: Optional["AsyncResolver"] = None
-    # scope: IScope = field(default_factory=ScopeNode)
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
 
     def __post_init__(self):
+        from pinjected import injected, instance, providers
+        @instance
+        def dummy():
+            raise RuntimeError('This should never be instantiated')
+
+        self.design = self.design + providers(
+            __resolver__=dummy,
+            __design__=dummy
+        )
         self.objects = {
             StrBindKey("__resolver__"): self,
             StrBindKey("__design__"): self.design
@@ -71,7 +78,7 @@ class AsyncResolver:
             if self.parent is not None:
                 return await self.parent._provide(key, cxt)
             else:
-                raise KeyError(f"Key {key} not found in design")
+                raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
 
     def child_session(self, overrides: "Design"):
         return AsyncResolver(overrides, parent=self)

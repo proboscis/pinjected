@@ -342,16 +342,24 @@ class DependencyResolver:
 
         self.memoized_deps = _memoized_deps
 
-    def _dfs(self, tgt: str, visited: set[str] = None, include_dynamic=False):
+    def _dfs(self, tgt: str,trace:list[str]=None, visited: set[str] = None, include_dynamic=False):
         if visited is None:
             visited = set()
         if tgt in visited:
             return
+        if trace is None:
+            trace = []
+        trace += [tgt]
         visited.add(tgt)
-        deps = self.memoized_deps(tgt, include_dynamic=include_dynamic)
+        try:
+            deps = self.memoized_deps(tgt, include_dynamic=include_dynamic)
+        except NoMappingError as ke:
+            from loguru import logger
+            logger.error(f"failed to find dependency for {tgt} in {' -> '.join(trace)}")
+            raise NoMappingError(f"failed to find dependency for {tgt} in {' -> '.join(trace)}") from ke
         yield tgt
         for dep in deps:
-            yield from self._dfs(dep, visited, include_dynamic=include_dynamic)
+            yield from self._dfs(dep,trace, visited, include_dynamic=include_dynamic)
 
     def required_dependencies(self, providable: Providable, include_dynamic=False) -> Set[str]:
         tgt: Injected = self._to_injected(providable)
