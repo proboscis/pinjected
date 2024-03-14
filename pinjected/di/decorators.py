@@ -50,7 +50,9 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     if parent_frame is None:
         parent_frame = inspect.currentframe().f_back
     for k, v in sig.parameters.items():
-        if k.startswith("_"):
+        if k.startswith("__"):
+            tgts[k] = Injected.by_name(k)
+        elif k.startswith("_"):
             tgts[k] = Injected.by_name(k[1:])
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
             tgts[k] = Injected.by_name(k)
