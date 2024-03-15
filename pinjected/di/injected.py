@@ -93,6 +93,23 @@ class ParamInfo:
     # the problem is we may or may not have vargs and kwargs...
 
 
+"""
+Semantics of an Injected:
+For Injected[T], upon resolving T, all dependencies are resolved for T.
+So, if T is a Callable, then any dependencies are resolved before calling it.
+
+However, for Lazy Injected thing, we want the dependencies to be resolved inside the function.
+This is because,, for asyncio stuff, the dependencies end their life after asyncio.run has finished for resolving the dependencies.
+For asyncio thing to work, we need to keep asyncio.run unfinished and only run at the top level for once.
+So, the solutions are:
+1. make async functions resolve dependencies on demand.
+2. make run_injected async and call asyncio.run only once.
+
+Let's got with 2nd option.
+"""
+
+
+
 class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
     The ``Injected`` class represents a sophisticated dependency injection mechanism in Python.

@@ -112,26 +112,31 @@ def run_anything(
         if cmd == 'call':
             args = call_args or []
             kwargs = call_kwargs or {}
+            var = Injected.ensure_injected(var).proxy
             logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
-            res = design.provide(var)(*args, **kwargs)
-            logger.info(f"run_injected call result:\n{res}")
-            if isinstance(res, Coroutine):
-                res = asyncio.run(res)
-            elif isinstance(res, Awaitable):
-                async def impl():
-                    return await res
-                logger.info(f"awaiting awaitable")
-                res = asyncio.run(impl())
+
+            async def task():
+                _res = await design.to_resolver().provide(var(*args, **kwargs))
+                logger.info(f"run_injected call result:\n{_res}")
+                if isinstance(_res, Awaitable):
+                    logger.info(f"awaiting awaitable")
+                    _res = await _res
+                if not return_result:
+                    logger.info(f"run_injected call result:\n{_res}")
+                return _res
+
+            res = asyncio.run(task())
         elif cmd == 'get':
             logger.info(f"providing...")
-            res = design.provide(var)
-            if isinstance(res, Coroutine):
-                res = asyncio.run(res)
-            elif isinstance(res, Awaitable):
-                async def impl():
-                    return await res
-                logger.info(f"awaiting awaitable")
-                res = asyncio.run(impl())
+
+            async def task():
+                _res = await design.to_resolver().provide(var)
+                logger.info(f"run_injected get result:\n{_res}")
+                if isinstance(_res, Coroutine) or isinstance(_res, Awaitable):
+                    _res = await _res
+                return _res
+
+            res = asyncio.run(task())
             if not return_result:
                 logger.info(f"run_injected get result:\n{pformat(res)}")
         elif cmd == 'fire':
