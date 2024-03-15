@@ -117,7 +117,6 @@ def run_anything(
 
             async def task():
                 _res = await design.to_resolver().provide(var(*args, **kwargs))
-                logger.info(f"run_injected call result:\n{_res}")
                 if isinstance(_res, Awaitable):
                     logger.info(f"awaiting awaitable")
                     _res = await _res
@@ -127,11 +126,8 @@ def run_anything(
 
             res = asyncio.run(task())
         elif cmd == 'get':
-            logger.info(f"providing...")
-
             async def task():
                 _res = await design.to_resolver().provide(var)
-                logger.info(f"run_injected get result:\n{_res}")
                 if isinstance(_res, Coroutine) or isinstance(_res, Awaitable):
                     _res = await _res
                 return _res
