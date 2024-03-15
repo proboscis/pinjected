@@ -114,13 +114,12 @@ def run_anything(
             kwargs = call_kwargs or {}
             logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
             res = design.provide(var)(*args, **kwargs)
+            logger.info(f"run_injected call result:\n{res}")
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
-            logger.info(f"run_injected call result:\n{res}")
-            if isinstance(res, Awaitable):
+            elif isinstance(res, Awaitable):
                 async def impl():
                     return await res
-
                 logger.info(f"awaiting awaitable")
                 res = asyncio.run(impl())
         elif cmd == 'get':
@@ -128,10 +127,9 @@ def run_anything(
             res = design.provide(var)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)
-            if isinstance(res, Awaitable):
+            elif isinstance(res, Awaitable):
                 async def impl():
                     return await res
-
                 logger.info(f"awaiting awaitable")
                 res = asyncio.run(impl())
             if not return_result:
