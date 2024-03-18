@@ -160,12 +160,9 @@ class BindInjected(IBind[T]):
         keys = {StrBindKey(d) for d in self.src.dependencies()}
         dep_dict = {d.name: deps[d] for d in keys}
         func = self.src.get_provider()
-        match self.src:
-            case object(__is_awaitable__=True):
-                logger.info(f"awaiting {func}")
-                data = await func(**dep_dict)
-            case x:
-                data = func(**dep_dict)
+        assert inspect.iscoroutinefunction(func), f"provider of an Injected({self.src}) must be a coroutine function, got {func}"
+        data = await func(**dep_dict)
+        assert not inspect.isawaitable(data), f"provider of an Injected({self.src}) must return a non-awaitable, got {data}"
         return data
 
     @property

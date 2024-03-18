@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterator
 from cytoolz import valmap
 
 from pinjected.di.applicative import Applicative
-from pinjected.di.ast import Expr, Call, Attr, GetItem, Object, BiOp
+from pinjected.di.ast import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
 from pinjected.di.proxiable import T, DelegatedVar, IProxyContext
 
 
@@ -79,9 +79,16 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
             case _:
                 raise NotImplementedError(f"biop {op} not implemented")
 
+    def unary_impl(self, op: str, tgt: Expr[T]):
+        match op:
+            case 'await':
+                return self.pure(tgt._await_())
+            case _:
+                raise NotImplementedError(f"unary {op} not implemented")
+
 
 def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
-    return DelegatedVar(Object(tgt), cxt)
+    return DelegatedVar(Object(tgt), cxt,async_impl=True)
 
 
 def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
@@ -131,11 +138,13 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                 return applied
             case Attr(Expr() as data, str() as attr_name):
                 injected_data = _eval(data)
+
                 def try_get_attr(x):
                     try:
                         return getattr(x, attr_name)
                     except AttributeError as e:
                         raise RuntimeError(f"failed to get attribute {attr_name} from {x} in AST:{data}") from e
+
                 return app.map(
                     injected_data,
                     try_get_attr
@@ -167,6 +176,9 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     app.zip(injected_left, injected_right),
                     eval_biop
                 )
+            case UnaryOp('await',Expr() as tgt):
+                injected_tgt = _eval(tgt)
+                return app._await_(injected_tgt)
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)},{expr}")
 
