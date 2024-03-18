@@ -99,6 +99,9 @@ class Expr(Generic[T], ABC):
     def __eq__(self, other):
         return BiOp("==", self, self._wrap_if_non_expr(other))
 
+    def _await_(self):
+        return UnaryOp("await", self)
+
 
 @dataclass
 class BiOp(Expr):
@@ -120,6 +123,25 @@ class BiOp(Expr):
 
     def __hash__(self):
         return hash((self.name, self.left, self.right))
+
+@dataclass
+class UnaryOp(Expr):
+    name: str
+    target: Expr
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert isinstance(self.target, Expr), f"{self.target} is not an Expr"
+        assert isinstance(self.name, str), f"{self.name} is not a str"
+
+    def __getstate__(self):
+        return self.name, self.target, self.origin_frame
+
+    def __setstate__(self, state):
+        self.name, self.target, self.origin_frame = state
+
+    def __hash__(self):
+        return hash((self.name, self.target))
 
 
 @dataclass
@@ -221,6 +243,8 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
             case DelegatedVar(wrapped, cxt):
                 return f"{_show_expr(wrapped)}"
+            case UnaryOp('await',Expr() as tgt):
+                return f"(await {_show_expr(tgt)})"
 
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)}")

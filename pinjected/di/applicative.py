@@ -33,3 +33,7 @@ class Applicative(Generic[T], ABC):
             # here vs are all coroutines.
             return dict(zip(keys, vs))
         return self.zip(*values).map(mapper)
+
+    def _await_(self,tgt:T):
+        raise NotImplementedError("await not implemented")
+

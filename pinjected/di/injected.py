@@ -15,6 +15,7 @@ from returns.result import safe
 
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.v2.ainjected import MappedAInjected
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -107,7 +108,6 @@ So, the solutions are:
 
 Let's got with 2nd option.
 """
-
 
 
 class Injected(Generic[T], metaclass=abc.ABCMeta):
@@ -241,6 +241,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
 
+        if not inspect.iscoroutinefunction(original_function):
+            logger.warning(f"wrapping original function as an async function:{original_function}")
+
+            async def async_original_function(*args, **kwargs):
+                return original_function(*args, **kwargs)
+        else:
+            async_original_function = original_function
+
         # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
@@ -272,7 +280,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_func_sig = _get_new_signature(original_function.__name__, missing_params)
             defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
 
-            def func_gets_called_after_injection_impl(*_args, **_kwargs):
+            async def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
                 num_missing_positional_args = len(missing_positional_args)
@@ -321,7 +329,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"bound args:{bind_result.args}")
                 # logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
-                return original_function(*bind_result.args, **bind_result.kwargs)
+                return await async_original_function(*bind_result.args, **bind_result.kwargs)
 
             # logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
@@ -331,7 +339,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             )
             new_func.__is_async__ = inspect.iscoroutinefunction(original_function)
             __doc__ = original_function.__doc__
-            __skeleton__ = f"""def {new_func_sig}:
+            __skeleton__ = f"""async def {new_func_sig}:
     \"\"\"
     {__doc__}
     \"\"\"
@@ -456,6 +464,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
 
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
+        # return MappedInjected(self, f)
+        if not inspect.iscoroutinefunction(f):
+            logger.warning(f"wrapping function as an async function:{f}")
+
+            async def async_f(*args, **kwargs):
+                return f(*args, **kwargs)
+
+            f = async_f
         return MappedInjected(self, f)
 
     def from_impl(impl: Callable, dependencies: Set[str]):
@@ -472,7 +488,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
         assert isinstance(self, Injected)
         assert isinstance(other, Injected)
-        return ZippedInjected(self, other)
+        return Injected.mzip(self, other)
 
     @staticmethod
     def mzip(*srcs: "Injected"):
@@ -484,7 +500,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.mzip(*srcs).map(lambda t: tuple(t))
 
     @staticmethod
-    def list(*srcs: Union["Injected","DelegatedVar"]):
+    def list(*srcs: Union["Injected", "DelegatedVar"]):
         return Injected.mzip(*srcs).map(list)
 
     @staticmethod
@@ -557,10 +573,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 other = Injected.pure(other)
         other = Injected.ensure_injected(other)
         return (self.proxy + other).eval()
-        #return self.zip(other).map(lambda t: t[0] + t[1])
+        # return self.zip(other).map(lambda t: t[0] + t[1])
 
     def __getitem__(self, item):
-        #return self.map(lambda x: x[item])
+        # return self.map(lambda x: x[item])
         return self.proxy[item]
 
     def desync(self):
@@ -569,7 +585,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         return self.map(lambda coroutine: asyncio.run(impl(coroutine)))
 
-    def add_dynamic_dependencies(self, *deps: Union[str,set[str]]):
+    def add_dynamic_dependencies(self, *deps: Union[str, set[str]]):
         deps_set = set()
         for item in deps:
             match item:
@@ -894,7 +910,7 @@ class MappedInjected(Injected):
 
     def __init__(self, src: Injected[T], f: Callable[[T], U]):
         super(MappedInjected, self).__init__()
-        raise RuntimeError("deprecated")
+        assert inspect.iscoroutinefunction(f), f"{f} is not a coroutine function"
         self.src = src
         self.f: Callable[[T], U] = f
 
@@ -902,11 +918,14 @@ class MappedInjected(Injected):
         return self.src.dependencies()
 
     def get_provider(self):
-        def impl(**kwargs):
+        async def impl(**kwargs):
             assert self.dependencies() == set(
                 kwargs.keys())  # this is fine but get_provider returns wrong signatured func
-            tmp = self.src.get_provider()(**kwargs)
-            return self.f(tmp)
+            if not inspect.iscoroutinefunction(self.src.get_provider()):
+                raise RuntimeError(f"provider is not a corountine function:{self.src}")
+            tmp = await self.src.get_provider()(**kwargs)
+
+            return await self.f(tmp)
 
         return create_function(self.get_signature(), func_impl=impl)
 
@@ -1013,7 +1032,7 @@ class InjectedFunction(Injected[T]):
     def get_provider(self):
         signature = self.get_signature()
 
-        def impl(**kwargs):
+        async def impl(**kwargs):
             deps = dict()
             for mdep in self.missings:
                 deps[mdep] = solve_injection(mdep, kwargs)
@@ -1022,7 +1041,12 @@ class InjectedFunction(Injected[T]):
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             # logger.info(f"src mapping:{self.kwargs_mapping}")
             # logger.info(f"with deps:{deps}")
-            return self.target_function(**deps)
+
+            res = self.target_function(**deps)
+            if inspect.iscoroutinefunction(self.target_function):
+                return await res
+            else:
+                return res
 
         # you have to add a prefix 'provider'""
         return create_function(func_signature=signature, func_impl=impl)
@@ -1058,7 +1082,10 @@ class InjectedPure(Injected[T]):
         return set()
 
     def get_provider(self):
-        return create_function(func_signature=self.get_signature(), func_impl=lambda: self.value)
+        async def impl():
+            return self.value
+
+        return create_function(func_signature=self.get_signature(), func_impl=impl)
 
     def __str__(self):
         return f"Pure({self.value})"
@@ -1138,17 +1165,16 @@ class MZippedInjected(Injected):
         return res
 
     def get_provider(self):
-        def impl(**kwargs):  # can we pickle this though?
-            each_kwargs = [{k: kwargs[k] for k in s.dependencies()} for s in self.srcs]
+        async def impl(**kwargs):  # can we pickle this though?
             res = []
             for s in self.srcs:
                 r = s.get_provider()(**{k: kwargs[k] for k in s.dependencies()})
+                if not inspect.iscoroutinefunction(s.get_provider()):
+                    raise RuntimeError(f"provider is not a corountine function:{s}")
                 res.append(r)
-            return tuple(res)
+            return tuple(await asyncio.gather(*res))
 
         signature = self.get_signature()
-        # from loguru import logger
-        # logger.info(f"created signature:{signature} for MZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
 
     def dynamic_dependencies(self) -> Set[str]:
@@ -1204,12 +1230,24 @@ class RunnableInjected(Injected):
 @dataclass
 class PartialInjectedFunction(Injected):
     src: Injected[Callable]
+    """ 
+    here the src is Awaitable[Callable]. so..
+    we get T->Awaitable[U] after resolving it.
+    so, (T->Awaitable[U])(T) == Awaitable[U].
+    Therefore we need to perform 'awaitcall' rather than 'call' here.
+    
+    """
 
     def __post_init__(self):
         assert isinstance(self.src, Injected), f"src:{self.src} is not an Injected"
 
     def __call__(self, *args, **kwargs) -> DelegatedVar:
-        return self.src.proxy(*args, **kwargs)
+        """
+        we need 'await' call here.
+        So, we need Await AST too.
+        """
+
+        return self.src.proxy(*args, **kwargs).await__()
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies()
