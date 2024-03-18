@@ -1,6 +1,7 @@
+import asyncio
 from dataclasses import dataclass
 from loguru import logger
-from typing import Set
+from typing import Set, Awaitable, Callable, TypeVar, Tuple
 
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
@@ -9,6 +10,8 @@ from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, \
     AstProxyContextImpl
 from pinjected.di.ast import Expr, Object, show_expr
+
+U = TypeVar('U')
 
 
 class ApplicativeInjectedImpl(Applicative[Injected]):
@@ -75,8 +78,99 @@ def reduce_injected_expr(expr: Expr):
             return f"<{i.__class__.__name__}>"
 
 
+class ApplicativeAsyncInjectedImpl(Applicative[Injected[Awaitable]]):
+    def map(self, target: Injected[Awaitable], f) -> T:
+        return AsyncMappedInjected(target, f)
+
+    def zip(self, *targets: Injected[Awaitable]):
+        return AsyncZippedInjected(*targets)
+
+    def pure(self, item) -> T:
+        match item:
+            case object(__is_awaitable__=True):
+                return AsyncPureInjected(item)
+            case _:
+                async def impl():
+                    return item
+
+                return AsyncPureInjected(impl())
+
+    def is_instance(self, item) -> bool:
+        return isinstance(item, Injected)
+
+
+
+class AsyncMappedInjected(Injected):
+
+    # src: Injected[Awaitable[T]]
+    # f: Callable[[T], Awaitable[U]]
+    def __init__(self, src: Injected[Awaitable], f: Callable[[T], Awaitable[U]]):
+        super().__init__()
+        self.src = src
+        self.f = f
+
+    def dependencies(self) -> Set[str]:
+        return self.src.dependencies()
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return self.src.dynamic_dependencies()
+
+    def get_provider(self):
+        coro_provider = self.src.get_provider()
+
+        async def impl(**kwargs):
+            result = await coro_provider(**kwargs)
+            return await self.f(result)
+
+        return impl
+
+
+class AsyncZippedInjected(Injected):
+    # src:Tuple[Injected[Awaitable]]
+    def __init__(self, *srcs: Injected[Awaitable]):
+        super().__init__()
+        self.srcs = srcs
+
+    def dependencies(self) -> Set[str]:
+        return {d for src in self.srcs for d in src.dependencies()}
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return {d for src in self.srcs for d in src.dynamic_dependencies()}
+
+    def get_provider(self):
+        async def impl(**kwargs):
+            tasks = []
+            for p in self.srcs:
+                deps = {d: kwargs[d] for d in p.dependencies()}
+                logger.info(f"zipped deps: {deps}")
+                tasks.append(p.get_provider()(**deps))
+            return await asyncio.gather(*tasks)
+
+        return impl
+
+
+class AsyncPureInjected(Injected):
+    # src:Awaitable[T]
+    def __init__(self, src: Awaitable[T]):
+        super().__init__()
+        self.src = src
+
+    def dependencies(self) -> Set[str]:
+        return set()
+
+    def dynamic_dependencies(self) -> Set[str]:
+        return set()
+
+    def get_provider(self):
+        async def impl():
+            return await self.src
+
+        return impl
+
+
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
-    return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
+    #return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
+    return EvaledInjected(eval_applicative(expr, ApplicativeAsyncInjected), expr)
 
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
@@ -84,4 +178,5 @@ def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
 
 
 ApplicativeInjected = ApplicativeInjectedImpl()
+ApplicativeAsyncInjected = ApplicativeAsyncInjectedImpl()
 InjectedEvalContext = AstProxyContextImpl(eval_injected, _alias_name="InjectedProxy")
