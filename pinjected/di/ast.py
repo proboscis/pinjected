@@ -49,11 +49,13 @@ class Expr(Generic[T], ABC):
     def __setstate__(self, state):
         pass
 
-    def __str__(self):
-        return f"Expr(>{show_expr(self)}<)"
+    # def __str__(self):
+    #     return f"Expr(>{show_expr(self)}<)"
 
-    def __repr__(self):
-        return str(self)
+    # def __repr__(self):
+    #     return str(self)
+
+
 
     def __add__(self, other):
         return BiOp("+", self, self._wrap_if_non_expr(other))

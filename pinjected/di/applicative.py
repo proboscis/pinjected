@@ -25,4 +25,11 @@ class Applicative(Generic[T], ABC):
         items = list(kwargs.items())
         keys = [t[0] for t in items]
         values = [t[1] for t in items]
-        return self.zip(*values).map(lambda vs: dict(zip(keys, vs)))
+        from loguru import logger
+        logger.info(f"keys:{keys}")
+        logger.info(f"values:{values}")
+        def mapper(vs):
+            logger.info(f"mapping:{vs}")
+            # here vs are all coroutines.
+            return dict(zip(keys, vs))
+        return self.zip(*values).map(mapper)
