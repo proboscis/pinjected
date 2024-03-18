@@ -894,6 +894,7 @@ class MappedInjected(Injected):
 
     def __init__(self, src: Injected[T], f: Callable[[T], U]):
         super(MappedInjected, self).__init__()
+        raise RuntimeError("deprecated")
         self.src = src
         self.f: Callable[[T], U] = f
 
