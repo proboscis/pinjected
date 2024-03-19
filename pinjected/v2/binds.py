@@ -163,7 +163,7 @@ class BindInjected(IBind[T]):
         logger.info(f"provider:{func}")
         assert inspect.iscoroutinefunction(func), f"provider of an Injected({self.src}) must be a coroutine function, got {func}"
         data = await func(**dep_dict)
-        assert not inspect.isawaitable(data), f"provider of an Injected({self.src}) must return a non-awaitable, got {data}"
+        #assert not inspect.isawaitable(data), f"provider of an Injected({self.src}) must return a non-awaitable, got {data}"
         return data
 
     @property
