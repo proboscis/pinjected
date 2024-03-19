@@ -64,8 +64,8 @@ class DelegatedVar(Generic[T]):
 
     def __call__(self, *args, **kwargs):
         res = self.cxt.call(self.value, *args, **kwargs)
-        if self.async_impl:
-            return res.await__()
+        # if self.async_impl:
+        #     return res.await__()
         return res
 
     def __getitem__(self, key):
