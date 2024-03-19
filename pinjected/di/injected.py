@@ -286,7 +286,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"inferred positional arg names:{inferred_pos_arg_names}")
                 # logger.info(f"inferred non positional arg names:{inferred_non_pos_arg_names}")
                 total_kwargs = copy(defaults)
-                logger.info(f"injected_kwargs:{injected_kwargs}")
+                # logger.info(f"injected_kwargs:{injected_kwargs}")
                 filled_kwargs = {**injected_kwargs,
                                  **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
                                  **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
@@ -324,6 +324,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
                 return original_function(*bind_result.args, **bind_result.kwargs)
+
             # logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
                 new_func_sig,
@@ -364,7 +365,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # hmm?
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
-        bound_func.__is_async_function__= inspect.iscoroutinefunction(original_function)
+        bound_func.__is_async_function__ = inspect.iscoroutinefunction(original_function)
         injected_factory = PartialInjectedFunction(src=bound_func)
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
@@ -373,7 +374,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         injected_factory.__runnable_metadata__ = {
             "kind": "callable"
         }
-
 
         return injected_factory
 
@@ -399,6 +399,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
             async def _a_target_function(*args, **kwargs):
                 return _target_function_(*args, **kwargs)
+
             _a_target_function.__signature__ = inspect.signature(_target_function_)
 
             async_target_function = _a_target_function
@@ -939,10 +940,10 @@ class MappedInjected(Injected):
             if not inspect.iscoroutinefunction(self.src.get_provider()):
                 raise RuntimeError(f"provider is not a corountine function:{self.src}")
             tmp = await self.src.get_provider()(**kwargs)
-            logger.info(f"original result:{tmp}")
-            logger.info(f"mapper function:{self.f}")
+            # logger.info(f"original result:{tmp}")
+            # logger.info(f"mapper function:{self.f}")
             data = await self.f(tmp)
-            logger.info(f"mapped result:{data}")
+            # logger.info(f"mapped result:{data}")
             return data
 
         return create_function(self.get_signature(), func_impl=impl)
