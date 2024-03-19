@@ -108,7 +108,7 @@ def reduce_injected_expr(expr: Expr):
 #
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
-    #expr = en_async_call(expr)
+    expr = await_awaitables(expr)
     return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
     # return EvaledInjected(eval_applicative(expr, ApplicativeAsyncInjected), expr)
 
@@ -136,10 +136,14 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
             return expr
 
 
-def en_async_call(expr: Expr[T]) -> Expr:
+def await_awaitables(expr: Expr[T]) -> Expr:
+    from loguru import logger
+    logger.info(f"await_awaitables {expr}")
     def transformer(expr: Expr):
         match expr:
-            case Call(f, args, kwargs) as call:
+            case Object(object(__is_awaitable__=True)):
+                return UnaryOp('await', expr)
+            case Call(Object(object(__is_async_function__=True)), args, kwargs) as call:
                 return UnaryOp('await', call)
             case _:
                 return expr
@@ -148,7 +152,7 @@ def en_async_call(expr: Expr[T]) -> Expr:
 
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
-    return ast_proxy(injected, InjectedEvalContext)
+    return ast_proxy(Object(injected), InjectedEvalContext)
 
 
 ApplicativeInjected = ApplicativeInjectedImpl()
