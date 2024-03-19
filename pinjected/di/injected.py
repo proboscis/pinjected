@@ -241,14 +241,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
         original_sig = inspect.signature(original_function)
 
-        if not inspect.iscoroutinefunction(original_function):
-            logger.warning(f"wrapping original function as an async function:{original_function}")
-
-            async def async_original_function(*args, **kwargs):
-                return original_function(*args, **kwargs)
-        else:
-            async_original_function = original_function
-
         # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
         # hmm we need to check if the args are positional only or not.
         # in that case we need to inject with *args.
@@ -281,7 +273,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_func_sig = _get_new_signature(original_function.__name__, missing_params)
             defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
 
-            async def func_gets_called_after_injection_impl(*_args, **_kwargs):
+            def func_gets_called_after_injection_impl(*_args, **_kwargs):
                 assert len(_args) >= len(
                     missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
                 num_missing_positional_args = len(missing_positional_args)
@@ -331,8 +323,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"bound args:{bind_result.args}")
                 # logger.info(f"bound kwargs:{bind_result.kwargs}")
                 # Ah, since the target_function is async, we can't catch...
-                return await async_original_function(*bind_result.args, **bind_result.kwargs)
-
+                return original_function(*bind_result.args, **bind_result.kwargs)
             # logger.info(f"injected.partial -> {new_func_sig} ")
             new_func = create_function(
                 new_func_sig,
@@ -373,7 +364,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # hmm?
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         injected_factory = PartialInjectedFunction(
-            Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
+            Injected.bind(makefun_impl, injected_kwargs=injected_kwargs),
+            is_async=inspect.iscoroutinefunction(original_function)
         )
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
@@ -1271,6 +1263,7 @@ class RunnableInjected(Injected):
 @dataclass
 class PartialInjectedFunction(Injected):
     src: Injected[Callable]
+    is_async:bool
     """ 
     here the src is Awaitable[Callable]. so..
     we get T->Awaitable[U] after resolving it.
@@ -1288,7 +1281,10 @@ class PartialInjectedFunction(Injected):
         So, we need Await AST too.
         """
 
-        return self.src.proxy(*args, **kwargs)
+        res = self.src.proxy(*args, **kwargs)
+        if self.is_async:
+            return res.await__()
+        return res
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies()
