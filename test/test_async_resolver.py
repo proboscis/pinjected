@@ -22,7 +22,7 @@ def test_async_resolver():
 
 
     @injected
-    def alpha(y, z, /):
+    async def alpha(y, z, /):
         return y + z
 
 
