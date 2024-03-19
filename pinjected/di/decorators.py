@@ -112,10 +112,13 @@ def injected_instance(f) -> Injected:
 
     sig: inspect.Signature = inspect.signature(f)
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
-    instance = Injected.partial(f, **tgts)().eval()
-    #instance = Injected.bind(f)
+    called_partial = Injected.partial(f, **tgts)()
+    from loguru import logger
+    logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
+    instance = called_partial.eval()
+    # instance = Injected.bind(f)
     from pinjected.di.metadata.bind_metadata import BindMetadata
-    instance.__is_awaitable__ = is_coroutine
+    instance.__is_async_function__ = is_coroutine
     IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
         instance,
         _metadata=Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
