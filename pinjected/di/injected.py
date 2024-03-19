@@ -271,7 +271,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         async def makefun_impl(injected_kwargs):
             # this gets called every time you call this function through PartialInjectedFunction interface
             # this is because the injected_kwargs gets changed.
-            assert isinstance(injected_kwargs, dict),f"expected dict, got {injected_kwargs}"
+            assert isinstance(injected_kwargs, dict), f"expected dict, got {injected_kwargs}"
 
             missing_keys = [k for k in original_sig.parameters.keys() if k not in injected_kwargs]
             missing_params = [original_sig.parameters[k] for k in missing_keys]
@@ -1057,9 +1057,11 @@ class InjectedFunction(Injected[T]):
 
         async def impl(**kwargs):
             deps = dict()
+
             async def update(key):
                 if key not in deps:
                     deps[key] = await solve_injection(self.kwargs_mapping[key], kwargs)
+
             tasks = []
             for mdep in self.missings:
                 tasks.append(update(mdep))
@@ -1135,7 +1137,10 @@ class InjectedByName(Injected[T]):
         return {self.name}
 
     def get_provider(self):
-        return create_function(func_signature=self.get_signature(), func_impl=lambda **kwargs: kwargs[self.name])
+        async def impl(**kwargs):
+            return kwargs[self.name]
+
+        return create_function(func_signature=self.get_signature(), func_impl=impl)
 
     def __str__(self):
         return f"InjectedByName({self.name})"
@@ -1152,6 +1157,7 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
     def __init__(self, a: Injected[A], b: Injected[B]):
         super().__init__()
+        raise RuntimeError("deprecated")
         assert isinstance(a, Injected), f"got {type(a)} for a"
         assert isinstance(b, Injected), f"got {type(b)} for b"
         self.a = a
