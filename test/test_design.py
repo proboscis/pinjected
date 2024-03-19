@@ -6,6 +6,7 @@ from pinjected.di.graph import MyObjectGraph
 def test_injected_proxy():
     hello = Injected.pure("hello").proxy
     func_proxy = Injected.pure(lambda x: x + 1).proxy
+    # hmm,
     design = Design().bind_provider(
         x=lambda: 0,
         y=hello,

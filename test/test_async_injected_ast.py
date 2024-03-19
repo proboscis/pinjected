@@ -117,3 +117,15 @@ def test_injected():
     assert g['xx'] == 'x'
     assert g['partial_x'] == 'x'
     assert g['instance_x'] == 'x'
+
+def test_lambda_as_provider():
+    provide_x = lambda: 'x'
+    provide_y = lambda x: f"y{x}"
+    d = providers(
+        x=provide_x,
+        y=provide_y
+    )
+    g = d.to_graph()
+    #assert Injected.bind(provide_y,x=provide_x).dependencies() == set()
+    assert g['x'] == 'x'
+    assert g['y'] == 'yx'
