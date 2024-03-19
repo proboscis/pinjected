@@ -20,7 +20,7 @@ def test_create_configurations():
     (mc.final_design + instances(
         # print_to_stdout=True,
         module_path=TEST_MODULE,
-        # interpreter_path=sys.executable,
+        interpreter_path=sys.executable,
         # meta_context = mc,
         # logger = logger,
         # runner_script_path= Path(__file__),

@@ -108,7 +108,7 @@ def reduce_injected_expr(expr: Expr):
 #
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
-    expr = en_async_call(expr)
+    #expr = en_async_call(expr)
     return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
     # return EvaledInjected(eval_applicative(expr, ApplicativeAsyncInjected), expr)
 
