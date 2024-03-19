@@ -119,35 +119,41 @@ Moreover, changing parameters and components requires to change the code itself,
 Instead, we offer a different approach that automatically composes objects from a design object.
 ```python
 from dataclasses import dataclass
-def provide_optimizer(learning_rate):
+from pinjected import instances,providers,injected,instance,classes
+
+@instance
+def optimizer(learning_rate):
     return Adam(lr=learning_rate)
-def provide_dataset(batch_size,image_w):
+@instance
+def dataset(batch_size,image_w):
     return MyDataset(batch_size,image_w)
-def provide_model():
+@instance
+def model():
     return Sequential()
-def provide_loss_calculator():
+@instance
+def loss_calculator():
     return MyLoss()
 
-conf = Design().bind_instance(
+conf = instances(
     learning_rate = 0.001,
     batch_size = 128,
     image_w = 256,
-).bind_provider(
-    optimizer = provide_optimizer,
-    dataset = provide_dataset,
-    model = provide_model,
-    loss_calculator = provide_loss_calculator
-).bind_class(
+) + providers(
+    optimizer = optimizer,
+    dataset = dataset,
+    model = model,
+    loss_calculator = loss_calculator
+) + classes(
     io_interface = LocalIo# use local file system by default
 )
 
 g = conf.to_graph()
 #lets see model structure
-print(g.provide("model"))
+print(g['model'])
 # now lets do training
-g.provide(Trainer).train()
+g[Trainer].train()
 # lets evaluate
-g.provide(Evaluator).evaluate()
+g[Evaluator].evaluate()
 ```
 Note that no classes defined above depend on specific configuration object. This means they are portable and can be reused.
 This doesnt look useful if you have only one set of configuration,
@@ -155,37 +161,37 @@ but when you start playing with many configurations,
 this approach really helps like this.
 
 ```python
-conf = Design().bind_instance(
+conf = instances(
     learning_rate = 0.001,
     batch_size = 128,
     image_w = 256,
-).bind_provider(
+) + providers(
     optimizer = provide_optimizer,
     dataset = provide_dataset,
     model = provide_model,
     loss_calculator = provide_loss_calculator
-).bind_class(
+) + classes(
     io_interface = LocalIo# use local file system by default
 )
 
 
-conf_lr_001 = conf.bind_instance(# lets change lr
+conf_lr_001 = conf + instances(# lets change lr
     learning_rate=0.01
 )
-conf_lr_01 = conf.bind_instance(
+conf_lr_01 = conf + instances(
     learning_rate=0.1
 )
-lstm_model = Design().bind_provider( # lets try LSTM?
+lstm_model = providers( # lets try LSTM?
     model = lambda:LSTM()
 )
-save_at_mongo = Design.bind_class( # lets save at mongodb
+save_at_mongo = classes( # lets save at mongodb
     io_interface = MongoDBIo
 )
 conf_lr_001_lstm = conf_lr_001 + lstm_model # you can combine two Design!
 conf_lr_01_mongo = conf_lr_01 + save_at_mongo
 for c in [conf,conf_lr_001,conf_lr_01,conf_lr_001_lstm,conf_lr_01_mongo]:
     g = c.to_graph()
-    g.provide(Trainer).train()
+    g[Trainer].train()
 ```
 The good thing is that you can keep old configurations as variables.
 And modifications on Design will not break old experiments.
@@ -209,12 +215,12 @@ class AtariTrainer:
             loss = self.loss_calculator(self.model,batch)
             self.optimizer.step()
             # do anything
-my_new_training_strategy = Design().bind_class(
+my_new_training_strategy = classes(
     trainer=AtariTrainer
 )
 conf_extreme=conf_lr_01_mongo + my_new_training_strategy
 g = conf_extreme.to_graph()
-g.provide("trainer").train()# note the argument to 'provide' method can be a type object or a string.
+g["trainer"].train()# note the argument to 'provide' method can be a type object or a string.
 ```
 as you can see, now you can do training with new AtariTrainer without modifying the existing code at all.
 Furthermore, the old configurations are still completely valid to be used.
@@ -247,27 +253,27 @@ class App:
         print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
 
 
-d = Design().bind_instance(
+d = instances(
     a=0,
     b=1
-).bind_provider(
+) + providers(
     c=lambda a, b: a + b,
     d=lambda a, b, c: a + b + c
-).bind_class(
+) + classes(
     dep=DepObject
 )
-d.to_graph().provide(App).run()
+d.to_graph()[App].run()
 ```
 
 ## Combine Multiple Designs
 ```python
-d1 = Design().bind_instance(
+d1 = instances(
     a=0
 )
-d2 = Design().bind_instance(
+d2 = instances(
     b=1
 )
-d3 = Design().bind_instance(
+d3 = instances(
     b=0
 )
 (d1 + d2).provide("b") == 1
@@ -286,7 +292,7 @@ If you bind a function that returns a random value as a binding, calling the sam
 return the same value, while Design's `provide` should return a random value for each invocation.
 ```python
 import random
-d = Design().bind_provider(
+d = providers(
     r = lambda : random.uniform(0,1)
 )
 g = d.to_graph()
@@ -305,7 +311,7 @@ def provide_ab(a:int,b:int):
 # Injected.bind can convert a provider function to an Injected object.
 # the names of arguments are used as dependencies.
 injected:Injected[int] = Injected.bind(provide_ab)
-design = Design().bind_instance(
+design = instances(
     a=1,
     b=2
 )
@@ -335,7 +341,7 @@ from pinjected.di.util import Injected
 from pinjected import Design
 def provide_ab(a:int,b:int):
     return a+b
-design = Design().bind_instance(
+design = instances(
     a=1,
     b=2
 )
@@ -512,18 +518,100 @@ Injected is an abstraction of data which require dependencies to be used inside 
 a = Injected.pure("a") # gives "a" when used
 b = a.map(lambda x:x*2) # gives "aa" when used
 # you can map as many times as you want.
-Design().bind_provider(
+providers(
     a = a
 ).provide("a") == "a"
-Design().bind_provider(
+providers(
     a = b
 ).provide("a") == "aa"
 ```
 
+
+# AsyncIO support
+pinjected supports using async functions as a provider. For async providers, each dependencies are gathered in parallel, and the provider function is called in an async context.
+```python
+from pinjected import instances, providers, injected, instance
+import asyncio
+
+
+@instance
+async def x():
+    await asyncio.sleep(1)
+    return 1
+
+
+@injected
+async def y_provider(x, /):
+    # Note that we do not need to await x, because it is already awaited by the DI.
+    await asyncio.sleep(1)
+    return x + 1
+
+
+@injected
+async def y_user(y):
+    # Here, we need to await y since injected y is an async function.
+    return await y()
+
+
+@instance
+def non_async_x():
+    # we can also combine non-async and async functions.
+    return 1
+
+
+d = providers(
+    x=x,
+    y=y_provider
+)
+g = d.to_graph()  # to_graph returns a blocking resolver that internally call asyncio.run to resolve the dependencies.
+assert g['y'] == 2
+async_g = d.to_resolver()  # to_resolver returns an async resolver that can be awaited.
+assert (await async_g['y']) == 2
+```
+
+## AsyncIO support for Injected AST composition
+```python
+from pinjected import instances, providers, injected, instance
+import asyncio
+
+
+@instance
+async def x():
+    await asyncio.sleep(1)
+    return 1
+
+
+@instance
+def alpha():
+    return 1
+
+
+@injected
+async def slow_add_1(x, /):
+    await asyncio.sleep(1)
+    return x + 1
+
+
+# we can construct an AST of async Injected instances.
+y = slow_add_1(x)
+# we can also combine non-async and async Injected variables 
+z = y + alpha
+
+d = providers()
+g = d.resolver()
+
+assert (await g[y]) == 2
+assert (await g[z]) == 3
+
+
+```
+
+
+
 # CLI Support
 An Injected instance can be run from CLI with the following command.
 ```
-python -m pinjected run <path of a Injected variable> <optional path of a Design variable> <Optional overrides for a design> --additional-bindings
+python -m pinjected run <path of an Injected variable> <optional path of a Design variable> <Optional overrides for a design> --additional-bindings
 ```
 - Variable Path: `your.package.var.name`
 - Design Path: `your.package.design.name`
@@ -639,121 +727,6 @@ You can visualize the dependency graph of an Injected instance in web browser fo
 # Picklability
 Compatible with dill and cloudpickle as long as the bound objects are picklable.
 
-# Rewriting the example in the beginning with injected
-
-```python
-from pinjected.di.util import Injected, instances, providers
-from pinjected import injected, instance
-from dataclasses import dataclass
-
-
-@instance
-def optimizer(learning_rate):
-    return Adam(lr=learning_rate)
-
-
-@instance
-def dataset(batch_size, image_w):
-    return MyDataset(batch_size, image_w)
-
-
-@instance
-def model():
-    return Sequential()
-
-
-@instance
-def loss_calculator():
-    return MyLoss()
-
-
-@injected
-def save_local(local_dir, /, model, identifier):
-    # save model locally
-    pass
-
-
-@injected
-def load_local(local_dir, /, identifier):
-    # load model locally
-    pass
-
-
-@injected
-def save_mongodb(mongodb_conn, /, model, identifier):
-    # save model to mongodb
-    pass
-
-
-@injected
-def load_mongodb(mongodb_conn, /, identifier):
-    # load model from mongodb
-    pass
-
-
-local_save_conf = providers(
-    save=save_local,
-    load=load_local,
-) + instances(
-    local_dir="/tmp"
-)
-mongodb_save_conf = providers(
-    save=save_mongodb,
-    load=load_mongodb
-) + providers(
-    mogndb_address="mongodb://localhost:27017",
-    mongodb_conn=lambda mongodb_address: MongoClient(mogodb_address)
-)
-
-default_conf = instances(
-    learning_rate=0.001,
-    batch_size=128,
-    image_w=256,
-) + local_save_conf  # or use mongodb_save_conf
-
-
-# now we don't need a trainer class.
-@injected
-def train(
-        model: Module,
-        optimizer: Optimizer,
-        loss_calculator: Callable,
-        dataset: Dataset,
-        model_identifier: str,
-        save: Callable[[Module, str], None],
-        /
-):
-    while True:
-        for batch in dataset:
-            optimizer.zero_grad()
-            loss = loss_calculator(model, batch)
-            loss.backward()
-            optimizer.step()
-            save(model, model_identifier)
-
-
-# no evaluator classes too.
-@injected
-def evaluate(
-        model: Module,
-        dataset: Dataset,
-        model_identifier: str,
-        load: Callable[[str], Module],
-        /
-):
-    model = load(model_identifier)
-    # do evaluation using loaded model and dataset
-
-
-# create an object graph
-g = default_conf.to_graph()
-# lets see model structure
-print(g.provide("model"))
-# now lets do training
-g[train]()
-# lets evaluate
-g[evaluate]()
-```
 
 # TODO
 - add mnist training example with keras
