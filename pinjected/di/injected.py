@@ -340,7 +340,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 """
             new_func.__skeleton__ = __skeleton__
 
-            logger.info(f"result of makefun_impl:{new_func}")
+            #logger.info(f"result of makefun_impl:{new_func}")
 
             return new_func
 
