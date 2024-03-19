@@ -402,8 +402,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         #     _target_function_ = _target_function_.get_provider()
         assert callable(_target_function_)
         if not inspect.iscoroutinefunction(_target_function_):
+            # we need to keep the function signature
+
             async def _a_target_function(*args, **kwargs):
                 return _target_function_(*args, **kwargs)
+            _a_target_function.__signature__ = inspect.signature(_target_function_)
 
             async_target_function = _a_target_function
         else:
@@ -1042,9 +1045,9 @@ class InjectedFunction(Injected[T]):
                 self.kwargs_mapping[k] = v.eval()
         # logger.info(f"InjectedFunction:{self.target_function} kwargs_mapping:{self.kwargs_mapping}")
         org_deps = extract_dependency(self.target_function)
-        # logger.info(f"tgt:{target_function} original dependency:{org_deps}")
+        logger.trace(f"tgt:{target_function} original dependency:{org_deps}")
         missings = {d for d in org_deps if d not in self.kwargs_mapping}
-        # logger.info(f"now missing {missings}")
+        logger.trace(f"now missing {missings}")
         # logger.warning(f"created InjectedFunction:{inspect.signature(target_function)}")
         # assert "self" not in inspect.signature(target_function).parameters
         self.missings = missings
@@ -1060,9 +1063,14 @@ class InjectedFunction(Injected[T]):
 
             async def update(key):
                 if key not in deps:
-                    deps[key] = await solve_injection(self.kwargs_mapping[key], kwargs)
+                    if key in self.kwargs_mapping:
+                        mapped = self.kwargs_mapping[key]
+                    else:
+                        mapped = key
+                    deps[key] = await solve_injection(mapped, kwargs)
 
             tasks = []
+            logger.trace(f"missings:{self.missings},kwargs_mapping:{self.kwargs_mapping}")
             for mdep in self.missings:
                 tasks.append(update(mdep))
             for k, dep in self.kwargs_mapping.items():
@@ -1071,8 +1079,8 @@ class InjectedFunction(Injected[T]):
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             # logger.info(f"src mapping:{self.kwargs_mapping}")
             # logger.info(f"with deps:{deps}")
-            logger.info(f"awaiting target function:{self.target_function}")
-            logger.info(f"deps:{deps}")
+            logger.trace(f"awaiting target function:{self.target_function}")
+            logger.trace(f"deps:{deps}")
             res = await self.target_function(**deps)
             # assert not inspect.iscoroutinefunction(res),f"result of awaiting {self.target_function} is a coroutine function:{res}"
             return res
