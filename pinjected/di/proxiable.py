@@ -57,15 +57,12 @@ class DelegatedVar(Generic[T]):
     # Generic Var Type that delegates all implementations to cxt.
     value: T
     cxt: IProxyContext[T]
-    async_impl: bool = False  # if set to True, automatically awaits the result of the operation.
 
     def __getattr__(self, item):
         return self.cxt.getattr(self.value, item)
 
     def __call__(self, *args, **kwargs):
         res = self.cxt.call(self.value, *args, **kwargs)
-        if self.async_impl:
-            return res.await__()
         return res
 
     def __getitem__(self, key):

@@ -363,16 +363,17 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         logger.info(f"injected_kwargs:{injected_kwargs}")
         # hmm?
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
-        injected_factory = PartialInjectedFunction(
-            Injected.bind(makefun_impl, injected_kwargs=injected_kwargs),
-            is_async=inspect.iscoroutinefunction(original_function)
-        )
+        bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
+        bound_func.__is_async_function__= inspect.iscoroutinefunction(original_function)
+        injected_factory = PartialInjectedFunction(src=bound_func)
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
         # it takes *by_name, mzip, and map.
+        injected_factory.__is_async_function__ = bound_func.__is_async_function__
         injected_factory.__runnable_metadata__ = {
             "kind": "callable"
         }
+
 
         return injected_factory
 
@@ -1263,7 +1264,6 @@ class RunnableInjected(Injected):
 @dataclass
 class PartialInjectedFunction(Injected):
     src: Injected[Callable]
-    is_async:bool
     """ 
     here the src is Awaitable[Callable]. so..
     we get T->Awaitable[U] after resolving it.
@@ -1282,8 +1282,6 @@ class PartialInjectedFunction(Injected):
         """
 
         res = self.src.proxy(*args, **kwargs)
-        if self.is_async:
-            return res.await__()
         return res
 
     def dependencies(self) -> Set[str]:

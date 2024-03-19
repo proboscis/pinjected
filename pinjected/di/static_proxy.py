@@ -88,7 +88,7 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
 
 
 def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
-    return DelegatedVar(Object(tgt), cxt,async_impl=True)
+    return DelegatedVar(tgt, cxt)
 
 
 def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
