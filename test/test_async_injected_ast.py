@@ -1,3 +1,5 @@
+from loguru import logger
+
 from pinjected import instance, injected, instances, Injected, providers
 
 
@@ -22,18 +24,73 @@ def test_async_ast():
     assert design.to_graph().provide(y('x')) == 'yx'
     assert design.to_graph().provide(y(x)) == 'yx'
 
-def test_await_op():
 
-    async def get_async_func():
-        return 'async x'
+async def x_provider():
+    return 'x'
 
 
+def test_map():
+    x = Injected.pure('x')
+    y = x.map(lambda x: f"y{x}")
     d = providers(
-        x = Injected.pure(get_async_func).proxy()
+        x=x,
+        y=y
     )
     g = d.to_graph()
-    assert g['x'] == 'async x'
 
+    assert g['x'] == 'x'
+    assert g['y'] == 'yx'
+
+
+def test_await_op():
+    proxy = Injected.pure(x_provider).proxy()
+
+    d = providers(
+        x=proxy
+    )
+    g = d.to_graph()
+    logger.info(f"proxy:{proxy}")
+    assert g['x'] == 'x'
+
+
+def test_injected_dict():
+    async def y_provider():
+        return f"y"
+
+    async def use_x(x):
+        return f"used{x}"
+
+    x = Injected.dict(
+        x=Injected.pure('x'),
+        y=Injected.bind(y_provider),
+    )
+    d = providers(
+        x=x,
+        use_x=use_x
+    )
+    g = d.to_graph()
+    assert g['x'] == dict(x='x', y='y')
+
+
+def test_injected_bind():
+    async def target(x):
+        return x
+
+    bound = Injected.bind(target, x=Injected.pure('z'))
+    d = providers(
+        x=bound
+    )
+    g = d.to_graph()
+    assert g[bound] == 'z'
+
+
+def test_async_partial():
+    partial = Injected.partial(x_provider)
+    d = providers(
+        x=partial
+    )
+    g = d.to_graph()
+    assert g[partial()] == 'x'
 
 def test_injected():
     async def provide_x():
