@@ -40,9 +40,9 @@ class AsyncResolver:
 
     def __post_init__(self):
         from pinjected import injected, instance, providers
-        @instance
-        def dummy():
+        async def dummy():
             raise RuntimeError('This should never be instantiated')
+        dummy = Injected.bind(dummy)
 
         self.design = self.design + providers(
             __resolver__=dummy,

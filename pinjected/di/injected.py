@@ -268,9 +268,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_func_sig = f"injected_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
             return new_func_sig
 
-        def makefun_impl(injected_kwargs):
+        async def makefun_impl(injected_kwargs):
             # this gets called every time you call this function through PartialInjectedFunction interface
             # this is because the injected_kwargs gets changed.
+            assert isinstance(injected_kwargs, dict),f"expected dict, got {injected_kwargs}"
 
             missing_keys = [k for k in original_sig.parameters.keys() if k not in injected_kwargs]
             missing_params = [original_sig.parameters[k] for k in missing_keys]
@@ -293,6 +294,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 # logger.info(f"inferred positional arg names:{inferred_pos_arg_names}")
                 # logger.info(f"inferred non positional arg names:{inferred_non_pos_arg_names}")
                 total_kwargs = copy(defaults)
+                logger.info(f"injected_kwargs:{injected_kwargs}")
                 filled_kwargs = {**injected_kwargs,
                                  **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
                                  **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
@@ -346,6 +348,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 """
             new_func.__skeleton__ = __skeleton__
 
+            logger.info(f"result of makefun_impl:{new_func}")
+
             return new_func
 
         makefun_impl.__name__ = original_function.__name__
@@ -363,7 +367,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             makefun_impl.__original_file__ = safe(inspect.getfile)(original_function).value_or("not available")
 
         makefun_impl.__doc__ = original_function.__doc__
+        logger.info(f"injection_targets:{injection_targets}")
         injected_kwargs = Injected.dict(**injection_targets)
+        logger.info(f"injected_kwargs:{injected_kwargs}")
         # hmm?
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         injected_factory = PartialInjectedFunction(
@@ -391,10 +397,19 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFunction":
-        if isinstance(_target_function_, Injected):
-            _target_function_ = _target_function_.get_provider()
+        assert not isinstance(_target_function_, Injected)
+        # if isinstance(_target_function_, Injected):
+        #     _target_function_ = _target_function_.get_provider()
+        assert callable(_target_function_)
+        if not inspect.iscoroutinefunction(_target_function_):
+            async def _a_target_function(*args, **kwargs):
+                return _target_function_(*args, **kwargs)
+
+            async_target_function = _a_target_function
+        else:
+            async_target_function = _target_function_
         return InjectedFunction(
-            target_function=_target_function_,
+            target_function=async_target_function,
             kwargs_mapping=kwargs_mapping
         )
 
@@ -466,13 +481,15 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
         # return MappedInjected(self, f)
         if not inspect.iscoroutinefunction(f):
-            logger.warning(f"wrapping function as an async function:{f}")
+            logger.warning(f"wrapping mapper function as an async function:{f}")
 
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
 
-            f = async_f
-        return MappedInjected(self, f)
+            new_f = async_f
+        else:
+            new_f = f
+        return MappedInjected(self, new_f)
 
     def from_impl(impl: Callable, dependencies: Set[str]):
         return GeneratedInjected(impl, dependencies)
@@ -543,7 +560,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
+        # raise RuntimeError("disabled")
         keys = list(kwargs.keys())
+
         return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
 
     @property
@@ -908,11 +927,11 @@ class InjectedWithDynamicDependencies(Injected[T]):
 class MappedInjected(Injected):
     __match_args__ = ("src", "f")
 
-    def __init__(self, src: Injected[T], f: Callable[[T], U]):
+    def __init__(self, src: Injected[T], f: Callable[[T], Awaitable[U]]):
         super(MappedInjected, self).__init__()
         assert inspect.iscoroutinefunction(f), f"{f} is not a coroutine function"
         self.src = src
-        self.f: Callable[[T], U] = f
+        self.f: Callable[[T], Awaitable[U]] = f
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies()
@@ -924,8 +943,11 @@ class MappedInjected(Injected):
             if not inspect.iscoroutinefunction(self.src.get_provider()):
                 raise RuntimeError(f"provider is not a corountine function:{self.src}")
             tmp = await self.src.get_provider()(**kwargs)
-
-            return await self.f(tmp)
+            logger.info(f"original result:{tmp}")
+            logger.info(f"mapper function:{self.f}")
+            data = await self.f(tmp)
+            logger.info(f"mapped result:{data}")
+            return data
 
         return create_function(self.get_signature(), func_impl=impl)
 
@@ -967,15 +989,15 @@ def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[In
         raise RuntimeError(f"dep must be either str/type/Callable/Injected. got {type(dep)}")
 
 
-def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dict):
+async def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dict):
     if isinstance(dep, str):
         return kwargs[dep]
     elif isinstance(dep, DelegatedVar):
-        return solve_injection(dep.eval(), kwargs)
+        return await solve_injection(dep.eval(), kwargs)
     elif isinstance(dep, Injected):
-        return solve_injection(dep.get_provider(), kwargs)
-    elif isinstance(dep, (type, Callable)):
-        return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
+        return await solve_injection(dep.get_provider(), kwargs)
+    elif isinstance(dep, (type, Callable)) and inspect.iscoroutinefunction(dep):
+        return await dep(**{k: kwargs[k] for k in extract_dependency(dep)})
     else:
         raise RuntimeError(f"dep must be one of str/type/Callable/Injected. got {type(dep)}")
 
@@ -1012,6 +1034,7 @@ class InjectedFunction(Injected[T]):
         assert not isinstance(target_function, (Injected, DelegatedVar))
         assert callable(target_function)
         self.target_function = target_function
+        assert inspect.iscoroutinefunction(self.target_function), f"{self.target_function} is not a coroutine function"
         self.kwargs_mapping = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
             assert_kwargs_type(v)
@@ -1034,19 +1057,23 @@ class InjectedFunction(Injected[T]):
 
         async def impl(**kwargs):
             deps = dict()
+            async def update(key):
+                if key not in deps:
+                    deps[key] = await solve_injection(self.kwargs_mapping[key], kwargs)
+            tasks = []
             for mdep in self.missings:
-                deps[mdep] = solve_injection(mdep, kwargs)
+                tasks.append(update(mdep))
             for k, dep in self.kwargs_mapping.items():
-                deps[k] = solve_injection(dep, kwargs)
+                tasks.append(update(k))
+            await asyncio.gather(*tasks)
             # logger.info(f"calling function:{self.target_function.__name__}{inspect.signature(self.target_function)}")
             # logger.info(f"src mapping:{self.kwargs_mapping}")
             # logger.info(f"with deps:{deps}")
-
-            res = self.target_function(**deps)
-            if inspect.iscoroutinefunction(self.target_function):
-                return await res
-            else:
-                return res
+            logger.info(f"awaiting target function:{self.target_function}")
+            logger.info(f"deps:{deps}")
+            res = await self.target_function(**deps)
+            # assert not inspect.iscoroutinefunction(res),f"result of awaiting {self.target_function} is a coroutine function:{res}"
+            return res
 
         # you have to add a prefix 'provider'""
         return create_function(func_signature=signature, func_impl=impl)
@@ -1247,7 +1274,7 @@ class PartialInjectedFunction(Injected):
         So, we need Await AST too.
         """
 
-        return self.src.proxy(*args, **kwargs).await__()
+        return self.src.proxy(*args, **kwargs)
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies()

@@ -157,13 +157,6 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     app.zip(injected_data, injected_key),
                     lambda t: t[0][t[1]]
                 )
-            # case BiOp('+', Expr() as left, Expr() as right):
-            #     injected_left = _eval(left)
-            #     injected_right = _eval(right)
-            #     return app.map(
-            #         app.zip(injected_left, injected_right),
-            #         lambda t: t[0] + t[1]
-            #     )
             case BiOp(op, Expr() as left, Expr() as right):
                 injected_left = _eval(left)
                 injected_right = _eval(right)

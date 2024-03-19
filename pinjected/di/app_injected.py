@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Set, Awaitable, TypeVar
+from typing import Set, Awaitable, TypeVar, Callable
 
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
-from pinjected.di.ast import Expr, Object, show_expr
+from pinjected.di.ast import Expr, Object, show_expr, UnaryOp, Call, BiOp, Attr, GetItem
 from pinjected.di.injected import InjectedPure, InjectedFunction, InjectedByName
 from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, \
@@ -108,8 +108,43 @@ def reduce_injected_expr(expr: Expr):
 #
 
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
+    expr = en_async_call(expr)
     return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
     # return EvaledInjected(eval_applicative(expr, ApplicativeAsyncInjected), expr)
+
+
+def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
+    match expr:
+        case Object(x):
+            return transformer(Object(x))
+        case Call(f, args, kwargs):
+            return transformer(
+                Call(f,
+                     tuple([walk_replace(a, transformer) for a in args]),
+                     {k: walk_replace(v, transformer) for k, v in kwargs.items()}
+                     )
+            )
+        case BiOp(op, left, right):
+            return transformer(BiOp(op, walk_replace(left, transformer), walk_replace(right, transformer)))
+        case UnaryOp(op, tgt):
+            return transformer(UnaryOp(op, walk_replace(tgt, transformer)))
+        case Attr(data, name):
+            return transformer(Attr(walk_replace(data, transformer), name))
+        case GetItem(data, key):
+            return transformer(GetItem(walk_replace(data, transformer), walk_replace(key, transformer)))
+        case _:
+            return expr
+
+
+def en_async_call(expr: Expr[T]) -> Expr:
+    def transformer(expr: Expr):
+        match expr:
+            case Call(f, args, kwargs) as call:
+                return UnaryOp('await', call)
+            case _:
+                return expr
+
+    return walk_replace(expr, transformer)
 
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
