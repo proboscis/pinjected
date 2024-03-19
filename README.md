@@ -268,10 +268,12 @@ Note that the name of the decorated function train_loader is implicitly added to
 
 To use the trainer function, you create a Design object and bind the necessary instances (train_dataset, train_cfg, and model). Then, you can call design.provide(trainer) to obtain the trainer_fn function. Finally, you invoke trainer_fn with the non-injected argument epochs to start the training process.
 
-@instance
+### @instance
 The @instance decorator is used to define a provider function that takes only injected arguments. It is a simpler version of @injected where all the arguments are considered injected and will be resolved by Pinjected.
 
 When using @instance, all the arguments of the decorated function are treated as injected, and Pinjected will resolve them based on the dependency graph. The decorated function will directly return the created object, without requiring any further invocation.
+
+Note: Objects created with @instance are singleton-like within the same object graph (g). This means that for a given set of injected arguments, the @instance decorated function will be called only once, and the same instance will be reused for subsequent requests within the same g.
 
 Here's an example:
 
@@ -297,7 +299,7 @@ In this example, train_cfg and train_dataset are injected arguments. The data_pr
 
 To use the data_processor instance, you create a Design object and bind the necessary instance (train_cfg). Pinjected will automatically resolve the train_dataset dependency based on the train_cfg instance. Then, you can directly call design.provide(data_processor) to obtain the processed_data_instance.
 
-Choosing Between @injected and @instance
+### Choosing Between @injected and @instance
 The choice between @injected and @instance depends on your specific use case and the nature of the provider function.
 
 Use @injected when you have a provider function that requires both injected and non-injected arguments. It provides flexibility to accept additional arguments that are not part of the dependency graph.
