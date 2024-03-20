@@ -5,6 +5,7 @@ from abc import ABC
 from dataclasses import dataclass, field, replace
 from typing import Generic, Dict, Any, Callable, Awaitable, TypeVar
 
+from pinjected import Injected
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.v2.keys import IBindKey, StrBindKey
 from pinjected.v2.provide_context import ProvideContext
@@ -154,6 +155,8 @@ class BindInjected(IBind[T]):
     from pinjected import Injected
     src: Injected
     _metadata: Maybe[BindMetadata] = field(default=Nothing)
+    def __post_init__(self):
+        assert isinstance(self.src, Injected), f"src must be an Injected, got {self.src}"
 
     async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
         from loguru import logger
