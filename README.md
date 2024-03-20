@@ -342,37 +342,37 @@ By properly using @instance for provider functions that create objects only once
 ## Add bindings
 
 ```python
-
+import pinjected.main_imply
 from pinjected import Design
 from dataclasses import dataclass
 
 
 @dataclass
 class DepObject:
-    a: int
-    b: int
-    c: int
-    d: int
+  a: int
+  b: int
+  c: int
+  d: int
 
 
 @dataclass
 class App:
-    dep: DepObject
+  dep: DepObject
 
-    def run(self):
-        print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
+  def run(self):
+    print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
 
 
 d = instances(
-    a=0,
-    b=1
+  a=0,
+  b=1
 ) + providers(
-    c=lambda a, b: a + b,
-    d=lambda a, b, c: a + b + c
+  c=lambda a, b: a + b,
+  d=lambda a, b, c: a + b + c
 ) + classes(
-    dep=DepObject
+  dep=DepObject
 )
-d.to_graph()[App].run()
+pinjected.main_imply.run()
 ```
 
 ## Combine Multiple Designs
