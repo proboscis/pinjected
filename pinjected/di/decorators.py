@@ -118,12 +118,12 @@ def injected_instance(f) -> Injected:
     instance = called_partial.eval()
     # instance = Injected.bind(f)
     from pinjected.di.metadata.bind_metadata import BindMetadata
-    instance.__is_async_function__ = is_coroutine
+    #instance.__is_async_function__ = is_coroutine
     IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
         instance,
         _metadata=Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
     )
-    return instance
+    return instance.proxy
 
 
 def injected(tgt: Union[str, type, Callable]):
