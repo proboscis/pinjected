@@ -8,14 +8,34 @@ __meta_design__ = instances(
     ]
 )
 
-
 design01 = instances(name='design01')
 design02 = design01 + instances(name='design02')
 a = Injected.pure('a')
 b = Injected.pure('b')
+
+
+def injected(f):
+    return f
+
+
 @instance
-def test_viz_target(a,b):
+def test_viz_target(a, b):
     return a + b
+
+
+@injected
+def test_function(a, b):
+    pass
+
+
+@injected
+def test_function2(a, /, b):
+    pass
+
+test_function()
+
+
+
 viz_target_design = providers(
     a=a,
     b=b
