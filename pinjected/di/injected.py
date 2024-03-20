@@ -359,9 +359,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             makefun_impl.__original_file__ = safe(inspect.getfile)(original_function).value_or("not available")
 
         makefun_impl.__doc__ = original_function.__doc__
-        logger.info(f"injection_targets:{injection_targets}")
+        #logger.info(f"injection_targets:{injection_targets}")
         injected_kwargs = Injected.dict(**injection_targets)
-        logger.info(f"injected_kwargs:{injected_kwargs}")
+        #logger.info(f"injected_kwargs:{injected_kwargs}")
         # hmm?
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
@@ -478,7 +478,6 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
         # return MappedInjected(self, f)
         if not inspect.iscoroutinefunction(f):
-            logger.warning(f"wrapping mapper function as an async function:{f}")
 
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
