@@ -235,6 +235,20 @@ files = [
 tests = ["asttokens (>=2.1.0)", "coverage", "coverage-enable-subprocess", "ipython", "littleutils", "pytest", "rich"]
 
 [[package]]
+name = "expression"
+version = "4.3.0"
+description = "Practical functional programming for Python 3.9+"
+optional = false
+python-versions = ">=3.9,<4"
+files = [
+    {file = "expression-4.3.0-py3-none-any.whl", hash = "sha256:9e5b08952c1b7a4bb0fb021b15d800cfb4b9d8a190d28fb3e981bb4ba8e219ab"},
+    {file = "expression-4.3.0.tar.gz", hash = "sha256:89a23ee8b6426ef7ab9178e1896d42b2984e888c1d9038549fc98cd987cfe236"},
+]
+
+[package.dependencies]
+typing-extensions = ">=4.1.1,<5.0.0"
+
+[[package]]
 name = "fire"
 version = "0.5.0"
 description = "A library for automatically generating command line interfaces."
@@ -1063,4 +1077,4 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "084b11458f8e62cb293ce4a70efdbeb49672733b1af50da029b1e48340d9a891"
+content-hash = "4b2ff116067daecb501910a0757d5b7854785253aeb5e72b9586fe2ba5f35413"
