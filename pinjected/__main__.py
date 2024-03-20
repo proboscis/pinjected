@@ -1,5 +1,6 @@
 from pinjected import instances, Design, Injected, providers
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.di.tools.add_overload import process_file
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design
 
@@ -82,11 +83,15 @@ def parse_overrides(overrides) -> Design:
         case None:
             return instances()
 
-
-if __name__ == '__main__':
+def main():
     import fire
 
     fire.Fire(dict(
         run=run,
-        check_config=check_config
+        check_config=check_config,
+        create_overloads=process_file
     ))
+
+
+if __name__ == '__main__':
+    main()
