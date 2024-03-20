@@ -29,8 +29,8 @@ def process_file(file_path):
 
 def add_overload_import(tree):
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == 'typing' and any(alias.name == 'overload' for alias in node.names):
-            return  # Import already exists, no need to add it again
+        if isinstance(node, ast.ImportFrom) and node.module == 'typing' and any((alias.name == 'overload' for alias in node.names)):
+            return
     import_node = ast.ImportFrom(module='typing', names=[ast.alias(name='overload', asname=None)], level=0)
     tree.body.insert(0, import_node)
 
