@@ -52,7 +52,7 @@ def get_function_signature(node: ast.FunctionDef) -> inspect.Signature:
     def_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, default=default, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg, default in zip(pos_or_kw_args[num_non_defaults:], defaults)]
     pos_only_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_ONLY, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in pos_only_args]
     kw_only_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.KEYWORD_ONLY, default=kw_defaults.get(arg.arg, inspect.Parameter.empty), annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in kw_only_args]
-    return_annotation = node.returns.id if node.returns else inspect.Signature.empty
+    return_annotation = node.returns.value if isinstance(node.returns, ast.Constant) else node.returns.id if node.returns else inspect.Signature.empty
     sig: inspect.Signature = inspect.Signature(parameters=pos_only_params + non_def_params + def_params + kw_only_params, return_annotation=return_annotation)
     logger.info(f'signature: {sig}')
     return sig
@@ -79,7 +79,7 @@ def generate_overload_signature(func_name, signature):
     signature_str = f"@overload\ndef {func_name}({', '.join(param_annotations)})"
     if return_annotation != inspect.Signature.empty and return_annotation is not None:
         signature_str += f' -> {get_annotation_string(return_annotation)}'
-    signature_str += ':\n    ...'
+    signature_str += ':\n    """Signature of the function after being injected."""\n    ...'
     return signature_str
 
 def get_annotation_string(annotation):
@@ -109,11 +109,14 @@ def has_overload_decorator(node):
     return False
 
 @overload
-def add_overload(file_path: str):
+def add_overload(file_path: str) -> int:
+    """Signature of the function after being injected."""
     ...
 
 @injected
-def add_overload(file_path: str):
+def add_overload(file_path: str) -> int:
     process_file(file_path)
+    return 0
+
 design = instances()
 __meta_design__ = instances(default_design_paths=['pinjected.di.tools.add_overload.design'])
