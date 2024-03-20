@@ -1,7 +1,3 @@
-from typing import overload
-from typing import overload
-from typing import overload
-from typing import overload
 import ast
 import inspect
 import textwrap
@@ -32,6 +28,9 @@ def process_file(file_path):
         file.write(updated_source_code)
 
 def add_overload_import(tree):
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == 'typing' and any(alias.name == 'overload' for alias in node.names):
+            return  # Import already exists, no need to add it again
     import_node = ast.ImportFrom(module='typing', names=[ast.alias(name='overload', asname=None)], level=0)
     tree.body.insert(0, import_node)
 
