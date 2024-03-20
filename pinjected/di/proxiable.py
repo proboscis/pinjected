@@ -99,5 +99,8 @@ class DelegatedVar(Generic[T]):
     def __mod__(self, other):
         return self.cxt.biop_impl('%', self.value, other)
 
+    def __eq__(self, other):
+        return self.cxt.biop_impl('==', self.value, other)
+
     def await__(self):
         return self.cxt.unary_impl('await', self.value)
