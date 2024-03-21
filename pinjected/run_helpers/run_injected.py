@@ -118,7 +118,7 @@ def run_anything(
             async def task():
                 _res = await design.to_resolver().provide(var(*args, **kwargs))
                 if isinstance(_res, Awaitable):
-                    logger.info(f"awaiting awaitable")
+                    #logger.info(f"awaiting awaitable")
                     _res = await _res
                 if not return_result:
                     logger.info(f"run_injected call result:\n{_res}")

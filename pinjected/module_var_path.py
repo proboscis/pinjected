@@ -65,8 +65,10 @@ def load_variable_by_module_path(full_module_path):
 
     # Retrieve the variable using getattr()
     if not hasattr(module, variable_name):
-        logger.warning(f"Module {module_path} at {module.__file__} does not have variable {variable_name}. src = \n{Path(module.__file__).read_text()}")
-        raise RuntimeError(f"Module {module_path} at {module.__file__} does not have variable {variable_name}. but has {dir(module)}")
+        logger.warning(
+            f"Module {module_path} at {module.__file__} does not have variable {variable_name}. src = \n{Path(module.__file__).read_text()}")
+        raise RuntimeError(
+            f"Module {module_path} at {module.__file__} does not have variable {variable_name}. but has {dir(module)}")
     variable = getattr(module, variable_name)
 
     logger.info(f"loaded {full_module_path}")
@@ -92,7 +94,7 @@ def find_var_or_func_definition_code_in_module(module_dot_path, name):
     definition = None
 
     for node in ast.walk(tree):
-        if definition is None and isinstance(node, (ast.Assign, ast.AnnAssign, ast.FunctionDef,ast.AsyncFunctionDef)):
+        if definition is None and isinstance(node, (ast.Assign, ast.AnnAssign, ast.FunctionDef, ast.AsyncFunctionDef)):
             targets = []
             if isinstance(node, ast.Assign):
                 targets = node.targets
@@ -102,10 +104,11 @@ def find_var_or_func_definition_code_in_module(module_dot_path, name):
             for target in targets:
                 if isinstance(target, ast.Name) and target.id == name:
                     start_line = node.lineno  # 1-based index
-                    end_line = getattr(node, 'end_lineno', start_line)  # Some older Python versions don't have end_lineno
+                    end_line = getattr(node, 'end_lineno',
+                                       start_line)  # Some older Python versions don't have end_lineno
                     definition = ''.join(lines[start_line - 1:end_line]).strip()
 
-            if isinstance(node, (ast.FunctionDef,ast.AsyncFunctionDef)) and node.name == name:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
                 start_line = node.lineno
                 end_line = getattr(node, 'end_lineno', start_line)
                 definition = ''.join(lines[start_line - 1:end_line]).strip()
