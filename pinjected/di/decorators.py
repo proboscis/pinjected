@@ -114,7 +114,7 @@ def injected_instance(f) -> Injected:
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
     called_partial = Injected.partial(f, **tgts)()
     from loguru import logger
-    logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
+    #logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
     instance = called_partial.eval()
     # instance = Injected.bind(f)
     from pinjected.di.metadata.bind_metadata import BindMetadata
