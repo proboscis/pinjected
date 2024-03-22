@@ -22,7 +22,7 @@ def run(
 
     :param var_path: the path to the variable to be injected: e.g. "my_module.my_var"
     :param design_path: the path to the design to be used: e.g. "my_module.my_design"
-    :param _overrides_: a string that can be converted to an Design in some way. This will gets concatenated to the design.
+    :param overrides: a string that can be converted to an Design in some way. This will gets concatenated to the design.
     :param kwargs: overrides for the design. e.g. "api_key=1234"
 
     """
