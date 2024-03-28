@@ -72,7 +72,8 @@ class AsyncResolver:
             deps = dict(zip(dep_keys, res))
             data = await bind.provide(cxt, deps)
             self.objects[key] = data
-            logger.info(f"{cxt.trace_str} := {data}")
+            show_data = str(data)[:100]
+            logger.info(f"{cxt.trace_str} := {show_data}")
             return data
         else:
             if self.parent is not None:

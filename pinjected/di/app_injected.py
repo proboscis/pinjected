@@ -138,7 +138,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
 
 def await_awaitables(expr: Expr[T]) -> Expr:
     from loguru import logger
-    logger.info(f"await_awaitables {expr}")
+    #logger.info(f"await_awaitables {expr}")
 
     def transformer(expr: Expr):
         match expr:
