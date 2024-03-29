@@ -32,8 +32,6 @@ def test_function(a, b):
 def test_function2(a, /, b):
     pass
 
-test_function()
-
 
 
 viz_target_design = providers(
