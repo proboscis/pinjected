@@ -32,16 +32,30 @@ class ScopeNode(IScope):
         return self.objects[tgt]
 
 
+# We need a lock for each Bind Key.
+
+@dataclass
+class AsyncLockMap:
+    locks: Dict[IBindKey, asyncio.Lock] = field(default_factory=dict)
+
+    def get(self, key: IBindKey):
+        if key not in self.locks:
+            self.locks[key] = asyncio.Lock()
+        return self.locks[key]
+
+
 @dataclass
 class AsyncResolver:
     design: "Design"
     parent: Optional["AsyncResolver"] = None
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
+    locks: AsyncLockMap = field(default_factory=AsyncLockMap)
 
     def __post_init__(self):
         from pinjected import injected, instance, providers
         async def dummy():
             raise RuntimeError('This should never be instantiated')
+
         dummy = Injected.bind(dummy)
 
         self.design = self.design + providers(
@@ -56,30 +70,31 @@ class AsyncResolver:
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
         # we need to think which one to ask provider
         # if we have the binding for the key, use our own scope
-        if key in self.objects:
-            data = self.objects[key]
-            return data
-        elif key in self.design:
-            logger.info(f"{cxt.trace_str}")
-            # we are responsible for providing this
-            bind = self.design.bindings[key]
-            dep_keys = list(bind.dependencies)
-            tasks = []
-            for dep_key in dep_keys:
-                n_cxt = ProvideContext(key=dep_key, parent=cxt)
-                tasks.append(self._provide(dep_key, n_cxt))
-            res = await asyncio.gather(*tasks)
-            deps = dict(zip(dep_keys, res))
-            data = await bind.provide(cxt, deps)
-            self.objects[key] = data
-            show_data = str(data)[:100]
-            logger.info(f"{cxt.trace_str} := {show_data}")
-            return data
-        else:
-            if self.parent is not None:
-                return await self.parent._provide(key, cxt)
+        async with self.locks.get(key):
+            if key in self.objects:
+                data = self.objects[key]
+                return data
+            elif key in self.design:
+                logger.info(f"{cxt.trace_str}")
+                # we are responsible for providing this
+                bind = self.design.bindings[key]
+                dep_keys = list(bind.dependencies)
+                tasks = []
+                for dep_key in dep_keys:
+                    n_cxt = ProvideContext(key=dep_key, parent=cxt)
+                    tasks.append(self._provide(dep_key, n_cxt))
+                res = await asyncio.gather(*tasks)
+                deps = dict(zip(dep_keys, res))
+                data = await bind.provide(cxt, deps)
+                self.objects[key] = data
+                show_data = str(data)[:100]
+                logger.info(f"{cxt.trace_str} := {show_data}")
+                return data
             else:
-                raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
+                if self.parent is not None:
+                    return await self.parent._provide(key, cxt)
+                else:
+                    raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
 
     def child_session(self, overrides: "Design"):
         return AsyncResolver(overrides, parent=self)
