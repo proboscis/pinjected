@@ -138,7 +138,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
 
 def await_awaitables(expr: Expr[T]) -> Expr:
     from loguru import logger
-    #logger.info(f"await_awaitables {expr}")
+    # logger.info(f"await_awaitables {expr}")
 
     def transformer(expr: Expr):
         match expr:
@@ -154,6 +154,24 @@ def await_awaitables(expr: Expr[T]) -> Expr:
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
     return ast_proxy(Object(injected), InjectedEvalContext)
+
+
+class InjectedIter:
+    def __init__(self, e):
+        self.e = e
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        res = self.e[self.i]
+        self.i += 1
+        return res
+
+
+def injected_iter_impl(e: Expr):
+    return InjectedIter(e)
 
 
 ApplicativeInjected = ApplicativeInjectedImpl()
