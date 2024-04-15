@@ -1,6 +1,9 @@
+from pathlib import Path
+
 from pinjected import Design, instances, providers, Injected
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
+from pinjected.helper_structure import MetaContext
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design
 
@@ -9,6 +12,7 @@ def run(
         var_path: str,
         design_path: str = None,
         overrides: str = None,
+        meta_context_path:str= None,
         **kwargs
 ):
     """
@@ -22,17 +26,20 @@ def run(
 
     :param var_path: the path to the variable to be injected: e.g. "my_module.my_var"
     :param design_path: the path to the design to be used: e.g. "my_module.my_design"
-    :param overrides: a string that can be converted to an Design in some way. This will gets concatenated to the design.
+    :param ovr: a string that can be converted to an Design in some way. This will gets concatenated to the design.
     :param kwargs: overrides for the design. e.g. "api_key=1234"
 
     """
     # TODO parse overrides
     # TODO parse kwargs from cli.
-
     kwargs_overrides = parse_kwargs_as_design(**kwargs)
-    overrides = parse_overrides(overrides)
-    overrides += kwargs_overrides
-    return run_injected("get", var_path, design_path, return_result=True, overrides=overrides)
+    ovr = instances()
+    if meta_context_path is not None:
+        mc = MetaContext.gather_from_path(Path(meta_context_path))
+        ovr += mc.final_design
+    ovr += parse_overrides(overrides)
+    ovr += kwargs_overrides
+    return run_injected("get", var_path, design_path, return_result=True, overrides=ovr)
 
 
 def check_config():

@@ -17,6 +17,11 @@ class ModuleVarSpec(Generic[T]):
     var: T
     var_path: str
 
+    @property
+    def module_file_path(self):
+        from pinjected.module_var_path import ModuleVarPath
+        return ModuleVarPath(self.var_path).module_file_path
+
 
 @memoize
 def get_project_root(start_path: str) -> str:
