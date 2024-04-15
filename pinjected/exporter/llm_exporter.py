@@ -1,17 +1,21 @@
 import ast
 import inspect
+import sys
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from pprint import pformat
+from types import TracebackType, NoneType
 from typing import Callable, Awaitable, List
 
 import astor
+import cytoolz
 
-from pinjected import Design, Injected, injected, instances, providers
+from pinjected import Design, Injected, injected, instances, providers, instance
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
 from pinjected.di.injected import InjectedPure, InjectedFunction, PartialInjectedFunction, ZippedInjected, \
-    MappedInjected, InjectedByName
+    MappedInjected, InjectedByName, FrameInfo, MZippedInjected, DictInjected
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import IdeaRunConfiguration, MetaContext
 from pinjected.module_inspector import ModuleVarSpec
@@ -45,6 +49,13 @@ def add_async_to_function_source(function_source):
 
 
 @dataclass
+class CodeBlock:
+    target: str
+    code: str
+    imports: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class PinjectedCodeExporter:
     src: Design
     a_llm: Callable[[str], Awaitable[str]]
@@ -53,10 +64,38 @@ class PinjectedCodeExporter:
         digraph = self.src.to_vis_graph()
         self.mappings = {**digraph.explicit_mappings}
 
-    @staticmethod
-    async def to_source__instance(assign_target, tgt: InjectedPure):
+    async def to_source__instance(self,assign_target, tgt: InjectedPure) -> CodeBlock:
         # wait, tgt.value must be recoverable from the value. but it should always be.
-        return f"{assign_target} = {tgt.value}"
+        frame = tgt.__definition_frame__
+        # let's get the relevant imports
+
+        frm = frame.original_frame
+        mod_name = frm.f_globals['__name__']
+        from loguru import logger
+        if mod_name == 'module.name':
+            # the variable is defined at non-module script so let's read the file
+            source = Path(frm.f_globals['__file__']).read_text()
+            imports = get_required_imports(source,module_name="__main__")
+        else:
+            module = sys.modules[mod_name]
+            imports = get_required_imports(module)
+
+        if callable(tgt.value):
+            src = inspect.getsource(tgt.value)
+            logger.info(f"trying to en_source a callable:{src}")
+            src = await self.extract_lambda(tgt.value)
+        else:
+            src = tgt.value
+
+        #assert isinstance(tgt.value, (str, int, float,list,dict,NoneType)), f"tgt.value must be a simple value, got {tgt.value}"
+
+
+
+        return CodeBlock(
+            target=assign_target,
+            code=f"{assign_target} = {src}",
+            imports=imports
+        )
 
     async def extract_lambda(self, f):
         from loguru import logger
@@ -70,6 +109,7 @@ class PinjectedCodeExporter:
     The answer must be a valid python expression without comments, in the form of 
     lambda ...: ...
     """
+        logger.info(f"prompt:\n{prompt}")
         return await self.a_llm(prompt)
 
     async def get_source_func(self, assign_target, f):
@@ -95,8 +135,10 @@ class PinjectedCodeExporter:
         try:
             if f.__name__.endswith('<lambda>'):
                 src = await self.extract_lambda(f)
+                src = src.replace("```python", "").replace('```', "").replace("\n", "")
                 return f"{assign_target} = {src}\n"
             else:
+                logger.debug(f"parsing function:{assign_target},\n{src}")
                 tree = ast.parse(src)
                 logger.debug(f"before un_pinjected->\n{src}")
                 PinjectedCodeExporter.un_pinjected(assign_target, tree)
@@ -152,12 +194,13 @@ class PinjectedCodeExporter:
                             return k
         return None
 
-    async def expr_to_source(self, assign_target: str, expr: Expr, visited):
+    async def expr_to_source(self, assign_target: str, expr: Expr, visited) -> list[CodeBlock]:
         from loguru import logger
-        predef_buffer = ""
+
+        predef_blocks = []
 
         async def to_src(e: Expr):
-            nonlocal predef_buffer
+            nonlocal predef_blocks
             match e:
                 case BiOp(sym, left, right):
                     return f"{await to_src(left)} {sym} {await to_src(right)}"
@@ -186,12 +229,13 @@ class PinjectedCodeExporter:
                             sym = vid_to_key[id(data)]
                             logger.info(f"using symbol:{sym}")
                         else:
-                            sym = "tmp__" + self.new_symbol()
+                            sym = self.tmp_symbol()
                         # here, we are seeing InjectedFunction
                         # We need to handle InjectedByName
                         logger.info(f"creating new symbol:{sym}, for {data}")
+                    # hmm, to_source returns code block.
                     if sym not in visited:
-                        predef_buffer += f"{await self.to_source(sym, data, visited)}\n"
+                        predef_blocks += await self.to_source(sym, data, visited)
                     return sym
                 case Object(str() as literal):
                     return f'"{literal}"'
@@ -205,30 +249,44 @@ class PinjectedCodeExporter:
                     raise ValueError(f"Unsupported type {e}, {type(e)}")
 
         src = await to_src(expr)
-        code = f"{predef_buffer}\n{assign_target} = {src}"
-        if predef_buffer.strip():
-            prompt = f"""
-Please simplify the following python script to remove tmp functions and variables, as much as possible.
-The variables/functions to simplify have 'tmp' as their prefix.
-The script's purpose is to calculate {assign_target}.
-```
-{code}
-```
-The answer should not contain any explanation or triple ticks.
-Functions not in scope does not need to be defined.
-Beware that {assign_target} name must be preserved.
-    """
-            logger.debug(f"prompt:\n{prompt}")
-            simplified = await self.a_llm(prompt)
-            simplified = simplified.replace("```python", "").replace('```', "")
-            logger.debug(f"simplified:\n{simplified}")
-            return simplified
-        return code
 
-    async def to_source(self, assign_target: str, src: Injected, visited: set = None):
+        code = f"{assign_target} = {src}"
+
+        #         if code.strip():
+        #             prompt = f"""
+        # Please simplify the following python script to remove tmp functions and variables, as much as possible.
+        # The variables/functions to simplify have 'tmp' as their prefix.
+        # The script's purpose is to calculate {assign_target}.
+        # ```
+        # {code}
+        # ```
+        # The answer should not contain any explanation or triple ticks.
+        # Functions not in scope does not need to be defined.
+        # Beware that {assign_target} name must be preserved.
+        #     """
+        #             logger.debug(f"prompt:\n{prompt}")
+        #             simplified = await self.a_llm(prompt)
+        #             simplified = simplified.replace("```python", "").replace('```', "")
+        #             logger.debug(f"simplified:\n{simplified}")
+        #             code = simplified
+
+        return [
+            *predef_blocks,
+            CodeBlock(
+                target=assign_target,
+                code=code,
+            )
+        ]
+
+    async def to_source(self, assign_target: str, src: Injected, visited: set = None) -> list[CodeBlock]:
+        """
+        Currenylu, we modify the code(string).
+        However, we should actually use the ast tree.
+        Also, we need to handle the imported stuff.
+        """
         if visited is None:
             visited = set()
-        code = ""
+        blocks = []
         if isinstance(src, str):
             src = Injected.by_name(src)
         src = Injected.ensure_injected(src)
@@ -242,44 +300,250 @@ Beware that {assign_target} name must be preserved.
                 if dep not in self.mappings:
                     logger.warning(f"mappings:{self.mappings}")
                     raise ValueError(f"{dep} not in mappings!")
-                code += await self.to_source(dep, self.mappings[dep], visited)
+                blks = await self.to_source(dep, self.mappings[dep], visited)
+                for b in blks:
+                    assert isinstance(b, CodeBlock), f"block is not CodeBlock:{b},{type(b)},src:{src}\n{pformat(blks)}"
+                blocks += blks
+                for b in blocks:
+                    assert isinstance(b,
+                                      CodeBlock), f"block is not CodeBlock:{b},{type(b)},src:{src}\n{pformat(blocks)}"
 
         logger.info(f"getting source for {assign_target},type:{type(src)}")
         match src:
             case InjectedPure() as p:
-                last_code = await self.to_source__instance(assign_target, p)
-            case InjectedFunction(tgt_func, _km) as f:
-                func_name = f"provide_{assign_target}"
+                blocks += [await self.to_source__instance(assign_target, p)]
+            case InjectedFunction(tgt_func, {'injected_kwargs':DictInjected(kwargs_mapping)}) as f:
+                # aha, we need to solve the keyword mappings and add it as code blocks
+                logger.warning(f"kwargs_mapping for injected_function:{kwargs_mapping}")
+                key_to_symbol = dict()
+                for key, bound in kwargs_mapping.items():
+                    if key not in visited:
+                        sym = self.tmp_symbol()
+                        key_to_symbol[key] = sym
+                        blocks += await self.to_source(sym, bound, visited)
+                    else:
+                        pass
+
+                org_func = f.original_function
+                module = inspect.getmodule(org_func)
+                # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
+                if module is not None:
+                    imports = get_required_imports(module)
+                else:
+                    imports = dict()
+
+                func_name = f"provide_if__{assign_target}"
                 last_code = await self.get_source_func(func_name, tgt_func)
                 # you need to actually call the func.
+                pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
+                last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
+                logger.info(f"imports for {func_name}:{pformat(imports)}")
+                assignment = CodeBlock(
+                    target=assign_target,
+                    code=last_code,
+                    imports=imports
+                )
+                blocks += [assignment]
+            case InjectedFunction(tgt_func,{}) as f:
+                func_name = f"provide_{assign_target}"
+                last_code = await self.get_source_func(func_name, tgt_func)
+                    # you need to actually call the func.
+                org_func = f.original_function
+                module = inspect.getmodule(org_func)
+                    # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
+                if module is not None:
+                    imports = get_required_imports(module)
+                else:
+                    imports = dict()
                 last_code += f"\n{assign_target} = {func_name}()\n"
+                logger.info(f"imports for {func_name}:{pformat(imports)}")
+                assignment = CodeBlock(
+                    target=assign_target,
+                    code=last_code,
+                    imports=imports
+                )
+                blocks += [assignment]
 
-            case PartialInjectedFunction(InjectedFunction(func)) as pif:
-                last_code = await self.get_source_func(assign_target, func)
+            case PartialInjectedFunction(InjectedFunction(func, {'injected_kwargs':DictInjected(kwargs_mapping)}) as ifunc) as pif:
+                # last_code = await self.get_source_func(assign_target, func)
+                # module = inspect.getmodule(ifunc)
+                # imports = get_required_imports(module)
+                # logger.info(f"imports for {assign_target}:{pformat(imports)}")
+                #
+                # assignment = CodeBlock(
+                #     target=assign_target,
+                #     code=last_code,
+                #     imports=imports
+                # )
+                # blocks += [assignment]
+                # aha, we need to solve the keyword mappings and add it as code blocks
+                key_to_symbol = dict()
+                for key, bound in kwargs_mapping.items():
+                    if key not in visited:
+                        sym = self.tmp_symbol()
+                        key_to_symbol[key] = sym
+                        blocks += await self.to_source(sym, bound, visited)
+                    else:
+                        pass
+                        #key_to_symbol[key] = key
+
+                org_func = ifunc.original_function
+                module = inspect.getmodule(org_func)
+                # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
+                if module is not None:
+                    imports = get_required_imports(module)
+                else:
+                    imports = dict()
+
+                func_name = f"provide_known_{assign_target}"
+                last_code = await self.get_source_func(func_name, func)
+                # you need to actually call the func.
+                pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
+                #last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
+                assert "<lambda>" not in func_name, f"lambda found in func_name:{func_name}"
+                last_code += f"\n{assign_target} = {func_name}"
+                logger.info(f"imports for {func_name}:{pformat(imports)}")
+                assignment = CodeBlock(
+                    target=assign_target,
+                    code=last_code,
+                    imports=imports
+                )
+                blocks += [assignment]
+
+            case PartialInjectedFunction(InjectedFunction(func,kwargs_mapping) as ifunc) as pif:
+                # last_code = await self.get_source_func(assign_target, func)
+                # module = inspect.getmodule(ifunc)
+                # imports = get_required_imports(module)
+                # logger.info(f"imports for {assign_target}:{pformat(imports)}")
+                #
+                # assignment = CodeBlock(
+                #     target=assign_target,
+                #     code=last_code,
+                #     imports=imports
+                # )
+                # blocks += [assignment]
+                # aha, we need to solve the keyword mappings and add it as code blocks
+                key_to_symbol = dict()
+                for key, bound in kwargs_mapping.items():
+                    if key not in visited:
+                        sym = self.tmp_symbol()
+                        key_to_symbol[key] = sym
+                        blocks += await self.to_source(sym, bound, visited)
+                    else:
+                        pass
+                        #key_to_symbol[key] = key
+
+                org_func = ifunc.original_function
+                module = inspect.getmodule(org_func)
+                # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
+                if module is not None:
+                    imports = get_required_imports(module)
+                else:
+                    imports = dict()
+
+                func_name = f"provide_unknown_{assign_target}"
+                last_code = await self.get_source_func(func_name, func)
+                # you need to actually call the func.
+                pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
+                last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
+                #last_code += f"\n{assign_target} = {func_name}"#({','.join(pairs)})\n"
+                logger.info(f"imports for {func_name}:{pformat(imports)}")
+                assignment = CodeBlock(
+                    target=assign_target,
+                    code=last_code,
+                    imports=imports
+                )
+                blocks += [assignment]
+
+
             case EvaledInjected(value, tree):
                 from loguru import logger
                 logger.info(tree)
                 logger.info(value)
-                last_code = await self.expr_to_source(assign_target, tree, visited)
+                blocks += await self.expr_to_source(assign_target, tree, visited)
+                for b in blocks:
+                    assert isinstance(b,
+                                      CodeBlock), f"block is not CodeBlock:{b},{type(b)},src:{src}\n{pformat(blocks)}"
             case ZippedInjected(a, b):
                 left, right = self.tmp_symbol() + "left", self.tmp_symbol() + "right"
-                prep = (await self.to_source(left, a, visited)
-                        + "\n"
-                        + await self.to_source(right, b, visited)
-                        + "\n")
-                last_code = prep + "\n" + f"{assign_target} = ({left},{right})\n"
-            case MappedInjected(src, f):
+                left_block = await self.to_source(left, a, visited)
+                right_block = await self.to_source(right, b, visited)
+                assign_code = f"{assign_target} = ({left},{right})\n"
+                blocks += [
+                    *left_block,
+                    *right_block,
+                    CodeBlock(
+                        target=assign_target,
+                        code=assign_code,
+                    )
+                ]
+            case MZippedInjected(srcs):
+                symbols = []
+                for src in srcs:
+                    sym = self.tmp_symbol()
+                    symbols.append(sym)
+                    logger.info(f"resolving mzip item:{sym}, {src}")
+                    _blks = await self.to_source(sym, src, visited)
+                    logger.info(f"blocks:{pformat(_blks)}")
+                    blocks += _blks
+
+                assign_code = f"{assign_target} = ({','.join(symbols)})\n"
+                blocks += [CodeBlock(
+                    target=assign_target,
+                    code=assign_code
+                )]
+                for b in blocks:
+                    assert isinstance(b,
+                                      CodeBlock), f"block is not CodeBlock:{b},{type(b)},src:{src}\n{pformat(blocks)}"
+                logger.info(f"blocks:{pformat(blocks)}")
+            case DictInjected(srcs):
+                key_to_symbol = dict()
+                for k, v in srcs.items():
+                    sym = self.tmp_symbol()
+                    key_to_symbol[k] = sym
+                    _blks = await self.to_source(sym, v, visited)
+                    blocks += _blks
+                assign_code = assign_target + " = {\n" + ",\n".join([f'    "{k}":{v}' for k, v in key_to_symbol.items()]) + "\n}"
+                blocks += [CodeBlock(
+                    target=assign_target,
+                    code=assign_code
+                )]
+
+            case MappedInjected(src, f) as mi:
                 map_f = self.tmp_symbol()
                 map_src = self.tmp_symbol()
-                prep = await self.get_source_func(map_f, f) + "\n"
-                prep += await self.to_source(map_src, src, visited) + "\n"
-                last_code = prep + f"{assign_target} = {map_f}({map_src})\n"
+                prep = await self.get_source_func(map_f, mi.original_mapper) + "\n"
+                # prep += await self.to_source(map_src, src, visited) + "\n"
+                last_code = f"{assign_target} = {map_f}({map_src})\n"
+                module = inspect.getmodule(mi.original_mapper)
+                imports = get_required_imports(module)
+                blocks += [
+                    CodeBlock(
+                        target=map_f,
+                        code=prep,
+                        imports=imports
+                    ),
+                    *(await self.to_source(map_src, src, visited)),
+                    CodeBlock(
+                        target=assign_target,
+                        code=last_code,
+                    )
+                ]
             case InjectedByName(name):
-                last_code = await self.to_source(name, self.mappings[name], visited=visited)
+                blocks += await self.to_source(name, self.mappings[name], visited=visited)
+                blocks.append(CodeBlock(
+                    target=assign_target,
+                    code=f"{assign_target} = {name}"
+                ))
+
             case _:
                 raise ValueError(f"Unsupported type {src}")
-        code += last_code + "\n"
-        return code
+        for b in blocks:
+            if '<lambda>' in b.code:
+                logger.error(f"lambda found in code block:{b.code}")
+            assert isinstance(b, CodeBlock), f"block is not CodeBlock:{b},{type(b)},src:{src}\n{pformat(blocks)}"
+            assert '<lambda>' not in b.code, f"lambda found in code block:{b.code},blocks:\n{pformat(blocks)}"
+        return blocks
 
     async def simplify_code(self, target_name, code):
         prompt = f"""
@@ -296,7 +560,22 @@ Beware that {assign_target} name must be preserved.
         return await self.a_llm(prompt)
 
     async def export(self, target):
-        return await self.to_source(target, self.mappings[target])
+        blocks: list[CodeBlock] = await self.to_source(target, self.mappings[target])
+        imports = cytoolz.merge([b.imports for b in blocks])
+        code = "\n".join([b.code for b in blocks])
+        import_lines = ""
+        from loguru import logger
+        for name, full in imports.items():
+            logger.info(f"importing {name} from {full}")
+            mod_paths = full.split('.')
+            if len(mod_paths) <= 1:
+                import_lines += f"import {name}\n"
+            else:
+                mod_name = ".".join(mod_paths[:-1])
+                import_lines += f"from {mod_name} import {name}\n"
+
+        src = import_lines + "\n" + code
+        return src
 
 
 @injected
@@ -315,6 +594,14 @@ async def _export_injected(logger, a_llm, /, tgt: str):
 
 
 export_injected: Injected = _export_injected(injected("export_target"))
+
+"""
+Current limitations:
+- code that works like a meta programming is not supported
+  - async_cached
+    - 
+- classes are not copied
+"""
 
 
 @injected
@@ -350,6 +637,68 @@ def add_export_config(
 
 test_export_injected: Injected = _export_injected("pinjected.exporter.llm_exporter.export_injected")
 
+test_pure = Injected.pure(instance)
+
+
+@instance
+def test_injected_pure_imports(logger):
+    def_frame: FrameInfo = test_pure.__definition_frame__
+    frm = def_frame.original_frame
+    mod_name = frm.f_globals['__name__']
+    module = sys.modules[mod_name]
+    return get_required_imports(module)
+
+#
+# def get_required_imports(module_or_source):
+#     if isinstance(module_or_source, str):
+#         source = module_or_source
+#     else:
+#         source = inspect.getsource(module_or_source)
+#     tree = ast.parse(source)
+#     imports = {}
+#
+#     for node in ast.walk(tree):
+#         if isinstance(node, ast.Import):
+#             for alias in node.names:
+#                 var_name = alias.asname if alias.asname else alias.name
+#                 imports[var_name] = alias.name
+#         elif isinstance(node, ast.ImportFrom):
+#             for alias in node.names:
+#                 var_name = alias.asname if alias.asname else alias.name
+#                 imports[var_name] = f"{node.module}.{alias.name}"
+#
+#     return imports
+
+def get_required_imports(module_or_source,module_name=None):
+    if isinstance(module_or_source, str):
+        source = module_or_source
+        if module_name is None:
+            module_name = "."
+    else:
+        source = ast.unparse(ast.parse(ast.unparse(ast.parse(inspect.getsource(module_or_source)))))
+        module_name = module_or_source.__name__
+
+    tree = ast.parse(source)
+    module_info = {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                var_name = alias.asname if alias.asname else alias.name
+                module_info[var_name] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                var_name = alias.asname if alias.asname else alias.name
+                module_info[var_name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            module_info[node.name] = f"{module_name}.{node.name}"
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    module_info[target.id] = f"{module_name}.{target.id}"
+
+    return module_info
+
 default_design = instances(
 ) + providers(
     a_llm=injected('a_llm__gpt4_turbo')
@@ -357,7 +706,9 @@ default_design = instances(
 
 __meta_design__ = instances(
     default_design_paths=["pinjected.exporter.llm_exporter.default_design"],
-    overrides=instances(),
+    overrides=instances(
+
+    ),
 ) + providers(
     custom_idea_config_creator=add_export_config,
 )
