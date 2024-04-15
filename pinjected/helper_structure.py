@@ -52,11 +52,21 @@ class MetaContext:
             trace=designs,
             accumulated=res
         )
+
     @property
     def final_design(self):
         acc = self.accumulated
         design = load_variable_by_module_path(acc.provide('default_design_paths')[0])
         return design + acc.provide('overrides')
+
+    @property
+    async def a_final_design(self):
+        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+        acc = self.accumulated
+        g = acc.to_resolver()
+        module_path = (await g['default_design_paths'])[0]
+        design = load_variable_by_module_path(module_path)
+        return load_user_default_design() + design + (await g['overrides']) + load_user_overrides_design()
 
 
 @dataclass

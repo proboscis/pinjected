@@ -1,4 +1,5 @@
 import abc
+import ast
 import asyncio
 import functools
 import hashlib
@@ -400,9 +401,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             async def _a_target_function(*args, **kwargs):
                 return _target_function_(*args, **kwargs)
 
+
             _a_target_function.__signature__ = inspect.signature(_target_function_)
 
             async_target_function = _a_target_function
+            async_target_function.__original_code__ = safe(inspect.getsource)(_target_function_).value_or("not available")
         else:
             async_target_function = _target_function_
         return InjectedFunction(

@@ -3,16 +3,45 @@ import inspect
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, List
 
 import astor
 
-from pinjected import Design, Injected
+from pinjected import Design, Injected, injected, instances, providers
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.ast import Expr, BiOp, Call, Attr, GetItem, Object
+from pinjected.di.ast import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
 from pinjected.di.injected import InjectedPure, InjectedFunction, PartialInjectedFunction, ZippedInjected, \
     MappedInjected, InjectedByName
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.helper_structure import IdeaRunConfiguration, MetaContext
+from pinjected.module_inspector import ModuleVarSpec
+from pinjected.module_var_path import ModuleVarPath
+from pinjected.v2.resolver import AsyncResolver
+
+
+def add_async_to_function_source(function_source):
+    # Get the source code of the function
+
+    # Parse the function source code into an AST
+    tree = ast.parse(function_source)
+
+    # Find the function definition node
+    function_def = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            function_def = node
+            break
+
+    if function_def:
+        # Add the 'async' keyword to the function definition
+        function_def.async_stmt = 1
+
+        # Convert the modified AST back to source code
+        modified_source = ast.unparse(tree)
+
+        return modified_source
+    else:
+        return None
 
 
 @dataclass
@@ -48,6 +77,11 @@ class PinjectedCodeExporter:
         if hasattr(f, "__original_code__"):
             # logger.info(f"retrieving source from __original_code__")
             src = f.__original_code__
+            # logger.debug(f"original source from __original_code__:\n{src}")
+            modified = add_async_to_function_source(src)
+            if modified is not None:
+                src = modified
+                # logger.debug(f"modified source from __original_code__:\n{src}")
         else:
             src = inspect.getsource(f)
         """
@@ -58,16 +92,22 @@ class PinjectedCodeExporter:
         I need to remove @injected and positional only arguments. from this source, using AST.
         """
         # logger.info(f"getting source:{f.__name__}->\n{src}")
-        if f.__name__.endswith('<lambda>'):
-            src = await self.extract_lambda(f)
-            return f"{assign_target} = {src}\n"
-        else:
-            tree = ast.parse(src)
-            PinjectedCodeExporter.un_pinjected(assign_target, tree)
-            unparsed = ast.unparse(tree)
-            logger.debug(f"un_pinjected->\n{unparsed}")
-            return unparsed
+        try:
+            if f.__name__.endswith('<lambda>'):
+                src = await self.extract_lambda(f)
+                return f"{assign_target} = {src}\n"
+            else:
+                tree = ast.parse(src)
+                logger.debug(f"before un_pinjected->\n{src}")
+                PinjectedCodeExporter.un_pinjected(assign_target, tree)
+                unparsed = ast.unparse(tree)
+                logger.debug(f"un_pinjected->\n{unparsed}")
+                return unparsed
             # return astor.to_source(tree)
+        except Exception as e:
+            logger.error(f"error in getting source for {f.__name__}:\n{e}")
+            logger.error(f"source:\n{src}")
+            raise e
 
     # Function to remove the @injected decorator and positional-only argument marker
     @staticmethod
@@ -91,6 +131,7 @@ class PinjectedCodeExporter:
                 if is_instance:
                     # Remove all args if it's @instance
                     node.args.args = []
+                break
 
     @staticmethod
     def new_symbol():
@@ -131,6 +172,8 @@ class PinjectedCodeExporter:
                     return f"{await to_src(src)}.{attr}"
                 case GetItem(src, key):
                     return f"{await to_src(src)}[{await to_src(key)}]"
+                case UnaryOp("await", tgt):
+                    return f"(await {await to_src(tgt)})"
                 case Object(InjectedByName(name)):
                     return name
                 case Object(Injected() | DelegatedVar() as data):
@@ -177,7 +220,7 @@ Beware that {assign_target} name must be preserved.
     """
             logger.debug(f"prompt:\n{prompt}")
             simplified = await self.a_llm(prompt)
-            simplified = simplified.replace('```', "")
+            simplified = simplified.replace("```python", "").replace('```', "")
             logger.debug(f"simplified:\n{simplified}")
             return simplified
         return code
@@ -196,13 +239,21 @@ Beware that {assign_target} name must be preserved.
                 if dep not in self.mappings:
                     logger.error(f"{dep} not in mappings! for {src}")
                 visited |= {dep}
+                if dep not in self.mappings:
+                    logger.warning(f"mappings:{self.mappings}")
+                    raise ValueError(f"{dep} not in mappings!")
                 code += await self.to_source(dep, self.mappings[dep], visited)
 
+        logger.info(f"getting source for {assign_target},type:{type(src)}")
         match src:
             case InjectedPure() as p:
                 last_code = await self.to_source__instance(assign_target, p)
             case InjectedFunction(tgt_func, _km) as f:
-                last_code = await self.get_source_func(assign_target, tgt_func)
+                func_name = f"provide_{assign_target}"
+                last_code = await self.get_source_func(func_name, tgt_func)
+                # you need to actually call the func.
+                last_code += f"\n{assign_target} = {func_name}()\n"
+
             case PartialInjectedFunction(InjectedFunction(func)) as pif:
                 last_code = await self.get_source_func(assign_target, func)
             case EvaledInjected(value, tree):
@@ -246,3 +297,67 @@ Beware that {assign_target} name must be preserved.
 
     async def export(self, target):
         return await self.to_source(target, self.mappings[target])
+
+
+@injected
+async def _export_injected(logger, a_llm, /, tgt: str):
+    tgt = ModuleVarPath(tgt)
+    mc: MetaContext = MetaContext.gather_from_path(tgt.module_file_path)
+    fd = await mc.a_final_design
+    # hmm, the design must contain the tgt.var_name, so we add it here
+    fd += providers(**{tgt.var_name: tgt.load()})
+    exporter = PinjectedCodeExporter(fd, a_llm)
+    src = await exporter.export(tgt.var_name)
+    logger.info(f"script:\n{src}")
+    original_path = Path(tgt.module_file_path)
+    dst = original_path.parent / (original_path.stem + f"__{tgt.var_name}.py")
+    dst.write_text(src)
+
+
+export_injected: Injected = _export_injected(injected("export_target"))
+
+
+@injected
+def add_export_config(
+        interpreter_path,
+        default_working_dir,
+        /,
+        tgt: ModuleVarSpec,
+) -> List[IdeaRunConfiguration]:
+    """
+    options to pass secret variables:
+    1. set it here as a --ray-job-kwargs
+    2. use env var
+    3. upload ~/.pinjected.py <- most flexible, but need a source .pinject.py file
+
+    """
+    import pinjected
+
+    conf = IdeaRunConfiguration(
+        name=f"Export script",
+        script_path=str(pinjected.__file__).replace("__init__.py", "__main__.py"),
+        interpreter_path=interpreter_path,
+        arguments=[
+            "run",
+            "pinjected.exporter.llm_exporter.export_injected",
+            f"--export-target={tgt.var_path}"
+        ],
+        working_dir=default_working_dir.value_or("."),
+    )
+
+    return [conf]
+
+
+test_export_injected: Injected = _export_injected("pinjected.exporter.llm_exporter.export_injected")
+
+default_design = instances(
+) + providers(
+    a_llm=injected('a_llm__gpt4_turbo')
+)
+
+__meta_design__ = instances(
+    default_design_paths=["pinjected.exporter.llm_exporter.default_design"],
+    overrides=instances(),
+) + providers(
+    custom_idea_config_creator=add_export_config,
+)
