@@ -1,5 +1,4 @@
 import abc
-import ast
 import asyncio
 import functools
 import hashlib
@@ -7,6 +6,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
+from inspect import Traceback
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable
 
 from frozendict import frozendict
@@ -16,7 +16,6 @@ from returns.result import safe
 
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.v2.ainjected import MappedAInjected
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -44,6 +43,8 @@ So the use needs to be careful to add context at the very end, for running purpo
 
 @dataclass
 class FrameInfo:
+    original_frame: object
+    trc: Traceback
     filename: str
     line_number: int
     function_name: str
@@ -53,7 +54,9 @@ class FrameInfo:
 
 def get_frame_info(stack_idx) -> Union[None, FrameInfo]:
     try:
-        return FrameInfo(*inspect.getframeinfo(inspect.stack(0)[stack_idx][0]))
+        original_trc = inspect.stack(0)[stack_idx][0]
+        trc: Traceback = inspect.getframeinfo(original_trc)
+        return FrameInfo(original_trc, trc, *trc)
     except Exception as e:
         return None
 
@@ -341,7 +344,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 """
             new_func.__skeleton__ = __skeleton__
 
-            #logger.info(f"result of makefun_impl:{new_func}")
+            # logger.info(f"result of makefun_impl:{new_func}")
 
             return new_func
 
@@ -360,9 +363,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             makefun_impl.__original_file__ = safe(inspect.getfile)(original_function).value_or("not available")
 
         makefun_impl.__doc__ = original_function.__doc__
-        #logger.info(f"injection_targets:{injection_targets}")
+        # logger.info(f"injection_targets:{injection_targets}")
         injected_kwargs = Injected.dict(**injection_targets)
-        #logger.info(f"injected_kwargs:{injected_kwargs}")
+        # logger.info(f"injected_kwargs:{injected_kwargs}")
         # hmm?
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
@@ -401,17 +404,19 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             async def _a_target_function(*args, **kwargs):
                 return _target_function_(*args, **kwargs)
 
-
             _a_target_function.__signature__ = inspect.signature(_target_function_)
 
             async_target_function = _a_target_function
-            async_target_function.__original_code__ = safe(inspect.getsource)(_target_function_).value_or("not available")
+            async_target_function.__original_code__ = safe(inspect.getsource)(_target_function_).value_or(
+                "not available")
         else:
             async_target_function = _target_function_
-        return InjectedFunction(
+        res = InjectedFunction(
+            original_function=_target_function_,
             target_function=async_target_function,
             kwargs_mapping=kwargs_mapping
         )
+        return res
 
     @staticmethod
     def direct(_target_function, **kwargs) -> "Injected":
@@ -488,14 +493,18 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_f = async_f
         else:
             new_f = f
-        return MappedInjected(self, new_f)
+        return MappedInjected(self, new_f, original_mapper=f)
 
     def from_impl(impl: Callable, dependencies: Set[str]):
         return GeneratedInjected(impl, dependencies)
 
     @staticmethod
     def pure(value):
-        return InjectedPure(value)
+        res = InjectedPure(value)
+        # I need to set the file that called this function.
+        res.__definition_frame__ = get_frame_info(2)
+        res.__original_file__ = get_frame_info(2).filename
+        return res
 
     @staticmethod
     def by_name(name: str):
@@ -560,9 +569,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
         # raise RuntimeError("disabled")
-        keys = list(kwargs.keys())
+        #keys = list(kwargs.keys())
 
-        return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
+        #return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
+        return DictInjected(**kwargs)
 
     @property
     def proxy(self) -> DelegatedVar:
@@ -926,11 +936,12 @@ class InjectedWithDynamicDependencies(Injected[T]):
 class MappedInjected(Injected):
     __match_args__ = ("src", "f")
 
-    def __init__(self, src: Injected[T], f: Callable[[T], Awaitable[U]]):
+    def __init__(self, src: Injected[T], f: Callable[[T], Awaitable[U]], original_mapper):
         super(MappedInjected, self).__init__()
         assert inspect.iscoroutinefunction(f), f"{f} is not a coroutine function"
         self.src = src
         self.f: Callable[[T], Awaitable[U]] = f
+        self.original_mapper = original_mapper
 
     def dependencies(self) -> Set[str]:
         return self.src.dependencies()
@@ -1024,11 +1035,13 @@ class InjectedFunction(Injected[T]):
     __match_args__ = ("target_function", "kwargs_mapping")
 
     def __init__(self,
+                 original_function,
                  target_function: Callable,
                  kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]]
                  ):
         # I think we need to know where this class is instantiated outside of pinjected_package
         self.origin_frame = get_instance_origin("pinjected")
+        self.original_function = original_function
         super().__init__()
         assert not isinstance(target_function, (Injected, DelegatedVar))
         assert callable(target_function)
@@ -1221,6 +1234,40 @@ class MZippedInjected(Injected):
 
         return res
 
+class DictInjected(Injected):
+    __match_args__ = ("srcs",)
+
+    def __init__(self, **srcs: Injected):
+        super().__init__()
+        self.srcs = {k: Injected.ensure_injected(v) for k, v in srcs.items()}
+        assert all(isinstance(s, Injected) for s in self.srcs.values()), self.srcs
+
+    def dependencies(self) -> Set[str]:
+        res = set()
+        for s in self.srcs.values():
+            res |= s.dependencies()
+
+        return res
+
+    def get_provider(self):
+        async def impl(**kwargs):  # can we pickle this though?
+            res = {}
+            for k, s in self.srcs.items():
+                r = s.get_provider()(**{k: kwargs[k] for k in s.dependencies()})
+                if not inspect.iscoroutinefunction(s.get_provider()):
+                    raise RuntimeError(f"provider is not a corountine function:{s}")
+                res[k] = await r
+            return res
+
+        signature = self.get_signature()
+        return create_function(func_signature=signature, func_impl=impl)
+
+    def dynamic_dependencies(self) -> Set[str]:
+        res = set()
+        for s in self.srcs.values():
+            res |= s.dynamic_dependencies()
+
+        return res
 
 def _injected_factory(**targets: Injected):
     def _impl(f):
