@@ -64,7 +64,7 @@ class PinjectedCodeExporter:
         digraph = self.src.to_vis_graph()
         self.mappings = {**digraph.explicit_mappings}
 
-    async def to_source__instance(self,assign_target, tgt: InjectedPure) -> CodeBlock:
+    async def to_source__instance(self, assign_target, tgt: InjectedPure) -> CodeBlock:
         # wait, tgt.value must be recoverable from the value. but it should always be.
         frame = tgt.__definition_frame__
         # let's get the relevant imports
@@ -75,7 +75,7 @@ class PinjectedCodeExporter:
         if mod_name == 'module.name':
             # the variable is defined at non-module script so let's read the file
             source = Path(frm.f_globals['__file__']).read_text()
-            imports = get_required_imports(source,module_name="__main__")
+            imports = get_required_imports(source, module_name="__main__")
         else:
             module = sys.modules[mod_name]
             imports = get_required_imports(module)
@@ -87,9 +87,7 @@ class PinjectedCodeExporter:
         else:
             src = tgt.value
 
-        #assert isinstance(tgt.value, (str, int, float,list,dict,NoneType)), f"tgt.value must be a simple value, got {tgt.value}"
-
-
+        # assert isinstance(tgt.value, (str, int, float,list,dict,NoneType)), f"tgt.value must be a simple value, got {tgt.value}"
 
         return CodeBlock(
             target=assign_target,
@@ -232,7 +230,7 @@ class PinjectedCodeExporter:
                             sym = self.tmp_symbol()
                         # here, we are seeing InjectedFunction
                         # We need to handle InjectedByName
-                        logger.info(f"creating new symbol:{sym}, for {data}")
+                        # logger.info(f"creating new symbol:{sym}, for {data}")
                     # hmm, to_source returns code block.
                     if sym not in visited:
                         predef_blocks += await self.to_source(sym, data, visited)
@@ -283,6 +281,18 @@ class PinjectedCodeExporter:
         Currenylu, we modify the code(string).
         However, we should actually use the ast tree.
         Also, we need to handle the imported stuff.
+        Now I get the problem
+        PartialInjectedFunction holds a wrong implementation code.
+        It's supposed to be
+        Injected[X->Y]
+        But its source is modified as
+        Injected[Y]
+        So we end up in wrong situation.
+        We need to distinguish this in the AST.
+        where Call(f, args, kwargs) needs to have metadata to indicate that this actually is an application of partial injected function...
+        Or, we can add a metadata to the src injected object that it's a partial injected function.
+        This seems to be a good way.
+        
         """
         if visited is None:
             visited = set()
@@ -312,154 +322,72 @@ class PinjectedCodeExporter:
         match src:
             case InjectedPure() as p:
                 blocks += [await self.to_source__instance(assign_target, p)]
-            case InjectedFunction(tgt_func, {'injected_kwargs':DictInjected(kwargs_mapping)}) as f:
+            case InjectedFunction(tgt_func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as f if hasattr(f,
+                                                                                                               '__is_partial__'):
+                # TODO this is a partial function. "()" will be added by Expr
+                assign_blocks = await self.get_blocks_for_func_call(
+                    assign_target,
+                    f,
+                    kwargs_mapping,
+                    tgt_func=tgt_func,
+                    visited=visited,
+                    call=False
+                )
+                blocks += assign_blocks
+            case InjectedFunction(func_called, {'injected_kwargs': DictInjected(kwargs_mapping)}) as _if:
                 # aha, we need to solve the keyword mappings and add it as code blocks
                 logger.warning(f"kwargs_mapping for injected_function:{kwargs_mapping}")
-                key_to_symbol = dict()
-                for key, bound in kwargs_mapping.items():
-                    if key not in visited:
-                        sym = self.tmp_symbol()
-                        key_to_symbol[key] = sym
-                        blocks += await self.to_source(sym, bound, visited)
-                    else:
-                        pass
-
-                org_func = f.original_function
-                module = inspect.getmodule(org_func)
-                # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
-                if module is not None:
-                    imports = get_required_imports(module)
-                else:
-                    imports = dict()
-
-                func_name = f"provide_if__{assign_target}"
-                last_code = await self.get_source_func(func_name, tgt_func)
-                # you need to actually call the func.
-                pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
-                last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
-                logger.info(f"imports for {func_name}:{pformat(imports)}")
-                assignment = CodeBlock(
-                    target=assign_target,
-                    code=last_code,
-                    imports=imports
+                assign_blocks = await self.get_blocks_for_func_call(
+                    assign_target,
+                    _if,
+                    kwargs_mapping,
+                    func_called,
+                    visited,
+                    call=True
                 )
-                blocks += [assignment]
-            case InjectedFunction(tgt_func,{}) as f:
-                func_name = f"provide_{assign_target}"
-                last_code = await self.get_source_func(func_name, tgt_func)
-                    # you need to actually call the func.
-                org_func = f.original_function
-                module = inspect.getmodule(org_func)
-                    # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
-                if module is not None:
-                    imports = get_required_imports(module)
-                else:
-                    imports = dict()
-                last_code += f"\n{assign_target} = {func_name}()\n"
-                logger.info(f"imports for {func_name}:{pformat(imports)}")
-                assignment = CodeBlock(
-                    target=assign_target,
-                    code=last_code,
-                    imports=imports
+                blocks += assign_blocks
+
+            case InjectedFunction(tgt_func, {}) as _if:
+                # when this is matching the caller is expecting a function call (for assignment)
+                assign_blocks = await self.get_blocks_for_func_call(
+                    assign_target,
+                    _if,
+                    kwargs_mapping=dict(),
+                    tgt_func=tgt_func,
+                    visited=visited,
+                    call=True
                 )
-                blocks += [assignment]
 
-            case PartialInjectedFunction(InjectedFunction(func, {'injected_kwargs':DictInjected(kwargs_mapping)}) as ifunc) as pif:
-                # last_code = await self.get_source_func(assign_target, func)
-                # module = inspect.getmodule(ifunc)
-                # imports = get_required_imports(module)
-                # logger.info(f"imports for {assign_target}:{pformat(imports)}")
-                #
-                # assignment = CodeBlock(
-                #     target=assign_target,
-                #     code=last_code,
-                #     imports=imports
-                # )
-                # blocks += [assignment]
-                # aha, we need to solve the keyword mappings and add it as code blocks
-                key_to_symbol = dict()
-                for key, bound in kwargs_mapping.items():
-                    if key not in visited:
-                        sym = self.tmp_symbol()
-                        key_to_symbol[key] = sym
-                        blocks += await self.to_source(sym, bound, visited)
-                    else:
-                        pass
-                        #key_to_symbol[key] = key
+                blocks += assign_blocks
 
-                org_func = ifunc.original_function
-                module = inspect.getmodule(org_func)
-                # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
-                if module is not None:
-                    imports = get_required_imports(module)
-                else:
-                    imports = dict()
-
-                func_name = f"provide_known_{assign_target}"
-                last_code = await self.get_source_func(func_name, func)
-                # you need to actually call the func.
-                pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
-                #last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
-                assert "<lambda>" not in func_name, f"lambda found in func_name:{func_name}"
-                last_code += f"\n{assign_target} = {func_name}"
-                logger.info(f"imports for {func_name}:{pformat(imports)}")
-                assignment = CodeBlock(
-                    target=assign_target,
-                    code=last_code,
-                    imports=imports
+            case PartialInjectedFunction(
+                InjectedFunction(func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as ifunc) as pif:
+                assign_blocks = await self.get_blocks_for_func_call(
+                    assign_target,
+                    ifunc,
+                    kwargs_mapping,
+                    tgt_func=func,
+                    visited=visited,
+                    call=False
                 )
-                blocks += [assignment]
+                blocks += assign_blocks
 
-            case PartialInjectedFunction(InjectedFunction(func,kwargs_mapping) as ifunc) as pif:
-                # last_code = await self.get_source_func(assign_target, func)
-                # module = inspect.getmodule(ifunc)
-                # imports = get_required_imports(module)
-                # logger.info(f"imports for {assign_target}:{pformat(imports)}")
-                #
-                # assignment = CodeBlock(
-                #     target=assign_target,
-                #     code=last_code,
-                #     imports=imports
-                # )
-                # blocks += [assignment]
-                # aha, we need to solve the keyword mappings and add it as code blocks
-                key_to_symbol = dict()
-                for key, bound in kwargs_mapping.items():
-                    if key not in visited:
-                        sym = self.tmp_symbol()
-                        key_to_symbol[key] = sym
-                        blocks += await self.to_source(sym, bound, visited)
-                    else:
-                        pass
-                        #key_to_symbol[key] = key
+            case PartialInjectedFunction(InjectedFunction(func, kwargs_mapping) as ifunc) as pif:
+                logger.warning(f"kwargs_mapping for partial_injected_function:{kwargs_mapping}")
+                # ah,, in some cases the PartialInjectedFunction is manually created without Injected.partial
 
-                org_func = ifunc.original_function
-                module = inspect.getmodule(org_func)
-                # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
-                if module is not None:
-                    imports = get_required_imports(module)
-                else:
-                    imports = dict()
-
-                func_name = f"provide_unknown_{assign_target}"
-                last_code = await self.get_source_func(func_name, func)
-                # you need to actually call the func.
-                pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
-                last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
-                #last_code += f"\n{assign_target} = {func_name}"#({','.join(pairs)})\n"
-                logger.info(f"imports for {func_name}:{pformat(imports)}")
-                assignment = CodeBlock(
-                    target=assign_target,
-                    code=last_code,
-                    imports=imports
+                assign_blocks = await self.get_blocks_for_func_call(
+                    assign_target,
+                    ifunc,
+                    kwargs_mapping,
+                    tgt_func=func,
+                    visited=visited,
+                    call=True
                 )
-                blocks += [assignment]
-
+                blocks += assign_blocks
 
             case EvaledInjected(value, tree):
                 from loguru import logger
-                logger.info(tree)
-                logger.info(value)
                 blocks += await self.expr_to_source(assign_target, tree, visited)
                 for b in blocks:
                     assert isinstance(b,
@@ -503,7 +431,8 @@ class PinjectedCodeExporter:
                     key_to_symbol[k] = sym
                     _blks = await self.to_source(sym, v, visited)
                     blocks += _blks
-                assign_code = assign_target + " = {\n" + ",\n".join([f'    "{k}":{v}' for k, v in key_to_symbol.items()]) + "\n}"
+                assign_code = assign_target + " = {\n" + ",\n".join(
+                    [f'    "{k}":{v}' for k, v in key_to_symbol.items()]) + "\n}"
                 blocks += [CodeBlock(
                     target=assign_target,
                     code=assign_code
@@ -545,6 +474,41 @@ class PinjectedCodeExporter:
             assert '<lambda>' not in b.code, f"lambda found in code block:{b.code},blocks:\n{pformat(blocks)}"
         return blocks
 
+    async def get_blocks_for_func_call(self, assign_target, f: InjectedFunction, kwargs_mapping, tgt_func, visited,
+                                       call: bool):
+        from loguru import logger
+        key_to_symbol = dict()
+        dep_blocks = []
+        for key, bound in kwargs_mapping.items():
+            if key not in visited:
+                sym = self.tmp_symbol()
+                key_to_symbol[key] = sym
+                dep_blocks += await self.to_source(sym, bound, visited)
+            else:
+                pass
+        org_func = f.original_function
+        module = inspect.getmodule(org_func)
+        # assert module is not None,f"module is None for {org_func},\n{inspect.getsource(org_func)}"
+        if module is not None:
+            imports = get_required_imports(module)
+        else:
+            imports = dict()
+        func_name = f"provide_if__{assign_target}"
+        last_code = await self.get_source_func(func_name, tgt_func)
+        # you need to actually call the func.
+        pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
+        if call:
+            last_code += f"\n{assign_target} = {func_name}({','.join(pairs)})\n"
+        else:
+            last_code += f"\n{assign_target} = {func_name}"
+        logger.info(f"imports for {func_name}:{pformat(imports)}")
+        assignment = CodeBlock(
+            target=assign_target,
+            code=last_code,
+            imports=imports
+        )
+        return dep_blocks + [assignment]
+
     async def simplify_code(self, target_name, code):
         prompt = f"""
     Please convert the following python into simplified python script?
@@ -566,7 +530,7 @@ class PinjectedCodeExporter:
         import_lines = ""
         from loguru import logger
         for name, full in imports.items():
-            logger.info(f"importing {name} from {full}")
+            # logger.info(f"importing {name} from {full}")
             mod_paths = full.split('.')
             if len(mod_paths) <= 1:
                 import_lines += f"import {name}\n"
@@ -648,6 +612,7 @@ def test_injected_pure_imports(logger):
     module = sys.modules[mod_name]
     return get_required_imports(module)
 
+
 #
 # def get_required_imports(module_or_source):
 #     if isinstance(module_or_source, str):
@@ -669,7 +634,7 @@ def test_injected_pure_imports(logger):
 #
 #     return imports
 
-def get_required_imports(module_or_source,module_name=None):
+def get_required_imports(module_or_source, module_name=None):
     if isinstance(module_or_source, str):
         source = module_or_source
         if module_name is None:
@@ -698,6 +663,7 @@ def get_required_imports(module_or_source,module_name=None):
                     module_info[target.id] = f"{module_name}.{target.id}"
 
     return module_info
+
 
 default_design = instances(
 ) + providers(

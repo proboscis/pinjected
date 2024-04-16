@@ -370,6 +370,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
         bound_func.__is_async_function__ = inspect.iscoroutinefunction(original_function)
+        bound_func.__is_partial__ = True # this is to indicate that the bound_func is supposed to be used with PartialInjectedFunction.
         injected_factory = PartialInjectedFunction(src=bound_func)
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
