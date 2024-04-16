@@ -8,7 +8,6 @@ from pprint import pformat
 from types import TracebackType, NoneType
 from typing import Callable, Awaitable, List
 
-import astor
 import cytoolz
 
 from pinjected import Design, Injected, injected, instances, providers, instance
@@ -17,6 +16,7 @@ from pinjected.di.ast import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
 from pinjected.di.injected import InjectedPure, InjectedFunction, PartialInjectedFunction, ZippedInjected, \
     MappedInjected, InjectedByName, FrameInfo, MZippedInjected, DictInjected
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.exporter.optimize_import_stmts import fix_imports
 from pinjected.helper_structure import IdeaRunConfiguration, MetaContext
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import ModuleVarPath
@@ -48,11 +48,24 @@ def add_async_to_function_source(function_source):
         return None
 
 
+import ast
+
+
+@dataclass
+class Imports:
+    imports: dict[str, str] = field(default_factory=dict)
+    classes: dict[str, ast.ClassDef] = field(default_factory=dict)
+
+
 @dataclass
 class CodeBlock:
     target: str
     code: str
-    imports: dict[str, str] = field(default_factory=dict)
+    # imports: dict[str, str] = field(default_factory=dict)
+    imports: Imports = field(default_factory=Imports)
+
+    def __post_init__(self):
+        assert isinstance(self.imports, Imports), f"imports is not Imports:{self.imports},{type(self.imports)}"
 
 
 @dataclass
@@ -278,21 +291,11 @@ class PinjectedCodeExporter:
 
     async def to_source(self, assign_target: str, src: Injected, visited: set = None) -> list[CodeBlock]:
         """
-        Currenylu, we modify the code(string).
-        However, we should actually use the ast tree.
-        Also, we need to handle the imported stuff.
-        Now I get the problem
-        PartialInjectedFunction holds a wrong implementation code.
-        It's supposed to be
-        Injected[X->Y]
-        But its source is modified as
-        Injected[Y]
-        So we end up in wrong situation.
-        We need to distinguish this in the AST.
-        where Call(f, args, kwargs) needs to have metadata to indicate that this actually is an application of partial injected function...
-        Or, we can add a metadata to the src injected object that it's a partial injected function.
-        This seems to be a good way.
-        
+        TODOs:
+        1. reduce blocks with tmp_ variables
+        2. include class definitions
+        3. optimize imports -> 90%
+        4. create main function with asyncio.run
         """
         if visited is None:
             visited = set()
@@ -324,12 +327,10 @@ class PinjectedCodeExporter:
                 blocks += [await self.to_source__instance(assign_target, p)]
             case InjectedFunction(tgt_func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as f if hasattr(f,
                                                                                                                '__is_partial__'):
-                # TODO this is a partial function. "()" will be added by Expr
                 assign_blocks = await self.get_blocks_for_func_call(
                     assign_target,
                     f,
                     kwargs_mapping,
-                    tgt_func=tgt_func,
                     visited=visited,
                     call=False
                 )
@@ -341,7 +342,6 @@ class PinjectedCodeExporter:
                     assign_target,
                     _if,
                     kwargs_mapping,
-                    func_called,
                     visited,
                     call=True
                 )
@@ -353,7 +353,6 @@ class PinjectedCodeExporter:
                     assign_target,
                     _if,
                     kwargs_mapping=dict(),
-                    tgt_func=tgt_func,
                     visited=visited,
                     call=True
                 )
@@ -366,7 +365,6 @@ class PinjectedCodeExporter:
                     assign_target,
                     ifunc,
                     kwargs_mapping,
-                    tgt_func=func,
                     visited=visited,
                     call=False
                 )
@@ -380,7 +378,6 @@ class PinjectedCodeExporter:
                     assign_target,
                     ifunc,
                     kwargs_mapping,
-                    tgt_func=func,
                     visited=visited,
                     call=True
                 )
@@ -474,7 +471,7 @@ class PinjectedCodeExporter:
             assert '<lambda>' not in b.code, f"lambda found in code block:{b.code},blocks:\n{pformat(blocks)}"
         return blocks
 
-    async def get_blocks_for_func_call(self, assign_target, f: InjectedFunction, kwargs_mapping, tgt_func, visited,
+    async def get_blocks_for_func_call(self, assign_target, f: InjectedFunction, kwargs_mapping, visited,
                                        call: bool):
         from loguru import logger
         key_to_symbol = dict()
@@ -492,9 +489,9 @@ class PinjectedCodeExporter:
         if module is not None:
             imports = get_required_imports(module)
         else:
-            imports = dict()
+            imports = Imports()
         func_name = f"provide_if__{assign_target}"
-        last_code = await self.get_source_func(func_name, tgt_func)
+        last_code = await self.get_source_func(func_name, f.target_function)
         # you need to actually call the func.
         pairs = [f"{k}={v}" for k, v in key_to_symbol.items()]
         if call:
@@ -523,10 +520,28 @@ class PinjectedCodeExporter:
     """
         return await self.a_llm(prompt)
 
-    async def export(self, target):
+    async def export(self, target, package_to_export: str):
         blocks: list[CodeBlock] = await self.to_source(target, self.mappings[target])
-        imports = cytoolz.merge([b.imports for b in blocks])
+        imports = cytoolz.merge([b.imports.imports for b in blocks])
+        classdefs = cytoolz.merge([b.imports.classes for b in blocks])
+        classdefs = {k: v for k, v in classdefs.items() if imports[k].startswith(package_to_export)}
+        # remove classdefs from imports
+        from loguru import logger
+        logger.info(f"classdefs:{pformat(classdefs)}")
+        imports = {k: v for k, v in imports.items() if k not in classdefs}
+
+        tmp_code = "\n".join([b.code for b in blocks])
+
+        used_names = extract_variable_names(tmp_code)
+        # add classes used
+        logger.info(f"used_names:{used_names}")
+        used_classdefs = {k: v for k, v in classdefs.items() if k in used_names}
+        class_blocks = class_defs_to_blocks(used_classdefs)
+        logger.info(f'class_blocks:\n{pformat(class_blocks)}')
+        blocks = class_blocks + blocks
+        # recreate the code
         code = "\n".join([b.code for b in blocks])
+
         import_lines = ""
         from loguru import logger
         for name, full in imports.items():
@@ -539,7 +554,46 @@ class PinjectedCodeExporter:
                 import_lines += f"from {mod_name} import {name}\n"
 
         src = import_lines + "\n" + code
+        src = fix_imports(src)
         return src
+
+
+import ast
+
+
+def extract_variable_names(code):
+    tree = ast.parse(code)
+    variable_names = []
+
+    def visit_node(node):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    variable_names.append(target.id)
+        elif isinstance(node, ast.FunctionDef):
+            variable_names.append(node.name)
+            for arg in node.args.args:
+                variable_names.append(arg.arg)
+        elif isinstance(node, ast.ClassDef):
+            variable_names.append(node.name)
+        elif isinstance(node, ast.Name):
+            variable_names.append(node.id)
+
+    for node in ast.walk(tree):
+        visit_node(node)
+
+    return list(set(variable_names))
+
+
+def class_defs_to_blocks(class_defs: dict[str, ast.ClassDef]):
+    blocks = []
+    for name, class_def in class_defs.items():
+        blocks.append(CodeBlock(
+            target=name,
+            code=ast.unparse(class_def),
+            imports=Imports()
+        ))
+    return blocks
 
 
 @injected
@@ -550,7 +604,7 @@ async def _export_injected(logger, a_llm, /, tgt: str):
     # hmm, the design must contain the tgt.var_name, so we add it here
     fd += providers(**{tgt.var_name: tgt.load()})
     exporter = PinjectedCodeExporter(fd, a_llm)
-    src = await exporter.export(tgt.var_name)
+    src = await exporter.export(tgt.var_name,tgt.module_name)
     logger.info(f"script:\n{src}")
     original_path = Path(tgt.module_file_path)
     dst = original_path.parent / (original_path.stem + f"__{tgt.var_name}.py")
@@ -634,7 +688,9 @@ def test_injected_pure_imports(logger):
 #
 #     return imports
 
-def get_required_imports(module_or_source, module_name=None):
+
+def get_required_imports(module_or_source, module_name=None) -> Imports:
+    from loguru import logger
     if isinstance(module_or_source, str):
         source = module_or_source
         if module_name is None:
@@ -645,7 +701,7 @@ def get_required_imports(module_or_source, module_name=None):
 
     tree = ast.parse(source)
     module_info = {}
-
+    classes = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -655,14 +711,28 @@ def get_required_imports(module_or_source, module_name=None):
             for alias in node.names:
                 var_name = alias.asname if alias.asname else alias.name
                 module_info[var_name] = f"{node.module}.{alias.name}"
-        elif isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                try:
+                    module = __import__(module_name, fromlist=[var_name])
+                    maybe_class = getattr(module, var_name)
+                    if inspect.isclass(maybe_class):
+                        src = inspect.getsource(maybe_class)
+                        classes[var_name] = ast.parse(src)
+                except (ImportError, AttributeError, OSError, TypeError):
+                    continue
+        elif isinstance(node, ast.ClassDef):
+            classes[node.name] = node
+            module_info[node.name] = f"{module_name}.{node.name}"
+        elif isinstance(node, ast.FunctionDef):
             module_info[node.name] = f"{module_name}.{node.name}"
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     module_info[target.id] = f"{module_name}.{target.id}"
 
-    return module_info
+    return Imports(
+        imports=module_info,
+        classes=classes
+    )
 
 
 default_design = instances(
