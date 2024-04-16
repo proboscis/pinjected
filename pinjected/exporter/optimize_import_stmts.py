@@ -58,25 +58,3 @@ def fix_imports(source):
     purified_source = "\n".join(source_lines)
 
     return purified_source
-
-# Example usage
-source_code = '''
-import math
-import random
-import asyncio
-import re
-
-def example_function():
-    from a.b.var import var
-    from collections import defaultdict
-    print(math.pi)
-    print(random.randint(1, 10))
-    print(var)
-    d = defaultdict(int)
-    asyncio.run(some_async_function())
-    pattern = re.compile(r'\d+')
-'''
-
-purified_source_code = fix_imports(source_code)
-print(purified_source_code)
-#%%

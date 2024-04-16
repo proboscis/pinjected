@@ -29,6 +29,32 @@ class MetaContext:
     accumulated: Design
 
     @staticmethod
+    async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
+        if not isinstance(file_path, Path):
+            file_path = Path(file_path)
+        designs = list(walk_module_attr(file_path, meta_design_name))
+        designs.reverse()
+        res = Design()
+        overrides = Design()
+        for item in designs:
+            logger.debug(f"{meta_design_name} at :{item.var_path}")
+            res = res + item.var
+            try:
+
+                overrides += await item.var.to_resolver()["overrides"]
+            except Exception as e:
+                logger.debug(f"{item.var_path} does not contain overrides")
+        from pinjected import instances
+        res += instances(
+            overrides=overrides
+        )
+
+        return MetaContext(
+            trace=designs,
+            accumulated=res
+        )
+
+    @staticmethod
     def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
         if not isinstance(file_path, Path):
             file_path = Path(file_path)
