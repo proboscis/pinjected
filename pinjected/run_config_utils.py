@@ -47,6 +47,7 @@ from pinjected.di.ast import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
+from pinjected.exporter.llm_exporter import add_export_config
 # from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, IdeaRunConfiguration
 from pinjected.maybe_patch import patch_maybe
@@ -146,6 +147,7 @@ def injected_to_idea_configs(
         default_working_dir: Maybe[str],
         extract_args_for_runnable,
         logger,
+        internal_idea_config_creator:IdeaConfigCreator,
         custom_idea_config_creator: IdeaConfigCreator,
         /,
         tgt: ModuleVarSpec
@@ -201,6 +203,14 @@ def injected_to_idea_configs(
     except Exception as e:
         logger.warning(f"Failed to create custom idea configs for {tgt} because {e}")
         raise RuntimeError(f"Failed to create custom idea configs for {tgt} because {e}") from e
+    try:
+        cfgs = internal_idea_config_creator(tgt)
+        assert cfgs is not None, f"internal_idea_config_creator {internal_idea_config_creator} returned None for {tgt}. return [] if you have no internal configs."
+        for configs in cfgs:
+            results[name].append(configs)
+    except Exception as e:
+        logger.warning(f"Failed to create internal idea configs for {tgt} because {e}")
+        raise RuntimeError(f"Failed to create internal idea configs for {tgt} because {e}") from e
     return IdeaRunConfigurations(configs=results)
 
 
@@ -599,4 +609,6 @@ if __name__ == '__main__':
 
 __meta_design__ = instances(
     default_design_paths=["pinjected.run_config_utils.__meta_design__"]
+) + providers(
+    internal_idea_config_creator=add_export_config
 )
