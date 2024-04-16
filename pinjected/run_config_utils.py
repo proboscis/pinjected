@@ -23,8 +23,6 @@ Hmm, an easy way is to add some metadata though..
 Adding feature to an existing data structure is not recommended.
 So I guess I need to introduce a new data structure.
 """
-import loguru
-
 import importlib
 import inspect
 import json
@@ -35,12 +33,11 @@ from pathlib import Path
 from pprint import pformat
 from typing import Optional, List, Dict, OrderedDict, Callable, Any
 
-from loguru import logger
-import fire
+import loguru
 from cytoolz import memoize
+from loguru import logger
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
-from snoop import snoop
 
 from pinjected import Injected, Design, injected_function, Designed
 from pinjected.di.ast import Expr, Call, Object
@@ -50,14 +47,13 @@ from pinjected.di.util import instances, providers
 from pinjected.exporter.llm_exporter import add_export_config
 # from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, IdeaRunConfiguration
-from pinjected.maybe_patch import patch_maybe
-from pinjected.run_helpers.config import ConfigCreationArgs
 from pinjected.helpers import find_default_design_paths
-from pinjected.runnables import get_runnables, RunnableValue
-from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.maybe_patch import patch_maybe
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.run_config_utils_v2 import RunInjected
-
+from pinjected.run_helpers.config import ConfigCreationArgs
+from pinjected.runnables import get_runnables, RunnableValue
 
 safe_getattr = safe(getattr)
 
