@@ -293,7 +293,7 @@ class PinjectedCodeExporter:
         """
         TODOs:
         1. reduce blocks with tmp_ variables
-        2. include class definitions
+        2. include class definitions -> 80%
         3. optimize imports -> 90%
         4. create main function with asyncio.run
         """
@@ -539,8 +539,19 @@ class PinjectedCodeExporter:
         class_blocks = class_defs_to_blocks(used_classdefs)
         logger.info(f'class_blocks:\n{pformat(class_blocks)}')
         blocks = class_blocks + blocks
+        blocks += [
+            CodeBlock(
+                target="",
+                code=f"return {blocks[-1].target}",
+                imports=Imports()
+            )
+        ]
+
+        block_asts = [ast.parse(b.code) for b in blocks]
+        code = wrap_in_async_main(block_asts)
+
         # recreate the code
-        code = "\n".join([b.code for b in blocks])
+        #code = "\n".join([b.code for b in blocks])
 
         import_lines = ""
         from loguru import logger
@@ -556,6 +567,36 @@ class PinjectedCodeExporter:
         src = import_lines + "\n" + code
         src = fix_imports(src)
         return src
+
+def wrap_in_async_main(nodes):
+    # Create the 'async main' function
+    async_main_func = ast.AsyncFunctionDef(
+        name='main',
+        args=ast.arguments(
+            args=[],
+            vararg=None,
+            posonlyargs=[], kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]
+        ),
+        body=nodes,
+        decorator_list=[],
+        returns=None,
+        lineno=0,
+    )
+
+    # Convert the 'async main' function to a string
+    func_string = ast.unparse(async_main_func)
+
+    # Add the '__main__' section using a string
+    main_string = f"""
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
+"""
+
+    # Combine the function string and the main string
+    final_string = func_string + main_string
+
+    return final_string
 
 
 import ast
@@ -604,7 +645,7 @@ async def _export_injected(logger, a_llm, /, tgt: str):
     # hmm, the design must contain the tgt.var_name, so we add it here
     fd += providers(**{tgt.var_name: tgt.load()})
     exporter = PinjectedCodeExporter(fd, a_llm)
-    src = await exporter.export(tgt.var_name,tgt.module_name)
+    src = await exporter.export(tgt.var_name,tgt.module_name.split('.')[0])
     logger.info(f"script:\n{src}")
     original_path = Path(tgt.module_file_path)
     dst = original_path.parent / (original_path.stem + f"__{tgt.var_name}.py")
