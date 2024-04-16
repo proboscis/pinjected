@@ -5,28 +5,24 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Mapping
 
-import loguru
 from loguru import logger
 from returns.maybe import Some
 
 import pinjected
 import pinjected.global_configs
-from pinjected import injected_function, instances, providers, injected_instance, Injected, Design, instance
+from pinjected import injected_function, instances, injected_instance, Injected, Design, instance
 from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import MetaContext
-from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths
-from pinjected.module_inspector import get_project_root
+from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_var_path import ModuleVarPath
-from pinjected.run_config_utils import injected_to_idea_configs
 
 __meta_design__ = instances(
-    default_design_paths=["pinjected.ide_supports.create_configs.my_design"]
+    default_design_paths=["pinjected.ide_supports.default_design.my_design"]
 )
 
 from pinjected.run_helpers.run_injected import run_injected
-from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey
 
 
@@ -65,23 +61,6 @@ def load_meta_context(
 ):
     meta_context = MetaContext.gather_from_path(module_path)
     return meta_context
-
-
-my_design = instances(
-    logger=loguru.logger,
-    runner_script_path=pinjected.run_config_utils.__file__,
-    custom_idea_config_creator=lambda spec: [],  # type ConfigCreator
-    # this becomes recursive and overflows if we call meta_session inside a parent design...
-    default_design_path=None,
-    print_to_stdout=True
-) + providers(
-    inspect_and_make_configurations=inspect_and_make_configurations,
-    injected_to_idea_configs=injected_to_idea_configs,
-    default_design_paths=lambda module_path, default_design_path: find_default_design_paths(module_path,
-                                                                                            default_design_path),
-    project_root=lambda module_path: Path(get_project_root(module_path)),
-    default_working_dir=lambda project_root: Some(str(project_root)),
-)
 
 
 @injected_function
