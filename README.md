@@ -772,7 +772,7 @@ python -m pinjected my.module.print_hostname --hostname my.module2.load_hostname
 This is useful for switching complicated injected instances for running the target. The complicated injected instances can be trained ML models, etc.
 
 Example2:
-```
+```python
 # some.llm.module.py
 from pinjected import injected
 
@@ -800,7 +800,7 @@ Now we can switch llm with llm_openai, llm_azure, llm_llama... by specifying a i
 
 
 
-```
+
 ## __meta_design__
 `pinjected run` reads __meta_design__ variables in every parent package of the target variable:
 ```
