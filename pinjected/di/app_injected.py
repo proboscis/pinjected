@@ -119,7 +119,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
             return transformer(Object(x))
         case Call(f, args, kwargs):
             return transformer(
-                Call(f,
+                Call(walk_replace(f,transformer),
                      tuple([walk_replace(a, transformer) for a in args]),
                      {k: walk_replace(v, transformer) for k, v in kwargs.items()}
                      )
