@@ -47,7 +47,8 @@ def run_with_meta_context(
     instance_overrides = instances(
         module_path=context_module_file_path,
         interpreter_path=sys.executable,
-        meta_context=meta_context
+        meta_context=meta_context,
+        default_design_paths = []
     ) + instances(**kwargs)
     return run_injected("get", var_path, design_path, return_result=True,
                         overrides=meta_context.accumulated + instance_overrides,
