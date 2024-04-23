@@ -12,6 +12,7 @@ from loguru import logger
 from returns.result import safe, Result
 
 from pinjected import instances, Injected, Design, providers, Designed
+from pinjected.di.design import DESIGN_OVERRIDES_STORE
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import MetaContext
 from pinjected.helpers import get_design_path_from_var_path
@@ -97,6 +98,11 @@ def run_anything(
 
         meta_design = instances(overrides=instances()) + meta_cxt.accumulated
         meta_overrides = meta_design.provide("overrides") + meta_overrides
+
+        # add overrides from with block
+        meta_overrides += DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
+
+
 
     design += (meta_overrides + overrides)
     logger.info(f"running target:{var} with {design_path} + {overrides}")

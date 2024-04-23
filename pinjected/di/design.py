@@ -2,6 +2,8 @@ import inspect
 from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
+from pathlib import Path
+from pprint import pformat
 from typing import TypeVar, List, Dict, Union, Callable, Type, Self
 
 from cytoolz import merge
@@ -13,6 +15,7 @@ from pinjected.di.injected import Injected
 from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFunction
 # from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind, BindInjected
 from pinjected.v2.keys import IBindKey, StrBindKey
 
@@ -178,7 +181,7 @@ class Design:
             from loguru import logger
             match v:
                 case type():
-                    #logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
+                    # logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
                     bindings[StrBindKey(k)] = BindInjected(Injected.bind(v))
                 case Injected():
                     bindings[StrBindKey(k)] = BindInjected(v)
@@ -338,31 +341,61 @@ class Design:
         resolver = DependencyResolver(self)
         return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
 
+    def __enter__(self):
+        frame = inspect.currentframe().f_back
+        DESIGN_OVERRIDES_STORE.add(frame, self)
+        # %% hmm, I want track the global vars on parent frame. but how?
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        frame = inspect.currentframe().f_back
+        DESIGN_OVERRIDES_STORE.pop(frame)
+
+
+@dataclass
+class DesignOverridesStore:
+    bindings: dict[ModuleVarPath, Design] = field(default_factory=dict)
+    stack: List['DesignOverrideContext'] = field(default_factory=list)
+
+    def add(self, frame: inspect.FrameInfo, design: "Design"):
+        cxt = DesignOverrideContext(design, frame)
+        self.stack.append(cxt)
+
+    def pop(self, frame: inspect.FrameInfo):
+        cxt = self.stack.pop()
+        acc_d = sum([cxt.src for cxt in self.stack], start=Design()) + cxt.src
+        target_vars = cxt.exit(frame)
+        for mvp in target_vars:
+            if mvp not in self.bindings:
+                self.bindings[mvp] = acc_d
+
+    def get_overrides(self,tgt:ModuleVarPath):
+        return self.bindings.get(tgt,Design())
+
+
+DESIGN_OVERRIDES_STORE = DesignOverridesStore()
+
 
 @dataclass
 class DesignOverrideContext:
     src: Design
-    callback: Callable[[Self], None]
-    depth: int
-    target_vars: dict = field(default_factory=dict)
+    init_frame: inspect.FrameInfo
 
-    def __enter__(self):
-        frame = inspect.currentframe()
-        parent = frame.f_back
+    def __post_init__(self):
         # get parent global variables
-        parent_globals = parent.f_globals
+        parent_globals = self.init_frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
         from loguru import logger
-        logger.debug(global_ids)
+        #logger.debug(f"enter->\n"+pformat(global_ids))
         self.last_global_ids = global_ids
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def exit(self, frame:inspect.FrameInfo) -> list[ModuleVarPath]:
         from loguru import logger
-        frame = inspect.currentframe()
-        parent = frame.f_back
         # get parent global variables
-        parent_globals = parent.f_globals
+        parent_globals = frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
+        from loguru import logger
+        #logger.debug("exit->\n"+pformat(global_ids))
         changed_keys = []
         for k in global_ids:
             if k in self.last_global_ids:
@@ -370,7 +403,7 @@ class DesignOverrideContext:
                     changed_keys.append(k)
             else:
                 changed_keys.append(k)
-        logger.debug(f"global_ids:{global_ids}")
+        #logger.debug(f"global_ids:{global_ids}")
         # find instance of DelegatedVar and Injected in the changed globals
         target_vars = dict()
         for k in changed_keys:
@@ -379,5 +412,6 @@ class DesignOverrideContext:
                 target_vars[k] = v
             if isinstance(v, Injected):
                 target_vars[k] = v
-        self.target_vars = target_vars
-        self.callback(self)
+        mod_name = inspect.getmodule(frame).__name__
+        #logger.info(f"found targets:\n{pformat(target_vars)}")
+        return [ModuleVarPath(mod_name+"."+v) for v in target_vars.keys()]
