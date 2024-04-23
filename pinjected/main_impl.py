@@ -30,8 +30,6 @@ def run(
     :param kwargs: overrides for the design. e.g. "api_key=1234"
 
     """
-    # TODO parse overrides
-    # TODO parse kwargs from cli.
     kwargs_overrides = parse_kwargs_as_design(**kwargs)
     ovr = instances()
     if meta_context_path is not None:
@@ -39,6 +37,11 @@ def run(
         ovr += mc.final_design
     ovr += parse_overrides(overrides)
     ovr += kwargs_overrides
+    """
+    We need a functionality to get the design for a variable path.
+    Currently, the metacontext only gathers a context for the module.
+    So, I need another implementation in addition to MetaContext.
+    """
     return run_injected("get", var_path, design_path, return_result=True, overrides=ovr)
 
 
