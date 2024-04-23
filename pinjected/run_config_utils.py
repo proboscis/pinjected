@@ -170,7 +170,8 @@ def injected_to_idea_configs(
     results = defaultdict(list)
 
     if not ddps:
-        logger.warning(f"no default design path provided for {tgt.var_path}")
+        logger.warning(f"no default design path provided for {tgt.var_path}, using pinjected.EmptyDesign")
+        ddps.append('pinjected.EmptyDesign')
 
     for ddp in ddps:
         args = extract_args_for_runnable(tgt, ddp, meta)
