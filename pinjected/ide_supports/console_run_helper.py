@@ -65,17 +65,7 @@ def extract_func_source_and_imports_dict(script_path):
     return func_and_imports
 
 
-def create_run_design(script_path: str):
-    """
-    This command should load the __meta_design__ and return the final design.
-    :param script_path:
-    :return:
-    """
-    from pinjected.helper_structure import MetaContext
-    __design__ = MetaContext.gather_from_path(Path(script_path)).accumulated
-    __graph__ = __design__.to_graph().auto_sync()
-    # mc:MetaContext = MetaContext.gather_from_path(Path(script_path))
-    # return mc.accumulated
+
 
 
 class WithBlockVisitor(ast.NodeVisitor):
