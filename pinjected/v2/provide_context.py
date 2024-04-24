@@ -6,6 +6,7 @@ from pinjected.v2.keys import IBindKey
 
 @dataclass
 class ProvideContext:
+    resolver:'AsyncResolver'
     key: Optional[IBindKey]
     parent: Optional['ProvideContext']
 

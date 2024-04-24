@@ -6,6 +6,8 @@ from dataclasses import dataclass, field, replace
 from typing import Generic, Dict, Any, Callable, Awaitable, TypeVar
 
 from pinjected import Injected
+from pinjected.di.app_injected import EvaledInjected
+from pinjected.di.ast import Expr
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.v2.keys import IBindKey, StrBindKey
 from pinjected.v2.provide_context import ProvideContext
@@ -14,10 +16,12 @@ from returns.maybe import Maybe, Nothing, Some
 T = TypeVar('T')
 U = TypeVar('U')
 
+
 class IBind(Generic[T], ABC):
     """
     hold a provider and metadata
     """
+
     @abc.abstractmethod
     async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
         pass
@@ -80,9 +84,8 @@ class IBind(Generic[T], ABC):
         raise NotImplementedError("metadata must be implemented")
 
     @abc.abstractmethod
-    def update_metadata(self, metadata: BindMetadata)->"IBind":
+    def update_metadata(self, metadata: BindMetadata) -> "IBind":
         raise NotImplementedError("update_metadata must be implemented")
-
 
 
 @dataclass
@@ -148,13 +151,12 @@ class StrBind(IBind[T]):
             return cls.func_bind(func)
 
 
-
 @dataclass
 class BindInjected(IBind[T]):
-
     from pinjected import Injected
     src: Injected
     _metadata: Maybe[BindMetadata] = field(default=Nothing)
+
     def __post_init__(self):
         assert isinstance(self.src, Injected), f"src must be an Injected, got {self.src}"
 
@@ -164,9 +166,10 @@ class BindInjected(IBind[T]):
         dep_dict = {d.name: deps[d] for d in keys}
         func = self.src.get_provider()
         logger.trace(f"provider:{func}")
-        assert inspect.iscoroutinefunction(func), f"provider of an Injected({self.src}) must be a coroutine function, got {func}"
+        assert inspect.iscoroutinefunction(
+            func), f"provider of an Injected({self.src}) must be a coroutine function, got {func}"
         data = await func(**dep_dict)
-        #assert not inspect.isawaitable(data), f"provider of an Injected({self.src}) must return a non-awaitable, got {data}"
+        # assert not inspect.isawaitable(data), f"provider of an Injected({self.src}) must return a non-awaitable, got {data}"
         return data
 
     @property
@@ -183,6 +186,33 @@ class BindInjected(IBind[T]):
 
     def update_metadata(self, metadata: BindMetadata) -> "IBind":
         return replace(self, _metadata=Some(metadata))
+
+
+@dataclass
+class ExprBind(IBind):
+    src: EvaledInjected
+    _metadata: Maybe[BindMetadata] = field(default=Nothing)
+
+    @property
+    def dependencies(self) -> set[IBindKey]:
+        return {StrBindKey(d) for d in self.src.dependencies()}
+
+    @property
+    def dynamic_dependencies(self) -> set[IBindKey]:
+        return {StrBindKey(d) for d in self.src.dynamic_dependencies()}
+
+    @property
+    def metadata(self) -> Maybe[BindMetadata]:
+        return self._metadata
+
+    def update_metadata(self, metadata: BindMetadata) -> "IBind":
+        return replace(self, _metadata=Some(metadata))
+
+    def __post_init__(self):
+        assert isinstance(self.src, EvaledInjected), f"src must be an Expr, got {self.src}"
+
+    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+        return await cxt.resolver.provide(self.src)
 
 
 @dataclass
