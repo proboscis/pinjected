@@ -9,6 +9,7 @@ from typing import TypeVar, List, Dict, Union, Callable, Type, Self
 from cytoolz import merge
 from makefun import create_function
 
+from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import Injected
@@ -16,7 +17,7 @@ from pinjected.di.injected import extract_dependency_including_self, InjectedPur
 # from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.module_var_path import ModuleVarPath
-from pinjected.v2.binds import IBind, BindInjected
+from pinjected.v2.binds import IBind, BindInjected, ExprBind
 from pinjected.v2.keys import IBindKey, StrBindKey
 
 T = TypeVar("T")
@@ -183,10 +184,12 @@ class Design:
                 case type():
                     # logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
                     bindings[StrBindKey(k)] = BindInjected(Injected.bind(v))
+                case EvaledInjected():
+                    bindings[StrBindKey(k)] = ExprBind(v)
+                case DelegatedVar():
+                    bindings[StrBindKey(k)] = ExprBind(v.eval())
                 case Injected():
                     bindings[StrBindKey(k)] = BindInjected(v)
-                case DelegatedVar():
-                    bindings[StrBindKey(k)] = BindInjected(v.eval())
                 case non_func if not callable(non_func):
                     logger.warning(
                         f"{k}->{v}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
@@ -369,8 +372,8 @@ class DesignOverridesStore:
             if mvp not in self.bindings:
                 self.bindings[mvp] = acc_d
 
-    def get_overrides(self,tgt:ModuleVarPath):
-        return self.bindings.get(tgt,Design())
+    def get_overrides(self, tgt: ModuleVarPath):
+        return self.bindings.get(tgt, Design())
 
 
 DESIGN_OVERRIDES_STORE = DesignOverridesStore()
@@ -386,16 +389,16 @@ class DesignOverrideContext:
         parent_globals = self.init_frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
         from loguru import logger
-        #logger.debug(f"enter->\n"+pformat(global_ids))
+        # logger.debug(f"enter->\n"+pformat(global_ids))
         self.last_global_ids = global_ids
 
-    def exit(self, frame:inspect.FrameInfo) -> list[ModuleVarPath]:
+    def exit(self, frame: inspect.FrameInfo) -> list[ModuleVarPath]:
         from loguru import logger
         # get parent global variables
         parent_globals = frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
         from loguru import logger
-        #logger.debug("exit->\n"+pformat(global_ids))
+        # logger.debug("exit->\n"+pformat(global_ids))
         changed_keys = []
         for k in global_ids:
             if k in self.last_global_ids:
@@ -403,7 +406,7 @@ class DesignOverrideContext:
                     changed_keys.append(k)
             else:
                 changed_keys.append(k)
-        #logger.debug(f"global_ids:{global_ids}")
+        # logger.debug(f"global_ids:{global_ids}")
         # find instance of DelegatedVar and Injected in the changed globals
         target_vars = dict()
         for k in changed_keys:
@@ -413,5 +416,5 @@ class DesignOverrideContext:
             if isinstance(v, Injected):
                 target_vars[k] = v
         mod_name = inspect.getmodule(frame).__name__
-        #logger.info(f"found targets:\n{pformat(target_vars)}")
-        return [ModuleVarPath(mod_name+"."+v) for v in target_vars.keys()]
+        # logger.info(f"found targets:\n{pformat(target_vars)}")
+        return [ModuleVarPath(mod_name + "." + v) for v in target_vars.keys()]

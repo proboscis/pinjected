@@ -2,6 +2,7 @@ from pinjected import injected, instance, Injected, instances, providers
 from loguru import logger
 from pinjected.di.app_injected import await_awaitables
 
+
 @injected
 async def test_x():
     # this, calls x three times. how can I avoid that?
@@ -24,6 +25,7 @@ def test_compilation():
     logger.info(f"AST:\n{beta}")
     await_awaitables(beta.value)
 
+
 def test_eval_beta():
     g = (instances() + providers(
     )).to_graph()
@@ -33,3 +35,10 @@ def test_eval_beta():
     # as a result of eval() we get different ast instances.
     print(f'result:{result}')
 
+
+def test_expr_in_design():
+    g = providers(
+        gamma=beta + beta
+    ).to_graph()
+    result = g.provide('gamma')
+    print(result)
