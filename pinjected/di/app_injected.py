@@ -114,26 +114,36 @@ def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
 
 
 def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
-    match expr:
-        case Object(x):
-            return transformer(Object(x))
-        case Call(f, args, kwargs):
-            return transformer(
-                Call(walk_replace(f,transformer),
-                     tuple([walk_replace(a, transformer) for a in args]),
-                     {k: walk_replace(v, transformer) for k, v in kwargs.items()}
-                     )
-            )
-        case BiOp(op, left, right):
-            return transformer(BiOp(op, walk_replace(left, transformer), walk_replace(right, transformer)))
-        case UnaryOp(op, tgt):
-            return transformer(UnaryOp(op, walk_replace(tgt, transformer)))
-        case Attr(data, name):
-            return transformer(Attr(walk_replace(data, transformer), name))
-        case GetItem(data, key):
-            return transformer(GetItem(walk_replace(data, transformer), walk_replace(key, transformer)))
-        case _:
-            return expr
+    memo = dict()
+    from loguru import logger
+
+    def impl(expr):
+        match expr:
+            case Object(DelegatedVar(Expr() as nested_expr, cxt) as dv):
+                res = impl(nested_expr)
+            case Object(x):
+                res = transformer(Object(x))
+            case Call(f, args, kwargs):
+                res = transformer(
+                    Call(
+                        impl(f),
+                        tuple([impl(a) for a in args]),
+                        {k: impl(v) for k, v in kwargs.items()}
+                    )
+                )
+            case BiOp(op, left, right):
+                res = transformer(BiOp(op, impl(left), impl(right)))
+            case UnaryOp(op, tgt):
+                res = transformer(UnaryOp(op, impl(tgt)))
+            case Attr(data, name):
+                res = transformer(Attr(impl(data), name))
+            case GetItem(data, key):
+                res = transformer(GetItem(impl(data), impl(key)))
+            case _:
+                res = expr
+        return res
+
+    return impl(expr)
 
 
 def await_awaitables(expr: Expr[T]) -> Expr:

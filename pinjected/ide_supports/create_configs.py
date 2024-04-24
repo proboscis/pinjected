@@ -44,14 +44,16 @@ def run_with_meta_context(
     if not "__meta_design__" in Path(context_module_file_path).read_text():
         raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
     meta_context = MetaContext.gather_from_path(context_module_file_path)
+    default = instances(
+        default_design_paths=[]
+    )
     instance_overrides = instances(
         module_path=context_module_file_path,
         interpreter_path=sys.executable,
         meta_context=meta_context,
-        default_design_paths = []
     ) + instances(**kwargs)
     return run_injected("get", var_path, design_path, return_result=True,
-                        overrides=meta_context.accumulated + instance_overrides,
+                        overrides=default+meta_context.accumulated + instance_overrides,
                         notifier=logger.info
                         )
 
@@ -186,7 +188,7 @@ def design_metadata(
     helper = DIGraphHelper(d)
     metas = []
     for k, bind in helper.total_bindings().items():
-        k:IBindKey
+        k: IBindKey
         match bind.metadata.bind(lambda m: m.code_location):
             case Some(ModuleVarPath(qualified_name)):
                 metas.append(dict(

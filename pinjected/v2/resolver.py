@@ -1,12 +1,16 @@
 import asyncio
 import inspect
+import operator
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Union, Callable, Dict, Any, Optional
 
 from loguru import logger
 
 from pinjected import Injected
+from pinjected.di.app_injected import await_awaitables, walk_replace, EvaledInjected
+from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import IBind, BindInjected
@@ -44,6 +48,48 @@ class AsyncLockMap:
         return self.locks[key]
 
 
+OPERATORS = {
+    '+': operator.add,
+    '-': operator.sub,
+    '*': operator.mul,
+    '/': operator.truediv,
+    '//': operator.floordiv,
+    '%': operator.mod,
+    '**': operator.pow,
+    '==': operator.eq,
+    '!=': operator.ne,
+    '>': operator.gt,
+    '<': operator.lt,
+    '>=': operator.ge,
+    '<=': operator.le,
+    '<<': operator.lshift,
+    '>>': operator.rshift,
+    '&': operator.and_,
+    '|': operator.or_,
+    '^': operator.xor
+}
+UNARY_OPS = {
+    '+': operator.pos,
+    '-': operator.neg,
+    '~': operator.invert,
+    'not': operator.not_
+}
+
+
+@dataclass
+class Cache(Expr):
+    src: Expr
+
+    def __getstate__(self):
+        return self.src
+
+    def __setstate__(self, state):
+        self.src = state
+
+    def __hash__(self):
+        return hash(self.src)
+
+
 @dataclass
 class AsyncResolver:
     design: "Design"
@@ -66,6 +112,73 @@ class AsyncResolver:
             StrBindKey("__resolver__"): self,
             StrBindKey("__design__"): self.design
         }
+        self.eval_memos = {}
+        self.eval_locks = defaultdict(asyncio.Lock)
+
+    async def _optimize(self, expr: Expr):
+        """
+        this finds duplicated expr in the node and replace it with Cache Node.
+        """
+        expr_table = defaultdict(list)
+        logger.debug(f'optimizing:{expr}')
+
+        def update_table(expr):
+            expr_table[hash(expr)] += [expr]
+            return expr
+
+        walk_replace(expr, update_table)
+        for k, v in expr_table.items():
+            # logger.info(f"expr {k} has {len(v)} duplicates ->: {v[0]}")
+            cache = Cache(src=v[0])
+            if len(v) > 1:
+                expr = walk_replace(expr, lambda x: cache if hash(x) == k else x)
+        logger.debug(f"optimized expr:{expr}")
+        return expr
+
+    async def _eval(self, expr: Expr):
+        assert isinstance(expr, Expr), f"expr must be Expr, got {expr} of type {type(expr)}"
+        match expr:
+            case Cache(src):
+                k = hash(src)
+                async with self.eval_locks[k]:
+                    if k in self.eval_memos:
+                        res = self.eval_memos[k]
+                    else:
+                        res = await self._eval(src)
+                        self.eval_memos[k] = res
+
+            case Object(DelegatedVar(value, cxt)):
+                res = await self._eval(value)
+            case Object(Injected() as _injected):
+                res = await self._provide_providable(_injected)
+            case Object(x):
+                res = x
+            case Call(f, args, kwargs):
+                args = asyncio.gather(*[self._eval(a) for a in args])
+                keys = list(kwargs.keys())
+                values = asyncio.gather(*[self._eval(v) for v in kwargs.values()])
+                f, args, values = await asyncio.gather(self._eval(f), args, values)
+                kwargs = dict(zip(keys, values))
+                res = f(*args, **kwargs)
+            case BiOp(op, left, right):
+                left, right = await asyncio.gather(self._eval(left), self._eval(right))
+                res = OPERATORS[op](left, right)
+            case UnaryOp('await', data):
+                data = await self._eval(data)
+                res = await data
+            case UnaryOp(name, data):
+                data = await self._eval(data)
+                res = UNARY_OPS[name](data)
+            case Attr(data, name):
+                data = await self._eval(data)
+                res = getattr(data, name)
+            case GetItem(data, key):
+                data, key = await asyncio.gather(self._eval(data), self._eval(key))
+                res = data[key]
+            case _:
+                raise TypeError(
+                    f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
+        return res
 
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
         # we need to think which one to ask provider
@@ -104,14 +217,17 @@ class AsyncResolver:
             tasks = [self._provide(k, ProvideContext(key=k, parent=None)) for k in keys]
             return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
 
-        logger.info(f"providing {tgt}")
         match tgt:
             case str():
                 return await self._provide(StrBindKey(tgt), ProvideContext(key=StrBindKey(tgt), parent=None))
             case IBindKey():
                 return await self._provide(tgt, ProvideContext(key=tgt, parent=None))
-            case DelegatedVar():
-                return await self._provide_providable(tgt.eval())
+            case DelegatedVar(value, cxt) as dv:
+                # return await self._provide_providable(tgt.eval())
+                expr = await self._optimize(dv.eval().ast)
+                return await self._eval(expr)
+            case EvaledInjected(val, ast):
+                return await self._eval(ast)
             case Injected() as i_tgt:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
@@ -132,6 +248,7 @@ class AsyncResolver:
                 raise TypeError(f"tgt must be str, IBindKey, Callable or IBind, got {tgt}")
 
     async def provide(self, tgt: Providable):
+        logger.info(f"providing {tgt}")
         return await self._provide_providable(tgt)
 
     def to_blocking(self):
