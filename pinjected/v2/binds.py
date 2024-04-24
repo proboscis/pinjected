@@ -212,7 +212,7 @@ class ExprBind(IBind):
         assert isinstance(self.src, EvaledInjected), f"src must be an Expr, got {self.src}"
 
     async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
-        return await cxt.resolver.provide(self.src)
+        return await cxt.resolver._provide_providable(self.src)
 
 
 @dataclass
