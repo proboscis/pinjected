@@ -227,7 +227,8 @@ class AsyncResolver:
                 expr = await self._optimize(dv.eval().ast)
                 return await self._eval(expr)
             case EvaledInjected(val, ast):
-                return await self._eval(ast)
+                expr = await self._optimize(ast)
+                return await self._eval(expr)
             case Injected() as i_tgt:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
