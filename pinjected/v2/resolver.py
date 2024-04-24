@@ -87,7 +87,7 @@ class Cache(Expr):
         self.src = state
 
     def __hash__(self):
-        return hash(self.src)
+        return hash(f"cached") + hash(self.src)
 
 
 @dataclass
@@ -119,23 +119,9 @@ class AsyncResolver:
         """
         this finds duplicated expr in the node and replace it with Cache Node.
         """
-        expr_table = defaultdict(list)
-        logger.debug(f'optimizing:{expr}')
+        return walk_replace(expr, lambda x: Cache(x))
 
-        def update_table(expr):
-            expr_table[hash(expr)] += [expr]
-            return expr
-
-        walk_replace(expr, update_table)
-        for k, v in expr_table.items():
-            # logger.info(f"expr {k} has {len(v)} duplicates ->: {v[0]}")
-            cache = Cache(src=v[0])
-            if len(v) > 1:
-                expr = walk_replace(expr, lambda x: cache if hash(x) == k else x)
-        logger.debug(f"optimized expr:{expr}")
-        return expr
-
-    async def _eval(self, expr: Expr):
+    async def eval_expr(self, expr: Expr):
         assert isinstance(expr, Expr), f"expr must be Expr, got {expr} of type {type(expr)}"
         match expr:
             case Cache(src):
@@ -144,36 +130,36 @@ class AsyncResolver:
                     if k in self.eval_memos:
                         res = self.eval_memos[k]
                     else:
-                        res = await self._eval(src)
+                        res = await self.eval_expr(src)
                         self.eval_memos[k] = res
 
             case Object(DelegatedVar(value, cxt)):
-                res = await self._eval(value)
+                res = await self.eval_expr(value)
             case Object(Injected() as _injected):
                 res = await self._provide_providable(_injected)
             case Object(x):
                 res = x
             case Call(f, args, kwargs):
-                args = asyncio.gather(*[self._eval(a) for a in args])
+                args = asyncio.gather(*[self.eval_expr(a) for a in args])
                 keys = list(kwargs.keys())
-                values = asyncio.gather(*[self._eval(v) for v in kwargs.values()])
-                f, args, values = await asyncio.gather(self._eval(f), args, values)
+                values = asyncio.gather(*[self.eval_expr(v) for v in kwargs.values()])
+                f, args, values = await asyncio.gather(self.eval_expr(f), args, values)
                 kwargs = dict(zip(keys, values))
                 res = f(*args, **kwargs)
             case BiOp(op, left, right):
-                left, right = await asyncio.gather(self._eval(left), self._eval(right))
+                left, right = await asyncio.gather(self.eval_expr(left), self.eval_expr(right))
                 res = OPERATORS[op](left, right)
             case UnaryOp('await', data):
-                data = await self._eval(data)
+                data = await self.eval_expr(data)
                 res = await data
             case UnaryOp(name, data):
-                data = await self._eval(data)
+                data = await self.eval_expr(data)
                 res = UNARY_OPS[name](data)
             case Attr(data, name):
-                data = await self._eval(data)
+                data = await self.eval_expr(data)
                 res = getattr(data, name)
             case GetItem(data, key):
-                data, key = await asyncio.gather(self._eval(data), self._eval(key))
+                data, key = await asyncio.gather(self.eval_expr(data), self.eval_expr(key))
                 res = data[key]
             case _:
                 raise TypeError(
@@ -194,7 +180,7 @@ class AsyncResolver:
                 dep_keys = list(bind.dependencies)
                 tasks = []
                 for dep_key in dep_keys:
-                    n_cxt = ProvideContext(key=dep_key, parent=cxt)
+                    n_cxt = ProvideContext(self, key=dep_key, parent=cxt)
                     tasks.append(self._provide(dep_key, n_cxt))
                 res = await asyncio.gather(*tasks)
                 deps = dict(zip(dep_keys, res))
@@ -214,26 +200,26 @@ class AsyncResolver:
 
     async def _provide_providable(self, tgt: Providable):
         async def resolve_deps(keys: set[IBindKey]):
-            tasks = [self._provide(k, ProvideContext(key=k, parent=None)) for k in keys]
+            tasks = [self._provide(k, ProvideContext(self, key=k, parent=None)) for k in keys]
             return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
 
         match tgt:
             case str():
-                return await self._provide(StrBindKey(tgt), ProvideContext(key=StrBindKey(tgt), parent=None))
+                return await self._provide(StrBindKey(tgt), ProvideContext(self, key=StrBindKey(tgt), parent=None))
             case IBindKey():
-                return await self._provide(tgt, ProvideContext(key=tgt, parent=None))
+                return await self._provide(tgt, ProvideContext(self, key=tgt, parent=None))
             case DelegatedVar(value, cxt) as dv:
                 # return await self._provide_providable(tgt.eval())
                 expr = await self._optimize(dv.eval().ast)
-                return await self._eval(expr)
+                return await self.eval_expr(expr)
             case EvaledInjected(val, ast):
                 expr = await self._optimize(ast)
-                return await self._eval(expr)
+                return await self.eval_expr(expr)
             case Injected() as i_tgt:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
                 deps = await resolve_deps(tgt.dependencies)
-                return await tgt.provide(ProvideContext(key=tgt, parent=None), deps)
+                return await tgt.provide(ProvideContext(self, key=tgt, parent=None), deps)
             case func if inspect.isfunction:
                 deps = extract_dependency(func)
                 logger.info(f"Resolving deps for {func} -> {deps}")

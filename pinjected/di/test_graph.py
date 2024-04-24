@@ -8,7 +8,7 @@ def test_provide_session():
         a=0
     )
     g = d.to_graph()
-    assert g["session"] == g
+    assert g["__resolver__"] == g.resolver
 
 
 def test_child_session():
