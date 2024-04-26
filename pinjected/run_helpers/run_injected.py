@@ -172,8 +172,8 @@ def run_anything(
     except Exception as e:
         import traceback
         notify(f"Run failed with error:\n{e}", sound='Frog')
-        trace = traceback.format_exc()
-        Path(f"run_failed_{var_path}.err.log").write_text(str(e) + "\n" + trace)
+        # trace = traceback.format_exc()
+        # Path(f"run_failed_{var_path}.err.log").write_text(str(e) + "\n" + trace)
         # from rich.console import Console
         # console = Console()
         # console.print_exception(show_locals=False)
