@@ -19,6 +19,7 @@ from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import BindInjected
+from pinjected.v2.keys import StrBindKey, DestructorKey
 
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
@@ -135,9 +136,9 @@ def get_class_aware_args(f):
 
 def to_readable_name(o):
     match o:
-        case BindInjected(InjectedFunction(func, _),_):
+        case BindInjected(InjectedFunction(func, _), _):
             return func.__name__
-        case BindInjected(InjectedPure(value),_):
+        case BindInjected(InjectedPure(value), _):
             return value
         case any:
             return any
@@ -418,3 +419,16 @@ def classes(**kwargs):
 
 def injecteds(**kwargs):
     return Design().bind_provider(**kwargs)
+
+
+def destructors(**kwargs):
+    """
+    registers destructors. using DestructorKey.
+    The values must be an async function that takes one argument.
+    """
+    res = instances()
+    for k, v in kwargs.items():
+        tgt = StrBindKey(k)
+        key = DestructorKey(tgt)
+        res += Design(bindings={key: Design.to_bind(v)})
+    return res

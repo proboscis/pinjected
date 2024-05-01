@@ -20,3 +20,11 @@ class StrBindKey(IBindKey):
 
     def ide_hint_string(self):
         return self.name
+
+
+@dataclass(frozen=True)
+class DestructorKey(IBindKey):
+    tgt: IBindKey
+
+    def ide_hint_string(self):
+        return f"destructor({self.tgt.ide_hint_string()})"
