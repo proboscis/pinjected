@@ -21,3 +21,4 @@ class ProvideContext:
     def trace_str(self):
         return ' -> '.join([str(x.key.ide_hint_string()) for x in self.trace])
 
+
