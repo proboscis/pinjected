@@ -122,27 +122,34 @@ def run_anything(
             logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
 
             async def task():
-                _res = await design.to_resolver().provide(var(*args, **kwargs))
+                resolver = design.to_resolver()
+                _res = await resolver.provide(var(*args, **kwargs))
+
                 if isinstance(_res, Awaitable):
                     #logger.info(f"awaiting awaitable")
                     _res = await _res
                 if not return_result:
                     logger.info(f"run_injected call result:\n{_res}")
+                await resolver.destruct()
                 return _res
 
             res = asyncio.run(task())
         elif cmd == 'get':
             async def task():
-                _res = await design.to_resolver().provide(var)
+                resolver = design.to_resolver()
+                _res = await resolver.provide(var)
                 if isinstance(_res, Coroutine) or isinstance(_res, Awaitable):
                     _res = await _res
+                await resolver.destruct()
                 return _res
 
             res = asyncio.run(task())
             if not return_result:
                 logger.info(f"run_injected get result:\n{pformat(res)}")
         elif cmd == 'fire':
+            raise RuntimeError('fire is deprecated. use get.')
             return_result = True
+            resolver = design.to_resolver()
             res = design.provide(var)
             if isinstance(res, Coroutine):
                 res = asyncio.run(res)

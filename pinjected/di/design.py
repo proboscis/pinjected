@@ -174,30 +174,32 @@ class Design:
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
             x += Design({StrBindKey(k): BindInjected(Injected.pure(v))})
         return x
+    @staticmethod
+    def to_bind( tgt) -> IBind:
+        from loguru import logger
+        match tgt:
+            case IBind():
+                return tgt
+            case type():
+                return BindInjected(Injected.bind(tgt))
+            case EvaledInjected():
+                return ExprBind(tgt)
+            case DelegatedVar():
+                return ExprBind(tgt.eval())
+            case Injected():
+                return BindInjected(tgt)
+            case non_func if not callable(non_func):
+                logger.warning(f"{tgt}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
+                return BindInjected(Injected.pure(non_func))
+            case func if callable(func):
+                return BindInjected(Injected.bind(func))
+            case _:
+                raise ValueError(f"cannot bind {tgt}")
 
     def bind_provider(self, **kwargs: Union[Callable, Injected]):
         bindings = dict()
         for k, v in kwargs.items():
-            # logger.info(f"binding provider:{k}=>{v}")
-            from loguru import logger
-            match v:
-                case type():
-                    # logger.warning(f"{k}->{v}: class is used for bind_provider. fixing automatically.")
-                    bindings[StrBindKey(k)] = BindInjected(Injected.bind(v))
-                case EvaledInjected():
-                    bindings[StrBindKey(k)] = ExprBind(v)
-                case DelegatedVar():
-                    bindings[StrBindKey(k)] = ExprBind(v.eval())
-                case Injected():
-                    bindings[StrBindKey(k)] = BindInjected(v)
-                case non_func if not callable(non_func):
-                    logger.warning(
-                        f"{k}->{v}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
-                    bindings[StrBindKey(k)] = BindInjected(Injected.pure(v))
-                case func if callable(func):
-                    bindings[StrBindKey(k)] = BindInjected(Injected.bind(func))
-                case _:
-                    raise ValueError(f"cannot bind {k} to {v}")
+            bindings[StrBindKey(k)] = self.to_bind(v)
 
         return self + Design(
             bindings=bindings,
