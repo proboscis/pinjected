@@ -14,7 +14,7 @@ from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import IBind, BindInjected
-from pinjected.v2.keys import IBindKey, StrBindKey
+from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
 from pinjected.v2.provide_context import ProvideContext
 
 Providable = Union[str, IBindKey, Callable, IBind]
@@ -114,6 +114,8 @@ class AsyncResolver:
         }
         self.eval_memos = {}
         self.eval_locks = defaultdict(asyncio.Lock)
+        self.destruction_lock = asyncio.Lock()
+        self.destructed = False
 
     async def _optimize(self, expr: Expr):
         """
@@ -243,6 +245,34 @@ class AsyncResolver:
 
     def __getitem__(self, item):
         return self.provide(item)
+
+    async def destruct(self):
+        """
+        check objects and destruct them if they are destructable.
+        """
+
+        def a_destructor(f):
+            async def impl(tgt):
+                return f(tgt)
+
+            return impl
+
+        async with self.destruction_lock:
+            assert not self.destructed, "Resolver already destructed"
+            destructions = []
+            for k, v in list(self.objects.items()):
+                destruction_key = DestructorKey(k)
+                if destruction_key in self.design:
+                    destructor = await self[destruction_key]
+                    if not inspect.iscoroutinefunction(destructor):
+                        destructor = a_destructor(destructor)
+                    destructions.append(destructor(v))
+            logger.info(f"waiting for {len(destructions)} destructors to finish.")
+            results = await asyncio.gather(*destructions)
+            logger.success(f"all destructors finished with results:{results}")
+            self.destructed = True
+            logger.success(f"Resolver destructed")
+            return results
 
 
 @dataclass
