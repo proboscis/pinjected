@@ -76,15 +76,13 @@ class PinjectedCodeExporter:
 
     async def to_source__instance(self, assign_target, tgt: InjectedPure) -> CodeBlock:
         # wait, tgt.value must be recoverable from the value. but it should always be.
-        frame = tgt.__definition_frame__
         # let's get the relevant imports
 
-        frm = frame.original_frame
-        mod_name = frm.f_globals['__name__']
+        mod_name = tgt.__definition_module__
         from loguru import logger
         if mod_name == 'module.name':
             # the variable is defined at non-module script so let's read the file
-            source = Path(frm.f_globals['__file__']).read_text()
+            source = Path(tgt.__original_file__).read_text()
             imports = get_required_imports(source, module_name="__main__")
         else:
             module = sys.modules[mod_name]
