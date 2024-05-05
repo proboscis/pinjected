@@ -314,6 +314,7 @@ def add_code_locations(design, kwargs, frame):
     try:
         locs = get_code_locations(list(kwargs.keys()), frame)
         metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
+        #metas = dict()
     except OSError as ose:
         from loguru import logger
         logger.warning(f"failed to get code locations:{ose}")

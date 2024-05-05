@@ -503,8 +503,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def pure(value):
         res = InjectedPure(value)
         # I need to set the file that called this function.
-        res.__definition_frame__ = get_frame_info(2)
-        res.__original_file__ = get_frame_info(2).filename
+        #res.__definition_frame__ = get_frame_info(2)
+        fi = get_frame_info(2)
+        res.__definition_module__ = fi.original_frame.f_globals["__name__"]
+        res.__original_file__ = fi.filename
         return res
 
     @staticmethod
@@ -741,13 +743,14 @@ class InjectedCache(Injected[T]):
     def __post_init__(self):
         self.program = Injected.ensure_injected(self.program)
 
-        def impl(session, cache: Dict, *deps):
+        async def impl(t):
+            resolver,cache,*deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
             hash_key = sha256_key
             if hash_key not in cache:
                 logger.info(f"Cache miss for {deps}")
-                data = session[self.program]
+                data = await resolver[self.program]
                 cache[hash_key] = data
             else:
                 logger.info(f"Cache hit for {deps},loading ...")
@@ -755,13 +758,12 @@ class InjectedCache(Injected[T]):
             logger.info(f"Cache hit for {deps}, loaded")
             return res
 
+
         self.impl = Injected.list(
-            Injected.by_name("session"),
+            Injected.by_name("__resolver__"),
             self.cache,
             *self.program_dependencies
-        ).map(
-            lambda t: impl(*t)
-        )
+        ).map(impl)
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 

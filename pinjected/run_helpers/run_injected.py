@@ -1,5 +1,6 @@
 import inspect
 import os
+from asyncio import TaskGroup
 from pathlib import Path
 
 from pprint import pformat
@@ -102,8 +103,6 @@ def run_anything(
         # add overrides from with block
         meta_overrides += DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
 
-
-
     design += (meta_overrides + overrides)
     logger.info(f"running target:{var} with {design_path} + {overrides}")
     logger.debug(design.keys())
@@ -114,38 +113,36 @@ def run_anything(
     design = load_user_default_design() + design + load_user_overrides_design()
 
     res = None
+
+    def run_target(d,tgt):
+        async def task():
+            async with TaskGroup() as tg:
+                dd = d + instances(
+                    __task_group__=tg
+                )
+                resolver = dd.to_resolver()
+                _res = await resolver.provide(tgt)
+
+                if isinstance(_res, Awaitable):
+                    # logger.info(f"awaiting awaitable")
+                    _res = await _res
+                if not return_result:
+                    logger.info(f"run_injected result:\n{_res}")
+            await resolver.destruct()
+            return _res
+        return asyncio.run(task())
+
+
+
     try:
         if cmd == 'call':
             args = call_args or []
             kwargs = call_kwargs or {}
             var = Injected.ensure_injected(var).proxy
             logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
-
-            async def task():
-                resolver = design.to_resolver()
-                _res = await resolver.provide(var(*args, **kwargs))
-
-                if isinstance(_res, Awaitable):
-                    #logger.info(f"awaiting awaitable")
-                    _res = await _res
-                if not return_result:
-                    logger.info(f"run_injected call result:\n{_res}")
-                await resolver.destruct()
-                return _res
-
-            res = asyncio.run(task())
+            res = run_target(design,var(*args, **kwargs))
         elif cmd == 'get':
-            async def task():
-                resolver = design.to_resolver()
-                _res = await resolver.provide(var)
-                if isinstance(_res, Coroutine) or isinstance(_res, Awaitable):
-                    _res = await _res
-                await resolver.destruct()
-                return _res
-
-            res = asyncio.run(task())
-            if not return_result:
-                logger.info(f"run_injected get result:\n{pformat(res)}")
+            res = run_target(design,var)
         elif cmd == 'fire':
             raise RuntimeError('fire is deprecated. use get.')
             return_result = True
@@ -157,7 +154,6 @@ def run_anything(
             if inspect.iscoroutinefunction(res) or (hasattr(res, '__is_async__') and res.__is_async__):
                 logger.info(f'{res} is a coroutine function, wrapping it with asyncio.run')
                 src = res
-
                 # @wraps(res)
                 def synced(*args, **kwargs):
                     return asyncio.run(src(*args, **kwargs))
