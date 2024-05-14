@@ -1374,7 +1374,7 @@ class PartialInjectedFunction(Injected):
         So, we need Await AST too.
         """
 
-        res = self.src(*args, **kwargs)
+        res = self.src.proxy(*args, **kwargs)
         return res
 
     def dependencies(self) -> Set[str]:
