@@ -216,9 +216,16 @@ class Design:
         return res
 
     def to_resolver(self):
-        from pinjected.v2.resolver import AsyncResolver
+        from pinjected.v2.resolver import AsyncResolver,BaseResolverCallback
+        from loguru import logger
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
-        return AsyncResolver(Design(bindings=bindings, modules=self.modules))
+        callback = BaseResolverCallback()
+        return AsyncResolver(
+            Design(bindings=bindings, modules=self.modules),
+            callbacks=[
+                callback
+            ]
+        )
 
     def to_graph(self):
         return self.to_resolver().to_blocking()

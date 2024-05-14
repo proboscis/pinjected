@@ -1,7 +1,8 @@
 import inspect
 import sys
+from loguru import logger
 
-def get_instance_origin(package_name):
+def get_instance_origin_slow(package_name):
     from loguru import logger
     # Get the current frame
     #logger.debug(f"trying to get the instance origin")
@@ -30,6 +31,36 @@ def get_instance_origin(package_name):
 
         # Move to the next frame in the call stack
         current_frame = current_frame.f_back
+
+
+def get_instance_origin(package_name):
+    #logger.debug("Trying to get the instance origin")
+
+    current_frame = sys._getframe()
+
+    # Go up the call stack to find the frame outside the given package
+    while current_frame:
+        # Check if the frame's module is not in the specified package
+        module_name = current_frame.f_globals.get("__name__")
+        if module_name and not module_name.startswith(package_name):
+            filename = current_frame.f_code.co_filename
+            lineno = current_frame.f_lineno
+            function_name = current_frame.f_code.co_name
+            # Log and return the frame information
+            #logger.debug(f"Found instance origin: {filename}")
+            return {
+                "filename": filename,
+                "lineno": lineno,
+                "function_name": function_name,
+                "module_name": module_name,
+            }
+
+        # Move to the next frame in the call stack
+        current_frame = current_frame.f_back
+
+    # Return None if no suitable frame is found
+    return None
+
 
 def get_instance_origin2(package_name):
     # Get the current frame
