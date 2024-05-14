@@ -6,7 +6,8 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from inspect import Traceback
+from inspect import Traceback, iscoroutinefunction
+from pathlib import Path
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable
 
 from frozendict import frozendict
@@ -370,7 +371,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
         bound_func.__is_async_function__ = inspect.iscoroutinefunction(original_function)
-        bound_func.__is_partial__ = True # this is to indicate that the bound_func is supposed to be used with PartialInjectedFunction.
+        bound_func.__is_partial__ = True  # this is to indicate that the bound_func is supposed to be used with PartialInjectedFunction.
         injected_factory = PartialInjectedFunction(src=bound_func)
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
@@ -499,14 +500,28 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def from_impl(impl: Callable, dependencies: Set[str]):
         return GeneratedInjected(impl, dependencies)
 
+    def _faster_get_metadata(self):
+        # logger.info(f"faster_get_metadata for Injected.pure")
+        try:
+            frame = sys._getframe().f_back.f_back
+            mod = frame.f_globals["__name__"]
+            name = frame.f_code.co_filename
+            # return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
+            return mod, name
+        except Exception as e:
+            # from loguru import logger
+            logger.warning(f"failed to get name of the injected location, due to {e}")
+            return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
+
     @staticmethod
     def pure(value):
         res = InjectedPure(value)
         # I need to set the file that called this function.
-        #res.__definition_frame__ = get_frame_info(2)
-        fi = get_frame_info(2)
-        res.__definition_module__ = fi.original_frame.f_globals["__name__"]
-        res.__original_file__ = fi.filename
+        # res.__definition_frame__ = get_frame_info(2)
+        # fi = get_frame_info(2)
+        res.__definition_module__, res.__original_file__ = res._faster_get_metadata()
+        # res.__definition_module__ = fi.original_frame.f_globals["__name__"]
+        # res.__original_file__ = fi.filename
         return res
 
     @staticmethod
@@ -572,9 +587,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
         # raise RuntimeError("disabled")
-        #keys = list(kwargs.keys())
+        # keys = list(kwargs.keys())
 
-        #return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
+        # return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
         return DictInjected(**kwargs)
 
     @property
@@ -744,7 +759,7 @@ class InjectedCache(Injected[T]):
         self.program = Injected.ensure_injected(self.program)
 
         async def impl(t):
-            resolver,cache,*deps = t
+            resolver, cache, *deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
             hash_key = sha256_key
@@ -757,7 +772,6 @@ class InjectedCache(Injected[T]):
             res = cache[hash_key]
             logger.info(f"Cache hit for {deps}, loaded")
             return res
-
 
         self.impl = Injected.list(
             Injected.by_name("__resolver__"),
@@ -1011,6 +1025,8 @@ async def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dic
         return await solve_injection(dep.get_provider(), kwargs)
     elif isinstance(dep, (type, Callable)) and inspect.iscoroutinefunction(dep):
         return await dep(**{k: kwargs[k] for k in extract_dependency(dep)})
+    elif isinstance(dep, (type, Callable)):
+        return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
     else:
         raise RuntimeError(f"dep must be one of str/type/Callable/Injected. got {type(dep)}")
 
@@ -1021,6 +1037,10 @@ def combine_image_store(a, b):
 
 
 def assert_kwargs_type(v):
+    if isinstance(v, DelegatedVar):
+        return
+    if v == abc.ABCMeta:
+        raise TypeError(f"Unexpected: {v}")
     if isinstance(v, str):
         return
     if isinstance(v, type):
@@ -1029,6 +1049,7 @@ def assert_kwargs_type(v):
         return
     if isinstance(v, Injected):
         return
+
     else:
         raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
 
@@ -1052,9 +1073,12 @@ class InjectedFunction(Injected[T]):
         assert inspect.iscoroutinefunction(self.target_function), f"{self.target_function} is not a coroutine function"
         self.kwargs_mapping = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
-            assert_kwargs_type(v)
             if isinstance(v, DelegatedVar):
-                self.kwargs_mapping[k] = v.eval()
+                v = v.eval()
+                self.kwargs_mapping[k] = v
+            assert_kwargs_type(v)
+            if v == abc.ABCMeta:
+                raise TypeError(f"Unexpected kwargs set.{k}:{v}")
         # logger.info(f"InjectedFunction:{self.target_function} kwargs_mapping:{self.kwargs_mapping}")
         org_deps = extract_dependency(self.target_function)
         logger.trace(f"tgt:{target_function} original dependency:{org_deps}")
@@ -1079,7 +1103,11 @@ class InjectedFunction(Injected[T]):
                         mapped = self.kwargs_mapping[key]
                     else:
                         mapped = key
-                    deps[key] = await solve_injection(mapped, kwargs)
+                    try:
+                        deps[key] = await solve_injection(mapped, kwargs)
+                    except Exception as e:
+                        logger.error(f"failed to solve injection for {key}:{mapped} from {kwargs}")
+                        raise e
 
             tasks = []
             logger.trace(f"missings:{self.missings},kwargs_mapping:{self.kwargs_mapping}")
@@ -1118,6 +1146,13 @@ class InjectedFunction(Injected[T]):
     #    return f"""InjectedFunction(target={self.target_function},kwargs_mapping={self.kwargs_mapping})"""
     def dynamic_dependencies(self) -> Set[str]:
         return set()
+
+    def __repr_expr__(self):
+        # func_name = self.original_function.__name__
+        # orig_file = Path(self.original_function.__original_file__)
+        # orig_line = self.original_function.__original_code__
+        # return f"<f {func_name}@{orig_file.name}>"
+        return self.original_function.__name__
 
 
 class InjectedPure(Injected[T]):
@@ -1170,6 +1205,9 @@ class InjectedByName(Injected[T]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return set()
+
+    def __repr_expr__(self):
+        return f"${self.name}"
 
 
 class ZippedInjected(Injected[Tuple[A, B]]):
@@ -1237,6 +1275,7 @@ class MZippedInjected(Injected):
 
         return res
 
+
 class DictInjected(Injected):
     __match_args__ = ("srcs",)
 
@@ -1271,6 +1310,7 @@ class DictInjected(Injected):
             res |= s.dynamic_dependencies()
 
         return res
+
 
 def _injected_factory(**targets: Injected):
     def _impl(f):
@@ -1334,7 +1374,7 @@ class PartialInjectedFunction(Injected):
         So, we need Await AST too.
         """
 
-        res = self.src.proxy(*args, **kwargs)
+        res = self.src(*args, **kwargs)
         return res
 
     def dependencies(self) -> Set[str]:

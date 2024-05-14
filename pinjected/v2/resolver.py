@@ -1,21 +1,37 @@
+from loguru import logger
+try:
+    import nest_asyncio
+    import uvloop
+    logger.error(f"nest_asyncio is disabled since uvloop is also installed! nest_asyncio.apply do not work with uvloop!")
+    nest_asyncio.apply = lambda:None
+except ImportError:
+    pass
+
+
+
+
 import asyncio
+import datetime
 import inspect
 import operator
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pprint import pformat
 from typing import Union, Callable, Dict, Any, Optional
 
 from loguru import logger
 
 from pinjected import Injected
-from pinjected.di.app_injected import await_awaitables, walk_replace, EvaledInjected
-from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem
+from pinjected.di.app_injected import walk_replace, EvaledInjected
+from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
+from pinjected.exceptions import DependencyResolutionError
 from pinjected.v2.binds import IBind, BindInjected
 from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
 from pinjected.v2.provide_context import ProvideContext
+from pinjected.visualize_di import DIGraph
 
 Providable = Union[str, IBindKey, Callable, IBind]
 
@@ -77,17 +93,52 @@ UNARY_OPS = {
 
 
 @dataclass
-class Cache(Expr):
-    src: Expr
+class ResolverEvent:
+    cxt: ProvideContext
 
-    def __getstate__(self):
-        return self.src
 
-    def __setstate__(self, state):
-        self.src = state
+@dataclass
+class RequestEvent(ResolverEvent):
+    key: IBindKey
 
-    def __hash__(self):
-        return hash(f"cached") + hash(self.src)
+
+@dataclass
+class ProvideEvent(ResolverEvent):
+    key: IBindKey
+    data: Any
+
+
+@dataclass
+class DepsReadyEvent(ResolverEvent):
+    key: IBindKey
+    deps: Dict[IBindKey, Any]
+
+
+@dataclass
+class EvalRequestEvent(ResolverEvent):
+    expr: Expr
+
+
+@dataclass
+class CallInEvalStart(ResolverEvent):
+    expr: Call
+
+
+@dataclass
+class CallInEvalEnd(ResolverEvent):
+    expr: Call
+    result: Any
+
+
+@dataclass
+class EvalResultEvent(ResolverEvent):
+    expr: Expr
+    result: Any
+
+
+class IResolverCallback:
+    def __call__(self, event: ResolverEvent):
+        pass
 
 
 @dataclass
@@ -96,9 +147,17 @@ class AsyncResolver:
     parent: Optional["AsyncResolver"] = None
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
+    callbacks: list[IResolverCallback] = field(default_factory=list)
+
+    def add_callback(self, callback: IResolverCallback):
+        self.callbacks.append(callback)
+
+    def _callback(self, event: ResolverEvent):
+        for cb in self.callbacks:
+            cb(event)
 
     def __post_init__(self):
-        from pinjected import injected, instance, providers
+        from pinjected import providers
         async def dummy():
             raise RuntimeError('This should never be instantiated')
 
@@ -121,10 +180,31 @@ class AsyncResolver:
         """
         this finds duplicated expr in the node and replace it with Cache Node.
         """
-        return walk_replace(expr, lambda x: Cache(x))
 
-    async def eval_expr(self, expr: Expr):
+        def solve_evaled_injected(expr: Expr):
+            match expr:
+                case Object(object(__expr__=expr)):
+                    return expr
+                case _:
+                    return expr
+
+        replaced = walk_replace(expr, solve_evaled_injected)
+        replaced = walk_replace(replaced, lambda x: Cache(x))
+        return replaced
+
+    async def eval_expr(self, expr: Expr, cxt: ProvideContext):
         assert isinstance(expr, Expr), f"expr must be Expr, got {expr} of type {type(expr)}"
+        self._callback(EvalRequestEvent(cxt, expr))
+        """
+                    case EvaledInjected(val, ast):
+                expr = await self._optimize(ast)
+                return await self.eval_expr(expr)
+            case Injected() as i_tgt:
+                return await self._provide_providable(BindInjected(i_tgt))
+                            case IBind():
+                deps = await resolve_deps(tgt.dependencies)
+                return await tgt.provide(ProvideContext(self, key=tgt, parent=root_cxt), deps)
+        """
         match expr:
             case Cache(src):
                 k = hash(src)
@@ -132,53 +212,73 @@ class AsyncResolver:
                     if k in self.eval_memos:
                         res = self.eval_memos[k]
                     else:
-                        res = await self.eval_expr(src)
+                        new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{k}"), parent=cxt)
+                        res = await self.eval_expr(src, new_cxt)
                         self.eval_memos[k] = res
 
             case Object(DelegatedVar(value, cxt)):
-                res = await self.eval_expr(value)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{value}"), parent=cxt)
+                res = await self.eval_expr(value, new_cxt)
+            case Object(EvaledInjected(val, ast)):
+                expr = await self._optimize(ast)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{val}"), parent=cxt)
+                res = await self.eval_expr(expr, new_cxt)
             case Object(Injected() as _injected):
-                res = await self._provide_providable(_injected)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{_injected}"), parent=cxt)
+                bind = BindInjected(_injected)
+                deps = await self.resolve_deps(bind.dependencies, new_cxt)
+                res = await bind.provide(new_cxt, deps)
             case Object(x):
                 res = x
-            case Call(f, args, kwargs):
-                args = asyncio.gather(*[self.eval_expr(a) for a in args])
+            case Call(f, args, kwargs) as call:
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{f}"), parent=cxt)
+                args = asyncio.gather(*[self.eval_expr(a, new_cxt) for a in args])
                 keys = list(kwargs.keys())
-                values = asyncio.gather(*[self.eval_expr(v) for v in kwargs.values()])
-                f, args, values = await asyncio.gather(self.eval_expr(f), args, values)
+                values = asyncio.gather(*[self.eval_expr(v, new_cxt) for v in kwargs.values()])
+                f, args, values = await asyncio.gather(self.eval_expr(f, new_cxt), args, values)
                 kwargs = dict(zip(keys, values))
+                self._callback(CallInEvalStart(cxt, call))
                 res = f(*args, **kwargs)
+                self._callback(CallInEvalEnd(cxt, call, res))
             case BiOp(op, left, right):
-                left, right = await asyncio.gather(self.eval_expr(left), self.eval_expr(right))
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{left}"), parent=cxt)
+                left, right = await asyncio.gather(self.eval_expr(left, new_cxt), self.eval_expr(right, new_cxt))
                 res = OPERATORS[op](left, right)
             case UnaryOp('await', data):
-                data = await self.eval_expr(data)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                data = await self.eval_expr(data, new_cxt)
                 res = await data
             case UnaryOp(name, data):
-                data = await self.eval_expr(data)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                data = await self.eval_expr(data, new_cxt)
                 res = UNARY_OPS[name](data)
             case Attr(data, name):
-                data = await self.eval_expr(data)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                data = await self.eval_expr(data, new_cxt)
                 res = getattr(data, name)
             case GetItem(data, key):
-                data, key = await asyncio.gather(self.eval_expr(data), self.eval_expr(key))
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                data, key = await asyncio.gather(self.eval_expr(data, new_cxt), self.eval_expr(key, new_cxt))
                 res = data[key]
             case _:
                 raise TypeError(
                     f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
+        self._callback(EvalResultEvent(cxt, expr, res))
         return res
 
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
         # we need to think which one to ask provider
         # if we have the binding for the key, use our own scope
         async with self.locks.get(key):
+            self._callback(RequestEvent(cxt, key))
             if key in self.objects:
                 data = self.objects[key]
+                self._callback(ProvideEvent(cxt, key, data))
                 return data
             elif key in self.design:
-                logger.info(f"{cxt.trace_str}")
+                # logger.info(f"{cxt.trace_str}")
                 # we are responsible for providing this
-                bind = self.design.bindings[key]
+                bind: IBind = self.design.bindings[key]
                 dep_keys = list(bind.dependencies)
                 tasks = []
                 for dep_key in dep_keys:
@@ -186,10 +286,12 @@ class AsyncResolver:
                     tasks.append(self._provide(dep_key, n_cxt))
                 res = await asyncio.gather(*tasks)
                 deps = dict(zip(dep_keys, res))
+                self._callback(DepsReadyEvent(cxt, key, deps))
                 data = await bind.provide(cxt, deps)
                 self.objects[key] = data
-                show_data = str(data)[:100]
-                logger.info(f"{cxt.trace_str} := {show_data}")
+                # show_data = str(data)[:100]
+                # logger.info(f"{cxt.trace_str} := {show_data}")
+                self._callback(ProvideEvent(cxt, key, data))
                 return data
             else:
                 if self.parent is not None:
@@ -200,33 +302,36 @@ class AsyncResolver:
     def child_session(self, overrides: "Design"):
         return AsyncResolver(overrides, parent=self)
 
+    async def resolve_deps(self, keys: set[IBindKey], cxt):
+        tasks = [self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys]
+        return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
+
     async def _provide_providable(self, tgt: Providable):
-        async def resolve_deps(keys: set[IBindKey]):
-            tasks = [self._provide(k, ProvideContext(self, key=k, parent=None)) for k in keys]
-            return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
+        root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)
 
         match tgt:
             case str():
-                return await self._provide(StrBindKey(tgt), ProvideContext(self, key=StrBindKey(tgt), parent=None))
+                return await self._provide(StrBindKey(tgt), ProvideContext(self, key=StrBindKey(tgt), parent=root_cxt))
             case IBindKey():
-                return await self._provide(tgt, ProvideContext(self, key=tgt, parent=None))
+                return await self._provide(tgt, ProvideContext(self, key=tgt, parent=root_cxt))
             case DelegatedVar(value, cxt) as dv:
                 # return await self._provide_providable(tgt.eval())
                 expr = await self._optimize(dv.eval().ast)
-                return await self.eval_expr(expr)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{value}"), parent=root_cxt)
+                return await self.eval_expr(expr, new_cxt)
             case EvaledInjected(val, ast):
                 expr = await self._optimize(ast)
-                return await self.eval_expr(expr)
+                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{val}"), parent=root_cxt)
+                return await self.eval_expr(expr, new_cxt)
             case Injected() as i_tgt:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
-                deps = await resolve_deps(tgt.dependencies)
-                return await tgt.provide(ProvideContext(self, key=tgt, parent=None), deps)
+                deps = await self.resolve_deps(tgt.dependencies, root_cxt)
+                return await tgt.provide(ProvideContext(self, key=tgt, parent=root_cxt), deps)
             case func if inspect.isfunction:
                 deps = extract_dependency(func)
-                logger.info(f"Resolving deps for {func} -> {deps}")
                 keys = {StrBindKey(d) for d in deps}
-                deps = await resolve_deps(keys)
+                deps = await self.resolve_deps(keys, root_cxt)
                 kwargs = {k.name: v for k, v in deps.items()}
                 data = tgt(**kwargs)
                 if inspect.iscoroutinefunction(tgt):
@@ -236,8 +341,43 @@ class AsyncResolver:
             case _:
                 raise TypeError(f"tgt must be str, IBindKey, Callable or IBind, got {tgt}")
 
+    async def validate_provision(self, tgt: Providable):
+        logger.debug(f"validating provision...")
+        from pinjected import Design
+        from pinjected import providers
+        d: Design = self.design
+        errors = []
+        match tgt:
+            case Injected():
+                tmp_design = d + providers(__root__=tgt)
+                digraph: DIGraph = tmp_design.to_vis_graph()
+                errors = list(digraph.di_dfs_validation("__root__"))
+            case str():
+                digraph: DIGraph = d.to_vis_graph()
+                errors = list(digraph.di_dfs_validation(tgt))
+            case DelegatedVar() as dv:
+                tmp_design = d + providers(__root__=tgt)
+                digraph: DIGraph = tmp_design.to_vis_graph()
+                errors = list(digraph.di_dfs_validation("__root__"))
+            case f if callable(f):
+                tmp_design = d + providers(__root__=tgt)
+                digraph: DIGraph = tmp_design.to_vis_graph()
+                errors = list(digraph.di_dfs_validation("__root__"))
+
+        if errors:
+            raise DependencyResolutionError(f"Errors in dependency resolution: {pformat(errors)}", causes=errors)
+        logger.debug(f"provision validated.")
+
     async def provide(self, tgt: Providable):
-        logger.info(f"providing {tgt}")
+        await self.validate_provision(tgt)
+        match tgt:
+            case EvaledInjected(val, ast):
+                repr = show_expr(ast)
+            case DelegatedVar(value, cxt) as dv:
+                repr = show_expr(dv.eval().ast)
+            case _:
+                repr = str(tgt)
+        logger.info(f"providing {repr}")
         return await self._provide_providable(tgt)
 
     def to_blocking(self):
@@ -273,6 +413,197 @@ class AsyncResolver:
             self.destructed = True
             logger.success(f"Resolver destructed")
             return results
+
+
+@dataclass
+class ResolveStatus:
+    key: Any
+    kind: str  # eval or provide
+    status: str
+    start: Optional[datetime.datetime]
+    end: Optional[datetime.datetime]
+
+
+@dataclass
+class BaseResolverCallback(IResolverCallback):
+    def __post_init__(self):
+        self.request_status: dict[IBindKey, str] = {}
+        self.logger = logger.opt(colors=True, ansi=True)
+        self.eval_status: dict[str, str] = {}
+        self.total_status: dict[Union[IBindKey, str]] = {}
+
+    def __call__(self, event: ResolverEvent):
+        if isinstance(event, RequestEvent):
+            self.on_request(event)
+        elif isinstance(event, ProvideEvent):
+            self.on_provide(event)
+        elif isinstance(event, DepsReadyEvent):
+            self.on_deps_ready(event)
+        elif isinstance(event, EvalRequestEvent):
+            self.on_eval_request(event)
+        elif isinstance(event, EvalResultEvent):
+            self.on_eval_result(event)
+        elif isinstance(event, CallInEvalStart):
+            self.on_call_in_eval_start(event)
+        elif isinstance(event, CallInEvalEnd):
+            self.on_call_in_eval_end(event)
+        else:
+            raise TypeError(f"event must be RequestEvent or ProvideEvent, got {event}")
+        self.logger.info(f"{self.total_status_string()}")
+
+    def provider_status_string(self):
+        succeeded = [k for k in self.request_status if self.request_status[k] == "provided"]
+        running = [k for k in self.request_status if self.request_status[k] == "running"]
+        waiting = [k for k in self.request_status if self.request_status[k] == "waiting"]
+        succeeded = ", ".join([self._colored_key(k) for k in succeeded])
+        running = ", ".join([self._colored_key(k) for k in running])
+        waiting = ", ".join([self._colored_key(k) for k in waiting])
+        res = f"Provided: [{succeeded}]\nWaiting: [{waiting}]\nRunning: [{running}]"
+        return res
+
+    def eval_status_string(self):
+        awaiting = [k for k in self.eval_status if self.eval_status[k] == "await"]
+        done = [k for k in self.eval_status if self.eval_status[k] == "done"]
+        evaluating = [k for k in self.eval_status if self.eval_status[k] == "eval"]
+        calling = [k for k in self.eval_status if self.eval_status[k] == "calling"]
+        awaiting = ", ".join([self._colored_eval_key(k) for k in awaiting])
+        done = ", ".join([self._colored_eval_key(k) for k in done])
+        evaluating = ", ".join([self._colored_eval_key(k) for k in evaluating])
+        calling = ", ".join([self._colored_eval_key(k) for k in calling])
+        res = f"Awaiting:\t [{awaiting}]\nEvaluating:\t [{evaluating}]\nDone:\t\t [{done}]\nCalling:\t [{calling}]"
+        return res
+
+    def total_status_string(self):
+        res = "\n===== RESOLVER STATUS =====\n"
+        for k, v in self.state_string_dict().items():
+            vals = list(v.values())
+            res += f"{k}:\t"
+            if vals:
+                res += f"[{', '.join(vals[:10])}]\n"
+            else:
+                res += "[]\n"
+            if len(v.values()) >= 10:
+                res += f"and {len(vals) - 10} more...\n"
+        return res
+
+    def state_string_dict(self):
+        provided = [k for k in self.request_status if self.request_status[k] == "provided"]
+        provided = {k: self._colored_key(k) for k in provided[:10]}
+        running = [k for k in self.request_status if self.request_status[k] == "running"]
+        running = {k: self._colored_key(k) for k in running}
+        waiting = [k for k in self.request_status if self.request_status[k] == "waiting"]
+        waiting = {k: self._colored_key(k) for k in waiting}
+
+        eval_awaiting = [k for k in self.eval_status if self.eval_status[k] == "await"]
+        eval_awaiting = {k: self._colored_eval_key(k) for k in eval_awaiting}
+        eval_done = [k for k in self.eval_status if self.eval_status[k] == "done"]
+        eval_done = {k: self._colored_eval_key(k) for k in eval_done}
+        # eval_done = dict(TOTAL=f"{len(eval_done)} evaluations done.")
+
+        eval_evaluating = [k for k in self.eval_status if self.eval_status[k] == "eval"]
+        eval_evaluating = {k: self._colored_eval_key(k) for k in eval_evaluating}
+        eval_calling = [k for k in self.eval_status if self.eval_status[k] == "calling"]
+        eval_calling = {k: self._colored_eval_key(k) for k in eval_calling}
+        return dict(
+            Pending=waiting,
+            Provided=provided,
+            Running=running,
+            Evaluating=eval_evaluating,
+            Eval_Await=eval_awaiting,
+            Eval_Call=eval_calling,
+            Eval_Done=eval_done,
+        )
+
+    def _colored_eval_key(self, key: str):
+        match self.eval_status[key]:
+            case "await":
+                return f"<yellow>{key}</yellow>"
+            case "done":
+                return f"<green>{key}</green>"
+            case "eval":
+                return f"<magenta>{key}</magenta>"
+            case "calling":
+                return f"<bold><yellow>{key}</yellow></bold>"
+
+    def _colored_key(self, key: IBindKey):
+        s = key.ide_hint_string()
+        match self.request_status[key]:
+            case "waiting":
+                return f"<cyan>{s}</cyan>"
+            case "running":
+                return f"<yellow>{s}</yellow>"
+            case "provided":
+                return f"<green>{s}</green>"
+            case _:
+                raise ValueError(f"Unknown status {self.request_status[key]}")
+
+    def on_request(self, event: RequestEvent):
+        self.request_status[event.key] = "waiting"
+        self.logger.info(f"{event.cxt.trace_str}")
+        self.total_status[event.key] = ResolveStatus(event.key, "provide", "waiting", datetime.datetime.now(), None)
+
+    def on_provide(self, event: ProvideEvent):
+        self.total_status[event.key].status = "provided"
+        self.request_status[event.key] = "provided"
+        data_str = str(event.data)[:50]
+        data_str = self.clean_msg(data_str)
+        self.logger.info(f"{event.cxt.trace_str} := {data_str}")
+        # self.logger.info(f"{self.provider_status_string()}")
+
+    def on_deps_ready(self, event: DepsReadyEvent):
+        self.total_status[event.key].status = "running"
+        self.request_status[event.key] = "running"
+        self.logger.info(f"{event.cxt.trace_str}")
+        # self.logger.info(f"{self.provider_status_string()}")
+
+    def clean_msg(self, msg):
+        return msg.replace("<", "\<").replace(">", "\>")
+
+    def on_eval_request(self, event):
+        expr = show_expr(event.expr)
+        expr = self.clean_msg(expr)
+        match event.expr:
+            case Cache(_):
+                return
+            case Call():
+                self.total_status[expr] = ResolveStatus(expr, "eval", "calling", datetime.datetime.now(), None)
+                self.eval_status[expr] = "calling"
+            case UnaryOp('await', _):
+                self.total_status[expr] = ResolveStatus(expr, "eval", "await", datetime.datetime.now(), None)
+                self.eval_status[expr] = "await"
+                # self.logger.debug(f"await\t -> <red>{expr}</red>")
+            case _:
+                self.total_status[expr] = ResolveStatus(expr, "eval", "eval", datetime.datetime.now(), None)
+                self.eval_status[expr] = "eval"
+                # self.logger.debug(f"eval\t-> <magenta>{expr}</magenta>")
+        # self.logger.info(f"\n{self.eval_status_string()}")
+
+    def on_eval_result(self, event):
+        expr = show_expr(event.expr)
+        expr = self.clean_msg(expr)
+        res_msg = self.clean_msg(str(event.result))
+        match event.expr:
+            case Cache(_):
+                return
+            case Call():
+
+                self.logger.success(f"call\t<- <magenta>{expr}</magenta>\t:= {res_msg}")
+            case UnaryOp('await', _):
+                self.logger.success(f"await <- <red>{expr}</red> := {res_msg}")
+            case _:
+                self.logger.debug(f"eval<- <magenta>{expr}</magenta> := {res_msg}")
+        self.total_status[expr].status = "done"
+
+        self.eval_status[expr] = "done"
+        # self.logger.info(f"\n{self.eval_status_string()}")
+
+    def on_call_in_eval_start(self, event: CallInEvalStart):
+        expr_str = self.clean_msg(show_expr(event.expr))
+        self.logger.debug(f"call\t-> <magenta>{expr_str}</magenta>")
+
+    def on_call_in_eval_end(self, event: CallInEvalEnd):
+        expr_str = self.clean_msg(show_expr(event.expr))
+        self.logger.success(f"call\t<- <magenta>{expr_str}</magenta>\t:= {self.clean_msg(str(event.result))}")
 
 
 @dataclass

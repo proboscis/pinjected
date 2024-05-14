@@ -12,6 +12,8 @@ from loguru import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Result, Failure
 
+from pinjected.di.app_injected import EvaledInjected
+from pinjected.di.ast import show_expr
 from pinjected.di.graph import providable_to_injected
 from pinjected.providable import Providable
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
@@ -19,7 +21,7 @@ from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, Mapp
     PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected import Design
-from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError
+from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError, CyclicDependency
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
@@ -64,7 +66,7 @@ class DIGraph:
 
     def __post_init__(self):
         self.helper = DIGraphHelper(self.src)
-        self.explicit_mappings:dict[str,Injected] = self.helper.total_mappings()
+        self.explicit_mappings: dict[str, Injected] = self.helper.total_mappings()
 
         self.direct_injected = dict()
         self.injected_to_id = dict()
@@ -190,17 +192,21 @@ class DIGraph:
 
     def di_dfs_validation(self, src):
         def dfs(node: str, trace=[]):
+            # logger.info(f"dfs:{node},{trace}")
             nexts = []
             try:
                 nexts: List[str] = self.dependencies_of(node)
             except Exception as e:
                 yield DependencyResolutionFailure(node, trace, e)
             for n in nexts:
-                yield from dfs(n, trace + [n])
+                if n in trace:
+                    yield CyclicDependency(n, trace)
+                else:
+                    yield from dfs(n, trace + [n])
 
         yield from dfs(src, [src])
 
-    def distilled(self,tgt:Providable)->Design:
+    def distilled(self, tgt: Providable) -> Design:
         match tgt:
             case str():
                 deps = set([t[1] for t in self.di_dfs(tgt)])
@@ -236,7 +242,6 @@ class DIGraph:
             res = f"failed:{f} from {f}"
         return res
 
-
     @staticmethod
     def get_source_repr(f):
         res = DIGraph.get_source(f)
@@ -251,8 +256,12 @@ class DIGraph:
         match tgt:
             case InjectedWithDefaultDesign(src, default_design):
                 return self.parse_injected(src)
-            case InjectedFunction(f):
-                desc = f"Injected:{safe(getattr)(f, '__name__').value_or(repr(f))}"
+            case InjectedFunction(f) as _if:
+                try:
+                    desc = f"Injected:{safe(getattr)(_if.original_function, '__name__').value_or(repr(f))}"
+                except Exception as e:
+                    logger.error(f"failed to get func info from {f} due to {e}")
+                    raise e
                 return ("injected", desc, self.get_source_repr(f))
             case InjectedPure(v):
                 desc = f"Pure:{v}"
@@ -275,6 +284,10 @@ class DIGraph:
             case InjectedByName(name):
                 desc = f"{name}"
                 return ("injected", desc, "by_name")
+            case EvaledInjected(val, ast):
+                expr = show_expr(ast)
+                desc = f"Eval({expr})"
+                return ("injected", desc, expr)
             case Injected() as injected:
                 desc = f"{injected.__class__.__name__}"
                 return ("injected", desc, str(injected))
@@ -310,7 +323,7 @@ class DIGraph:
                 match tgt:
                     case Injected():
                         return self.parse_injected(tgt)
-                    case BindInjected(tgt,_):
+                    case BindInjected(tgt, _):
                         return self.parse_injected(tgt)
                     case cls if isinstance(cls, type):
                         return ("class", cls.__name__, self.get_source_repr(cls))
@@ -489,7 +502,6 @@ g = d.to_graph()
     def show_whole_html(self):
         roots = list(self.explicit_mappings.keys())
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
-
 
 
 def create_dependency_graph(d: Design, roots: List[str], output_file="dependencies.html"):
