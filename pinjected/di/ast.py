@@ -211,6 +211,22 @@ class Object(Expr):
             return hash(id(self.data))
 
 
+@dataclass
+class Cache(Expr):
+    src: Expr
+
+    def __post_init__(self):
+        assert isinstance(self.src, Expr), f"{self.src} is not an Expr"
+
+    def __getstate__(self):
+        return self.src
+
+    def __setstate__(self, state):
+        self.src = state
+
+    def __hash__(self):
+        return hash(f"cached") + hash(self.src)
+
 def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:
     from pinjected.di.proxiable import DelegatedVar
     def _show_expr(expr):
@@ -224,10 +240,12 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
         if reduced:
             return reduced
         match expr:
+            case Object(x) if hasattr(x,"__repr_expr__"):
+                return x.__repr_expr__()
             case Object(str() as x):
                 return f'"{x}"'
             case Object(x):
-                return str(x)
+                return f"{str(x)}"
             case Call(f, args, kwargs):
                 # hmm, this is complicated.
                 func_str = _show_expr(f)
@@ -245,8 +263,10 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 return f"{_show_expr(wrapped)}"
             case UnaryOp('await',Expr() as tgt):
                 return f"(await {_show_expr(tgt)})"
-
+            case Cache(Expr() as tgt):
+                return f"{_show_expr(tgt)}"
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)}")
 
     return _show_expr(expr)
+
