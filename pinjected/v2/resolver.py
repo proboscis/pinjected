@@ -1,4 +1,9 @@
 from loguru import logger
+
+from pinjected.v2.callback import IResolverCallback
+from pinjected.v2.events import ResolverEvent, RequestEvent, ProvideEvent, DepsReadyEvent, EvalRequestEvent, \
+    CallInEvalStart, CallInEvalEnd, EvalResultEvent
+
 try:
     import nest_asyncio
     import uvloop
@@ -93,55 +98,6 @@ UNARY_OPS = {
 
 
 @dataclass
-class ResolverEvent:
-    cxt: ProvideContext
-
-
-@dataclass
-class RequestEvent(ResolverEvent):
-    key: IBindKey
-
-
-@dataclass
-class ProvideEvent(ResolverEvent):
-    key: IBindKey
-    data: Any
-
-
-@dataclass
-class DepsReadyEvent(ResolverEvent):
-    key: IBindKey
-    deps: Dict[IBindKey, Any]
-
-
-@dataclass
-class EvalRequestEvent(ResolverEvent):
-    expr: Expr
-
-
-@dataclass
-class CallInEvalStart(ResolverEvent):
-    expr: Call
-
-
-@dataclass
-class CallInEvalEnd(ResolverEvent):
-    expr: Call
-    result: Any
-
-
-@dataclass
-class EvalResultEvent(ResolverEvent):
-    expr: Expr
-    result: Any
-
-
-class IResolverCallback:
-    def __call__(self, event: ResolverEvent):
-        pass
-
-
-@dataclass
 class AsyncResolver:
     design: "Design"
     parent: Optional["AsyncResolver"] = None
@@ -162,6 +118,13 @@ class AsyncResolver:
             raise RuntimeError('This should never be instantiated')
 
         dummy = Injected.bind(dummy)
+
+        # maybe,,, we can obtain __pinjected_provision_callback__ from design.
+        # but provision involves instantiating this resolver, resulting in recursion.
+        # The solution is to introduce a 'phase' for provision
+        # 1. preparation phase, instantiate all stuff like __pinjected_....__.
+        # 2. user provision phase, where user can provide stuff. we use __pinjected_...__ to provide stuff.
+        # I think we should stick to constructor injection for simplicity.
 
         self.design = self.design + providers(
             __resolver__=dummy,
@@ -341,11 +304,18 @@ class AsyncResolver:
             case _:
                 raise TypeError(f"tgt must be str, IBindKey, Callable or IBind, got {tgt}")
 
+    def _design_from_ancestors(self):
+        from pinjected import Design
+        if self.parent is None:
+            p_design = Design()
+        else:
+            p_design = self.parent._design_from_ancestors()
+        return p_design + self.design
+
     async def validate_provision(self, tgt: Providable):
         logger.debug(f"validating provision...")
-        from pinjected import Design
         from pinjected import providers
-        d: Design = self.design
+        d = self._design_from_ancestors()
         errors = []
         match tgt:
             case Injected():
@@ -539,7 +509,7 @@ class BaseResolverCallback(IResolverCallback):
 
     def on_request(self, event: RequestEvent):
         self.request_status[event.key] = "waiting"
-        self.logger.info(f"{event.cxt.trace_str}")
+        self.logger.info(f"{self.clean_msg(event.cxt.trace_str)}")
         self.total_status[event.key] = ResolveStatus(event.key, "provide", "waiting", datetime.datetime.now(), None)
 
     def on_provide(self, event: ProvideEvent):
@@ -547,21 +517,20 @@ class BaseResolverCallback(IResolverCallback):
         self.request_status[event.key] = "provided"
         data_str = str(event.data)[:50]
         data_str = self.clean_msg(data_str)
-        self.logger.info(f"{event.cxt.trace_str} := {data_str}")
+        self.logger.info(f"{self.clean_msg(event.cxt.trace_str)} := {data_str}")
         # self.logger.info(f"{self.provider_status_string()}")
 
     def on_deps_ready(self, event: DepsReadyEvent):
         self.total_status[event.key].status = "running"
         self.request_status[event.key] = "running"
-        self.logger.info(f"{event.cxt.trace_str}")
+        self.logger.info(f"{self.clean_msg(event.cxt.trace_str)}")
         # self.logger.info(f"{self.provider_status_string()}")
 
     def clean_msg(self, msg):
         return msg.replace("<", "\<").replace(">", "\>")
 
     def on_eval_request(self, event):
-        expr = show_expr(event.expr)
-        expr = self.clean_msg(expr)
+        expr = self.expr_repr(event.expr)
         match event.expr:
             case Cache(_):
                 return
@@ -578,10 +547,16 @@ class BaseResolverCallback(IResolverCallback):
                 # self.logger.debug(f"eval\t-> <magenta>{expr}</magenta>")
         # self.logger.info(f"\n{self.eval_status_string()}")
 
+    def expr_repr(self,e):
+        msg = show_expr(e)
+        msg = self.clean_msg(msg)
+        if len(msg) >= 50:
+            msg = msg[:25] + "..." + msg[-25:]
+        return msg
+
     def on_eval_result(self, event):
-        expr = show_expr(event.expr)
-        expr = self.clean_msg(expr)
-        res_msg = self.clean_msg(str(event.result))
+        expr = self.expr_repr(event.expr)
+        res_msg = self.clean_msg(str(event.result)[:50])
         match event.expr:
             case Cache(_):
                 return
@@ -598,11 +573,11 @@ class BaseResolverCallback(IResolverCallback):
         # self.logger.info(f"\n{self.eval_status_string()}")
 
     def on_call_in_eval_start(self, event: CallInEvalStart):
-        expr_str = self.clean_msg(show_expr(event.expr))
+        expr_str = self.expr_repr(event.expr)
         self.logger.debug(f"call\t-> <magenta>{expr_str}</magenta>")
 
     def on_call_in_eval_end(self, event: CallInEvalEnd):
-        expr_str = self.clean_msg(show_expr(event.expr))
+        expr_str = self.expr_repr(event.expr)
         self.logger.success(f"call\t<- <magenta>{expr_str}</magenta>\t:= {self.clean_msg(str(event.result))}")
 
 

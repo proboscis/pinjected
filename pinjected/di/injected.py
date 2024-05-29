@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable
 
 from frozendict import frozendict
-from loguru import logger
 from makefun import create_function
 from returns.result import safe
 
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
+import cloudpickle
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -113,6 +113,32 @@ So, the solutions are:
 
 Let's got with 2nd option.
 """
+
+
+class PicklableInjectedFunction:
+    def __init__(self,
+                 src: callable,
+                 __doc__,
+                 __name__,
+                 __skeleton__,
+                 __is_async__
+                 ):
+        self.src = src
+        self.__doc__ = __doc__
+        self.__name__ = __name__
+        self.__skeleton__ = __skeleton__
+        self.__is_async__ = __is_async__
+
+    def __getstate__(self):
+        return cloudpickle.dumps(
+            (self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__)
+        )
+
+    def __setstate__(self, state):
+        self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__ = cloudpickle.loads(state)
+
+    def __call__(self, *args, **kwargs):
+        return self.src(*args, **kwargs)
 
 
 class Injected(Generic[T], metaclass=abc.ABCMeta):
@@ -346,8 +372,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_func.__skeleton__ = __skeleton__
 
             # logger.info(f"result of makefun_impl:{new_func}")
-
-            return new_func
+            return PicklableInjectedFunction(
+                src=new_func,
+                __doc__=__doc__,
+                __name__=new_func.__name__,
+                __skeleton__=__skeleton__,
+                __is_async__=new_func.__is_async__
+            )
+            # return new_func
 
         makefun_impl.__name__ = original_function.__name__
         makefun_impl.__module__ = original_function.__module__
@@ -510,6 +542,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             return mod, name
         except Exception as e:
             # from loguru import logger
+            from loguru import logger
             logger.warning(f"failed to get name of the injected location, due to {e}")
             return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
 
@@ -529,6 +562,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return InjectedByName(name, )
 
     def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
+        other = Injected.ensure_injected(other)
         assert isinstance(self, Injected)
         assert isinstance(other, Injected)
         return Injected.mzip(self, other)
@@ -759,6 +793,7 @@ class InjectedCache(Injected[T]):
         self.program = Injected.ensure_injected(self.program)
 
         async def impl(t):
+            from loguru import logger
             resolver, cache, *deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -1064,6 +1099,7 @@ class InjectedFunction(Injected[T]):
                  kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]]
                  ):
         # I think we need to know where this class is instantiated outside of pinjected_package
+        from loguru import logger
         self.origin_frame = get_instance_origin("pinjected")
         self.original_function = original_function
         super().__init__()
@@ -1095,6 +1131,7 @@ class InjectedFunction(Injected[T]):
         signature = self.get_signature()
 
         async def impl(**kwargs):
+            from loguru import logger
             deps = dict()
 
             async def update(key):

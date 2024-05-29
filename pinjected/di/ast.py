@@ -189,7 +189,6 @@ class GetItem(Expr):
     def __hash__(self):
         return hash((self.data, self.key))
 
-
 @dataclass
 class Object(Expr):
     """
@@ -206,11 +205,12 @@ class Object(Expr):
     def __hash__(self):
         # what if the data is not hashable?
         try:
-            return hash(self.data)
+            # here we include type of hash since hash(1) == hash(True)
+            # we also add type_hash since hash(0) == 0 == hash(False)
+            type_hash = hash(type(self.data))
+            return hash(self.data) * type_hash + type_hash
         except TypeError as e:
             return hash(id(self.data))
-
-
 @dataclass
 class Cache(Expr):
     src: Expr
