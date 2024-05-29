@@ -19,6 +19,8 @@ class StrBindKey(IBindKey):
     name: str
 
     def ide_hint_string(self):
+        if len(self.name) >= 20:
+            return f"{self.name[:10]}...{self.name[-10:]}"
         return self.name
 
 

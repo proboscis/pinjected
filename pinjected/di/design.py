@@ -2,13 +2,12 @@ import inspect
 from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
-from pathlib import Path
-from pprint import pformat
-from typing import TypeVar, List, Dict, Union, Callable, Type, Self
+from typing import TypeVar, List, Dict, Union, Callable, Type
 
 from cytoolz import merge
 from makefun import create_function
 
+from pinjected.v2.callback import IResolverCallback
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
@@ -215,16 +214,15 @@ class Design:
             )
         return res
 
-    def to_resolver(self):
+    def to_resolver(self,callback:IResolverCallback=None):
         from pinjected.v2.resolver import AsyncResolver,BaseResolverCallback
-        from loguru import logger
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
-        callback = BaseResolverCallback()
+        if callback is None:
+            callback = BaseResolverCallback()
+        assert isinstance(callback, IResolverCallback)
         return AsyncResolver(
             Design(bindings=bindings, modules=self.modules),
-            callbacks=[
-                callback
-            ]
+            callbacks=[callback]
         )
 
     def to_graph(self):
@@ -397,16 +395,13 @@ class DesignOverrideContext:
         # get parent global variables
         parent_globals = self.init_frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
-        from loguru import logger
         # logger.debug(f"enter->\n"+pformat(global_ids))
         self.last_global_ids = global_ids
 
     def exit(self, frame: inspect.FrameInfo) -> list[ModuleVarPath]:
-        from loguru import logger
         # get parent global variables
         parent_globals = frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
-        from loguru import logger
         # logger.debug("exit->\n"+pformat(global_ids))
         changed_keys = []
         for k in global_ids:

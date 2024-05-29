@@ -1,10 +1,10 @@
 import asyncio
 import time
-from asyncio import TaskGroup
 from concurrent.futures import ThreadPoolExecutor, Future
 from threading import Thread
 
 from pinjected import *
+from pinjected.compatibility.task_group import TaskGroup
 
 design = instances(
     x='x',
