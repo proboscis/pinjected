@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from pinjected.v2.keys import IBindKey
@@ -19,6 +19,13 @@ class ProvideContext:
 
     @property
     def trace_str(self):
-        return ' -> '.join([str(x.key.ide_hint_string()) for x in self.trace])
+        def key_str(x):
+            if x.key is None:
+                return 'None'
+            return x.key.ide_hint_string()
+        return ' -> '.join([key_str(x) for x in self.trace])
+
+
+
 
 

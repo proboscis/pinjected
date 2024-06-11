@@ -1,3 +1,5 @@
+from sys import stderr, stdout
+
 from loguru import logger
 
 from pinjected import instance, injected, instances, Injected, providers
@@ -5,6 +7,8 @@ from pinjected import instance, injected, instances, Injected, providers
 
 def test_async_ast():
     from loguru import logger
+    logger.remove()
+    logger.add(stdout, colorize=True)
     @instance
     async def x():
         return 'x'
@@ -17,12 +21,15 @@ def test_async_ast():
     logger.info(f"x:{x}")
     logger.info(f"y(x):{y(x)}")
     logger.info(f"y(x) => {y(x).value}")
+    logger.info(f"y(injected('x')) => {y(injected('x'))}")
     # why is provided x a coroutine?
     assert design.to_graph().provide('x') == 'x'
     assert design.to_graph().provide(x) == 'x'
 
     assert design.to_graph().provide(y('x')) == 'yx'
     assert design.to_graph().provide(y(x)) == 'yx'
+
+    assert design.to_graph().provide(y(injected('x'))) == 'yx'
 
 
 async def x_provider():
@@ -43,7 +50,7 @@ def test_map():
 
 
 def test_await_op():
-    proxy = Injected.pure(x_provider).proxy().await__()
+    proxy = Injected.pure(x_provider)().await__()
 
     d = providers(
         x=proxy
@@ -92,7 +99,13 @@ def test_async_partial():
     g = d.to_graph()
     assert g[partial()] == 'x'
 
+
 def test_injected():
+    from loguru import logger
+    logger.remove()
+    logger.add(stdout, colorize=True)
+
+    # logger.opt(colors=True,ansi=True)
     async def provide_x():
         logger.info(f"provide_x called.")
         return 'x'
@@ -118,6 +131,7 @@ def test_injected():
     assert g['partial_x'] == 'x'
     assert g['instance_x'] == 'x'
 
+
 def test_lambda_as_provider():
     provide_x = lambda: 'x'
     provide_y = lambda x: f"y{x}"
@@ -126,6 +140,6 @@ def test_lambda_as_provider():
         y=provide_y
     )
     g = d.to_graph()
-    #assert Injected.bind(provide_y,x=provide_x).dependencies() == set()
+    # assert Injected.bind(provide_y,x=provide_x).dependencies() == set()
     assert g['x'] == 'x'
     assert g['y'] == 'yx'
