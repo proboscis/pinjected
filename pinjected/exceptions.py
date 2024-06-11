@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Any
 
+from pinjected.di.design import ValFailure
+
 
 @dataclass
 class DependencyResolutionFailure:
@@ -24,6 +26,11 @@ class DependencyResolutionError(RuntimeError):
         if causes is None:
             causes = []
         self.causes = causes.copy()
+
+class DependencyValidationError(RuntimeError):
+    def __init__(self, msg: str, cause:ValFailure):
+        super().__init__(msg)
+        self.cause=cause
 
 @dataclass
 class CyclicDependency:
