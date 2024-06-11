@@ -15,7 +15,7 @@ class DependencyResolutionFailure:
         return f"failed to find dependency: {self.key} at {self.trace_str()}"
 
     def __repr__(self):
-        return f"DependencyResolutionFailure(key:{self.key}\t,trace:{self.trace_str()},cause: ({self.cause})"
+        return f"DependencyResolutionFailure(key:{self.key},trace:{self.trace_str()},cause: ({self.cause})"
 
 
 class DependencyResolutionError(RuntimeError):
@@ -24,6 +24,16 @@ class DependencyResolutionError(RuntimeError):
         if causes is None:
             causes = []
         self.causes = causes.copy()
+
+@dataclass
+class CyclicDependency:
+    key:str
+    trace:List[str]
+    def __repr__(self):
+        trace = self.trace + [self.key]
+        trace_str = " -> ".join(trace)
+        return f"Cyclic Dependency: {trace_str}"
+
 
 
 class _MissingDepsError(RuntimeError):

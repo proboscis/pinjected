@@ -45,6 +45,7 @@ class EvaledInjected(Injected[T]):
 
     def __post_init__(self):
         assert isinstance(self.ast, Expr)
+        self.__expr__ = self.ast
 
     def dependencies(self) -> Set[str]:
         return self.value.dependencies()
@@ -53,7 +54,8 @@ class EvaledInjected(Injected[T]):
         return self.value.get_provider()
 
     def __str__(self):
-        return f"EvaledInjected(value={self.value},ast={show_expr(self.ast, reduce_injected_expr)})"
+        #return f"EvaledInjected(value={self.value},ast={show_expr(self.ast, reduce_injected_expr)})"
+        return f"Eval({show_expr(self.ast)})"
 
     def __repr__(self):
         return str(self)
@@ -66,6 +68,10 @@ class EvaledInjected(Injected[T]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.value.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return show_expr(self.ast)
+
 
 
 def reduce_injected_expr(expr: Expr):

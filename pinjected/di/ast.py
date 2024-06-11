@@ -55,49 +55,38 @@ class Expr(Generic[T], ABC):
     # def __repr__(self):
     #     return str(self)
 
-
-
-    def __add__(self, other):
-        return BiOp("+", self, self._wrap_if_non_expr(other))
-
-    def __or__(self, other):
-        return BiOp("|", self, self._wrap_if_non_expr(other))
-
-    def __and__(self, other):
-        return BiOp("&", self, self._wrap_if_non_expr(other))
-
-    def __sub__(self, other):
-        return BiOp("-", self, self._wrap_if_non_expr(other))
-
-    def __mul__(self, other):
-        return BiOp("*", self, self._wrap_if_non_expr(other))
-
-    def __matmul__(self, other):
-        return BiOp("@", self, self._wrap_if_non_expr(other))
-
-    def __truediv__(self, other):
-        return BiOp("/", self, self._wrap_if_non_expr(other))
-
-    def __floordiv__(self, other):
-        return BiOp("//", self, self._wrap_if_non_expr(other))
-
-    def __mod__(self, other):
-        return BiOp("%", self, self._wrap_if_non_expr(other))
-
-    def __pow__(self, other):
-        return BiOp("**", self, self._wrap_if_non_expr(other))
-
-    def __lshift__(self, other):
-        return BiOp("<<", self, self._wrap_if_non_expr(other))
-
-    def __rshift__(self, other):
-        return BiOp(">>", self, self._wrap_if_non_expr(other))
-
-    def __xor__(self, other):
-        return BiOp("^", self, self._wrap_if_non_expr(other))
-
-    def __eq__(self, other):
-        return BiOp("==", self, self._wrap_if_non_expr(other))
+    def biop(self, op, other):
+        match op:
+            case '+':
+                return BiOp("+", self, self._wrap_if_non_expr(other))
+            case '|':
+                return BiOp("|", self, self._wrap_if_non_expr(other))
+            case '&':
+                return BiOp("&", self, self._wrap_if_non_expr(other))
+            case '-':
+                return BiOp("-", self, self._wrap_if_non_expr(other))
+            case '*':
+                return BiOp("*", self, self._wrap_if_non_expr(other))
+            case '@':
+                return BiOp("@", self, self._wrap_if_non_expr(other))
+            case '/':
+                return BiOp("/", self, self._wrap_if_non_expr(other))
+            case '//':
+                return BiOp("//", self, self._wrap_if_non_expr(other))
+            case '%':
+                return BiOp("%", self, self._wrap_if_non_expr(other))
+            case '**':
+                return BiOp("**", self, self._wrap_if_non_expr(other))
+            case '<<':
+                return BiOp("<<", self, self._wrap_if_non_expr(other))
+            case '>>':
+                return BiOp(">>", self, self._wrap_if_non_expr(other))
+            case '^':
+                return BiOp("^", self, self._wrap_if_non_expr(other))
+            case '==':
+                return BiOp("==", self, self._wrap_if_non_expr(other))
+            case _:
+                raise NotImplementedError(f"biop {op} not implemented")
 
     def _await_(self):
         return UnaryOp("await", self)
@@ -123,6 +112,7 @@ class BiOp(Expr):
 
     def __hash__(self):
         return hash((self.name, self.left, self.right))
+
 
 @dataclass
 class UnaryOp(Expr):
@@ -206,9 +196,29 @@ class Object(Expr):
     def __hash__(self):
         # what if the data is not hashable?
         try:
-            return hash(self.data)
+            # here we include type of hash since hash(1) == hash(True)
+            # we also add type_hash since hash(0) == 0 == hash(False)
+            type_hash = hash(type(self.data))
+            return hash(self.data) * type_hash + type_hash
         except TypeError as e:
             return hash(id(self.data))
+
+
+@dataclass
+class Cache(Expr):
+    src: Expr
+
+    def __post_init__(self):
+        assert isinstance(self.src, Expr), f"{self.src} is not an Expr"
+
+    def __getstate__(self):
+        return self.src
+
+    def __setstate__(self, state):
+        self.src = state
+
+    def __hash__(self):
+        return hash(f"cached") + hash(self.src)
 
 
 def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:
@@ -224,10 +234,12 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
         if reduced:
             return reduced
         match expr:
+            case Object(x) if hasattr(x, "__repr_expr__"):
+                return x.__repr_expr__()
             case Object(str() as x):
                 return f'"{x}"'
             case Object(x):
-                return str(x)
+                return f"{str(x)}"
             case Call(f, args, kwargs):
                 # hmm, this is complicated.
                 func_str = _show_expr(f)
@@ -243,9 +255,10 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
             case DelegatedVar(wrapped, cxt):
                 return f"{_show_expr(wrapped)}"
-            case UnaryOp('await',Expr() as tgt):
+            case UnaryOp('await', Expr() as tgt):
                 return f"(await {_show_expr(tgt)})"
-
+            case Cache(Expr() as tgt):
+                return f"{_show_expr(tgt)}"
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)}")
 

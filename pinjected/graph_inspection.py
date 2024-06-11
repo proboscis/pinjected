@@ -5,8 +5,8 @@ from pprint import pformat
 
 from loguru import logger
 from pinjected import Injected
-from pinjected.v2.binds import IBind, BindInjected
-from pinjected.v2.keys import IBindKey, StrBindKey
+from pinjected.v2.binds import IBind, BindInjected, ExprBind
+from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
 
 
 def default_get_arg_names_from_class_name(class_name):
@@ -77,6 +77,10 @@ class DIGraphHelper:
             match k, v:
                 case (StrBindKey(name), BindInjected(Injected() as injected)):
                     mappings[name] = injected
+                case (StrBindKey(name), ExprBind(src,meta)):
+                    mappings[name] = src
+                case (DestructorKey(name), _):
+                    pass
                 case _:
                     raise ValueError(f"unsupported key type {k} and value type {v}")
         return mappings
