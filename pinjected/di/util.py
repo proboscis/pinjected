@@ -4,7 +4,7 @@ import textwrap
 from pathlib import Path
 from pprint import pformat
 from types import FrameType
-from typing import TypeVar, Dict, Union
+from typing import TypeVar, Dict
 
 import cloudpickle
 from cytoolz import memoize
@@ -12,7 +12,7 @@ from makefun import create_function
 from returns.maybe import Some
 from returns.result import Failure, Success
 
-from pinjected.di.design import Design
+from pinjected.di.design import DesignImpl
 from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
@@ -181,7 +181,7 @@ def get_dict_diff(a: dict, b: dict):
 
 T = TypeVar("T")
 
-EmptyDesign = Design()
+EmptyDesign = DesignImpl()
 
 
 # mapping is another layer of complication.
@@ -258,7 +258,8 @@ def instances(**kwargs):
         assert not isinstance(v,
                               Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
 
-    d = Design().bind_instance(**kwargs)
+
+    d = DesignImpl().bind_instance(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
 
@@ -306,7 +307,7 @@ def providers(**kwargs):
 
     This approach consolidates the registration of dependencies, streamlining the setup process and enhancing the traceability and debuggability of the system components.
     """
-    d = Design().bind_provider(**kwargs)
+    d = DesignImpl().bind_provider(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
 
@@ -314,7 +315,7 @@ def add_code_locations(design, kwargs, frame):
     try:
         locs = get_code_locations(list(kwargs.keys()), frame)
         metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
-        #metas = dict()
+        # metas = dict()
     except OSError as ose:
         from loguru import logger
         logger.warning(f"failed to get code locations:{ose}")
@@ -414,12 +415,12 @@ def classes(**kwargs):
     -----
     The function automatically adds code locations for the classes, making it easier to track the source of each dependency within the system.
     """
-    d = Design().bind_provider(**kwargs)
+    d = DesignImpl().bind_provider(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
 
 def injecteds(**kwargs):
-    return Design().bind_provider(**kwargs)
+    return DesignImpl().bind_provider(**kwargs)
 
 
 def destructors(**kwargs):
@@ -431,5 +432,5 @@ def destructors(**kwargs):
     for k, v in kwargs.items():
         tgt = StrBindKey(k)
         key = DestructorKey(tgt)
-        res += Design(bindings={key: Design.to_bind(v)})
+        res += DesignImpl(bindings={key: DesignImpl.to_bind(v)})
     return res
