@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
-from typing import TypeVar, List, Dict, Union, Callable, Type
+from typing import TypeVar, List, Dict, Union, Callable, Type, Any
 
 from cytoolz import merge
 from makefun import create_function
@@ -65,9 +65,8 @@ class ValFailure(ValResult):
     exc: Exception
 
 
-class Validator:
-    def __call__(self, key: IBindKey, value) -> ValResult:
-        pass
+
+Validator = Callable[[IBindKey, Any], ValResult]
 
 
 class Design(ABC):
@@ -130,6 +129,26 @@ class MergedDesign(Design):
     @property
     def validations(self) -> Dict[IBindKey, Validator]:
         return merge(*[src.validations for src in self.srcs])
+
+
+@dataclass
+class AddValidation(Design):
+    src: Design
+    _validations: Dict[IBindKey, Validator]
+
+    def __contains__(self, item: IBindKey):
+        return item in self.src
+
+    def __getitem__(self, item: IBindKey | str):
+        return self.src[item]
+
+    @property
+    def bindings(self) -> Dict[IBindKey, IBind]:
+        return self.src.bindings
+
+    @property
+    def validations(self) -> Dict[IBindKey, Validator]:
+        return self._validations | self.src.validations
 
 
 @dataclass
@@ -218,7 +237,6 @@ class DesignImpl(Design):
     @property
     def validations(self) -> Dict[IBindKey, Validator]:
         return dict()
-
 
     @property
     def bindings(self):
