@@ -69,6 +69,9 @@ class EvaledInjected(Injected[T]):
     def dynamic_dependencies(self) -> Set[str]:
         return self.value.dynamic_dependencies()
 
+    def __repr_expr__(self):
+        return show_expr(self.ast)
+
 
 
 def reduce_injected_expr(expr: Expr):

@@ -7,13 +7,12 @@ from pinjected.v2.events import ResolverEvent, RequestEvent, ProvideEvent, DepsR
 try:
     import nest_asyncio
     import uvloop
-    logger.error(f"nest_asyncio is disabled since uvloop is also installed! nest_asyncio.apply do not work with uvloop!")
-    nest_asyncio.apply = lambda:None
+
+    logger.error(
+        f"nest_asyncio is disabled since uvloop is also installed! nest_asyncio.apply do not work with uvloop!")
+    nest_asyncio.apply = lambda: None
 except ImportError:
     pass
-
-
-
 
 import asyncio
 import datetime
@@ -97,6 +96,21 @@ UNARY_OPS = {
 }
 
 
+class EvaluationError(Exception):
+    def __init__(self, cxt: ProvideContext, cxt_expr: Expr, cause_expr: Expr, src):
+        self.cxt = cxt
+        self.cxt_expr = cxt_expr
+        self.cause_expr = cause_expr
+        self.src = src
+        super().__init__(f"""
+EvaluationError:
+    Context: {cxt.trace_str}
+    Context Expr: {show_expr(cxt_expr)}
+    Cause Expr: {show_expr(cause_expr)}
+    Source: {src}
+        """)
+
+
 @dataclass
 class AsyncResolver:
     design: "Design"
@@ -168,65 +182,70 @@ class AsyncResolver:
                 deps = await resolve_deps(tgt.dependencies)
                 return await tgt.provide(ProvideContext(self, key=tgt, parent=root_cxt), deps)
         """
-        match expr:
-            case Cache(src):
-                k = hash(src)
-                async with self.eval_locks[k]:
-                    if k in self.eval_memos:
-                        res = self.eval_memos[k]
-                    else:
-                        new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{k}"), parent=cxt)
-                        res = await self.eval_expr(src, new_cxt)
-                        self.eval_memos[k] = res
+        try:
+            match expr:
+                case Cache(src):
+                    k = hash(src)
+                    async with self.eval_locks[k]:
+                        if k in self.eval_memos:
+                            res = self.eval_memos[k]
+                        else:
+                            new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{k}"), parent=cxt)
+                            res = await self.eval_expr(src, new_cxt)
+                            self.eval_memos[k] = res
 
-            case Object(DelegatedVar(value, cxt)):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{value}"), parent=cxt)
-                res = await self.eval_expr(value, new_cxt)
-            case Object(EvaledInjected(val, ast)):
-                expr = await self._optimize(ast)
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{val}"), parent=cxt)
-                res = await self.eval_expr(expr, new_cxt)
-            case Object(Injected() as _injected):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{_injected}"), parent=cxt)
-                bind = BindInjected(_injected)
-                deps = await self.resolve_deps(bind.dependencies, new_cxt)
-                res = await bind.provide(new_cxt, deps)
-            case Object(x):
-                res = x
-            case Call(f, args, kwargs) as call:
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{f}"), parent=cxt)
-                args = asyncio.gather(*[self.eval_expr(a, new_cxt) for a in args])
-                keys = list(kwargs.keys())
-                values = asyncio.gather(*[self.eval_expr(v, new_cxt) for v in kwargs.values()])
-                f, args, values = await asyncio.gather(self.eval_expr(f, new_cxt), args, values)
-                kwargs = dict(zip(keys, values))
-                self._callback(CallInEvalStart(cxt, call))
-                res = f(*args, **kwargs)
-                self._callback(CallInEvalEnd(cxt, call, res))
-            case BiOp(op, left, right):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{left}"), parent=cxt)
-                left, right = await asyncio.gather(self.eval_expr(left, new_cxt), self.eval_expr(right, new_cxt))
-                res = OPERATORS[op](left, right)
-            case UnaryOp('await', data):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
-                data = await self.eval_expr(data, new_cxt)
-                res = await data
-            case UnaryOp(name, data):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
-                data = await self.eval_expr(data, new_cxt)
-                res = UNARY_OPS[name](data)
-            case Attr(data, name):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
-                data = await self.eval_expr(data, new_cxt)
-                res = getattr(data, name)
-            case GetItem(data, key):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
-                data, key = await asyncio.gather(self.eval_expr(data, new_cxt), self.eval_expr(key, new_cxt))
-                res = data[key]
-            case _:
-                raise TypeError(
-                    f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
-        self._callback(EvalResultEvent(cxt, expr, res))
+                case Object(DelegatedVar(value, cxt)):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{value}"), parent=cxt)
+                    res = await self.eval_expr(value, new_cxt)
+                case Object(EvaledInjected(val, ast)):
+                    expr = await self._optimize(ast)
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{val}"), parent=cxt)
+                    res = await self.eval_expr(expr, new_cxt)
+                case Object(Injected() as _injected):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{_injected}"), parent=cxt)
+                    bind = BindInjected(_injected)
+                    deps = await self.resolve_deps(bind.dependencies, new_cxt)
+                    res = await bind.provide(new_cxt, deps)
+                case Object(x):
+                    res = x
+                case Call(f, args, kwargs) as call:
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{f}"), parent=cxt)
+                    args = asyncio.gather(*[self.eval_expr(a, new_cxt) for a in args])
+                    keys = list(kwargs.keys())
+                    values = asyncio.gather(*[self.eval_expr(v, new_cxt) for v in kwargs.values()])
+                    f, args, values = await asyncio.gather(self.eval_expr(f, new_cxt), args, values)
+                    kwargs = dict(zip(keys, values))
+                    self._callback(CallInEvalStart(cxt, call))
+                    res = f(*args, **kwargs)
+                    self._callback(CallInEvalEnd(cxt, call, res))
+                case BiOp(op, left, right):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{left}"), parent=cxt)
+                    left, right = await asyncio.gather(self.eval_expr(left, new_cxt), self.eval_expr(right, new_cxt))
+                    res = OPERATORS[op](left, right)
+                case UnaryOp('await', data):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                    data = await self.eval_expr(data, new_cxt)
+                    res = await data
+                case UnaryOp(name, data):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                    data = await self.eval_expr(data, new_cxt)
+                    res = UNARY_OPS[name](data)
+                case Attr(data, name):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                    data = await self.eval_expr(data, new_cxt)
+                    res = getattr(data, name)
+                case GetItem(data, key):
+                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                    data, key = await asyncio.gather(self.eval_expr(data, new_cxt), self.eval_expr(key, new_cxt))
+                    res = data[key]
+                case _:
+                    raise TypeError(
+                        f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
+            self._callback(EvalResultEvent(cxt, expr, res))
+        except EvaluationError as e:
+            raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
+        except Exception as e:
+            raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
         return res
 
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
@@ -547,7 +566,7 @@ class BaseResolverCallback(IResolverCallback):
                 # self.logger.debug(f"eval\t-> <magenta>{expr}</magenta>")
         # self.logger.info(f"\n{self.eval_status_string()}")
 
-    def expr_repr(self,e):
+    def expr_repr(self, e):
         msg = show_expr(e)
         msg = self.clean_msg(msg)
         if len(msg) >= 50:

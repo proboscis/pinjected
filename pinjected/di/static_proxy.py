@@ -47,37 +47,7 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
         return hash(self._alias_name)
 
     def biop_impl(self, op: str, tgt: Expr[T], other):
-        match op:
-            case '+':
-                return self.pure(tgt + other)
-            case '-':
-                return self.pure(tgt - other)
-            case '*':
-                return self.pure(tgt * other)
-            case '/':
-                return self.pure(tgt / other)
-            case '%':
-                return self.pure(tgt % other)
-            case '**':
-                return self.pure(tgt ** other)
-            case '<<':
-                return self.pure(tgt << other)
-            case '>>':
-                return self.pure(tgt >> other)
-            case '&':
-                return self.pure(tgt & other)
-            case '^':
-                return self.pure(tgt ^ other)
-            case '|':
-                return self.pure(tgt | other)
-            case '//':
-                return self.pure(tgt // other)
-            case '@':
-                return self.pure(tgt @ other)
-            case '==':
-                return self.pure(tgt == other)
-            case _:
-                raise NotImplementedError(f"biop {op} not implemented")
+        return self.pure(tgt.biop(op, other))
 
     def unary_impl(self, op: str, tgt: Expr[T]):
         match op:
@@ -169,7 +139,7 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     app.zip(injected_left, injected_right),
                     eval_biop
                 )
-            case UnaryOp('await',Expr() as tgt):
+            case UnaryOp('await', Expr() as tgt):
                 injected_tgt = _eval(tgt)
                 return app._await_(injected_tgt)
             case _:
