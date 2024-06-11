@@ -12,7 +12,8 @@ from makefun import create_function
 from returns.maybe import Some
 from returns.result import Failure, Success
 
-from pinjected.di.design import DesignImpl, ValSuccess, ValFailure, AddValidation
+from pinjected.di.design import DesignImpl, AddValidation
+from pinjected.di.validation import ValSuccess, ValFailure
 from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
@@ -423,9 +424,11 @@ ValidationFunc = Callable[[IBindKey, Any], Any]
 
 def validations(**kwargs: ValidationFunc):
     def get_validator(f):
-        def impl(key: IBindKey, value):
+        async def impl(key: IBindKey, value):
             try:
-                f(key, value)
+                maybe_coro = f(key, value)
+                if inspect.iscoroutinefunction(f):
+                    await maybe_coro
                 return ValSuccess()
             except Exception as e:
                 return ValFailure(e)

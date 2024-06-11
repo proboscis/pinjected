@@ -13,7 +13,7 @@ from returns.result import safe, Result
 
 from pinjected import instances, Injected, Design, providers, Designed
 from pinjected.compatibility.task_group import TaskGroup
-from pinjected.di.design import DESIGN_OVERRIDES_STORE
+from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import MetaContext
 from pinjected.helpers import get_design_path_from_var_path
