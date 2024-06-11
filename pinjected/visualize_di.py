@@ -11,11 +11,8 @@ from loguru import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Failure
 
-from pinjected import Design, providers
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import show_expr
-from pinjected.di.design import DesignImpl
-from pinjected.di.graph import providable_to_injected
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
@@ -59,7 +56,7 @@ def get_color(n_edges):
 
 @dataclass
 class DIGraph:
-    src: Design
+    src: "Design"
 
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
@@ -206,7 +203,9 @@ class DIGraph:
 
         yield from dfs(src, [src])
 
-    def distilled(self, tgt: Providable) -> Design:
+    def distilled(self, tgt: Providable) -> "Design":
+        from pinjected import providers
+        from pinjected import Design
         match tgt:
             case str():
                 deps = set([t[1] for t in self.di_dfs(tgt)])
@@ -217,6 +216,7 @@ class DIGraph:
                 return distilled
 
             case _:
+                from pinjected.di.graph import providable_to_injected
                 _injected = providable_to_injected(tgt)
                 tmp_design = self.src + providers(
                     __target__=_injected
@@ -504,7 +504,7 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-def create_dependency_graph(d: Design, roots: List[str], output_file="dependencies.html"):
+def create_dependency_graph(d: "Design", roots: List[str], output_file="dependencies.html"):
     dig = DIGraph(d.bind_instance(
         job_type="net_visualization"
     ))

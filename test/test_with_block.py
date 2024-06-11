@@ -1,7 +1,7 @@
 import inspect
 
 from pinjected import instances, Injected, injected
-from pinjected.di.design import DesignOverrideContext, DESIGN_OVERRIDES_STORE
+from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverrideContext
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
 

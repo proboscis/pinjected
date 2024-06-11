@@ -27,6 +27,7 @@ from pinjected.exceptions import DependencyResolutionFailure, DependencyResoluti
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.providable import Providable
 from pinjected.v2.binds import IBind
+from pinjected.visualize_di import DIGraph
 
 T = TypeVar("T")
 
@@ -739,7 +740,7 @@ class MyObjectGraph(IObjectGraph):
         fn, ln = get_caller_info(level).value_or(("unknown_function", "unknown_line"))
         dep_tree = self.resolver.dependency_tree(target)
         dep_tree = DependencyResolver.unresult_tree(dep_tree)
-        script = self.design.to_vis_graph().to_python_script(
+        script = DIGraph(self.design).to_python_script(
             root=target,
             design_path="__dummy__.design",
         )
