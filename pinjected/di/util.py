@@ -432,5 +432,5 @@ def destructors(**kwargs):
     for k, v in kwargs.items():
         tgt = StrBindKey(k)
         key = DestructorKey(tgt)
-        res += DesignImpl(bindings={key: DesignImpl.to_bind(v)})
+        res += DesignImpl(_bindings={key: DesignImpl.to_bind(v)})
     return res

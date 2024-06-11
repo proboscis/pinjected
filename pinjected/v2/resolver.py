@@ -324,9 +324,9 @@ class AsyncResolver:
                 raise TypeError(f"tgt must be str, IBindKey, Callable or IBind, got {tgt}")
 
     def _design_from_ancestors(self):
-        from pinjected import Design
+        from pinjected import EmptyDesign
         if self.parent is None:
-            p_design = Design()
+            p_design = EmptyDesign
         else:
             p_design = self.parent._design_from_ancestors()
         return p_design + self.design

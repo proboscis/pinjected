@@ -50,7 +50,7 @@ def test_map():
 
 
 def test_await_op():
-    proxy = Injected.pure(x_provider)().await__()
+    proxy = Injected.pure(x_provider).proxy().await__()
 
     d = providers(
         x=proxy

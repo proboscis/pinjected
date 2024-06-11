@@ -1,11 +1,6 @@
-from functools import partial
-from typing import Callable, Any
-
-from loguru import logger
-
+from pinjected import injected_function
 from pinjected.di.injected import Injected
-from pinjected.di.util import instances
-from pinjected import Design, injected_function
+from pinjected.di.util import instances, EmptyDesign
 
 
 def _factory(a, b, y=0, x=7):
@@ -16,7 +11,7 @@ def _factory(a, b, y=0, x=7):
 
 
 def test_partial():
-    d = Design().bind_instance(
+    d = EmptyDesign.bind_instance(
         a=1,
         b=2
     ).bind_provider(

@@ -1,5 +1,5 @@
 import inspect
-from abc import ABC
+from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
@@ -55,13 +55,17 @@ class Design(ABC):
     def __add__(self, other: "Design") -> "Design":
         pass
 
+    @abstractmethod
     def __contains__(self, item: IBindKey):
         pass
 
+    @abstractmethod
     def __getitem__(self, item: IBindKey | str):
         pass
 
     def purify(self, target: "Providable"):
+        resolver = DependencyResolver(self)
+        return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
         pass
 
     def __enter__(self):
@@ -74,8 +78,31 @@ class Design(ABC):
         DESIGN_OVERRIDES_STORE.pop(frame)
 
     @property
+    @abstractmethod
     def bindings(self)->Dict[IBindKey, IBind]:
         pass
+
+    @staticmethod
+    def from_bindings(bindings: Dict[IBindKey, IBind]):
+        return DesignImpl(_bindings=bindings)
+
+@dataclass
+class MergedDesign(Design):
+    srcs: List[Design]
+    def __contains__(self, item: IBindKey):
+        return any(item in src for src in self.srcs)
+
+    def __getitem__(self, item: IBindKey | str):
+        for src in self.srcs:
+            if item in src:
+                return src[item]
+        raise KeyError(f"{item} not found in any of the sources")
+
+    @property
+    def bindings(self) -> Dict[IBindKey, IBind]:
+        return merge(*[src.bindings for src in self.srcs])
+
+
 
 
 @dataclass
@@ -115,7 +142,7 @@ class DesignImpl(Design):
             def run(self):
                 print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
 
-        d = Design().bind_instance(
+        d = EmptyDesign.bind_instance(
             a=0,
             b=1
         ).bind_provider(
@@ -141,13 +168,13 @@ class DesignImpl(Design):
 
     .. code-block:: python
 
-        d1 = Design().bind_instance(
+        d1 = EmptyDesign.bind_instance(
             a=0
         )
-        d2 = Design().bind_instance(
+        d2 = EmptyDesign.bind_instance(
             b=1
         )
-        d3 = Design().bind_instance(
+        d3 = EmptyDesign.bind_instance(
             b=0
         )
 
@@ -358,18 +385,6 @@ class DesignImpl(Design):
     def to_vis_graph(self) -> "DIGraph":
         from pinjected.visualize_di import DIGraph
         return DIGraph(self)
-
-    def purify(self, target: "Providable"):
-        """
-        given an injected, returns a minimized design which can provide the target.
-        :param target:
-        :return:
-        """
-        # ah sometimes the deps require 'session'
-        # and we don't know if the session has enough bindings to provide the target.
-        resolver = DependencyResolver(self)
-        return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
-
 
 
 @dataclass

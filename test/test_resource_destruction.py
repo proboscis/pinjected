@@ -3,6 +3,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, Future
 from threading import Thread
 
+import pytest
+
 from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
 
@@ -20,7 +22,7 @@ def test_destruction_runs():
     assert asyncio.run(res.destruct()) == [None]
 
 
-def test_inifinite_task():
+def test_infinite_task():
     fut = Future()
 
     def loop_task():
@@ -33,7 +35,7 @@ def test_inifinite_task():
         async with TaskGroup() as tg:
             async def task_waiter():
                 print(f"raising exception")
-                raise Exception('Exception!')
+                raise RuntimeError('Exception!')
 
             # you must await this task to catch the exception
             async def task2():
@@ -53,4 +55,5 @@ def test_inifinite_task():
             # aha, long running thread won't get killed. but other tasks gets cancelled
             # I mean, daemon threads can be killed by the main thread. so use it! :)
 
-    asyncio.run(main())
+    with pytest.raises(ExceptionGroup):
+        asyncio.run(main())

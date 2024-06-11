@@ -3,28 +3,28 @@ import platform
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from itertools import chain
-from typing import Callable, List, Dict, Union
+from typing import Callable, List, Union
 
 import networkx as nx
 from cytoolz import memoize
 from loguru import logger
 from returns.pipeline import is_successful
-from returns.result import safe, Result, Failure
+from returns.result import safe, Failure
 
+from pinjected import Design, providers
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.ast import show_expr
+from pinjected.di.design import DesignImpl
 from pinjected.di.graph import providable_to_injected
-from pinjected.providable import Providable
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
-from pinjected import Design
 from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError, CyclicDependency
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
+from pinjected.providable import Providable
 from pinjected.v2.binds import BindInjected
 
 
@@ -211,14 +211,14 @@ class DIGraph:
             case str():
                 deps = set([t[1] for t in self.di_dfs(tgt)])
                 nodes = set([t[0] for t in self.di_dfs(tgt)])
-                distilled = Design(
+                distilled = Design.from_bindings(
                     {k: self.src[k] for k in deps | nodes}
                 )
                 return distilled
 
             case _:
                 _injected = providable_to_injected(tgt)
-                tmp_design = self.src.bind_provider(
+                tmp_design = self.src + providers(
                     __target__=_injected
                 )
                 return tmp_design.to_vis_graph().distilled("__target__")

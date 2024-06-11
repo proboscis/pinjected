@@ -593,7 +593,7 @@ class DependencyResolver:
     def child(self, session_provider, overrides: 'Design' = None):
         if overrides is None:
             from pinjected import Design
-            overrides = Design()
+            overrides = EmptyDesign
         child_design = self.src + overrides.bind_provider(
             session=session_provider
         )
@@ -763,7 +763,7 @@ class MyObjectGraph(IObjectGraph):
     def child_session(self, overrides: "Design" = None, trace_logger=None):
         if overrides is None:
             from pinjected import Design
-            overrides = Design()
+            overrides = EmptyDesign
         child_scope = MChildScope(self.scope, set(overrides.keys()),
                                   _trace_logger=trace_logger or self.scope.trace_logger)
         child_graph = MyObjectGraph(None, self.design + overrides, child_scope)
