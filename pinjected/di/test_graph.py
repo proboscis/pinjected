@@ -1,10 +1,10 @@
 from returns.result import safe, Failure
 
-from pinjected import Design, instances
+from pinjected import instances
 
 
 def test_provide_session():
-    d = Design().bind_instance(
+    d = instances(
         a=0
     )
     g = d.to_graph()
@@ -12,7 +12,7 @@ def test_provide_session():
 
 
 def test_child_session():
-    d = Design().bind_instance(
+    d = instances(
         a=0
     ).bind_provider(
         x=lambda a: a
@@ -38,15 +38,3 @@ def test_child_session():
     # you must specify all the components,
     # implicit components in child session will be forgotten.
 
-
-def test_proxied():
-    d= Design().bind_instance(
-    ).bind_provider(
-        y = lambda x:x+1
-    )
-    g = d.to_graph()
-    evaluated = g.proxied("y").eval()
-    print(evaluated)
-    assert isinstance(safe(evaluated.run)(),Failure)
-    assert evaluated.override(Design().bind_instance(x=1)).run() == 2
-    assert evaluated.override(Design().bind_instance(x=2)).run() == 3

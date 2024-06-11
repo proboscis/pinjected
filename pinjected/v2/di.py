@@ -4,7 +4,7 @@ from typing import Generic, TypeVar, Dict, Callable, Awaitable, Union
 
 from loguru import logger
 
-from pinjected import Injected
+from pinjected import Injected, Design
 from pinjected.v2.binds import IBind, StrBind
 from pinjected.v2.keys import IBindKey, StrBindKey
 from pinjected.v2.resolver import AsyncResolver

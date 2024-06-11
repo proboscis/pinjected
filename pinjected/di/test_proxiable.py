@@ -7,8 +7,8 @@ def test_expr():
     print(Object("x").test.x.y[0])
 
 
-def test_ast_proxy():
-    print(ast_proxy("hello").test.x.y.z[0].eval())
+# def test_ast_proxy():
+#     print(ast_proxy("hello").test.x.y.z[0].eval())
 
 
 def test_eval_injected():

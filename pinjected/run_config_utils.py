@@ -476,7 +476,7 @@ def main_override_resolver(query) -> Design:
     if isinstance(query, dict):
         return instances(**query)
     elif query is None:
-        return Design()
+        return EmptyDesign
     elif query.endswith('.json'):
         import json
         if not Path(query).exists():

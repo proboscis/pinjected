@@ -226,7 +226,7 @@ def load_user_default_design() -> Design:
 @safe
 def _load_design(design_path):
     if design_path == "":
-        return Design()
+        return EmptyDesign
     pairs = design_path.split("|")
     res = instances()
     for pair in pairs:

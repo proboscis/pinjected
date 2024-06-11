@@ -5,7 +5,7 @@ from pinjected.di.graph import MyObjectGraph, IObjectGraph
 from pinjected.di.util import instances
 from pinjected.v2.resolver import AsyncResolver
 
-design = Design().bind_instance(
+design = instances(
     x=0
 ).bind_provider(
     y=lambda x: x + 1,

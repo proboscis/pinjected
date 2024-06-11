@@ -163,7 +163,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # arguments as dependencies.
         injected: Injected[int] = Injected.bind(provide_ab)
 
-        design = Design().bind_instance(a=1, b=2)
+        design = EmptyDesign.bind_instance(a=1, b=2)
         assert design.to_graph()[injected] == 3
 
     Advanced Features:
@@ -194,7 +194,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             from pinjected.di.util import Injected
             from pinjected import Design
 
-            design = Design().bind_instance(a=1, b=2)
+            design = EmptyDesign.bind_instance(a=1, b=2)
             g = design.to_graph()
 
             a = Injected.by_name('a')
