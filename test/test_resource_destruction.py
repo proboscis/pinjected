@@ -7,6 +7,7 @@ import pytest
 
 from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
+from pinjected.v2.resolver import AsyncResolver
 
 design = instances(
     x='x',
@@ -17,7 +18,7 @@ design = instances(
 
 
 def test_destruction_runs():
-    res = design.to_resolver()
+    res = AsyncResolver(design)
     assert asyncio.run(res['x']) == 'x'
     assert asyncio.run(res.destruct()) == [None]
 

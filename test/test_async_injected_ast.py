@@ -87,8 +87,7 @@ def test_injected_bind():
     d = providers(
         x=bound
     )
-    g = d.to_graph()
-    assert g[bound] == 'z'
+    assert d.provide(bound) == 'z'
 
 
 def test_async_partial():

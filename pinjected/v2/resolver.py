@@ -1,6 +1,7 @@
 from loguru import logger
 
-from pinjected.di.design_interface import Validator
+from pinjected.di.design_interface import ProvisionValidator
+from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.validation import ValFailure, ValSuccess
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.events import ResolverEvent, RequestEvent, ProvideEvent, DepsReadyEvent, EvalRequestEvent, \
@@ -119,7 +120,7 @@ class AsyncResolver:
     parent: Optional["AsyncResolver"] = None
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
-    callbacks: list[IResolverCallback] = field(default_factory=list)
+    callbacks: list[IResolverCallback] = field(default=None)
 
     def add_callback(self, callback: IResolverCallback):
         self.callbacks.append(callback)
@@ -129,6 +130,14 @@ class AsyncResolver:
             cb(event)
 
     def __post_init__(self):
+        from pinjected import Design
+        if self.callbacks is None:
+            self.callbacks = [
+                BaseResolverCallback()
+            ]
+        assert self.callbacks is not None
+        self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design
+
         from pinjected import providers
         async def dummy():
             raise RuntimeError('This should never be instantiated')
@@ -291,7 +300,7 @@ class AsyncResolver:
         return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
 
     async def validate(self, key: IBindKey, value: Any):
-        validator: Optional[Validator] = self.design.validations.get(key, None)
+        validator: Optional[ProvisionValidator] = self.design.validations.get(key, None)
         if validator is not None:
             res = await validator(key, value)
             match res:
@@ -303,9 +312,6 @@ class AsyncResolver:
                     raise TypeError(f"validator must return ValFailure or ValSuccess, got {res}")
         else:
             logger.debug(f"no validator found for {key} from {self.design}")
-
-
-
 
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)
@@ -330,7 +336,7 @@ class AsyncResolver:
                 return res
             case EvaledInjected(val, ast):
                 expr = await self._optimize(ast)
-                key = StrBindKey(f"{show_expr(val)}")
+                key = StrBindKey(f"{show_expr(ast)}")
                 new_cxt = ProvideContext(self, key=key, parent=root_cxt)
                 res = await self.eval_expr(expr, new_cxt)
                 await self.validate(key, res)
@@ -339,8 +345,7 @@ class AsyncResolver:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
                 deps = await self.resolve_deps(tgt.dependencies, root_cxt)
-                res = await tgt.provide(ProvideContext(self, key=tgt, parent=root_cxt), deps)
-                await self.validate(tgt, res)
+                res = await tgt.provide(ProvideContext(self, key=None, parent=root_cxt), deps)
                 return res
             case func if inspect.isfunction:
                 deps = extract_dependency(func)

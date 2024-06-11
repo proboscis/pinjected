@@ -6,6 +6,8 @@ from pinjected import instances, providers, injected
 from pinjected.exceptions import DependencyResolutionError
 from loguru import logger
 
+from pinjected.v2.resolver import AsyncResolver
+
 
 def test_validation():
     d = instances(
@@ -15,17 +17,18 @@ def test_validation():
         x = lambda y: y
     )
     with pytest.raises(DependencyResolutionError) as e:
-        asyncio.run(d.to_resolver()['y'])
+        asyncio.run(AsyncResolver(d)['y'])
     logger.info(f"successfully detected dep error as :{e}")
     with pytest.raises(DependencyResolutionError) as e:
-        asyncio.run(d.to_resolver()['z'])
+        asyncio.run(AsyncResolver(d)['z'])
     logger.info(f"successfully detected dep error as :{e}")
     with pytest.raises(DependencyResolutionError) as e:
-        asyncio.run(d.to_resolver()[injected('z') + injected('z')])
+        asyncio.run(AsyncResolver(d)[injected('z') + injected('z')])
     logger.info(f"successfully detected dep error as :{e}")
     d2 =instances(
         x = 0
     ) + providers(
         y = lambda x:1
     )
-    assert asyncio.run(d2.to_resolver()[injected('y') + injected('y')]) == 2
+
+    assert asyncio.run(AsyncResolver(d2)[injected('y') + injected('y')]) == 2
