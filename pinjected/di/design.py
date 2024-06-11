@@ -6,7 +6,7 @@ from typing import TypeVar, List, Dict, Union, Callable, Type
 from cytoolz import merge
 from makefun import create_function
 
-from pinjected.di.design_interface import Validator, Design
+from pinjected.di.design_interface import ProvisionValidator, Design
 from pinjected.v2.callback import IResolverCallback
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
@@ -52,13 +52,19 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
 class MergedDesign(Design):
     srcs: List[Design]
 
+    @property
+    def children(self):
+        return self.srcs
+
     def __contains__(self, item: IBindKey):
         return any(item in src for src in self.srcs)
 
     def __getitem__(self, item: IBindKey | str):
         for src in self.srcs:
             if item in src:
-                return src[item]
+                res= src[item]
+                assert isinstance(res, IBind), f"item must be IBind, but got {type(res)}"
+                return res
         raise KeyError(f"{item} not found in any of the sources")
 
     @property
@@ -66,14 +72,14 @@ class MergedDesign(Design):
         return merge(*[src.bindings for src in self.srcs])
 
     @property
-    def validations(self) -> Dict[IBindKey, Validator]:
+    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
         return merge(*[src.validations for src in self.srcs])
 
 
 @dataclass
 class AddValidation(Design):
     src: Design
-    _validations: Dict[IBindKey, Validator]
+    _validations: Dict[IBindKey, ProvisionValidator]
 
     def __contains__(self, item: IBindKey):
         return item in self.src
@@ -86,9 +92,12 @@ class AddValidation(Design):
         return self.src.bindings
 
     @property
-    def validations(self) -> Dict[IBindKey, Validator]:
+    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
         return self._validations | self.src.validations
 
+    @property
+    def children(self):
+        return [self.src]
 
 
 @dataclass
@@ -172,10 +181,15 @@ class DesignImpl(Design):
     This feature ensures that ``Design`` instances are composable and adaptable, providing
     a robust foundation for building complex, modular applications with dependency injection.
     """
+
     _bindings: Dict[IBindKey, IBind] = field(default_factory=dict)
 
     @property
-    def validations(self) -> Dict[IBindKey, Validator]:
+    def children(self):
+        return []
+
+    @property
+    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
         return dict()
 
     @property
@@ -360,6 +374,3 @@ class DesignImpl(Design):
         from loguru import logger
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
-
-
-

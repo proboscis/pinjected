@@ -223,19 +223,30 @@ class Cache(Expr):
 
 def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:
     from pinjected.di.proxiable import DelegatedVar
-    def _show_expr(expr):
-        def eval_tuple(expr):
-            return tuple(_show_expr(i) for i in expr)
+    def eval_tuple(e):
+        res = tuple(_show_expr(i) for i in e)
+        flag = all(isinstance(i, str) for i in res)
+        if not flag:
+            raise RuntimeError(f"unsupported ast found!:{type(e)}")
+        return res
 
-        def eval_dict(expr):
-            return {k: _show_expr(e) for k, e in expr.items()}
+    def eval_dict(e):
+        return {k: _show_expr(e) for k, e in e.items()}
 
-        reduced = custom(expr)
+    def _show_expr(e: Expr):
+
+        reduced = custom(e)
         if reduced:
+            from loguru import logger
+            logger.info(f"reduced:{reduced}")
             return reduced
-        match expr:
+        match e:
+            case Object(DelegatedVar(wrapped, cxt) as dv):
+                return _show_expr(dv)
             case Object(x) if hasattr(x, "__repr_expr__"):
-                return x.__repr_expr__()
+                res = x.__repr_expr__()
+                assert isinstance(res, str), f"{res} is not a str, v is {type(x)}"
+                return res
             case Object(str() as x):
                 return f'"{x}"'
             case Object(x):
@@ -260,6 +271,6 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
             case Cache(Expr() as tgt):
                 return f"{_show_expr(tgt)}"
             case _:
-                raise RuntimeError(f"unsupported ast found!:{type(expr)}")
+                raise RuntimeError(f"unsupported ast found!:{type(e)}")
 
     return _show_expr(expr)

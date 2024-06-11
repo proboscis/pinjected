@@ -4,6 +4,7 @@ from pprint import pformat
 from pinjected.exporter.llm_exporter import PinjectedCodeExporter
 from pinjected import instances, providers, injected, Design, instance
 from pinjected.run_helpers.run_injected import load_user_default_design
+from pinjected.v2.resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
 
 
@@ -129,7 +130,7 @@ def test_something():
     llm_design:Design = instances() + load_user_default_design()
     logger.info(f"llm_design: {llm_design}")
     logger.info(f"{pformat(llm_design.bindings)}")
-    a_llm = llm_design.provide('a_llm__gpt4_turbo')
+    a_llm = AsyncResolver(llm_design).to_blocking().provide('a_llm__gpt4_turbo')
 
     test_target = f(g(CONST + alpha))
 

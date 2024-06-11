@@ -22,6 +22,7 @@ from pinjected.logging_helper import disable_internal_logging
 from pinjected.notification import notify
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.v2.keys import StrBindKey
+from pinjected.v2.resolver import AsyncResolver
 
 
 def run_injected(
@@ -82,7 +83,7 @@ def run_anything(
 
         meta_cxt: MetaContext = MetaContext.gather_from_path(ModuleVarPath(var_path).module_file_path)
         if design_path is None:
-            design_path = meta_cxt.accumulated.provide("default_design_paths")[0]
+            design_path = AsyncResolver(meta_cxt.accumulated).to_blocking().provide("default_design_paths")[0]
         # here, actually the loaded variable maybe an instance of Designed.
         # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
         # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
@@ -99,7 +100,7 @@ def run_anything(
         """
 
         meta_design = instances(overrides=instances()) + meta_cxt.accumulated
-        meta_resolver = meta_design.to_resolver().to_blocking()
+        meta_resolver = AsyncResolver(meta_design).to_blocking()
         meta_overrides = meta_resolver.provide("overrides") + meta_overrides
 
         # add overrides from with block
@@ -129,9 +130,7 @@ def run_anything(
                 dd = d + instances(
                     __task_group__=tg
                 )
-                resolver = dd.to_resolver(
-                    callback=provision_callback
-                )
+                resolver = AsyncResolver(dd)
                 _res = await resolver.provide(tgt)
 
                 if isinstance(_res, Awaitable):

@@ -1,8 +1,10 @@
+import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Callable, Any, List, Awaitable
 
+from pinjected import Injected
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.validation import ValResult
@@ -10,7 +12,7 @@ from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey
 
-Validator = Callable[[IBindKey, Any], Awaitable[ValResult]]
+ProvisionValidator = Callable[[IBindKey, Any], Awaitable[ValResult]]
 
 
 class Design(ABC):
@@ -23,7 +25,7 @@ class Design(ABC):
         pass
 
     @abstractmethod
-    def __getitem__(self, item: IBindKey | str):
+    def __getitem__(self, item: IBindKey | str) -> IBind:
         pass
 
     def purify(self, target: "Providable"):
@@ -46,7 +48,7 @@ class Design(ABC):
 
     @property
     @abstractmethod
-    def validations(self) -> Dict[IBindKey, Validator]:
+    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
         pass
 
     @staticmethod
@@ -58,6 +60,33 @@ class Design(ABC):
     def empty():
         from pinjected.di.design import DesignImpl
         return DesignImpl()
+
+    @property
+    @abstractmethod
+    def children(self):
+        pass
+
+    def dfs_design(self):
+        yield self
+        for c in self.children:
+            yield from c.dfs_design()
+
+    def keys(self):
+        return self.bindings.keys()
+
+    def provide(self,tgt:str|IBindKey):
+        from loguru import logger
+        from pinjected.v2.resolver import AsyncResolver
+        logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")
+        return AsyncResolver(self).to_blocking().provide(tgt)
+
+    def to_graph(self):
+        from loguru import logger
+        from pinjected.v2.resolver import AsyncResolver
+        logger.warning(f"Design.to_graph is deprecated. please use AsyncResolver instead.")
+        return AsyncResolver(self).to_blocking()
+
+
 
 @dataclass
 class DesignOverridesStore:
