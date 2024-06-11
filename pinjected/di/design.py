@@ -1,4 +1,5 @@
 import inspect
+from abc import ABC
 from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import wraps
@@ -50,8 +51,35 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
     return create_function(sig, impl)
 
 
+class Design(ABC):
+    def __add__(self, other: "Design") -> "Design":
+        pass
+
+    def __contains__(self, item: IBindKey):
+        pass
+
+    def __getitem__(self, item: IBindKey | str):
+        pass
+
+    def purify(self, target: "Providable"):
+        pass
+
+    def __enter__(self):
+        frame = inspect.currentframe().f_back
+        DESIGN_OVERRIDES_STORE.add(frame, self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        frame = inspect.currentframe().f_back
+        DESIGN_OVERRIDES_STORE.pop(frame)
+
+    @property
+    def bindings(self)->Dict[IBindKey, IBind]:
+        pass
+
+
 @dataclass
-class Design:
+class DesignImpl(Design):
     """
     The ``Design`` class acts as a central registry for managing and applying dependency injection
     within your application. It allows for the binding of various components, instances, and providers,
@@ -131,31 +159,26 @@ class Design:
     This feature ensures that ``Design`` instances are composable and adaptable, providing
     a robust foundation for building complex, modular applications with dependency injection.
     """
-    bindings: Dict[IBindKey, IBind] = field(default_factory=dict)
-    modules: list = field(default_factory=list)
+    _bindings: Dict[IBindKey, IBind] = field(default_factory=dict)
+
+    @property
+    def bindings(self):
+        return self._bindings
 
     def __getstate__(self):
         res = dict(
-            bindings=self.bindings,
-            modules=[m.__name__ for m in self.modules],
+            _bindings=self._bindings,
         )
         return res
 
     def __setstate__(self, state):
-        mods = state["modules"]
-        import importlib
-        mods = [importlib.import_module(
-            name=m
-        ) for m in mods]
-        state["modules"] = mods
         for k, v in state.items():
             setattr(self, k, v)
 
-    def __add__(self, other: "Design"):
+    def __add__(self, other: Design):
         assert isinstance(other, Design), f"cannot add {type(other)} to Design"
-        res = Design(
-            bindings=merge(self.bindings, other.bindings),
-            modules=list(set(self.modules) | set(other.modules)),
+        res = DesignImpl(
+            _bindings=merge(self.bindings, other.bindings),
         )
         return res
 
@@ -171,10 +194,11 @@ class Design:
             if isinstance(v, type):
                 from loguru import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
-            x += Design({StrBindKey(k): BindInjected(Injected.pure(v))})
+            x += DesignImpl({StrBindKey(k): BindInjected(Injected.pure(v))})
         return x
+
     @staticmethod
-    def to_bind( tgt) -> IBind:
+    def to_bind(tgt) -> IBind:
         from loguru import logger
         match tgt:
             case IBind():
@@ -200,8 +224,8 @@ class Design:
         for k, v in kwargs.items():
             bindings[StrBindKey(k)] = self.to_bind(v)
 
-        return self + Design(
-            bindings=bindings,
+        return self + DesignImpl(
+            _bindings=bindings,
         )
 
     def add_metadata(self, **kwargs: "BindMetadata") -> "Design":
@@ -209,27 +233,27 @@ class Design:
         for k, meta in kwargs.items():
             key = StrBindKey(k)
             bind: IBind = self.bindings[key]
-            res += Design(
-                bindings={key: bind.update_metadata(meta)}
+            res += DesignImpl(
+                _bindings={key: bind.update_metadata(meta)}
             )
         return res
 
-    def to_resolver(self,callback:IResolverCallback=None):
-        from pinjected.v2.resolver import AsyncResolver,BaseResolverCallback
+    def to_resolver(self, callback: IResolverCallback = None):
+        from pinjected.v2.resolver import AsyncResolver, BaseResolverCallback
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
             callback = BaseResolverCallback()
         assert isinstance(callback, IResolverCallback)
         return AsyncResolver(
-            Design(bindings=bindings, modules=self.modules),
+            DesignImpl(_bindings=bindings),
             callbacks=[callback]
         )
 
     def to_graph(self):
         return self.to_resolver().to_blocking()
 
-    def run(self, f, modules=None):
-        return self.to_graph(modules).run(f)
+    def run(self, f):
+        return self.to_graph().run(f)
 
     def provide(self, target: Union[str, Type[T]]) -> T:
         """
@@ -240,9 +264,8 @@ class Design:
         return self.to_resolver().to_blocking().provide(target)
 
     def copy(self):
-        return self.__class__(
-            bindings=self.bindings.copy(),
-            modules=copy(self.modules),
+        return DesignImpl(
+            _bindings=self.bindings.copy(),
         )
 
     def map_value(self, src_key, f):
@@ -252,7 +275,7 @@ class Design:
         :return: Design
         """
         mapped_binding = self.bindings[src_key].map(f)
-        return self + Design({src_key: mapped_binding})
+        return self + DesignImpl({src_key: mapped_binding})
 
     def keys(self):
         return self.bindings.keys()
@@ -262,7 +285,7 @@ class Design:
             copied = self.bindings.copy()
             del copied[key]
             return replace(self,
-                           bindings=copied
+                           _bindings=copied
                            )
         return self
 
@@ -330,11 +353,7 @@ class Design:
         from loguru import logger
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
-        logger.info(f"checking picklability of modules")
-        check_picklable(self.modules)
 
-    def add_modules(self, *modules):
-        return self + Design(modules=list(modules))
 
     def to_vis_graph(self) -> "DIGraph":
         from pinjected.visualize_di import DIGraph
@@ -351,15 +370,6 @@ class Design:
         resolver = DependencyResolver(self)
         return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
 
-    def __enter__(self):
-        frame = inspect.currentframe().f_back
-        DESIGN_OVERRIDES_STORE.add(frame, self)
-        # %% hmm, I want track the global vars on parent frame. but how?
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        frame = inspect.currentframe().f_back
-        DESIGN_OVERRIDES_STORE.pop(frame)
 
 
 @dataclass
@@ -373,14 +383,14 @@ class DesignOverridesStore:
 
     def pop(self, frame: inspect.FrameInfo):
         cxt = self.stack.pop()
-        acc_d = sum([cxt.src for cxt in self.stack], start=Design()) + cxt.src
+        acc_d = sum([cxt.src for cxt in self.stack], start=DesignImpl()) + cxt.src
         target_vars = cxt.exit(frame)
         for mvp in target_vars:
             if mvp not in self.bindings:
                 self.bindings[mvp] = acc_d
 
     def get_overrides(self, tgt: ModuleVarPath):
-        return self.bindings.get(tgt, Design())
+        return self.bindings.get(tgt, DesignImpl())
 
 
 DESIGN_OVERRIDES_STORE = DesignOverridesStore()
