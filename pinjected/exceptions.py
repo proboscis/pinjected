@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Any
 
-from pinjected.di.design import ValFailure
+from pinjected.di.validation import ValFailure
 
 
 @dataclass

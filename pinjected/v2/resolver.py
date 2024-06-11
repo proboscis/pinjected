@@ -1,6 +1,7 @@
 from loguru import logger
 
-from pinjected.di.design import Validator, ValFailure
+from pinjected.di.design_interface import Validator
+from pinjected.di.validation import ValFailure, ValSuccess
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.events import ResolverEvent, RequestEvent, ProvideEvent, DepsReadyEvent, EvalRequestEvent, \
     CallInEvalStart, CallInEvalEnd, EvalResultEvent
@@ -292,10 +293,19 @@ class AsyncResolver:
     async def validate(self, key: IBindKey, value: Any):
         validator: Optional[Validator] = self.design.validations.get(key, None)
         if validator is not None:
-            res = validator(key, value)
+            res = await validator(key, value)
             match res:
                 case ValFailure(e) as vf:
                     raise DependencyValidationError(f"Validation failed for {key}", cause=vf)
+                case ValSuccess() as vs:
+                    logger.success(f"validation passed for {key}")
+                case _:
+                    raise TypeError(f"validator must return ValFailure or ValSuccess, got {res}")
+        else:
+            logger.debug(f"no validator found for {key} from {self.design}")
+
+
+
 
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)
@@ -361,18 +371,18 @@ class AsyncResolver:
         match tgt:
             case Injected():
                 tmp_design = d + providers(__root__=tgt)
-                digraph: DIGraph = tmp_design.to_vis_graph()
+                digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case str():
-                digraph: DIGraph = d.to_vis_graph()
+                digraph: DIGraph = DIGraph(d)
                 errors = list(digraph.di_dfs_validation(tgt))
             case DelegatedVar() as dv:
                 tmp_design = d + providers(__root__=tgt)
-                digraph: DIGraph = tmp_design.to_vis_graph()
+                digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case f if callable(f):
                 tmp_design = d + providers(__root__=tgt)
-                digraph: DIGraph = tmp_design.to_vis_graph()
+                digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
 
         if errors:

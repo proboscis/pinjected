@@ -9,5 +9,5 @@ def test_distil_design():
         y=injected("x") + 1,
         z=lambda x, y: x + y,
     )
-    vg: DIGraph = d.to_vis_graph()
+    vg: DIGraph = DIGraph(d)
     print(vg.distilled('z'))
