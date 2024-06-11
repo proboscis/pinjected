@@ -1,5 +1,6 @@
 from loguru import logger
 
+from pinjected.di.design import Validator, ValFailure
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.events import ResolverEvent, RequestEvent, ProvideEvent, DepsReadyEvent, EvalRequestEvent, \
     CallInEvalStart, CallInEvalEnd, EvalResultEvent
@@ -31,7 +32,7 @@ from pinjected.di.app_injected import walk_replace, EvaledInjected
 from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.exceptions import DependencyResolutionError
+from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.v2.binds import IBind, BindInjected
 from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
 from pinjected.v2.provide_context import ProvideContext
@@ -288,28 +289,49 @@ class AsyncResolver:
         tasks = [self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys]
         return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
 
+    async def validate(self, key: IBindKey, value: Any):
+        validator: Optional[Validator] = self.design.validations.get(key, None)
+        if validator is not None:
+            res = validator(key, value)
+            match res:
+                case ValFailure(e) as vf:
+                    raise DependencyValidationError(f"Validation failed for {key}", cause=vf)
+
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)
 
         match tgt:
             case str():
-                return await self._provide(StrBindKey(tgt), ProvideContext(self, key=StrBindKey(tgt), parent=root_cxt))
+                key = StrBindKey(tgt)
+                res = await self._provide(key, ProvideContext(self, key=key, parent=root_cxt))
+                await self.validate(key, res)
+                return res
             case IBindKey():
-                return await self._provide(tgt, ProvideContext(self, key=tgt, parent=root_cxt))
+                res = await self._provide(tgt, ProvideContext(self, key=tgt, parent=root_cxt))
+                await self.validate(tgt, res)
+                return res
             case DelegatedVar(value, cxt) as dv:
                 # return await self._provide_providable(tgt.eval())
                 expr = await self._optimize(dv.eval().ast)
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{value}"), parent=root_cxt)
-                return await self.eval_expr(expr, new_cxt)
+                key = StrBindKey(f"{show_expr(value)}")
+                new_cxt = ProvideContext(self, key=StrBindKey(f"{show_expr(value)}"), parent=root_cxt)
+                res = await self.eval_expr(expr, new_cxt)
+                await self.validate(key, res)
+                return res
             case EvaledInjected(val, ast):
                 expr = await self._optimize(ast)
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{val}"), parent=root_cxt)
-                return await self.eval_expr(expr, new_cxt)
+                key = StrBindKey(f"{show_expr(val)}")
+                new_cxt = ProvideContext(self, key=key, parent=root_cxt)
+                res = await self.eval_expr(expr, new_cxt)
+                await self.validate(key, res)
+                return res
             case Injected() as i_tgt:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
                 deps = await self.resolve_deps(tgt.dependencies, root_cxt)
-                return await tgt.provide(ProvideContext(self, key=tgt, parent=root_cxt), deps)
+                res = await tgt.provide(ProvideContext(self, key=tgt, parent=root_cxt), deps)
+                await self.validate(tgt, res)
+                return res
             case func if inspect.isfunction:
                 deps = extract_dependency(func)
                 keys = {StrBindKey(d) for d in deps}

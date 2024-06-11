@@ -51,9 +51,28 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
     return create_function(sig, impl)
 
 
+class ValResult:
+    pass
+
+
+@dataclass
+class ValSuccess(ValResult):
+    pass
+
+
+@dataclass
+class ValFailure(ValResult):
+    exc: Exception
+
+
+class Validator:
+    def __call__(self, key: IBindKey, value) -> ValResult:
+        pass
+
+
 class Design(ABC):
     def __add__(self, other: "Design") -> "Design":
-        pass
+        return MergedDesign(srcs=[self, other])
 
     @abstractmethod
     def __contains__(self, item: IBindKey):
@@ -66,7 +85,6 @@ class Design(ABC):
     def purify(self, target: "Providable"):
         resolver = DependencyResolver(self)
         return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
-        pass
 
     def __enter__(self):
         frame = inspect.currentframe().f_back
@@ -79,16 +97,23 @@ class Design(ABC):
 
     @property
     @abstractmethod
-    def bindings(self)->Dict[IBindKey, IBind]:
+    def bindings(self) -> Dict[IBindKey, IBind]:
+        pass
+
+    @property
+    @abstractmethod
+    def validations(self) -> Dict[IBindKey, Validator]:
         pass
 
     @staticmethod
     def from_bindings(bindings: Dict[IBindKey, IBind]):
         return DesignImpl(_bindings=bindings)
 
+
 @dataclass
 class MergedDesign(Design):
     srcs: List[Design]
+
     def __contains__(self, item: IBindKey):
         return any(item in src for src in self.srcs)
 
@@ -102,7 +127,9 @@ class MergedDesign(Design):
     def bindings(self) -> Dict[IBindKey, IBind]:
         return merge(*[src.bindings for src in self.srcs])
 
-
+    @property
+    def validations(self) -> Dict[IBindKey, Validator]:
+        return merge(*[src.validations for src in self.srcs])
 
 
 @dataclass
@@ -187,6 +214,11 @@ class DesignImpl(Design):
     a robust foundation for building complex, modular applications with dependency injection.
     """
     _bindings: Dict[IBindKey, IBind] = field(default_factory=dict)
+
+    @property
+    def validations(self) -> Dict[IBindKey, Validator]:
+        return dict()
+
 
     @property
     def bindings(self):
@@ -380,7 +412,6 @@ class DesignImpl(Design):
         from loguru import logger
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
-
 
     def to_vis_graph(self) -> "DIGraph":
         from pinjected.visualize_di import DIGraph
