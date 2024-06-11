@@ -428,10 +428,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFunction":
-        assert not isinstance(_target_function_, Injected)
+        assert not isinstance(_target_function_, Injected), f"target_function should not be an instance of Injected"
         # if isinstance(_target_function_, Injected):
         #     _target_function_ = _target_function_.get_provider()
-        assert callable(_target_function_)
+        assert callable(_target_function_), f"target_function should be callable, but got {_target_function_}"
         if not inspect.iscoroutinefunction(_target_function_):
             # we need to keep the function signature
 
@@ -719,6 +719,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             )
         )
 
+    @abc.abstractmethod
+    def __repr_expr__(self):
+        raise NotImplementedError()
+
 
 @dataclass
 class ConditionalInjected(Injected):
@@ -742,6 +746,9 @@ class ConditionalInjected(Injected):
         return self.condition.dynamic_dependencies() | \
             self.true.dynamic_dependencies() | \
             self.false.dynamic_dependencies() | {"session"}
+
+    def __repr_expr__(self):
+        return f"({self.true.__repr_expr__()} if {self.condition.__repr_expr__()} else {self.false.__repr_expr__()})"
 
 
 @dataclass
@@ -828,6 +835,9 @@ class InjectedCache(Injected[T]):
 
     def __hash__(self):
         return hash(self.impl)
+
+    def __repr_expr__(self):
+        return f"InjectedCache({self.cache.__repr_expr__()}, {self.program.__repr_expr__()}, {self.program_dependencies})"
 
 
 class IAsyncDict(abc.ABC):
@@ -951,6 +961,9 @@ class AsyncInjectedCache(Injected[T]):
     def __hash__(self):
         return hash(self.impl)
 
+    def __repr_expr__(self):
+        return f"AsyncInjectedCache({self.cache.__repr_expr__()}, {self.program.__repr_expr__()}, {self.program_dependencies})"
+
 
 class GeneratedInjected(Injected):
     """creates Injected from dependencies and funct(**kwargs) signature"""
@@ -965,6 +978,9 @@ class GeneratedInjected(Injected):
 
     def get_provider(self):
         return create_function(self.get_signature(), func_impl=self.impl)
+
+    def __repr_expr__(self):
+        return f"GeneratedInjected({self.impl}, {self.dependencies()})"
 
 
 class InjectedWithDynamicDependencies(Injected[T]):
@@ -983,6 +999,10 @@ class InjectedWithDynamicDependencies(Injected[T]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.src.dynamic_dependencies() | self._dynamic_dependencies
+
+    def __repr_expr__(self):
+        return f"InjectedWithDynamicDependencies({self.src.__repr_expr__()}, {self._dynamic_dependencies})"
+
 
 
 class MappedInjected(Injected):
@@ -1015,6 +1035,9 @@ class MappedInjected(Injected):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"{self.src.__repr_expr__()}.map({self.original_mapper})"
 
 
 def extract_dependency_including_self(f: Union[type, Callable]):
@@ -1107,7 +1130,7 @@ class InjectedFunction(Injected[T]):
         assert callable(target_function)
         self.target_function = target_function
         assert inspect.iscoroutinefunction(self.target_function), f"{self.target_function} is not a coroutine function"
-        self.kwargs_mapping = copy(kwargs_mapping)
+        self.kwargs_mapping:dict[str,Injected] = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
             if isinstance(v, DelegatedVar):
                 v = v.eval()
@@ -1189,7 +1212,22 @@ class InjectedFunction(Injected[T]):
         # orig_file = Path(self.original_function.__original_file__)
         # orig_line = self.original_function.__original_code__
         # return f"<f {func_name}@{orig_file.name}>"
-        return self.original_function.__name__
+        kwargs_repr = []
+        for k,v in self.kwargs_mapping.items():
+            match v:
+                case str(v):
+                    kwargs_repr.append(f"{k}=${v}")
+                case type(v):
+                    kwargs_repr.append(f"{k}=${v.__name__}")
+                case Injected():
+                    kwargs_repr.append(f"{k}={v.__repr_expr__()}")
+                case c if callable(v):
+                    kwargs_repr.append(f"{k}={v.__name__}")
+                case unknown:
+                    kwargs_repr.append(f"{k}={unknown}")
+        kwargs_repr = ", ".join(kwargs_repr)
+        return f"{self.original_function.__name__}<{kwargs_repr}>"
+
 
 
 class InjectedPure(Injected[T]):
@@ -1216,6 +1254,9 @@ class InjectedPure(Injected[T]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return set()
+
+    def __repr_expr__(self):
+        return f"<{self.value}>"
 
 
 class InjectedByName(Injected[T]):
@@ -1276,6 +1317,9 @@ class ZippedInjected(Injected[Tuple[A, B]]):
     def dynamic_dependencies(self) -> Set[str]:
         return self.a.dynamic_dependencies() | self.b.dynamic_dependencies()
 
+    def __repr_expr__(self):
+        return f"({self.a.__repr_expr__()}, {self.b.__repr_expr__()})"
+
 
 class MZippedInjected(Injected):
     __match_args__ = ("srcs",)
@@ -1312,6 +1356,9 @@ class MZippedInjected(Injected):
 
         return res
 
+    def __repr_expr__(self):
+        return f"({', '.join([s.__repr_expr__() for s in self.srcs])})"
+
 
 class DictInjected(Injected):
     __match_args__ = ("srcs",)
@@ -1347,6 +1394,9 @@ class DictInjected(Injected):
             res |= s.dynamic_dependencies()
 
         return res
+
+    def __repr_expr__(self):
+        return f"{{{', '.join([f'{k}:{v.__repr_expr__()}' for k, v in self.srcs.items()])}}})"
 
 
 def _injected_factory(**targets: Injected):
@@ -1426,6 +1476,9 @@ class PartialInjectedFunction(Injected):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"{self.src.__repr_expr__()}"
 
 
 def add_viz_metadata(metadata: Dict[str, Any]):
