@@ -3,7 +3,7 @@ from loguru import logger
 from pathlib import Path
 from typing import Dict, List
 
-from pinjected import Design, Injected, instances
+from pinjected import Design, Injected, instances, EmptyDesign
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path
@@ -34,8 +34,8 @@ class MetaContext:
             file_path = Path(file_path)
         designs = list(walk_module_attr(file_path, meta_design_name))
         designs.reverse()
-        res = Design()
-        overrides = Design()
+        res = EmptyDesign
+        overrides = EmptyDesign
         for item in designs:
             logger.debug(f"{meta_design_name} at :{item.var_path}")
             res = res + item.var
@@ -60,8 +60,8 @@ class MetaContext:
             file_path = Path(file_path)
         designs = list(walk_module_attr(file_path, meta_design_name))
         designs.reverse()
-        res = Design()
-        overrides = Design()
+        res = EmptyDesign
+        overrides = EmptyDesign
         for item in designs:
             logger.debug(f"{meta_design_name} at :{item.var_path}")
             res = res + item.var
