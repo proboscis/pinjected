@@ -6,16 +6,17 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from inspect import Traceback
+from inspect import Traceback, iscoroutinefunction
+from pathlib import Path
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable
 
 from frozendict import frozendict
-from loguru import logger
 from makefun import create_function
 from returns.result import safe
 
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
+import cloudpickle
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -112,6 +113,32 @@ So, the solutions are:
 
 Let's got with 2nd option.
 """
+
+
+class PicklableInjectedFunction:
+    def __init__(self,
+                 src: callable,
+                 __doc__,
+                 __name__,
+                 __skeleton__,
+                 __is_async__
+                 ):
+        self.src = src
+        self.__doc__ = __doc__
+        self.__name__ = __name__
+        self.__skeleton__ = __skeleton__
+        self.__is_async__ = __is_async__
+
+    def __getstate__(self):
+        return cloudpickle.dumps(
+            (self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__)
+        )
+
+    def __setstate__(self, state):
+        self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__ = cloudpickle.loads(state)
+
+    def __call__(self, *args, **kwargs):
+        return self.src(*args, **kwargs)
 
 
 class Injected(Generic[T], metaclass=abc.ABCMeta):
@@ -345,8 +372,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_func.__skeleton__ = __skeleton__
 
             # logger.info(f"result of makefun_impl:{new_func}")
-
-            return new_func
+            return PicklableInjectedFunction(
+                src=new_func,
+                __doc__=__doc__,
+                __name__=new_func.__name__,
+                __skeleton__=__skeleton__,
+                __is_async__=new_func.__is_async__
+            )
+            # return new_func
 
         makefun_impl.__name__ = original_function.__name__
         makefun_impl.__module__ = original_function.__module__
@@ -370,7 +403,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
         bound_func = Injected.bind(makefun_impl, injected_kwargs=injected_kwargs)
         bound_func.__is_async_function__ = inspect.iscoroutinefunction(original_function)
-        bound_func.__is_partial__ = True # this is to indicate that the bound_func is supposed to be used with PartialInjectedFunction.
+        bound_func.__is_partial__ = True  # this is to indicate that the bound_func is supposed to be used with PartialInjectedFunction.
         injected_factory = PartialInjectedFunction(src=bound_func)
         # the inner will be called upon calling the injection result.
         # This involves many internal Injecte instances. can I make it simler?
@@ -395,10 +428,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFunction":
-        assert not isinstance(_target_function_, Injected)
+        assert not isinstance(_target_function_, Injected), f"target_function should not be an instance of Injected"
         # if isinstance(_target_function_, Injected):
         #     _target_function_ = _target_function_.get_provider()
-        assert callable(_target_function_)
+        assert callable(_target_function_), f"target_function should be callable, but got {_target_function_}"
         if not inspect.iscoroutinefunction(_target_function_):
             # we need to keep the function signature
 
@@ -499,12 +532,29 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def from_impl(impl: Callable, dependencies: Set[str]):
         return GeneratedInjected(impl, dependencies)
 
+    def _faster_get_metadata(self):
+        # logger.info(f"faster_get_metadata for Injected.pure")
+        try:
+            frame = sys._getframe().f_back.f_back
+            mod = frame.f_globals["__name__"]
+            name = frame.f_code.co_filename
+            # return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
+            return mod, name
+        except Exception as e:
+            # from loguru import logger
+            from loguru import logger
+            logger.warning(f"failed to get name of the injected location, due to {e}")
+            return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
+
     @staticmethod
     def pure(value):
         res = InjectedPure(value)
         # I need to set the file that called this function.
-        res.__definition_frame__ = get_frame_info(2)
-        res.__original_file__ = get_frame_info(2).filename
+        # res.__definition_frame__ = get_frame_info(2)
+        # fi = get_frame_info(2)
+        res.__definition_module__, res.__original_file__ = res._faster_get_metadata()
+        # res.__definition_module__ = fi.original_frame.f_globals["__name__"]
+        # res.__original_file__ = fi.filename
         return res
 
     @staticmethod
@@ -512,6 +562,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return InjectedByName(name, )
 
     def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
+        other = Injected.ensure_injected(other)
         assert isinstance(self, Injected)
         assert isinstance(other, Injected)
         return Injected.mzip(self, other)
@@ -570,9 +621,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
         # raise RuntimeError("disabled")
-        #keys = list(kwargs.keys())
+        # keys = list(kwargs.keys())
 
-        #return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
+        # return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
         return DictInjected(**kwargs)
 
     @property
@@ -668,6 +719,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             )
         )
 
+    @abc.abstractmethod
+    def __repr_expr__(self):
+        raise NotImplementedError()
+
 
 @dataclass
 class ConditionalInjected(Injected):
@@ -691,6 +746,9 @@ class ConditionalInjected(Injected):
         return self.condition.dynamic_dependencies() | \
             self.true.dynamic_dependencies() | \
             self.false.dynamic_dependencies() | {"session"}
+
+    def __repr_expr__(self):
+        return f"({self.true.__repr_expr__()} if {self.condition.__repr_expr__()} else {self.false.__repr_expr__()})"
 
 
 @dataclass
@@ -741,13 +799,15 @@ class InjectedCache(Injected[T]):
     def __post_init__(self):
         self.program = Injected.ensure_injected(self.program)
 
-        def impl(session, cache: Dict, *deps):
+        async def impl(t):
+            from loguru import logger
+            resolver, cache, *deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
             hash_key = sha256_key
             if hash_key not in cache:
                 logger.info(f"Cache miss for {deps}")
-                data = session[self.program]
+                data = await resolver[self.program]
                 cache[hash_key] = data
             else:
                 logger.info(f"Cache hit for {deps},loading ...")
@@ -756,12 +816,10 @@ class InjectedCache(Injected[T]):
             return res
 
         self.impl = Injected.list(
-            Injected.by_name("session"),
+            Injected.by_name("__resolver__"),
             self.cache,
             *self.program_dependencies
-        ).map(
-            lambda t: impl(*t)
-        )
+        ).map(impl)
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 
@@ -777,6 +835,9 @@ class InjectedCache(Injected[T]):
 
     def __hash__(self):
         return hash(self.impl)
+
+    def __repr_expr__(self):
+        return f"InjectedCache({self.cache.__repr_expr__()}, {self.program.__repr_expr__()}, {self.program_dependencies})"
 
 
 class IAsyncDict(abc.ABC):
@@ -900,6 +961,9 @@ class AsyncInjectedCache(Injected[T]):
     def __hash__(self):
         return hash(self.impl)
 
+    def __repr_expr__(self):
+        return f"AsyncInjectedCache({self.cache.__repr_expr__()}, {self.program.__repr_expr__()}, {self.program_dependencies})"
+
 
 class GeneratedInjected(Injected):
     """creates Injected from dependencies and funct(**kwargs) signature"""
@@ -914,6 +978,9 @@ class GeneratedInjected(Injected):
 
     def get_provider(self):
         return create_function(self.get_signature(), func_impl=self.impl)
+
+    def __repr_expr__(self):
+        return f"GeneratedInjected({self.impl}, {self.dependencies()})"
 
 
 class InjectedWithDynamicDependencies(Injected[T]):
@@ -932,6 +999,10 @@ class InjectedWithDynamicDependencies(Injected[T]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.src.dynamic_dependencies() | self._dynamic_dependencies
+
+    def __repr_expr__(self):
+        return f"InjectedWithDynamicDependencies({self.src.__repr_expr__()}, {self._dynamic_dependencies})"
+
 
 
 class MappedInjected(Injected):
@@ -964,6 +1035,9 @@ class MappedInjected(Injected):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"{self.src.__repr_expr__()}.map({self.original_mapper})"
 
 
 def extract_dependency_including_self(f: Union[type, Callable]):
@@ -1009,6 +1083,8 @@ async def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dic
         return await solve_injection(dep.get_provider(), kwargs)
     elif isinstance(dep, (type, Callable)) and inspect.iscoroutinefunction(dep):
         return await dep(**{k: kwargs[k] for k in extract_dependency(dep)})
+    elif isinstance(dep, (type, Callable)):
+        return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
     else:
         raise RuntimeError(f"dep must be one of str/type/Callable/Injected. got {type(dep)}")
 
@@ -1019,6 +1095,10 @@ def combine_image_store(a, b):
 
 
 def assert_kwargs_type(v):
+    if isinstance(v, DelegatedVar):
+        return
+    if v == abc.ABCMeta:
+        raise TypeError(f"Unexpected: {v}")
     if isinstance(v, str):
         return
     if isinstance(v, type):
@@ -1027,6 +1107,7 @@ def assert_kwargs_type(v):
         return
     if isinstance(v, Injected):
         return
+
     else:
         raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
 
@@ -1041,6 +1122,7 @@ class InjectedFunction(Injected[T]):
                  kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]]
                  ):
         # I think we need to know where this class is instantiated outside of pinjected_package
+        from loguru import logger
         self.origin_frame = get_instance_origin("pinjected")
         self.original_function = original_function
         super().__init__()
@@ -1048,11 +1130,14 @@ class InjectedFunction(Injected[T]):
         assert callable(target_function)
         self.target_function = target_function
         assert inspect.iscoroutinefunction(self.target_function), f"{self.target_function} is not a coroutine function"
-        self.kwargs_mapping = copy(kwargs_mapping)
+        self.kwargs_mapping:dict[str,Injected] = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
-            assert_kwargs_type(v)
             if isinstance(v, DelegatedVar):
-                self.kwargs_mapping[k] = v.eval()
+                v = v.eval()
+                self.kwargs_mapping[k] = v
+            assert_kwargs_type(v)
+            if v == abc.ABCMeta:
+                raise TypeError(f"Unexpected kwargs set.{k}:{v}")
         # logger.info(f"InjectedFunction:{self.target_function} kwargs_mapping:{self.kwargs_mapping}")
         org_deps = extract_dependency(self.target_function)
         logger.trace(f"tgt:{target_function} original dependency:{org_deps}")
@@ -1069,6 +1154,7 @@ class InjectedFunction(Injected[T]):
         signature = self.get_signature()
 
         async def impl(**kwargs):
+            from loguru import logger
             deps = dict()
 
             async def update(key):
@@ -1077,7 +1163,11 @@ class InjectedFunction(Injected[T]):
                         mapped = self.kwargs_mapping[key]
                     else:
                         mapped = key
-                    deps[key] = await solve_injection(mapped, kwargs)
+                    try:
+                        deps[key] = await solve_injection(mapped, kwargs)
+                    except Exception as e:
+                        logger.error(f"failed to solve injection for {key}:{mapped} from {kwargs}")
+                        raise e
 
             tasks = []
             logger.trace(f"missings:{self.missings},kwargs_mapping:{self.kwargs_mapping}")
@@ -1117,6 +1207,28 @@ class InjectedFunction(Injected[T]):
     def dynamic_dependencies(self) -> Set[str]:
         return set()
 
+    def __repr_expr__(self):
+        # func_name = self.original_function.__name__
+        # orig_file = Path(self.original_function.__original_file__)
+        # orig_line = self.original_function.__original_code__
+        # return f"<f {func_name}@{orig_file.name}>"
+        kwargs_repr = []
+        for k,v in self.kwargs_mapping.items():
+            match v:
+                case str(v):
+                    kwargs_repr.append(f"{k}=${v}")
+                case type(v):
+                    kwargs_repr.append(f"{k}=${v.__name__}")
+                case Injected():
+                    kwargs_repr.append(f"{k}={v.__repr_expr__()}")
+                case c if callable(v):
+                    kwargs_repr.append(f"{k}={v.__name__}")
+                case unknown:
+                    kwargs_repr.append(f"{k}={unknown}")
+        kwargs_repr = ", ".join(kwargs_repr)
+        return f"{self.original_function.__name__}<{kwargs_repr}>"
+
+
 
 class InjectedPure(Injected[T]):
     __match_args__ = ("value",)
@@ -1143,6 +1255,9 @@ class InjectedPure(Injected[T]):
     def dynamic_dependencies(self) -> Set[str]:
         return set()
 
+    def __repr_expr__(self):
+        return f"<{self.value}>"
+
 
 class InjectedByName(Injected[T]):
     __match_args__ = ("name",)
@@ -1168,6 +1283,9 @@ class InjectedByName(Injected[T]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return set()
+
+    def __repr_expr__(self):
+        return f"${self.name}"
 
 
 class ZippedInjected(Injected[Tuple[A, B]]):
@@ -1198,6 +1316,9 @@ class ZippedInjected(Injected[Tuple[A, B]]):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.a.dynamic_dependencies() | self.b.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"({self.a.__repr_expr__()}, {self.b.__repr_expr__()})"
 
 
 class MZippedInjected(Injected):
@@ -1235,6 +1356,10 @@ class MZippedInjected(Injected):
 
         return res
 
+    def __repr_expr__(self):
+        return f"({', '.join([s.__repr_expr__() for s in self.srcs])})"
+
+
 class DictInjected(Injected):
     __match_args__ = ("srcs",)
 
@@ -1269,6 +1394,10 @@ class DictInjected(Injected):
             res |= s.dynamic_dependencies()
 
         return res
+
+    def __repr_expr__(self):
+        return f"{{{', '.join([f'{k}:{v.__repr_expr__()}' for k, v in self.srcs.items()])}}})"
+
 
 def _injected_factory(**targets: Injected):
     def _impl(f):
@@ -1347,6 +1476,9 @@ class PartialInjectedFunction(Injected):
 
     def dynamic_dependencies(self) -> Set[str]:
         return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"{self.src.__repr_expr__()}"
 
 
 def add_viz_metadata(metadata: Dict[str, Any]):

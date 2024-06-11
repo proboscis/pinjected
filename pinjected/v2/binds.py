@@ -5,13 +5,13 @@ from abc import ABC
 from dataclasses import dataclass, field, replace
 from typing import Generic, Dict, Any, Callable, Awaitable, TypeVar
 
+from returns.maybe import Maybe, Nothing, Some
+
 from pinjected import Injected
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.ast import Expr
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.v2.keys import IBindKey, StrBindKey
 from pinjected.v2.provide_context import ProvideContext
-from returns.maybe import Maybe, Nothing, Some
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -153,7 +153,6 @@ class StrBind(IBind[T]):
 
 @dataclass
 class BindInjected(IBind[T]):
-    from pinjected import Injected
     src: Injected
     _metadata: Maybe[BindMetadata] = field(default=Nothing)
 

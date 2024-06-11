@@ -12,6 +12,7 @@ from loguru import logger
 from returns.result import safe, Result
 
 from pinjected import instances, Injected, Design, providers, Designed
+from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design import DESIGN_OVERRIDES_STORE
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import MetaContext
@@ -20,6 +21,7 @@ from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_pat
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.notification import notify
 from pinjected.run_config_utils import load_variable_from_script
+from pinjected.v2.keys import StrBindKey
 
 
 def run_injected(
@@ -97,12 +99,17 @@ def run_anything(
         """
 
         meta_design = instances(overrides=instances()) + meta_cxt.accumulated
-        meta_overrides = meta_design.provide("overrides") + meta_overrides
+        meta_resolver = meta_design.to_resolver().to_blocking()
+        meta_overrides = meta_resolver.provide("overrides") + meta_overrides
 
         # add overrides from with block
         meta_overrides += DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
 
-
+        # obtain internal hooks from the meta_design
+        if StrBindKey('provision_callback') in meta_design:
+            provision_callback = meta_resolver.provide('provision_callback')
+        else:
+            provision_callback = None
 
     design += (meta_overrides + overrides)
     logger.info(f"running target:{var} with {design_path} + {overrides}")
@@ -114,57 +121,40 @@ def run_anything(
     design = load_user_default_design() + design + load_user_overrides_design()
 
     res = None
+
+    def run_target(d, tgt):
+        # here, I want to specify what to use for the provision callback.
+        async def task():
+            async with TaskGroup() as tg:
+                dd = d + instances(
+                    __task_group__=tg
+                )
+                resolver = dd.to_resolver(
+                    callback=provision_callback
+                )
+                _res = await resolver.provide(tgt)
+
+                if isinstance(_res, Awaitable):
+                    # logger.info(f"awaiting awaitable")
+                    _res = await _res
+                if not return_result:
+                    logger.info(f"run_injected result:\n{_res}")
+            await resolver.destruct()
+            return _res
+
+        return asyncio.run(task())
+
     try:
         if cmd == 'call':
             args = call_args or []
             kwargs = call_kwargs or {}
             var = Injected.ensure_injected(var).proxy
             logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
-
-            async def task():
-                resolver = design.to_resolver()
-                _res = await resolver.provide(var(*args, **kwargs))
-
-                if isinstance(_res, Awaitable):
-                    #logger.info(f"awaiting awaitable")
-                    _res = await _res
-                if not return_result:
-                    logger.info(f"run_injected call result:\n{_res}")
-                await resolver.destruct()
-                return _res
-
-            res = asyncio.run(task())
+            res = run_target(design, var(*args, **kwargs))
         elif cmd == 'get':
-            async def task():
-                resolver = design.to_resolver()
-                _res = await resolver.provide(var)
-                if isinstance(_res, Coroutine) or isinstance(_res, Awaitable):
-                    _res = await _res
-                await resolver.destruct()
-                return _res
-
-            res = asyncio.run(task())
-            if not return_result:
-                logger.info(f"run_injected get result:\n{pformat(res)}")
+            res = run_target(design, var)
         elif cmd == 'fire':
             raise RuntimeError('fire is deprecated. use get.')
-            return_result = True
-            resolver = design.to_resolver()
-            res = design.provide(var)
-            if isinstance(res, Coroutine):
-                res = asyncio.run(res)
-            logger.info(f"run_injected fire result:\n{res}")
-            if inspect.iscoroutinefunction(res) or (hasattr(res, '__is_async__') and res.__is_async__):
-                logger.info(f'{res} is a coroutine function, wrapping it with asyncio.run')
-                src = res
-
-                # @wraps(res)
-                def synced(*args, **kwargs):
-                    return asyncio.run(src(*args, **kwargs))
-
-                res = synced
-            else:
-                logger.info(f"{res} is not a coroutine function.")
         elif cmd == 'visualize':
             from loguru import logger
             logger.info(f"visualizing {var_path} with design {design_path}")
@@ -186,7 +176,9 @@ def run_anything(
         # console.print_exception(show_locals=False)
         raise e
     notify(f"Run result:\n{str(res)[:100]}")
+    logger.info(f"run_injected result:\n{res}")
     if return_result:
+        logger.info(f"delegating the result to fire..")
         return res
 
 
