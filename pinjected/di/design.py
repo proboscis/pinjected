@@ -60,9 +60,9 @@ class MergedDesign(Design):
         return any(item in src for src in self.srcs)
 
     def __getitem__(self, item: IBindKey | str):
-        for src in self.srcs:
+        for src in reversed(self.srcs):  # the last one takes precedence
             if item in src:
-                res= src[item]
+                res = src[item]
                 assert isinstance(res, IBind), f"item must be IBind, but got {type(res)}"
                 return res
         raise KeyError(f"{item} not found in any of the sources")
@@ -98,6 +98,47 @@ class AddValidation(Design):
     @property
     def children(self):
         return [self.src]
+
+
+"""
+All designs are merged with '+'. 
+so, those things added doesnt require any design information...
+So basically the design tree becomes a tree from MergedDesign,
+where the leaves are the actual designs.
+wait, in that case, for the priorities to work, the merged design needs to be fixed.
+
+"""
+
+
+@dataclass
+class MetaDataDesign(Design):
+    def __contains__(self, item: IBindKey):
+        return False
+
+    def __getitem__(self, item: IBindKey | str) -> IBind:
+        raise KeyError(f"no such key {item}")
+
+    @property
+    def bindings(self) -> Dict[IBindKey, IBind]:
+        return dict()
+
+    @property
+    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
+        return dict()
+
+    @property
+    def children(self):
+        return []
+
+
+@dataclass
+class AddSummary(MetaDataDesign):
+    summary: str
+
+
+@dataclass
+class AddTags(MetaDataDesign):
+    tags: List[str]
 
 
 @dataclass
