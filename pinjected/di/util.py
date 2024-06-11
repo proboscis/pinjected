@@ -4,7 +4,7 @@ import textwrap
 from pathlib import Path
 from pprint import pformat
 from types import FrameType
-from typing import TypeVar, Dict
+from typing import TypeVar, Dict, Callable, Any
 
 import cloudpickle
 from cytoolz import memoize
@@ -12,14 +12,14 @@ from makefun import create_function
 from returns.maybe import Some
 from returns.result import Failure, Success
 
-from pinjected.di.design import DesignImpl
+from pinjected.di.design import DesignImpl, ValSuccess, ValFailure, AddValidation
 from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import BindInjected
-from pinjected.v2.keys import StrBindKey, DestructorKey
+from pinjected.v2.keys import StrBindKey, DestructorKey, IBindKey
 
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
@@ -258,7 +258,6 @@ def instances(**kwargs):
         assert not isinstance(v,
                               Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
 
-
     d = DesignImpl().bind_instance(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
@@ -417,6 +416,30 @@ def classes(**kwargs):
     """
     d = DesignImpl().bind_provider(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
+
+
+ValidationFunc = Callable[[IBindKey, Any], Any]
+
+
+def validations(**kwargs: ValidationFunc):
+    def get_validator(f):
+        def impl(key: IBindKey, value):
+            try:
+                f(key, value)
+                return ValSuccess()
+            except Exception as e:
+                return ValFailure(e)
+
+        return impl
+
+    validators = dict()
+    for k, f in kwargs.items():
+        key = StrBindKey(k)
+        assert callable(f)
+        validators[key] = get_validator(f)
+    return AddValidation(EmptyDesign, _validations=validators)
+
+
 
 
 def injecteds(**kwargs):
