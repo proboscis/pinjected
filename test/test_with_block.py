@@ -1,9 +1,11 @@
+import asyncio
 import inspect
 
 from pinjected import instances, Injected, injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverrideContext
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
+from pinjected.v2.resolver import AsyncResolver
 
 
 def test_ovr_context():
@@ -38,10 +40,15 @@ def test_with_design():
         with instances(bind='level2'):
             y = injected('world')
     assert len(DESIGN_OVERRIDES_STORE.bindings) == 2
-    assert DESIGN_OVERRIDES_STORE.bindings[ModuleVarPath('test.test_with_block.y')].provide('bind') == 'level2'
-    assert DESIGN_OVERRIDES_STORE.bindings[ModuleVarPath('test.test_with_block.x')].provide('bind') == 'level1'
-    assert DESIGN_OVERRIDES_STORE.bindings[ModuleVarPath('test.test_with_block.y')].provide('group') == 'l1'
-    assert DESIGN_OVERRIDES_STORE.bindings[ModuleVarPath('test.test_with_block.x')].provide('group') == 'l1'
+
+    def resolve(path, key):
+        d = DESIGN_OVERRIDES_STORE.bindings[path]
+        return asyncio.run(AsyncResolver(d).provide(key))
+
+    assert resolve(ModuleVarPath('test.test_with_block.y'), 'bind') == 'level2'
+    assert resolve(ModuleVarPath('test.test_with_block.x'), 'bind') == 'level1'
+    assert resolve(ModuleVarPath('test.test_with_block.y'), 'group') == 'l1'
+    assert resolve(ModuleVarPath('test.test_with_block.x'), 'group') == 'l1'
 
 
 def test_run_injected():

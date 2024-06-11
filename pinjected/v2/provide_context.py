@@ -9,6 +9,9 @@ class ProvideContext:
     resolver:'AsyncResolver'
     key: Optional[IBindKey]
     parent: Optional['ProvideContext']
+    def __post_init__(self):
+        if self.key is not None:
+            assert isinstance(self.key, IBindKey), f"key must be an instance of IBindKey, not {type(self.key)}"
 
     @property
     def trace(self):

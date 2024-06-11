@@ -1,6 +1,7 @@
 from pinjected import Design, Injected, EmptyDesign, instances, providers
 from pinjected.di.designed import Designed
 from pinjected.di.graph import MyObjectGraph
+from pinjected.v2.resolver import AsyncResolver
 
 
 def test_injected_proxy():
@@ -35,7 +36,7 @@ def test_design():
         x6=lambda x5: x5 + 1,
         x7=lambda x6: x6 + 1,
     )
-    g = d.to_resolver().to_blocking()
+    g = AsyncResolver(d).to_blocking()
     assert g['z'] == 2
     assert g['x7'] == 7
 
