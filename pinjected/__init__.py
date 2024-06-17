@@ -13,5 +13,6 @@ __all__ = [
     "instance",
     "injected",
     "reload",
-    "destructors"
+    "destructors",
+    "Design"
 ]

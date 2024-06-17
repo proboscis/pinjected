@@ -26,4 +26,4 @@ def update_if_registered(
             )
             return res
         case _:
-            return updated
+            return PartialInjectedFunction(updated)

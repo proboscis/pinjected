@@ -227,7 +227,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def partial(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+    def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
         Partially injects dependencies into the parameters of the target function.
 
@@ -424,7 +424,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         """
         argspec = inspect.getfullargspec(target_function)
         args_to_be_injected = [a for a in argspec.args if a not in whitelist and a != "self"]
-        return Injected.partial(target_function, **{item: Injected.by_name(item) for item in args_to_be_injected})
+        return Injected.inject_partially(target_function, **{item: Injected.by_name(item) for item in args_to_be_injected})
 
     @staticmethod
     def bind(_target_function_, **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFunction":
@@ -479,15 +479,32 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def __init__(self):
         self.fname = self._faster_get_fname()
 
-    def apply_partial(self, *args: "Injected", **kwargs: "Injected"):
-        assert all(isinstance(a, Injected) for a in args), f"{args} is not all Injected"
-        assert all(isinstance(a, Injected) for a in kwargs.values()), f"{kwargs} is not all Injected"
-        args = Injected.mzip(*args)
-        kwargs = Injected.dict(**kwargs)
-        f = self
-        res = Injected.mzip(f, args, kwargs).map(
-            lambda f_args_kwargs: functools.partial(f_args_kwargs[0], *f_args_kwargs[1], **f_args_kwargs[2]))
-        return PartialInjectedFunction(res)
+    @staticmethod
+    def partial(f: 'Injected[Callable]', *args: "Injected", **kwargs: "Injected"):
+        """
+        applies partial application to the given function.
+        """
+        # ah this loses the info about coroutine..
+        def make_partially_applied(t):
+            f, args, kwargs = t
+            func = functools.partial(f, *args, **kwargs)
+            func.__name__ = getattr(f,"__name__","<unknown>")
+            return func
+
+        injected_args = Injected.tuple(*args)
+        injected_kwargs = Injected.dict(**kwargs)
+
+        applied_func = Injected.mzip(f,injected_args,injected_kwargs).map(make_partially_applied)
+        # how can I keep __is_async_function__ ?
+        pf = PartialInjectedFunction(
+            applied_func
+        )
+        if hasattr(f, "__is_async_function__"):
+            pf.__is_async_function__ = f.__is_async_function__ # this maybe not used
+            applied_func.__is_async_function__ = f.__is_async_function__ # this is important
+        return pf
+
+
 
     @abc.abstractmethod
     def dependencies(self) -> Set[str]:
@@ -562,19 +579,29 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return InjectedByName(name, )
 
     def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
-        other = Injected.ensure_injected(other)
-        assert isinstance(self, Injected)
-        assert isinstance(other, Injected)
         return Injected.mzip(self, other)
 
     @staticmethod
     def mzip(*srcs: "Injected"):
-        srcs = [Injected.ensure_injected(s) for s in srcs]
+        srcs = [Injected.wrap_injected_if_not(s) for s in srcs]
         return MZippedInjected(*srcs)
 
     @staticmethod
     def tuple(*srcs: "Injected"):
+
+        srcs = [Injected.wrap_injected_if_not(s) for s in srcs]
         return Injected.mzip(*srcs).map(lambda t: tuple(t))
+
+    @staticmethod
+    def wrap_injected_if_not(tgt:Union["Injected",DelegatedVar,Any]):
+        match tgt:
+            case Injected():
+                return tgt
+            case DelegatedVar():
+                return tgt.eval()
+            case _:
+                return Injected.pure(tgt)
+
 
     @staticmethod
     def list(*srcs: Union["Injected", "DelegatedVar"]):
@@ -618,13 +645,16 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             lambda t: lambda *args, **kwargs: t[1](t[0](*args, **kwargs))
         )
 
+
+
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
         # raise RuntimeError("disabled")
         # keys = list(kwargs.keys())
-
         # return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
-        return DictInjected(**kwargs)
+
+        return Injected.pure(dict).proxy(**kwargs)
+        #return DictInjected(**kwargs)
 
     @property
     def proxy(self) -> DelegatedVar:
@@ -702,7 +732,14 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param targets:
         :return:
         """
-        return Injected.list(*targets).map(lambda items: items[-1])
+        if not targets:
+            return Injected.pure(None)
+        queue = list(targets[1:])
+        top = targets[0]
+        while queue:
+            next = queue.pop(0)
+            top = Injected.mzip(top,next)
+        return top.proxy[1]
 
     @staticmethod
     def conditional_preparation(
@@ -1004,7 +1041,6 @@ class InjectedWithDynamicDependencies(Injected[T]):
         return f"InjectedWithDynamicDependencies({self.src.__repr_expr__()}, {self._dynamic_dependencies})"
 
 
-
 class MappedInjected(Injected):
     __match_args__ = ("src", "f")
 
@@ -1130,7 +1166,7 @@ class InjectedFunction(Injected[T]):
         assert callable(target_function)
         self.target_function = target_function
         assert inspect.iscoroutinefunction(self.target_function), f"{self.target_function} is not a coroutine function"
-        self.kwargs_mapping:dict[str,Injected] = copy(kwargs_mapping)
+        self.kwargs_mapping: dict[str, Injected] = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
             if isinstance(v, DelegatedVar):
                 v = v.eval()
@@ -1213,7 +1249,7 @@ class InjectedFunction(Injected[T]):
         # orig_line = self.original_function.__original_code__
         # return f"<f {func_name}@{orig_file.name}>"
         kwargs_repr = []
-        for k,v in self.kwargs_mapping.items():
+        for k, v in self.kwargs_mapping.items():
             match v:
                 case str(v):
                     kwargs_repr.append(f"{k}=${v}")
@@ -1227,7 +1263,6 @@ class InjectedFunction(Injected[T]):
                     kwargs_repr.append(f"{k}={unknown}")
         kwargs_repr = ", ".join(kwargs_repr)
         return f"{self.original_function.__name__}<{kwargs_repr}>"
-
 
 
 class InjectedPure(Injected[T]):
@@ -1367,6 +1402,8 @@ class DictInjected(Injected):
         super().__init__()
         self.srcs = {k: Injected.ensure_injected(v) for k, v in srcs.items()}
         assert all(isinstance(s, Injected) for s in self.srcs.values()), self.srcs
+        from loguru import logger
+        logger.warning(f"use of DictInjected is deprecated. use Injected.dict instead.")
 
     def dependencies(self) -> Set[str]:
         res = set()
@@ -1401,7 +1438,7 @@ class DictInjected(Injected):
 
 def _injected_factory(**targets: Injected):
     def _impl(f):
-        return Injected.partial(f, **targets)
+        return Injected.inject_partially(f, **targets)
 
     return _impl
 

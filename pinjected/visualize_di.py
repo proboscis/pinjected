@@ -297,7 +297,8 @@ class DIGraph:
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
                                          replace_missing=True
                                          ) -> NxGraphUtil:
-        tmp_design = self.src.bind_provider(**{root_name: root})
+        from pinjected import providers
+        tmp_design = self.src + providers(**{root_name: root})
         return DIGraph(tmp_design) \
             .create_dependency_digraph(
             root_name,
@@ -505,7 +506,8 @@ g = d.to_graph()
 
 
 def create_dependency_graph(d: "Design", roots: List[str], output_file="dependencies.html"):
-    dig = DIGraph(d.bind_instance(
+    from pinjected import instances
+    dig = DIGraph(d + instances(
         job_type="net_visualization"
     ))
     nt = dig.create_dependency_network(roots)
