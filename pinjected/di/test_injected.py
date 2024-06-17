@@ -15,7 +15,7 @@ def test_partial():
         a=1,
         b=2
     ).bind_provider(
-        f=Injected.partial(_factory, b=Injected.by_name("b"), x=Injected.pure(5))
+        f=Injected.inject_partially(_factory, b=Injected.by_name("b"), x=Injected.pure(5))
     )
     assert d.provide("f")(3) == 10
 

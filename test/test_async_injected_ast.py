@@ -91,7 +91,7 @@ def test_injected_bind():
 
 
 def test_async_partial():
-    partial = Injected.partial(x_provider)
+    partial = Injected.inject_partially(x_provider)
     d = providers(
         x=partial
     )
@@ -115,7 +115,7 @@ def test_injected():
     async def instance_x():
         return 'x'
 
-    partial_x = Injected.partial(provide_x)()
+    partial_x = Injected.inject_partially(provide_x)()
     from loguru import logger
     logger.info(f"partial_x => :{partial_x}")
     logger.info(f"partial x provider:{partial_x.eval().get_provider()}")

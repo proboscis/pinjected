@@ -593,9 +593,10 @@ class DependencyResolver:
 
     def child(self, session_provider, overrides: 'Design' = None):
         if overrides is None:
-            from pinjected import Design
-            overrides = EmptyDesign
-        child_design = self.src + overrides.bind_provider(
+            from pinjected import Design,EmptyDesign
+            overrides = EmptyDesign()
+        from pinjected import providers
+        child_design = self.src + providers(
             session=session_provider
         )
         child_resolver = DependencyResolver(child_design)
