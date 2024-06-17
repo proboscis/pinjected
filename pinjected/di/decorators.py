@@ -56,7 +56,7 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
             tgts[k] = Injected.by_name(k[1:])
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
             tgts[k] = Injected.by_name(k)
-    new_f = Injected.partial(f, **tgts)
+    new_f = Injected.inject_partially(f, **tgts)
 
     from pinjected.di.metadata.bind_metadata import BindMetadata
     IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
@@ -112,7 +112,7 @@ def injected_instance(f) -> Injected:
 
     sig: inspect.Signature = inspect.signature(f)
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
-    called_partial = Injected.partial(f, **tgts)()
+    called_partial = Injected.inject_partially(f, **tgts)()
     from loguru import logger
     #logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
     instance = called_partial.eval()

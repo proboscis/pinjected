@@ -162,10 +162,14 @@ def await_awaitables(expr: Expr[T]) -> Expr:
                 return UnaryOp('await', expr)
             case Call(Object(object(__is_async_function__=True)), args, kwargs) as call:
                 return UnaryOp('await', call)
+            case Call(object(__is_async_function__=True), args, kwargs) as call:
+                return UnaryOp('await', call)
             case _:
                 return expr
 
     return walk_replace(expr, transformer)
+
+
 
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:

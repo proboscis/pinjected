@@ -23,6 +23,7 @@ from pinjected.notification import notify
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.resolver import AsyncResolver
+from pinjected.visualize_di import DIGraph
 
 
 def run_injected(
@@ -136,8 +137,6 @@ def run_anything(
                 if isinstance(_res, Awaitable):
                     # logger.info(f"awaiting awaitable")
                     _res = await _res
-                if not return_result:
-                    logger.info(f"run_injected result:\n{_res}")
             await resolver.destruct()
             return _res
 
@@ -158,13 +157,13 @@ def run_anything(
             from loguru import logger
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{var.dependencies()}")
-            design.to_vis_graph().show_injected_html(var)
+            DIGraph(design).show_injected_html(var)
         elif cmd == 'to_script':
             from loguru import logger
             d = design + providers(
                 __root__=var
             )
-            print(d.to_vis_graph().to_python_script(var_path, design_path=design_path))
+            print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
         import traceback
         notify(f"Run failed with error:\n{e}", sound='Frog')
@@ -174,8 +173,8 @@ def run_anything(
         # console = Console()
         # console.print_exception(show_locals=False)
         raise e
-    notify(f"Run result:\n{str(res)[:100]}")
     logger.info(f"run_injected result:\n{res}")
+    notify(f"Run result:\n{str(res)[:100]}")
     if return_result:
         logger.info(f"delegating the result to fire..")
         return res

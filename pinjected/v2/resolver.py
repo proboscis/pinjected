@@ -634,7 +634,7 @@ class BaseResolverCallback(IResolverCallback):
 
     def on_call_in_eval_end(self, event: CallInEvalEnd):
         expr_str = self.expr_repr(event.expr)
-        self.logger.success(f"call\t<- <magenta>{expr_str}</magenta>\t:= {self.clean_msg(str(event.result))}")
+        self.logger.success(f"call\t<- <magenta>{expr_str}</magenta>\t:= {self.clean_msg(str(event.result)[:100])}")
 
 
 @dataclass
