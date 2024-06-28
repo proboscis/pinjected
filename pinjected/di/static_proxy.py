@@ -17,8 +17,8 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
     def getattr(self, tgt: Expr[T], name: str):
         return self.pure(getattr(tgt, name))
 
-    def call(self, tgt: Expr[T], *args, **kwargs):
-        return self.pure(tgt(*args, **kwargs))
+    def call(self, ___pinjected_tgt___: Expr[T], *args, **kwargs):
+        return self.pure(___pinjected_tgt___(*args, **kwargs))
 
     def pure(self, tgt: Expr[T]) -> "DelegatedVar[T]":
         return DelegatedVar(tgt, self)
