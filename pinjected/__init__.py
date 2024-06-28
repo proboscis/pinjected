@@ -3,6 +3,7 @@ from pinjected.di.decorators import injected_function, injected_instance, inject
 from pinjected.di.util import EmptyDesign, instances, providers, classes, destructors
 from pinjected.di.design_interface import Design
 from pinjected.di.designed import Designed
+from pinjected.di.proxiable import DelegatedVar as IProxy
 
 __all__ = [
     "Injected",
@@ -14,5 +15,6 @@ __all__ = [
     "injected",
     "reload",
     "destructors",
-    "Design"
+    "Design",
+    "IProxy"
 ]
