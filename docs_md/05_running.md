@@ -1,38 +1,43 @@
-
-
-
 # CLI Support
+
 An Injected instance can be run from CLI with the following command.
+
+```bash
+python -m pinjected run [path of an Injected variable] [optional path of a Design variable] [Optional overrides for a design] --additional-bindings
 ```
-python -m pinjected run <path of an Injected variable> <optional path of a Design variable> <Optional overrides for a design> --additional-bindings
-```
+
 - Variable Path: `your.package.var.name`
 - Design Path: `your.package.design.name`
 - Optional Overrides: `your.package.override_design.name`
 
 ## Example CLI Calls
-```
+
+```bash
 python -m pinjected my.package.instance --name hello --yourconfig anystring
 ```
-This CLI will parse any additional keyword arguments into a call of `instances` internally to be appended to the design running this injected instance.
+
+This CLI will parse any additional keyword arguments into a call of `instances` internally to be appended to the design
+running this injected instance.
 Which is equivalent to running following script:
-```
+
+```python
 from my.package import instance
 design = instances(
     name='dummy',
     yourconfig='dummy'
-    ...
 ) + instances(
     name = 'hello',
     yourconfig = 'anystring'
 )
 
 design.provide(instance)
+```
 
 ### Using Injected variable in CLI argument
 We can use `{package.var.name}` to tell the cli that the additional bindings are to be imported from the specified path.
 
 Example:
+
 ```python
 # my.module2.py
 from pinjected import instance
@@ -41,60 +46,72 @@ def load_hostname():
     import socket
     return socket.gethostname()
 ```
+
 ```python
 # my.module.py
 from pinjected import injected
+
+
 @injected
 def print_hostname(hostname):
     print(hostname)
 ```
+
 ```bash
 python -m pinjected my.module.print_hostname --hostname my.module2.load_hostname
 ```
 
-This is useful for switching complicated injected instances for running the target. The complicated injected instances can be trained ML models, etc.
+This is useful for switching complicated injected instances for running the target. The complicated injected instances
+can be trained ML models, etc.
 
 Example2:
+
 ```python
 # some.llm.module.py
 from pinjected import injected
 
+
 @injected
-def llm_openai(openai_api_key,/,prompt):
+def llm_openai(openai_api_key, /, prompt):
     return "call open ai api with prompt..."
 
+
 @injected
-def llm_azure(azure_api_key,/,prompt):
+def llm_azure(azure_api_key, /, prompt):
     return "call azure api with prompt..."
 
-@injected
-def llm_llama(llama_model_on_gpu,/,prompt):
-    return llama_model_on_gpu(prompt,configs...)
 
 @injected
-def chat(llm,/,prompt):
+def llm_llama(llama_model_on_gpu, configs, /, prompt):
+    return llama_model_on_gpu(prompt, configs)
+
+
+@injected
+def chat(llm, /, prompt):
     return llm(prompt)
 ```
 
 ```bash
 python -m pinjected run some.llm.module.chat --llm="{some.llm.module.llm_openai}" "hello!"
 ```
+
 Now we can switch llm with llm_openai, llm_azure, llm_llama... by specifying a importable variable path.
 
-
-
-
 ## __meta_design__
+
 `pinjected run` reads __meta_design__ variables in every parent package of the target variable:
+
 ```
 - some_package
-  | __init__.py   <-- can contain __meta_design__
+  | __init__.py   [-- can contain __meta_design__
   | module1
-  | | __init__.py <-- can contain __meta_design__
-  | | util.py     <-- can contain __meta_design__
+  | | __init__.py [-- can contain __meta_design__
+  | | util.py     [-- can contain __meta_design__
 ```
-When running `python -m pinjected run some_package.module1.util.run`, all __meta_design__ in parent packages will be loaded and concatenated.
+
+When running "python -m pinjected run some_package.module1.util.run", all "__meta_design__" in parent packages will be loaded and concatenated. 
 Which in this case results in equivalent to running the following script:
+
 ```python
 meta_design = some_package.__meta_design__ + some_package.module1.__meta_design + some_package.module1.util.__meta_design__
 overrides = meta_design['overrides']
@@ -104,7 +121,10 @@ g[some_package.module1.util.run]
 ```
 
 ## .pinjected.py
-Additionaly, we can place .pinjected.py file in the current directly or the home directory. a global variable named 'default_design' and 'overrides' will be automatically imported, then prepended and appended to the design before running the target.
+
+Additionaly, we can place .pinjected.py file in the current directly or the home directory. a global variable named '
+default_design' and 'overrides' will be automatically imported, then prepended and appended to the design before running
+the target.
 
 This is convinient for specifying user specific injection variables such as api keys, or some user specific functions.
 
