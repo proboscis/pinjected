@@ -20,7 +20,6 @@ pip install pinjected
 - [Miscellaneous](docs_md/08_misc.md)
 - [Appendix](docs_md/09_appendix.md)
 - [Updates](docs_md/10_updates.md)
-- 
 ## [Introduction](docs_md/01_introduction.md)
 Pinjected makes it easy to compose multiple Python objects to create a final object. It automatically creates dependencies and composes them, providing a clean and modular approach to dependency management. To learn more about the motivation behind Pinjected and its key concepts, check out the Introduction.
 Design
