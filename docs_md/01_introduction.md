@@ -28,25 +28,28 @@ You may also need to create a saver and a loader to save and load the model.
 
 Typically these objects creations are controlled by a configuration file like yaml.
 A configuration file gets loaded at the top of code and passed to each object creation function.
-This make all the codes depend on the configuration file, requring to have 'cfg' as an argument.
+This make all the codes depend on the configuration file, requiring to have 'cfg' as an argument.
 As a result, all the codes heavily depend on the structure of a cfg, and becomes impossible to be used without a cfg object.
-This makes it hard to reuse the code, and makes it hard to change the structure of the code too. Also, simple testing becomes hard because you need to write a object creation code with its configuration file for each component you want to test.
+This makes it hard to reuse the code, and makes it hard to change the structure of the code too. 
+Also, simple testing becomes hard because you need to write a object creation code with its configuration file for each component you want to test.
+Moreover, we often see several hundred lines of [configuration parsing code combined with object creation code](https://github.com/CompVis/stable-diffusion/blob/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/main.py#L418). 
+This makes the code hard to read and guess which part is actually doing the work.
 
 # The Solution
-Pinjected solves this problem by providing a way to create a final object without passing a configuration object to each object creation function.
+Pinjected solves these problem by providing a way to create a final object without passing a configuration object to each object creation function.
 Instead, this library will automatically create all the dependencies and compose them to create the final object following the dependency graph.
 The only thing you need to do is to define a dependency graph and a way to create each object.
 This library will take care of the rest.
 
 This library also provides a way to modify and combine dependency graphs, so that hyperparameter management becomes easy and portable.
-By introducing Single Responsibility Principle, and Dependency Inversion Principle, your code becomes more modular and reusable.
-To this end, this library introduces a concept of Design, which is a collection of objects and their dependencies,
-and also Injected object, which models an object created by a Design.
+By introducing Single Responsibility Principle and Dependency Inversion Principle, the code becomes more modular and reusable.
+To this end, this library introduces a concept of Design and Injected object. Design is a collection of object providers with dependencies.
+Injected object is an abstraction of object with dependencies, which can be constructed by a Design object.
 
 # Use Case
 So, how is that useful to machine learning experiments? Here's an example.
 
-Let's start from a typical machine learning code.
+Let's start from a typical machine learning code. (You don't have to understand the code below, please just look at the structure.)
 
 ```python
 from dataclasses import dataclass
@@ -77,7 +80,7 @@ class Loader(ABC):
 class Trainer: # try to keep a class as small as possible to keep composability. 
     model:Module
     optimizer:Optimizer
-    loss_calculator:Callable
+    loss:Callable
     dataset:Dataset
     saver:Saver
     model_identifier:str
@@ -89,7 +92,7 @@ class Trainer: # try to keep a class as small as possible to keep composability.
                 loss.backward()
                 self.optimizer.step()
                 self.saver.save(self.model,self.model_identifier)
-
+                
 @dataclass
 class Evaluator:
     dataset:Dataset
@@ -98,51 +101,147 @@ class Evaluator:
     def evaluate(self):
         model = self.loader.load(self.model_identifier)
         # do evaluation using loaded model and dataset
-        
-learning_rate = 0.001
-batch_size = 128
-image_w = 256
-optimizer = Adam(lr=learning_rate)
-dataset = MyDataset(batch_size,image_w)
-model = Sequential()
-loss = MyLoss()
-saver = Saver(LocalIo())
-loader = Loader(LocalIo())
-trainer = Trainer(model,optimizer,loss,dataset,saver,"model1")
-evaluator = Evaluator(dataset,"model1",loader)
-trainer.train()
-evaluator.evaluate()
-```
-Although the code is modular, it is hard to construct all the objects and compose them to create a final object.
-Moreover, changing parameters and components requires to change the code itself, which makes it hard to reuse the code.
 
-Instead, we offer a different approach that automatically composes objects from a design object.
+```
+And configuration parsers:
+```python
+       
+def get_optimizer(cfg:dict,model):
+    if cfg['optimizer'] == 'Adam':
+        return Adam(lr=cfg['learning_rate'],model.get_parameters())
+    elif cfg['optimizer'] == 'SGD':
+        return SGD(lr=cfg['learning_rate'],model.get_parameters())
+    else:
+        raise ValueError("Unknown optimizer")
+
+def get_dataset(cfg:dict):
+    if cfg['dataset'] == 'MNIST':
+        return MNISTDataset(cfg['batch_size'],cfg['image_w'])
+    elif cfg['dataset'] == 'CIFAR10':
+        return CIFAR10Dataset(cfg['batch_size'],cfg['image_w'])
+    else:
+        raise ValueError("Unknown dataset")
+    
+def get_loss(cfg):
+    if cfg['loss'] == 'MSE':
+        return MSELoss(lr=cfg['learning_rate'])
+    elif cfg['loss'] == 'CrossEntropy':
+        return CrossEntropyLoss(lr=cfg['learning_rate'])
+    else:
+        raise ValueError("Unknown loss")
+    
+def get_saver(cfg):
+    if cfg['saver'] == 'Local':
+        return Saver(LocalIo())
+    elif cfg['saver'] == 'MongoDB':
+        return Saver(MongoDBIo())
+    else:
+        raise ValueError("Unknown saver")
+
+def get_loader(cfg):
+    if cfg['loader'] == 'Local':
+        return Loader(LocalIo())
+    elif cfg['loader'] == 'MongoDB':
+        return Loader(MongoDBIo())
+    else:
+        raise ValueError("Unknown loader")
+def get_model(cfg):
+    if cfg['model'] == 'SimpleCNN':
+        return SimpleCNN(cfg)
+    elif cfg['model'] == 'ResNet':
+        return ResNet(cfg)
+    else:
+        raise ValueError("Unknown model")
+    
+def get_trainer(cfg):
+    model = get_model(cfg),
+    return Trainer(
+        model=model,
+        optimizer = get_optimizer(cfg,model),
+        loss = get_loss(cfg),
+        dataset = get_dataset(cfg),
+        saver = get_saver(cfg),
+        model_identifier = cfg['model_identifier']
+    )
+
+def get_evaluator(cfg):
+    return Evaluator(
+        dataset = get_dataset(cfg),
+        model_identifier = cfg['model_identifier'],
+        loader = get_loader(cfg)
+    )
+
+def build_parser():
+    """
+    very long argparse code which needs to be modified everytime configuration structure changes
+    """
+
+if __name__ == "__main__":
+    # can be argparse or config.json
+    # cfg:dict = json.loads(Path("config.json").read_text())
+    # cfg = build_parser().parse_args()
+    cfg = dict(
+        optimizer = 'Adam',
+        learning_rate = 0.001,
+        dataset = 'MNIST',
+        batch_size = 128,
+        image_w = 256,
+        loss = 'MSE',
+        saver = 'Local',
+        loader = 'Local',
+        model = 'SimpleCNN',
+        model_identifier = 'model1'
+    )
+    trainer = get_trainer(cfg)
+    trainer.train()
+```
+This code first loads a configuration via file or argparse.
+(Here the cfg is constructed manually for simplicity.)
+
+Then it creates all the objects and composes them to create a final object using a cfg object.
+The problem we see are as follows:
+
+1. Config Dependency:
+   - All the objects depend on the cfg object, which makes it hard to reuse the code. 
+   - The cfg object will get referenced deep inside the code, such as a pytorch module or logging module.
+   - The cfg object often gets referenced not only in the constructor, but also in the method to change the behavior of the object.
+2. Complicated Parser: 
+   - The parser for config object gets quite long and complicated as you add more functionalities 
+   - We see a lot of nested if-else statements in the code.
+   - It is impossible to track the actual code block that is going to run due to nested if-else statements.
+3. Manual Dependency Construction: 
+   - The object dependency must be constructed manually and care must be taken to consider which object needs to be created first and passed.
+   - When the dependency of an object changes, the object creation code must be modified. 
+     - (suppose the new loss function suddenly wants to use the hyperparameter of the model, you have to pass the model to get_model() function!)
+     
+
+Instead, we can use Pinjected to solve these problems as follows:
 ```python
 from dataclasses import dataclass
 from pinjected import instances,providers,injected,instance,classes
 
 @instance
-def optimizer(learning_rate):
-    return Adam(lr=learning_rate)
+def optimizer__adam(learning_rate,model):
+    return Adam(lr=learning_rate,model.get_parameters())
 @instance
-def dataset(batch_size,image_w):
+def dataset__mydataset(batch_size,image_w):
     return MyDataset(batch_size,image_w)
 @instance
-def model():
+def model__sequential():
     return Sequential()
 @instance
-def loss_calculator():
+def loss__myloss():
     return MyLoss()
 
-conf = instances(
+conf:Design = instances(
     learning_rate = 0.001,
     batch_size = 128,
     image_w = 256,
 ) + providers(
-    optimizer = optimizer,
-    dataset = dataset,
-    model = model,
-    loss_calculator = loss_calculator
+    optimizer = optimizer__adam,
+    dataset = dataset__mydataset,
+    model = model__sequential,
+    loss = loss__myloss
 ) + classes(
     io_interface = LocalIo# use local file system by default
 )
@@ -155,7 +254,31 @@ g[Trainer].train()
 # lets evaluate
 g[Evaluator].evaluate()
 ```
-Note that no classes defined above depend on specific configuration object. This means they are portable and can be reused.
+Let's see how the code above solves the problems we mentioned earlier.
+1. Config Dependency: 
+   - All the objects are created without depending on the cfg object.
+   - Design object serves as a configuration for constructing the final object.
+   - Each object is only depending on what the object needs, not the whole configuration object.
+   - Each object can be tested with minimum configuration.
+     - For example, dataset object can be tested with only batch_size and image_w.
+2. Complicated Parser:
+   - The parser is replaced with a simple function definition.
+   - The function definition is simple and easy to understand.
+   - The actual code block that is going to run is clear. 
+   - No nested if-else statements.
+   - No string parsing to actual implementation. Just pass the implementation object.
+3. Manual Dependency Construction -> Automatic Dependency Construction:
+   - The object dependency is constructed automatically by Pinjected.
+   - The object dependency is resolved automatically by Pinjected.
+   - When the dependency of an object changes, the object creation code does not need to be modified.
+     - (suppose the myloss function suddenly wants to use the hyperparameter of the model, you only need to change the signature of loss__myloss to accept model/hyperparameter as an argument.)
+```python
+#Example of changing the loss function to use model hyperparameter
+@instance
+def loss_myloss2(model):
+    return MyLoss(model.n_embeddings)
+```
+
 This doesnt look useful if you have only one set of configuration,
 but when you start playing with many configurations,
 this approach really helps like this.
@@ -225,3 +348,5 @@ g["trainer"].train()# note the argument to 'provide' method can be a type object
 as you can see, now you can do training with new AtariTrainer without modifying the existing code at all.
 Furthermore, the old configurations are still completely valid to be used.
 If you dont like the fact some code pieces are repeated from original Trainer, you can introduce an abstraction for that using generator or reactive x or callback.
+
+[Next: Design](02_design.md)

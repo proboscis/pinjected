@@ -19,10 +19,8 @@ class DepObject:
 @dataclass
 class App:
     dep: DepObject
-
-
-def run(self):
-    print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
+    def run(self):
+        print(self.dep.a + self.dep.b + self.dep.c + self.dep.d)
 
 
 d = instances(
@@ -31,7 +29,9 @@ d = instances(
 ) + providers(
     c=lambda a, b: a + b,
     d=lambda a, b, c: a + b + c
-) 
+) + classes(
+    dep=DepObject
+)
 ```
 In this example, we create a Design by combining:
 
@@ -47,33 +47,34 @@ g = d.to_graph()
 app = g['app']
 ```
 The graph resolves all the dependencies recursively when ['app'] is required.
+Note that the graph instantiates objects lazily, meaning that objects are created only when they are needed.
 
 # instances()
 
-instances() is a function to create a Design with instances. 
-The value is bound to the key, and its value is used as a provider.
+instances() is a function to create a Design with constant values. 
+The value is bound to the key, and its value is directly used when the key is required.
 
 # providers()
 providers() is a function to create a Design with providers.
-A providers are meant to be invoked lazily when the value is needed.
+A provider functions bound with this function are meant to be invoked lazily when the value is needed.
 
-A provider is one of the following types: [a callable, an Injected, an IProxy]. 
-## a callable:
+A provider is one of the following types: a `callable`, an `Injected` and an `IProxy`. 
+## `callable`:
 A callable can be used as a provider. 
 When a callable is set as a provider, its argument names are used as the key for resolving dependencies.
 ```python
 from pinjected import providers, instances
 d = providers(
     a=lambda: 1,
-    b=lambda a: a + 1
+    b=lambda a: a + 1 # b is dependent on a
 )
 g = d.to_graph()
 assert g['a'] == 1
-assert g['b'] == 2
+assert g['b'] == 2 
 ```
 
-## an Injected
-An Injected can be used as a provider. 
+## `Injected`
+An Injected can be used as a provider. Injected is a python object that represents a variable that requires injection.
 When an Injected is set as a provider, it is resolved by the DI.
 ```python
 from pinjected import providers, instances, Injected
@@ -85,9 +86,9 @@ d = instances(
 g = d.to_graph()
 assert g['b'] == 2
 ```
-Please read more about Injected in the [Injected section](docs_md/04_injected).
+Please read more about Injected in the [Injected section](docs_md/04_injected.md).
 
-## an IProxy
+## `IProxy`
 An IProxy can be used as a provider. 
 When an IProxy is set as a provider, it is resolved by the DI.
 ```python
@@ -109,15 +110,16 @@ g = d.to_graph()
 assert g['b'] == 2
 
 ```
-When @injected or @instance is used, the decorated function becomes an instance of IProxy.
+When `@injected` or `@instance` is used, the decorated function becomes an instance of IProxy.
 IProxy can be composed with other IProxy or Injected to create a new IProxy easily.
 
 Please refer to the [IProxy section](docs_md/04_injected_proxy) for more information.
 
-# classes()
+# `classes`
 classes() is a function to create a Design with classes. However, currently the implementation is completely the same as providers().
 A class is a callable and can be used as a provider. 
 
+[Next: Injected](03_decorators.md)
 
 
 
