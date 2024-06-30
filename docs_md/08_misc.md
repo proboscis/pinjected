@@ -55,17 +55,16 @@ CustomIdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
 
 @injected
 def add_custom_run_configurations(
-        interpreter_path,
+        interpreter_path:str,
         default_working_dir,
-        default_design_paths: List[str],
         /,
         cxt: ModuleVarSpec) -> List[IdeaRunConfiguration]:
     return [IdeaRunConfiguration(
         name="HelloWorld",
         script_path="~/test_repo/test_script.py",
-        interpreter_path="/usr/bin/python3",
+        interpreter_path=interpreter_path,# or your specific python's path, "/usr/bin/python3",
         arguments=["--hello", "world"],
-        working_dir="~/test_repo",
+        working_dir="~/test_repo", # you can use default_working_dir
     )]
 
 __meta_design__ = instances(
@@ -74,7 +73,7 @@ __meta_design__ = instances(
 
 ```
 
-You can use interpreter_path, default_working_dir and default_design_paths as dependencies, which are automatically injected by the plugin.
+You can use interpreter_path and default_working_dir  as dependencies, which are automatically injected by the plugin.
 Other dependencies are resolved using __meta_design__ accumulated from all parent packages. You can use this to inject anything you need during the run configuration creation.
 
 Here is an example of submitting an injected variable to a ray cluster as a job:

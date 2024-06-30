@@ -1,12 +1,7 @@
-import inspect
+import asyncio
 import os
 from pathlib import Path
-
-from pprint import pformat
-
-import asyncio
-
-from typing import Coroutine, Awaitable, Optional
+from typing import Awaitable, Optional
 
 from loguru import logger
 from returns.result import safe, Result
@@ -17,8 +12,8 @@ from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import MetaContext
 from pinjected.helpers import get_design_path_from_var_path
-from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.logging_helper import disable_internal_logging
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.notification import notify
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.v2.keys import StrBindKey
