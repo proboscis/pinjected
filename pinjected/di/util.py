@@ -216,7 +216,7 @@ def instances(**kwargs):
 
     Parameters:
     -----------
-    \*\*kwargs : dict
+        kwargs : dict
         Arbitrary keyword arguments representing the instances to be bound.
         Each key represents the name of the dependency, and the value is the corresponding concrete instance or value.
         The function asserts that none of the values are instances of ``DelegatedVar`` or ``Injected``,
