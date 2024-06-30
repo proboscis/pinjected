@@ -6,12 +6,12 @@ from pprint import pformat
 
 import asyncio
 
-from typing import Coroutine, Awaitable
+from typing import Coroutine, Awaitable, Optional
 
 from loguru import logger
 from returns.result import safe, Result
 
-from pinjected import instances, Injected, Design, providers, Designed
+from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.proxiable import DelegatedVar
@@ -65,7 +65,7 @@ def run_injected(
 def run_anything(
         cmd: str,
         var_path,
-        design_path,
+        design_path: Optional[str],
         overrides=instances(),
         return_result=False,
         call_args=None,
@@ -83,17 +83,15 @@ def run_anything(
         meta_overrides = meta.get("overrides", instances())
 
         meta_cxt: MetaContext = MetaContext.gather_from_path(ModuleVarPath(var_path).module_file_path)
-        if design_path is None:
-            design_path = AsyncResolver(meta_cxt.accumulated).to_blocking().provide("default_design_paths")[0]
+        design = resolve_design(design_path, meta_cxt)
+
         # here, actually the loaded variable maybe an instance of Designed.
         # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
         # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
-        design: Design = load_variable_by_module_path(design_path)
         match (var := load_variable_by_module_path(var_path)):
             case Injected() | DelegatedVar():
                 var = Injected.ensure_injected(var)
             case Designed():
-                design: Design = load_variable_by_module_path(design_path)
                 design += var.design
                 var = var.internal_injected
         """
@@ -178,6 +176,18 @@ def run_anything(
     if return_result:
         logger.info(f"delegating the result to fire..")
         return res
+
+
+def resolve_design(design_path, meta_cxt):
+    if design_path is None:
+        if StrBindKey("default_design_paths") in meta_cxt.accumulated:
+            design_path = AsyncResolver(meta_cxt.accumulated).to_blocking().provide("default_design_paths")[0]
+            design: Design = load_variable_by_module_path(design_path)
+        else:
+            design: Design = EmptyDesign
+    else:
+        design: Design = load_variable_by_module_path(design_path)
+    return design
 
 
 def find_dot_pinjected():
