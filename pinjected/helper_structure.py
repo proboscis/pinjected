@@ -7,6 +7,7 @@ from pinjected import Design, Injected, instances, EmptyDesign
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path
+from pinjected.v2.keys import StrBindKey
 
 
 @dataclass
@@ -82,7 +83,10 @@ class MetaContext:
     @property
     def final_design(self):
         acc = self.accumulated
-        design = load_variable_by_module_path(acc.provide('default_design_paths')[0])
+        if StrBindKey("default_design_paths") in acc:
+            design = load_variable_by_module_path(acc.provide('default_design_paths')[0])
+        else:
+            design = EmptyDesign
         return design + acc.provide('overrides')
 
     @property
