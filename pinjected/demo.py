@@ -1,6 +1,8 @@
 from pathlib import Path
+from telnetlib import IP
+from typing import Callable
 
-from pinjected import Design, instances, injected_function, Injected
+from pinjected import injected,Design,instances,IProxy
 import openai
 
 __meta_design__: Design = instances(
@@ -15,7 +17,7 @@ default_design: Design = instances(
 )
 
 
-@injected_function
+@injected
 def LLM(load_openai_api_key: str, model, max_tokens, /, prompt) -> str:
     # openai_api_key = Path("~/openai_api_key.txt").expanduser().read_text().strip()
     return openai.Completion.create(
@@ -23,10 +25,10 @@ def LLM(load_openai_api_key: str, model, max_tokens, /, prompt) -> str:
     )["choices"][0]["text"]
 
 
-@injected_function
-def Gandalf(LLM: "str -> str", /, user_message: str) -> str:
+@injected
+def Gandalf(LLM: Callable[[str], str], /, user_message: str) -> str:
     return LLM(f"Respond to the user's message as if you were a Gandalf: {user_message}")
 
 
-test_greeting: Injected = Gandalf("How are you?")
+test_greeting: IProxy = Gandalf("How are you?")
 
