@@ -1,8 +1,6 @@
-from pinjected import Design, Injected, EmptyDesign, instances, providers
-from pinjected.di.designed import Designed
-from pinjected.di.graph import MyObjectGraph
+from pinjected import Injected, EmptyDesign, instances, providers
 from pinjected.v2.resolver import AsyncResolver
-
+from logugu import logger
 
 def test_injected_proxy():
     hello = Injected.pure("hello").proxy
@@ -13,14 +11,12 @@ def test_injected_proxy():
         y=hello,
         z=func_proxy(Injected.pure(1))
     )
-    from loguru import logger
     logger.info(design.bindings)
     assert design.provide("y") == "hello"
     assert design.provide("z") == 2
 
 
 def test_design():
-    from loguru import logger
 
     d = instances(
         x=0,
