@@ -133,7 +133,7 @@ class AsyncResolver:
         from pinjected import Design
         if self.callbacks is None:
             self.callbacks = [
-                BaseResolverCallback()
+                #BaseResolverCallback()
             ]
         assert self.callbacks is not None
         self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design

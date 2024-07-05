@@ -304,7 +304,8 @@ class DesignImpl(Design):
         from pinjected.v2.resolver import AsyncResolver, BaseResolverCallback
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
-            callback = BaseResolverCallback()
+            #callback = BaseResolverCallback()
+            callback = lambda *args, **kwargs: None
         assert isinstance(callback, IResolverCallback)
         return AsyncResolver(
             DesignImpl(_bindings=bindings),
