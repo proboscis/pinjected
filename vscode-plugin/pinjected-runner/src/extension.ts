@@ -4,7 +4,33 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import { promisify } from 'util';
+
 const runConfigCache: { [filename: string]: { [varname: string]: RunConfig[] } } = {};
+const execPromise = promisify(cp.exec);
+
+async function execAsync(command: string): Promise<string> {
+	console.log("Executing command:", command);
+    try {
+        const { stdout, stderr } = await execPromise(command, { encoding: 'utf8'});
+        if (stderr) {
+            console.warn('Command produced stderr output:', stderr);
+        }
+        return stdout;
+    } catch (error) {
+        if (error instanceof Error) {
+            const execError = error as cp.ExecException;
+            console.error('Command execution failed:', execError.message);
+            if (execError.stderr) {
+                console.error('stderr:', execError.stderr.toString());
+            }
+            throw execError;
+        }
+        throw error;
+    }
+}
+
+
 
 class RunButtonDecoration extends vscode.Disposable {
 	private readonly decorationType: vscode.TextEditorDecorationType;
@@ -42,7 +68,7 @@ class RunButtonDecoration extends vscode.Disposable {
 			console.log('Updating decorations for:', editor.document.uri.fsPath);
 			for (let i = 0; i < editor.document.lineCount; i++) {
 				const line = editor.document.lineAt(i);
-				if (line.text.trim().includes(':IProxy')) {
+				if (isPinjectedVariable(line.text)) {
 					console.log('pushing decoration to:', line.range);
 					const varName = line.text.trim().split(':')[0].trim();
 					//const configs:{[varName:string]:RunConfig[]} = await getRunConfigsInFile(editor.document.uri.fsPath);
@@ -53,7 +79,7 @@ class RunButtonDecoration extends vscode.Disposable {
 
 					for (const runConfig of configs) {
 						const encodedConfig = encodeURIComponent(JSON.stringify(runConfig));
-						md += "[" + runConfig.name + `](command:pinjected-runner.runConfig?${encodedConfig})\n`;
+						md += "[" + runConfig.name + `](command:pinjected-runner.runConfig?${encodedConfig})\n\n`;
 						// clicking this does not work. It does not run the command. but why?
 						// It is 
 					}
@@ -68,7 +94,6 @@ class RunButtonDecoration extends vscode.Disposable {
 				}
 
 			}
-
 			editor.setDecorations(this.decorationType, decorations);
 		} catch (error) {
 			console.error('Error in updateDecorationsAsync:', error);
@@ -127,7 +152,7 @@ function ensureLaunchJsonExists() {
 
 async function getPinjectedPath(): Promise<string> {
 	const python_path = await getPythonPath();
-	const pinjectedPath = cp.execSync(`${python_path} -c "import pinjected; print(pinjected.__file__)"`, { encoding: 'utf8' }).trim();
+	const pinjectedPath = (await execAsync(`${python_path} -c "import pinjected; print(pinjected.__file__)"`)).trim();
 	const pinjectedPackagePath = pinjectedPath.replace("__init__.py", "");
 	return pinjectedPackagePath;
 }
@@ -234,16 +259,29 @@ function extractPinjectedJson(text: string): PinjectedOutput {
 }
 
 async function updateRunConfigsInFile(filePath: string) {
+	// this gets called for every change in the file.
+	// I need to add some cooltime to this function.
+
+
+
 	const python_path = await getPythonPath();
 	const cacheKey = `${filePath}`;
 	try {
-		const result = cp.execSync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`, { encoding: 'utf8' });
+		const result = await execAsync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`);
 
 		const pinjectedOutput: PinjectedOutput = extractPinjectedJson(result);
 
 		runConfigCache[cacheKey] = pinjectedOutput.configs;
 	} catch (error) {
 		vscode.window.showErrorMessage(`Failed to get run configuration for file ${filePath}. Error: ${error}`);
+		// Since the error is very long,
+		// i need to show the full error message to the user. via vscode.
+		// what options do i have?
+		// 1. showErrorMessage
+		// 2. showInformationMessage
+		// 3. showWarningMessage
+
+
 	}
 	return runConfigCache[cacheKey];
 }
@@ -275,9 +313,16 @@ async function visualizePinjectedVariable(filePath: string, varName: string) {
 
 }
 
+function isPinjectedVariable(line: string): boolean {
+	line = line.trim();
+	line = line.replace(" ", "");
+	return line.includes(':IProxy') || line.includes(":Injected") || line.includes(":DelegatedVar");
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	runButtonDecoration = new RunButtonDecoration();
 
+	
 	vscode.window.onDidChangeActiveTextEditor(
 		(editor) => {
 			if (editor) {
@@ -298,6 +343,7 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions
 	);
 
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('pinjected-runner.run', (lineNumber: number) => {
 			console.log("Running variable at line:", lineNumber);
@@ -306,8 +352,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const document = editor.document;
 				const varLine = document.lineAt(lineNumber - 1);
 				const varText = varLine.text.trim();
-
-				if (varText.includes(':IProxy')) {
+				if (isPinjectedVariable(varText)) {
 					const varName = varText.split(':')[0].trim();
 					runVariable(varName);
 				}
@@ -345,7 +390,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					for (let i = 0; i < document.lineCount; i++) {
 						const line = document.lineAt(i);
-						if (line.text.trim().includes(':IProxy')) {
+						if (isPinjectedVariable(line.text)) {
 							const varName = line.text.trim().split(':')[0].trim();
 							const codeLens = new vscode.CodeLens(line.range, {
 								title: 'Run',
