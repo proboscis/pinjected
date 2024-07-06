@@ -4,11 +4,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
-
 const runConfigCache: { [filename: string]: { [varname: string]: RunConfig[] } } = {};
 
 class RunButtonDecoration extends vscode.Disposable {
 	private readonly decorationType: vscode.TextEditorDecorationType;
+	private isUpdating: boolean = false;
 
 	constructor() {
 		super(() => {
@@ -23,24 +23,64 @@ class RunButtonDecoration extends vscode.Disposable {
 	}
 
 	public updateDecorations(editor: vscode.TextEditor) {
-		const decorations: vscode.DecorationOptions[] = [];
-		console.log('RunButtonDecoration updateDecorations');
-
-		for (let i = 0; i < editor.document.lineCount; i++) {
-			const line = editor.document.lineAt(i);
-			if (line.text.trim().includes(':IProxy')) {
-				console.log('pushing decoration	to:', line.range);
-				decorations.push({
-					range: line.range,
-					hoverMessage: 'Run this variable',
-				});
-			}
+		if (this.isUpdating) {
+			console.log('Update in progress. Ignoring new update request.');
+			vscode.window.showInformationMessage('Decoration update in progress. Please wait.');
+			return;
 		}
 
-		editor.setDecorations(this.decorationType, decorations);
+		this.updateDecorationsAsync(editor);
 	}
-}
 
+	private async updateDecorationsAsync(editor: vscode.TextEditor): Promise<void> {
+		this.isUpdating = true;
+		console.log('RunButtonDecoration updateDecorationsAsync start');
+		const decorations: vscode.DecorationOptions[] = [];
+
+		try {
+			// Perform the time-consuming task
+			console.log('Updating decorations for:', editor.document.uri.fsPath);
+			for (let i = 0; i < editor.document.lineCount; i++) {
+				const line = editor.document.lineAt(i);
+				if (line.text.trim().includes(':IProxy')) {
+					console.log('pushing decoration to:', line.range);
+					const varName = line.text.trim().split(':')[0].trim();
+					//const configs:{[varName:string]:RunConfig[]} = await getRunConfigsInFile(editor.document.uri.fsPath);
+					const configs = await getRunConfigs(editor.document.uri.fsPath, varName);
+					var md = "";
+					// to debug the hover message with command works, let's try the simplest command in vscode
+					// md += `[Run this variable](command:workbench.action.files.newUntitledFile)`; -> This works fine.
+
+					for (const runConfig of configs) {
+						const encodedConfig = encodeURIComponent(JSON.stringify(runConfig));
+						md += "[" + runConfig.name + `](command:pinjected-runner.runConfig?${encodedConfig})\n`;
+						// clicking this does not work. It does not run the command. but why?
+						// It is 
+					}
+					const mds = new vscode.MarkdownString(md);
+					mds.isTrusted = true;
+
+					decorations.push({
+						range: line.range,
+						hoverMessage: mds
+						//hoverMessage: new vscode.MarkdownString(`[Run this variable](command:pinjected-runner.runFromHover?${encodeURIComponent(JSON.stringify([i + 1]))})`),
+					});
+				}
+
+			}
+
+			editor.setDecorations(this.decorationType, decorations);
+		} catch (error) {
+			console.error('Error in updateDecorationsAsync:', error);
+			vscode.window.showErrorMessage('An error occurred while updating decorations.');
+		} finally {
+			this.isUpdating = false;
+			console.log('RunButtonDecoration updateDecorationsAsync end');
+		}
+	}
+
+
+}
 let runButtonDecoration: RunButtonDecoration;
 
 interface RunConfig {
@@ -57,13 +97,13 @@ interface PinjectedOutput {
 	};
 }
 
-async function getPythonPath(): Promise<string | undefined> {
+async function getPythonPath(): Promise<string> {
 	const pythonExtension = vscode.extensions.getExtension('ms-python.python');
 	if (pythonExtension) {
 		const pythonApi = await pythonExtension.activate();
 		return pythonApi.settings.getExecutionDetails().execCommand;
 	}
-	return undefined;
+	throw new Error('Python extension not found');
 }
 
 function ensureLaunchJsonExists() {
@@ -108,21 +148,28 @@ async function registerDebugConfiguration(runConfig: RunConfig, varName: string)
 	 * For that you need to first check where 'pinjected' is installed.
 	 * 
 	 */
+
+
 	const launchConfig = {
 		type: 'debugpy',
 		request: 'launch',
 		name: `Debug ${varName}`,
 		//program: runConfig.interpreter_path,
-		program:(await getPinjectedPath())+"__main__.py",
-		args: ["run",...runConfig.arguments.slice(2)],
+		program: runConfig.script_path,//(await getPinjectedPath()) + "__main__.py",
+		args:runConfig.arguments,
 		env: {},
 	};
 
 	let launchConfigurations: any[] = [];
 	if (fs.existsSync(launchJsonPath)) {
 		const launchJsonContent = fs.readFileSync(launchJsonPath, 'utf8');
-		const launchJson = JSON.parse(launchJsonContent);
-		launchConfigurations = launchJson.configurations || [];
+		try {
+			const launchJson = JSON.parse(launchJsonContent);
+			launchConfigurations = launchJson.configurations || [];
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to parse launch.json. Error: ${error}`);
+			throw error;
+		}
 	}
 
 	// replace a configuration with the same name
@@ -155,7 +202,7 @@ async function runVariable(varName: string) {
 	 * 3. register it to launch.json or anything to support running with debugger
 	 */
 	const editor = vscode.window.activeTextEditor;
-	if (editor){
+	if (editor) {
 		const doc = editor.document;
 		const filePath = doc.uri.fsPath;
 		const runConfigs = await getRunConfigs(filePath, varName);
@@ -168,6 +215,8 @@ async function runVariable(varName: string) {
 		}
 	}
 }
+
+
 function extractPinjectedJson(text: string): PinjectedOutput {
 	const pinjectedRegex = /<pinjected>(.*?)<\/pinjected>/s;
 	const match = text.match(pinjectedRegex);
@@ -184,6 +233,21 @@ function extractPinjectedJson(text: string): PinjectedOutput {
 	throw new Error('Failed to extract pinjected JSON');
 }
 
+async function updateRunConfigsInFile(filePath: string) {
+	const python_path = await getPythonPath();
+	const cacheKey = `${filePath}`;
+	try {
+		const result = cp.execSync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`, { encoding: 'utf8' });
+
+		const pinjectedOutput: PinjectedOutput = extractPinjectedJson(result);
+
+		runConfigCache[cacheKey] = pinjectedOutput.configs;
+	} catch (error) {
+		vscode.window.showErrorMessage(`Failed to get run configuration for file ${filePath}. Error: ${error}`);
+	}
+	return runConfigCache[cacheKey];
+}
+
 
 async function getRunConfigs(filePath: string, varName: string): Promise<RunConfig[]> {
 	const python_path = await getPythonPath();
@@ -191,18 +255,24 @@ async function getRunConfigs(filePath: string, varName: string): Promise<RunConf
 	if (cacheKey in runConfigCache && varName in runConfigCache[cacheKey]) {
 		return runConfigCache[cacheKey][varName];
 	} else {
-
-		try {
-			const result = cp.execSync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`, { encoding: 'utf8' });
-
-			const pinjectedOutput: PinjectedOutput = extractPinjectedJson(result);
-
-			runConfigCache[cacheKey] = pinjectedOutput.configs;
-		} catch (error) {
-			vscode.window.showErrorMessage(`Failed to get run configuration for variable ${varName}. Error: ${error}`);
-		}
+		await updateRunConfigsInFile(filePath);
 		return runConfigCache[cacheKey][varName];
 	}
+}
+
+async function visualizePinjectedVariable(filePath: string, varName: string) {
+	const python_path = await getPythonPath();
+	const pinjected_path = await getPinjectedPath();
+	const viz_script_path = path.join(pinjected_path, "run_config_utils.py");
+	// hmm, you need a default design path. 
+	// const visConfig:RunConfig = {
+	// 	name: "Visualize "+varName,
+	// 	script_path: viz_script_path,
+	// 	interpreter_path: python_path,
+	// 	arguments: ["run_injected","visualize",varName,design_path],	
+	// 	working_dir: ""
+	// };
+
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -241,6 +311,27 @@ export function activate(context: vscode.ExtensionContext) {
 					const varName = varText.split(':')[0].trim();
 					runVariable(varName);
 				}
+			}
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('pinjected-runner.visualize', (fileName:string,varName:string) => {
+			console.log('Visualizing variable:',varName);
+			/**
+			 * 1. run pinjected to get the generated graph html file path
+			 * 2. open the file in vscode
+			 */
+			visualizePinjectedVariable(fileName,varName);
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('pinjected-runner.runConfig', (runConfig: RunConfig) => {
+
+			vscode.window.showInformationMessage(`Running configuration: ${runConfig.name}`);
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (workspaceFolder) {
+				registerDebugConfiguration(runConfig, runConfig.name);
+				vscode.debug.startDebugging(workspaceFolder, `Debug ${runConfig.name}`);
 			}
 		})
 	);

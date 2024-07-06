@@ -34,6 +34,17 @@ class NxGraphUtil:
         if "darwin" in platform.system().lower() and show:
             os.system(f"open {name}")
 
+    def save_as_html_at(self,dst_dir:Path):
+        assert isinstance(dst_dir,Path)
+        dst_dir.mkdir(parents=True,exist_ok=True)
+        org_dir = os.getcwd()
+        os.chdir(dst_dir)
+        self.to_physics_network().write_html("graph.html",local=True,notebook=False)
+        os.chdir(org_dir)
+        return dst_dir/"graph.html"
+
+
+
     def show_html(self):
         if "darwin" in platform.system().lower():
             from loguru import logger
