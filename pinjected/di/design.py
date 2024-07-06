@@ -75,6 +75,9 @@ class MergedDesign(Design):
     def validations(self) -> Dict[IBindKey, ProvisionValidator]:
         return merge(*[src.validations for src in self.srcs])
 
+    def __repr__(self):
+        return f"MergedDesign(srcs={len(self.srcs)})"
+
 
 @dataclass
 class AddValidation(Design):
