@@ -25,6 +25,8 @@ pip install pinjected
 Pinjected makes it easy to compose multiple Python objects to create a final object. It automatically creates dependencies and composes them, providing a clean and modular approach to dependency management. To learn more about the motivation behind Pinjected and its key concepts, check out the Introduction.
 Design
 
+- VSCode plugin is available at [pinjected-runner](https://marketplace.visualstudio.com/items?itemName=Proboscis.pinjected-runner)
+
 ## [Design](docs_md/02_design.md)
 The Design section covers the core concept of Pinjected. It explains how to define a collection of objects and their dependencies using the Design class. You'll learn about binding instances, providers, and classes to create a dependency graph.
 
