@@ -108,7 +108,6 @@ def run_anything(
 
     design += (meta_overrides + overrides)
     logger.info(f"running target:{var} with {design_path} + {overrides}")
-    logger.debug(design.keys())
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
 
@@ -202,6 +201,8 @@ def load_design_from_paths(paths, design_name) -> Result:
             logger.info(f"loading design from {path}:{design_name}.")
             try:
                 res += load_variable_from_script(path, design_name)
+            except AttributeError as ae:
+                logger.warning(f"{design_name} is not defined in {path}.")
             except Exception as e:
                 import traceback
                 logger.warning(f"failed to load design from {path}:{design_name}.")
