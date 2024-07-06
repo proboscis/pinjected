@@ -18,9 +18,14 @@
       {
         "command": "pinjected-runner.run",
         "title": "Run Pinjected"
+      },
+      {
+        "command": "pinjected-runner.runConfig",
+        "title": "Run Pinjected Config"
       }
     ]
   },
+
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
