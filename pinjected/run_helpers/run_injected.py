@@ -150,6 +150,14 @@ def run_anything(
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{var.dependencies()}")
             DIGraph(design).show_injected_html(var)
+        elif cmd =='export_visualization_html':
+            from loguru import logger
+            logger.info(f"exporting visualization {var_path} with design {design_path}")
+            logger.info(f"deps:{var.dependencies()}")
+            dst = Path(".pinjected_visualization/")
+            res_html:Path = DIGraph(design).save_as_html(var,dst)
+            logger.info(f"exported to {res_html}")
+
         elif cmd == 'to_script':
             from loguru import logger
             d = design + providers(

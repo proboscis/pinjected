@@ -10,11 +10,11 @@ from returns.maybe import Some
 
 import pinjected
 import pinjected.global_configs
-from pinjected import injected_function, instances, injected_instance, Injected, Design, instance
+from pinjected import instances, Injected, Design, instance, injected
 from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
-from pinjected.helper_structure import MetaContext
+from pinjected.helper_structure import MetaContext, IdeaRunConfigurations
 from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_var_path import ModuleVarPath
 
@@ -53,12 +53,12 @@ def run_with_meta_context(
         meta_context=meta_context,
     ) + instances(**kwargs)
     return run_injected("get", var_path, design_path, return_result=True,
-                        overrides=default+meta_context.accumulated + instance_overrides,
+                        overrides=default + meta_context.accumulated + instance_overrides,
                         notifier=logger.info
                         )
 
 
-@injected_function
+@injected
 def load_meta_context(
         module_path
 ):
@@ -66,7 +66,7 @@ def load_meta_context(
     return meta_context
 
 
-@injected_function
+@injected
 def create_idea_configurations(
         inspect_and_make_configurations,
         module_path,
@@ -75,7 +75,7 @@ def create_idea_configurations(
         wrap_output_with_tag=True
 ):
     pinjected.global_configs.pinjected_TRACK_ORIGIN = False
-    configs = inspect_and_make_configurations(module_path)
+    configs: IdeaRunConfigurations = inspect_and_make_configurations(module_path)
     pinjected.global_configs.pinjected_TRACK_ORIGIN = True
     logger.info(f"configs:{configs}")
 
@@ -94,7 +94,7 @@ def create_idea_configurations(
         return configs
 
 
-@injected_instance
+@instance
 def list_injected_keys(
         default_design_paths: list[str]
 ):
@@ -121,7 +121,7 @@ def get_filtered_signature(func):
     return func.__name__, new_signature_str
 
 
-@injected_instance
+@instance
 def list_completions(
         default_design_paths: list[str]
 ):

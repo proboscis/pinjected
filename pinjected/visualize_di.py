@@ -3,6 +3,7 @@ import platform
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, List, Union
 
 import networkx as nx
@@ -477,9 +478,12 @@ g = d.to_graph()
         nt.prep_notebook()
         return nt.show("__notebook__.html")
 
-    def save_as_html(self, tgt: Injected, name: str, visualize_missing=True, show=True):
+    def save_as_html(self, tgt: Injected, dst_root: Path, visualize_missing=True, show=True):
         nx = self.create_dependency_digraph_rooted(tgt, replace_missing=visualize_missing)
-        nx.save_as_html(name, show=show)
+        #nx.save_as_html(name, show=show)
+        return nx.save_as_html_at(dst_root)
+
+
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():
@@ -496,7 +500,6 @@ g = d.to_graph()
     def show_injected_html(self, tgt: Injected, name: str = None):
         tgt = Injected.ensure_injected(tgt)
         assert isinstance(tgt, Injected)
-        assert platform.system().lower() == "darwin"
         nx_graph = self.create_dependency_digraph_rooted(tgt, name or "__root__", replace_missing=True)
         nx_graph.show_html_temp()
 
