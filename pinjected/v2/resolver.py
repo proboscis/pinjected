@@ -311,7 +311,7 @@ class AsyncResolver:
                 case _:
                     raise TypeError(f"validator must return ValFailure or ValSuccess, got {res}")
         else:
-            logger.debug(f"no validator found for {key} from {self.design}")
+            logger.debug(f"no validator found for {str(key)[:100]} from {self.design}")
 
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)

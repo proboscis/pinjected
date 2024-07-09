@@ -1,0 +1,21 @@
+from pinjected import *
+
+
+@injected
+async def function(dep, __resolver__, /, x: Injected, y: int, z):
+    return (await __resolver__[x]) + y + z
+
+
+def test_args_pure():
+    x = Injected.pure('x').add_dynamic_dependencies('dyn_dep')
+
+    d = instances(
+        dyn_dep="dyn",
+        dep="hello"
+    )
+
+    # TODO add dynamic_dependencies
+
+    called = function(x, "1", "2")
+    assert d.provide(called) == 'x12', f"expected x12, got {d.provide(called)}"
+

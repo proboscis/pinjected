@@ -1,7 +1,7 @@
 import inspect
 from dataclasses import dataclass, field, replace
 from functools import wraps
-from typing import TypeVar, List, Dict, Union, Callable, Type
+from typing import TypeVar, List, Dict, Union, Callable, Type, Optional
 
 from cytoolz import merge
 from makefun import create_function
@@ -303,16 +303,18 @@ class DesignImpl(Design):
             )
         return res
 
-    def to_resolver(self, callback: IResolverCallback = None):
+    def to_resolver(self, callback: Optional[IResolverCallback] = None):
         from pinjected.v2.resolver import AsyncResolver, BaseResolverCallback
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
             #callback = BaseResolverCallback()
-            callback = lambda *args, **kwargs: None
-        assert isinstance(callback, IResolverCallback)
+            callbacks = []
+        else:
+            assert isinstance(callback, IResolverCallback)
+            callbacks=[callback]
         return AsyncResolver(
             DesignImpl(_bindings=bindings),
-            callbacks=[callback]
+            callbacks=callbacks
         )
 
     def to_graph(self):
