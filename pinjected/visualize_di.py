@@ -55,6 +55,9 @@ def get_color(n_edges):
     return rgb_to_hex(tuple(rgb))
 
 
+class MissingKeyError(RuntimeError):
+    pass
+
 @dataclass
 class DIGraph:
     src: "Design"
@@ -80,7 +83,7 @@ class DIGraph:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
             else:
-                raise RuntimeError(f"key not found!:{src}")
+                raise MissingKeyError(f"DI key not found!:{src}")
 
         self.deps_impl = deps_impl
 
@@ -194,7 +197,7 @@ class DIGraph:
             nexts = []
             try:
                 nexts: List[str] = self.dependencies_of(node)
-            except Exception as e:
+            except MissingKeyError as e:
                 yield DependencyResolutionFailure(node, trace, e)
             for n in nexts:
                 if n in trace:
