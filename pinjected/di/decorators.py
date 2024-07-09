@@ -1,6 +1,6 @@
 import inspect
 from contextlib import contextmanager
-from typing import Union, Callable
+from typing import Union, Callable, Annotated
 
 from returns.maybe import Some
 
@@ -56,6 +56,8 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
             tgts[k] = Injected.by_name(k[1:])
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
             tgts[k] = Injected.by_name(k)
+
+
     new_f = Injected.inject_partially(f, **tgts)
 
     from pinjected.di.metadata.bind_metadata import BindMetadata
