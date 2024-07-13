@@ -1496,7 +1496,9 @@ class PartialInjectedFunction(Injected):
             called = self.src.proxy(*args, **kwargs)
             dyn_deps = set()
             for c in causes:
-                assert isinstance(c, Injected), f"causes:{causes} is not an Injected, but {type(c)}"
+                assert isinstance(c, (Injected,DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
+                if isinstance(c, DelegatedVar):
+                    c = c.eval()
                 dyn = c.dynamic_dependencies()
                 assert isinstance(dyn,set),f"dyn:{dyn} is not a set"
                 dyn_deps |= c.dynamic_dependencies()
