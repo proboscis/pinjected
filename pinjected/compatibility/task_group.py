@@ -18,7 +18,4 @@ except ImportError:
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
-            results = await asyncio.gather(*self.tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    raise result
+            results = await asyncio.gather(*self.tasks,return_exceptions=False)
