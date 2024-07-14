@@ -58,7 +58,7 @@ def print_hostname(hostname):
 ```
 
 ```bash
-python -m pinjected my.module.print_hostname --hostname my.module2.load_hostname
+python -m pinjected run my.module.print_hostname --hostname my.module2.load_hostname
 ```
 
 This is useful for switching complicated injected instances for running the target. The complicated injected instances
