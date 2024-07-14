@@ -6,7 +6,7 @@ target with different injected instances.
 We introduce a IRunner interface that can be used to run arbitrary shell command on a target.
 For example, we can implement a runner for GCE, AWS, Local, or Docker.
 
-```
+```python
 class IRunner:
     async def run(self, cmd: str) -> str:
         pass
@@ -28,7 +28,7 @@ This means that we can run any `injected` object on chosen environment.
 To do so, we need to add a config creator to `__meta_design__` with `idea_config_craetor_from_envs` function.
 
 ```python
-
+# assume this is some_module.py
 from pinjected import *
 
 local_env = injected(LocalRunner)()
@@ -36,13 +36,13 @@ local_env = injected(LocalRunner)()
 __meta_design__ = providers(
     custom_idea_config_craetor=idea_config_craetor_from_envs(
         [
-            local_env  # Injected[IRunner]
+            "some_module.local_env"
         ]
     )
 )
 ```
 
-Now, with pinjected plugin installed on intellij, you can click on the green triangle on the left of an `injected`
+Now, with pinjected plugin installed on intellij or vscode, you can click on the green triangle on the left of an `injected`
 variable,
 and then select an environment `local_env` to run it.
 
