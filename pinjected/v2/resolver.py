@@ -279,8 +279,6 @@ class AsyncResolver:
         self._callback(CallInEvalEnd(cxt, call, res))
         return res
 
-
-
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
         # we need to think which one to ask provider
         # if we have the binding for the key, use our own scope
@@ -427,6 +425,12 @@ class AsyncResolver:
                 repr = str(tgt)
         logger.info(f"providing {repr}")
         return await self._provide_providable(tgt)
+
+    async def provide_or(self,tgt:Providable,default):
+        try:
+            return await self.provide(tgt)
+        except Exception as e:
+            return default
 
     def to_blocking(self):
         return Resolver(self)

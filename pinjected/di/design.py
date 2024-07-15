@@ -78,6 +78,9 @@ class MergedDesign(Design):
     def __repr__(self):
         return f"MergedDesign(srcs={len(self.srcs)})"
 
+    def __add__(self, other):
+        return MergedDesign(self.srcs + [other])
+
 
 @dataclass
 class AddValidation(Design):

@@ -6,8 +6,9 @@ from typing import Dict, List
 from pinjected import Design, Injected, instances, EmptyDesign
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
-from pinjected.module_var_path import load_variable_by_module_path
+from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.v2.keys import StrBindKey
+from pinjected.v2.resolver import AsyncResolver
 
 
 @dataclass
@@ -31,6 +32,7 @@ class MetaContext:
 
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
+        from pinjected import instances
         if not isinstance(file_path, Path):
             file_path = Path(file_path)
         designs = list(walk_module_attr(file_path, meta_design_name))
@@ -40,16 +42,10 @@ class MetaContext:
         for item in designs:
             logger.debug(f"{meta_design_name} at :{item.var_path}")
             res = res + item.var
-            try:
-
-                overrides += await item.var.to_resolver()["overrides"]
-            except Exception as e:
-                logger.debug(f"{item.var_path} does not contain overrides")
-        from pinjected import instances
+            overrides += await AsyncResolver(item.var).provide_or("overrides", EmptyDesign)
         res += instances(
             overrides=overrides
         )
-
         return MetaContext(
             trace=designs,
             accumulated=res
@@ -57,46 +53,44 @@ class MetaContext:
 
     @staticmethod
     def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
-        if not isinstance(file_path, Path):
-            file_path = Path(file_path)
-        designs = list(walk_module_attr(file_path, meta_design_name))
-        designs.reverse()
-        res = EmptyDesign
-        overrides = EmptyDesign
-        for item in designs:
-            logger.debug(f"{meta_design_name} at :{item.var_path}")
-            res = res + item.var
-            try:
-                overrides += item.var.provide("overrides")
-            except Exception as e:
-                logger.debug(f"{item.var_path} does not contain overrides")
-        from pinjected import instances
-        res += instances(
-            overrides=overrides
-        )
-
-        return MetaContext(
-            trace=designs,
-            accumulated=res
-        )
+        import asyncio
+        return asyncio.run(MetaContext.a_gather_from_path(file_path, meta_design_name))
 
     @property
     def final_design(self):
-        acc = self.accumulated
-        if StrBindKey("default_design_paths") in acc:
-            design = load_variable_by_module_path(acc.provide('default_design_paths')[0])
-        else:
-            design = EmptyDesign
-        return design + acc.provide('overrides')
+        import asyncio
+        return asyncio.run(self.a_final_design)
 
     @property
     async def a_final_design(self):
         from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         acc = self.accumulated
-        g = acc.to_resolver()
-        module_path = (await g['default_design_paths'])[0]
-        design = load_variable_by_module_path(module_path)
-        return load_user_default_design() + design + (await g['overrides']) + load_user_overrides_design()
+        # g = acc.to_resolver()
+        r = AsyncResolver(acc)
+        if StrBindKey('default_design_paths') in acc:
+            module_path = (await r['default_design_paths'])[0]
+            design = load_variable_by_module_path(module_path)
+        else:
+            design = EmptyDesign
+        overrides = await r.provide_or('overrides', EmptyDesign)
+
+        return load_user_default_design() + design + overrides + load_user_overrides_design()
+
+    @staticmethod
+    def load_default_design_for_variable(var: ModuleVarPath | str):
+        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+        if isinstance(var, str):
+            var = ModuleVarPath(var)
+        design = MetaContext.gather_from_path(var.module_file_path).final_design
+        return design
+
+    @staticmethod
+    async def a_design_for_variable(var: ModuleVarPath | str):
+        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+        if isinstance(var, str):
+            var = ModuleVarPath(var)
+        design = await (await MetaContext.a_gather_from_path(var.module_file_path)).a_final_design
+        return design
 
 
 @dataclass
