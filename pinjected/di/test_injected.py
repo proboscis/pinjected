@@ -34,6 +34,9 @@ def test_injected_function():
 
 
 def test_injected_function_with_defaults():
+    def test_pure_func(x, y, /, a, b, *args, z=7, **mykwargs):
+        return x, y, (a, b, *args), mykwargs, z
+
     @injected_function
     def test_func(x, y, /, a, b, *args, z=7, **mykwargs):
         return x, y, (a, b, *args), mykwargs, z
@@ -53,8 +56,13 @@ def test_injected_function_with_defaults():
     expectation4 = ("x", 'y', (1, 2, 3, 5, 6), {'p': 42}, 9)
     expectation5 = ("x", 'y', (1, 2), {}, 7)
     expectation6 = ("x", 'y', (1, 2), 7,10)
+    assert test_pure_func('x', 'y', 1, 2, 3, 5, 6) == expectation
     assert g[test_func(1, 2, 3, 5, 6)] == expectation
     assert g[test_func](1, 2, 3, 5, 6) == expectation
+    # This error is caused by,, the fact that named args passes as positional are converted to kwargs internally.
+    # So, Call object must remember the exact call style it is invoked.
+    #This becomes like this. but not correct. it should be 1,2,3,5,6.
+    #InjectedWithDynamicDependencies(test_func<injected_kwargs=<<class 'dict'>>(x=$x,y=$y)>(3,5,6,a=1,b=2,z=7), set())
     assert g[test_func](1, 2, 3, 5, 6, z=9) == expectation2
     assert g[test_func(1, 2, 3, 5, 6, z=9)] == expectation2
     assert g[test_func(1, 2, 3, 5, 6, p=42)] == expectation3
