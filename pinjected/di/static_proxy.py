@@ -4,7 +4,8 @@ from typing import Any, Callable, Iterator
 from cytoolz import valmap
 
 from pinjected.di.applicative import Applicative
-from pinjected.di.ast import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
+from pinjected.di.ast_expr import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
+from pinjected.di.func_util import fix_args_kwargs
 from pinjected.di.proxiable import T, DelegatedVar, IProxyContext
 
 
@@ -61,6 +62,7 @@ def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
     return DelegatedVar(tgt, cxt)
 
 
+
 def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
     def _eval(expr):
         def eval_tuple(expr):
@@ -102,6 +104,7 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                 def apply(t):
                     from loguru import logger
                     func, args, kwargs = t
+                    args,kwargs = fix_args_kwargs(func,args,kwargs)
                     return func(*args, **kwargs)
 
                 applied = app.map(app.zip(injected_func, args, kwargs), apply)

@@ -6,7 +6,7 @@ from pinjected.di.designed import PureDesigned
 from pinjected.di.injected import InjectedPure
 from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, AstProxyContextImpl
-from pinjected.di.ast import Expr, Object, show_expr
+from pinjected.di.ast_expr import Expr, Object, show_expr
 
 
 class ApplicativeDesignedImpl(Applicative[Designed]):

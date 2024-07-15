@@ -5,7 +5,7 @@ from pinjected.di.designed import Designed
 from pinjected.di.injected import Injected
 from pinjected.di.applicative import Applicative
 from pinjected.di.static_proxy import AstProxyContextImpl, eval_applicative
-from pinjected.di.ast import Expr
+from pinjected.di.ast_expr import Expr
 
 T = TypeVar("T")
 

@@ -13,6 +13,7 @@ from frozendict import frozendict
 from makefun import create_function
 from returns.result import safe
 
+from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.args_modifier import ArgsModifier, KeepArgsPure
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
@@ -227,7 +228,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+    def inject_partially_deprecated(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         """
         Partially injects dependencies into the parameters of the target function.
         """
@@ -390,6 +391,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return injected_factory
 
     @staticmethod
+    def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+        from pinjected.di.partially_injected import Partial
+        return Partial(original_function, injection_targets)
+    @staticmethod
     def _get_args_keeper(injection_targets, original_sig):
         original_args_with_Injected = []
         for k, v in original_sig.parameters.items():
@@ -528,9 +533,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
         # return MappedInjected(self, f)
         if not inspect.iscoroutinefunction(f):
-
+            @functools.wraps(f)
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
+            # from loguru import logger
+            # logger.warning(f"converting {f} to async function")
 
             new_f = async_f
         else:
@@ -1411,11 +1418,15 @@ class DictInjected(Injected):
     def get_provider(self):
         async def impl(**kwargs):  # can we pickle this though?
             res = {}
-            for k, s in self.srcs.items():
-                r = s.get_provider()(**{k: kwargs[k] for k in s.dependencies()})
-                if not inspect.iscoroutinefunction(s.get_provider()):
-                    raise RuntimeError(f"provider is not a corountine function:{s}")
-                res[k] = await r
+            tasks = {}
+            async with TaskGroup() as tg:
+                for k, s in self.srcs.items():
+                    r = s.get_provider()(**{k: kwargs[k] for k in s.dependencies()})
+                    if not inspect.iscoroutinefunction(s.get_provider()):
+                        raise RuntimeError(f"provider is not a corountine function:{s}")
+                    tasks[k] = tg.create_task(r)
+            for k, t in tasks.items():
+                res[k] = await t
             return res
 
         signature = self.get_signature()
