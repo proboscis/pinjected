@@ -228,173 +228,12 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def inject_partially_deprecated(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
-        """
-        Partially injects dependencies into the parameters of the target function.
-        """
-
-        # WARNING DO NOT EVER USE LOGGER HERE. IT WILL CAUSE PICKLING ERROR on ray's nested remote call!
-        original_sig = inspect.signature(original_function)
-
-        # USING a logger in here make things very difficult to debug. because makefun doesnt seem to keep __closure__
-        # hmm we need to check if the args are positional only or not.
-        # in that case we need to inject with *args.
-        def _get_new_signature(funcname, missing_params):
-            missing_non_defaults = [p for p in missing_params if
-                                    p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL]
-            # hmm, we need to check if the original_funcion is a method or not.
-            # if method, ignore the first param.
-
-            vkwarg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_KEYWORD]
-            if not vkwarg:
-                vkwarg = [inspect.Parameter('__kwargs', inspect.Parameter.VAR_KEYWORD)]
-            varg = [p for p in missing_params if p.kind == inspect.Parameter.VAR_POSITIONAL]
-            if not varg:
-                varg = [inspect.Parameter('__args', inspect.Parameter.VAR_POSITIONAL)]
-            # we also need to pass varargs if there are default args..
-            new_func_sig = f"injected_{funcname}({','.join([str(p).split(':')[0] for p in (missing_non_defaults + varg + vkwarg)])})"
-            return new_func_sig
-
-        async def makefun_impl(injected_kwargs):
-            # this gets called every time you call this function through PartialInjectedFunction interface
-            # this is because the injected_kwargs gets changed.
-            assert isinstance(injected_kwargs, dict), f"expected dict, got {injected_kwargs}"
-
-            missing_keys = [k for k in original_sig.parameters.keys() if k not in injected_kwargs]
-            missing_params = [original_sig.parameters[k] for k in missing_keys]
-            missing_positional_args = [p for p in missing_params if p.kind == inspect.Parameter.POSITIONAL_ONLY]
-            missing_non_positional_args = [p for p in missing_params if
-                                           p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
-            new_func_sig = _get_new_signature(original_function.__name__, missing_params)
-            defaults = {p.name: p.default for p in missing_params if p.default is not inspect.Parameter.empty}
-
-            def func_gets_called_after_injection_impl(*_args, **_kwargs):
-                assert len(_args) >= len(
-                    missing_positional_args), f"not enough args for positional only args:{missing_positional_args}"
-                num_missing_positional_args = len(missing_positional_args)
-                inferred_pos_arg_names = [p.name for p in missing_positional_args]
-                inferred_non_pos_arg_names = [p.name for p in missing_non_positional_args]
-                inferred_positional_args, inferred_non_positional_args = _args[:num_missing_positional_args], _args[
-                                                                                                              num_missing_positional_args:]
-                # logger.info(f"inferred positional args:{inferred_positional_args}")
-                # logger.info(f"inferred non positional args:{inferred_non_positional_args}")
-                # logger.info(f"inferred positional arg names:{inferred_pos_arg_names}")
-                # logger.info(f"inferred non positional arg names:{inferred_non_pos_arg_names}")
-                total_kwargs = copy(defaults)
-                # logger.info(f"injected_kwargs:{injected_kwargs}")
-                filled_kwargs = {**injected_kwargs,
-                                 **dict(zip(inferred_pos_arg_names, inferred_positional_args)),
-                                 **dict(zip(inferred_non_pos_arg_names, inferred_non_positional_args)),
-                                 **_kwargs}
-                # logger.info(f"filled kwargs:{filled_kwargs}")
-                total_kwargs.update(filled_kwargs)
-                # logger.info(f"total kwargs:{total_kwargs}")
-                args = [total_kwargs[k] for k, p in original_sig.parameters.items() if
-                        p.kind != inspect.Parameter.VAR_KEYWORD and p.kind != inspect.Parameter.VAR_POSITIONAL and p.kind != inspect.Parameter.KEYWORD_ONLY]
-                # we need to put the ramaining args into kwargs if kwargs is present in the signature
-                vks = [p for k, p in original_sig.parameters.items() if p.kind == inspect.Parameter.VAR_KEYWORD]
-                if vks:
-                    kwargs = {k: v for k, v in total_kwargs.items() if k not in original_sig.parameters.keys()}
-                else:
-                    kwargs = {}
-                # we also need to handle kwonly args
-                kws = [p for k, p in original_sig.parameters.items() if p.kind == inspect.Parameter.KEYWORD_ONLY]
-                if kws:
-                    for k in kws:
-                        kwargs[k.name] = total_kwargs[k.name]
-                vas = [p for k, p in original_sig.parameters.items() if p.kind == inspect.Parameter.VAR_POSITIONAL]
-                if vas:
-                    # we need to put the ramaining args into kwargs if kwargs is present in the signature
-                    vargs = _args[num_missing_positional_args + len(missing_non_positional_args):]
-                else:
-                    vargs = []
-                # hmm we need to pass kwargs too..
-                # logger.info(f"args:{args}")
-                # args contains values from kwargs...
-                # logger.info(f"vargs:{vargs}")
-                # logger.info(f"kwargs:{kwargs}")
-                bind_result = original_sig.bind(*args, *vargs, **kwargs)
-                bind_result.apply_defaults()
-                # logger.info(f"bound args:{bind_result.args}")
-                # logger.info(f"bound kwargs:{bind_result.kwargs}")
-                # Ah, since the target_function is async, we can't catch...
-                return original_function(*bind_result.args, **bind_result.kwargs)
-
-            # logger.info(f"injected.partial -> {new_func_sig} ")
-            new_func = create_function(
-                new_func_sig,
-                func_gets_called_after_injection_impl,
-                doc=original_function.__doc__,
-            )
-            new_func.__is_async__ = inspect.iscoroutinefunction(original_function)
-            __doc__ = original_function.__doc__
-            __skeleton__ = f"""async def {new_func_sig}:
-    \"\"\"
-    {__doc__}
-    \"\"\"
-"""
-            new_func.__skeleton__ = __skeleton__
-
-            # logger.info(f"result of makefun_impl:{new_func}")
-            return PicklableInjectedFunction(
-                src=new_func,
-                __doc__=__doc__,
-                __name__=new_func.__name__,
-                __skeleton__=__skeleton__,
-                __is_async__=new_func.__is_async__
-            )
-            # return new_func
-
-        makefun_impl.__name__ = original_function.__name__
-        makefun_impl.__module__ = original_function.__module__
-        makefun_impl.__original__ = original_function
-
-        if isinstance(original_function, type):
-            makefun_impl.__original_code__ = "not available"
-            makefun_impl.__original_file__ = "not available"
-        elif type(original_function).__name__ == 'staticmethod':
-            makefun_impl.__original_code__ = inspect.getsource(original_function.__func__)
-            makefun_impl.__original_file__ = inspect.getfile(original_function.__func__)
-        else:
-            makefun_impl.__original_code__ = safe(inspect.getsource)(original_function).value_or("not available")
-            makefun_impl.__original_file__ = safe(inspect.getfile)(original_function).value_or("not available")
-
-        makefun_impl.__doc__ = original_function.__doc__
-        # logger.info(f"injection_targets:{injection_targets}")
-        injected_kwargs = Injected.dict(**injection_targets)
-        # logger.info(f"injected_kwargs:{injected_kwargs}")
-        # hmm?
-        # Ah, so upon calling instance.method(), we need to manually check if __self__ is present?
-        bound_func = Injected.bind(
-            makefun_impl,
-            injected_kwargs=injected_kwargs,
-        )
-        bound_func.__is_async_function__ = inspect.iscoroutinefunction(original_function)
-        bound_func.__is_partial__ = True  # this is to indicate that the bound_func is supposed to be used with PartialInjectedFunction.
-
-        # check type annotation of the original function.
-        modifier = Injected._get_args_keeper(injection_targets, original_sig)
-        # TODO add dynamic_dependencies to bound_func
-
-        injected_factory = PartialInjectedFunction(
-            src=bound_func,
-            args_modifier=modifier
-        )
-        # the inner will be called upon calling the injection result.
-        # This involves many internal Injecte instances. can I make it simler?
-        # it takes *by_name, mzip, and map.
-        injected_factory.__is_async_function__ = bound_func.__is_async_function__
-        injected_factory.__runnable_metadata__ = {
-            "kind": "callable"
-        }
-
-        return injected_factory
-
-    @staticmethod
     def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         from pinjected.di.partially_injected import Partial
         modifier = Injected._get_args_keeper(injection_targets, inspect.signature(original_function))
-        return Partial(original_function, injection_targets,modifier)
+        # TODO move this modifier to @injected decorator.
+        return Partial(original_function, injection_targets, modifier)
+
     @staticmethod
     def _get_args_keeper(injection_targets, original_sig):
         original_args_with_Injected = []
@@ -537,6 +376,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             @functools.wraps(f)
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
+
             # from loguru import logger
             # logger.warning(f"converting {f} to async function")
 
@@ -1023,7 +863,8 @@ class InjectedWithDynamicDependencies(Injected[T]):
     def __init__(self, src: Injected, dynamic_dependencies: Set[str]):
         super(InjectedWithDynamicDependencies, self).__init__()
         self.src = src
-        assert isinstance(dynamic_dependencies,set), f"dynamic_dependencies should be set, but got {dynamic_dependencies}"
+        assert isinstance(dynamic_dependencies,
+                          set), f"dynamic_dependencies should be set, but got {dynamic_dependencies}"
         self._dynamic_dependencies = dynamic_dependencies
 
     def dependencies(self) -> Set[str]:
@@ -1154,7 +995,7 @@ class InjectedFunction(Injected[T]):
                  original_function,
                  target_function: Callable,
                  kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]],
-                 dynamic_dependencies:Optional[Set[str]]=None
+                 dynamic_dependencies: Optional[Set[str]] = None
                  ):
         # I think we need to know where this class is instantiated outside of pinjected_package
         from loguru import logger
@@ -1232,12 +1073,12 @@ class InjectedFunction(Injected[T]):
         res = set()
         for mdep in self.missings:
             d = extract_dependency(mdep)
-            assert isinstance(d,set),f"extracted dependency is not a set:{d}, from {mdep}"
+            assert isinstance(d, set), f"extracted dependency is not a set:{d}, from {mdep}"
             res |= d
             # logger.info(f"deps of missing:{d}")
         for k, dep in self.kwargs_mapping.items():
             d = extract_dependency(dep)
-            assert isinstance(d,set),f"extracted dependency is not a set:{d}, from {mdep}"
+            assert isinstance(d, set), f"extracted dependency is not a set:{d}, from {mdep}"
             res |= d
             # logger.info(f"deps of dependency({k}):{d}")
         return res
@@ -1503,16 +1344,16 @@ class PartialInjectedFunction(Injected):
         # for that, we need to keep the signature of the original function.
         # Then, replace args/kwargs.
         if self.args_modifier is not None:
-            args, kwargs,causes = self.args_modifier(args, kwargs)
-            causes:list[Injected]
+            args, kwargs, causes = self.args_modifier(args, kwargs)
+            causes: list[Injected]
             called = self.src.proxy(*args, **kwargs)
             dyn_deps = set()
             for c in causes:
-                assert isinstance(c, (Injected,DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
+                assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
                 if isinstance(c, DelegatedVar):
                     c = c.eval()
                 dyn = c.dynamic_dependencies()
-                assert isinstance(dyn,set),f"dyn:{dyn} is not a set"
+                assert isinstance(dyn, set), f"dyn:{dyn} is not a set"
                 dyn_deps |= c.dynamic_dependencies()
             called = called.eval().add_dynamic_dependencies(dyn_deps)
             return called.proxy
