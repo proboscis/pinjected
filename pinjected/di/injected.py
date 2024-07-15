@@ -394,7 +394,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         original_args_with_Injected = []
         for k, v in original_sig.parameters.items():
             if k not in injection_targets:
-                if isinstance(v.annotation, type(Injected)):
+                if v.annotation == Injected:
                     original_args_with_Injected.append(k)
         remaining_params = [p for name, p in original_sig.parameters.items() if name not in injection_targets]
         remaining_signature: inspect.Signature = original_sig.replace(parameters=remaining_params)
