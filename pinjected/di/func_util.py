@@ -15,9 +15,9 @@ def fix_args_kwargs(func, args, kwargs):
         return args,kwargs
     bound_args = signature.bind(*args, **kwargs)
     bound_args.apply_defaults()
-    logger.info(f"func signature: {signature}")
-    logger.info(f"bound: {bound_args.arguments}")
-    logger.info(f"original: {args} {kwargs}")
+    # logger.info(f"func signature: {signature}")
+    # logger.info(f"bound: {bound_args.arguments}")
+    # logger.info(f"original: {args} {kwargs}")
 
     fixed_args = [bound_args.arguments[param.name] for param in signature.parameters.values() if
                   param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
