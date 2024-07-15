@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterator
 from cytoolz import valmap
 
 from pinjected.di.applicative import Applicative
-from pinjected.di.ast_expr import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
+from pinjected.di.ast import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
 from pinjected.di.func_util import fix_args_kwargs
 from pinjected.di.proxiable import T, DelegatedVar, IProxyContext
 

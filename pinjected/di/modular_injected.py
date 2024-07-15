@@ -3,7 +3,7 @@ from typing import List, Callable, Optional, Union
 
 from pinjected import Injected
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.ast_expr import Expr
+from pinjected.di.ast import Expr
 from pinjected.di.injected import MappedInjected
 from pinjected.di.proxiable import DelegatedVar, T
 from pinjected.module_var_path import ModuleVarPath

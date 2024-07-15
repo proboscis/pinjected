@@ -51,7 +51,7 @@ class FunctionWrapper:
         return self.func(*positional_args, *var_positional_args, **keyword_args, **var_keyword_args)
 
 # Test functions with different signatures
-def test_function1(a, b, /, c, *args, d=10, **kwargs):
+def _test_function1(a, b, /, c, *args, d=10, **kwargs):
     assert a == 1
     assert b == 2
     assert c == 3
@@ -60,7 +60,7 @@ def test_function1(a, b, /, c, *args, d=10, **kwargs):
     assert kwargs == {'x': 7, 'y': 8}
 
 
-def test_function2(a, b, /, c, *args, d=10, e, f=20, **kwargs):
+def _test_function2(a, b, /, c, *args, d=10, e, f=20, **kwargs):
     assert a == 1
     assert b == 2
     assert c == 3
@@ -71,12 +71,12 @@ def test_function2(a, b, /, c, *args, d=10, e, f=20, **kwargs):
     assert kwargs == {'x': 7, 'y': 8}
 
 
-def test_function3(*, a, b):
+def _test_function3(*, a, b):
     assert a == 1
     assert b == 2
 
 
-def test_function4(a, b, c=3, *, d, e=5):
+def _test_function4(a, b, c=3, *, d, e=5):
     assert a == 1
     assert b == 2
     assert c == 3
@@ -86,16 +86,16 @@ def test_function4(a, b, c=3, *, d, e=5):
 
 # Pytest test cases
 def test_function_wrapper():
-    wrapped_func1 = FunctionWrapper(test_function1)
+    wrapped_func1 = FunctionWrapper(_test_function1)
     wrapped_func1(1, 2, 3, 4, 5, x=7, y=8)
 
-    wrapped_func2 = FunctionWrapper(test_function2)
+    wrapped_func2 = FunctionWrapper(_test_function2)
     wrapped_func2(1, 2, 3, 4, 5, e=6, x=7, y=8)
 
-    wrapped_func3 = FunctionWrapper(test_function3)
+    wrapped_func3 = FunctionWrapper(_test_function3)
     wrapped_func3(a=1, b=2)
 
-    wrapped_func4 = FunctionWrapper(test_function4)
+    wrapped_func4 = FunctionWrapper(_test_function4)
     wrapped_func4(1, 2, d=4)
 
 
@@ -139,3 +139,6 @@ def test_injected_function_with_defaults():
     assert g[test_func2](1, 2) == expectation6
     assert g[test_func2(1, 2)] == expectation6
     assert g[test_func2(1, 2, 7)] == expectation6
+
+if __name__ == '__main__':
+    pass

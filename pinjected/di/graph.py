@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.ast_expr import Expr
+from pinjected.di.ast import Expr
 from pinjected.di.designed import Designed
 from pinjected.di.injected import Injected, InjectedByName, InjectedFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
@@ -92,7 +92,7 @@ class IObjectGraph(metaclass=ABCMeta):
         designed = self._providable_to_designed(providable)
         item = Sessioned(self, designed)
         ctx = sessioned_ast_context(self)
-        from pinjected.di.ast_expr import Object
+        from pinjected.di.ast import Object
         return DelegatedVar(Object(item), ctx)
 
     def sessioned(self, target: Providable) -> DelegatedVar[Union[object, T]]:
