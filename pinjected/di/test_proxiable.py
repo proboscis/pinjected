@@ -1,6 +1,6 @@
 from pinjected import Injected, Designed
 from pinjected.di.static_proxy import ast_proxy
-from pinjected.di.ast import Object
+from pinjected.di.ast_expr import Object
 
 
 def test_expr():

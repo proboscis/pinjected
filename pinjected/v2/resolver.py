@@ -31,7 +31,7 @@ from loguru import logger
 
 from pinjected import Injected
 from pinjected.di.app_injected import walk_replace, EvaledInjected
-from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
+from pinjected.di.ast_expr import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
@@ -133,7 +133,7 @@ class AsyncResolver:
         from pinjected import Design
         if self.callbacks is None:
             self.callbacks = [
-                #BaseResolverCallback()
+                # BaseResolverCallback()
             ]
         assert self.callbacks is not None
         self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design
@@ -220,15 +220,7 @@ class AsyncResolver:
                 case Object(x):
                     res = x
                 case Call(f, args, kwargs) as call:
-                    new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{f}"), parent=cxt)
-                    args = asyncio.gather(*[self.eval_expr(a, new_cxt) for a in args])
-                    keys = list(kwargs.keys())
-                    values = asyncio.gather(*[self.eval_expr(v, new_cxt) for v in kwargs.values()])
-                    f, args, values = await asyncio.gather(self.eval_expr(f, new_cxt), args, values)
-                    kwargs = dict(zip(keys, values))
-                    self._callback(CallInEvalStart(cxt, call))
-                    res = f(*args, **kwargs)
-                    self._callback(CallInEvalEnd(cxt, call, res))
+                    res = await self._resolve_call_prev(call, cxt)
                 case BiOp(op, left, right):
                     new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{left}"), parent=cxt)
                     left, right = await asyncio.gather(self.eval_expr(left, new_cxt), self.eval_expr(right, new_cxt))
@@ -253,11 +245,41 @@ class AsyncResolver:
                     raise TypeError(
                         f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
             self._callback(EvalResultEvent(cxt, expr, res))
-        except EvaluationError as e:
-            raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
         except Exception as e:
-            raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
+            raise e
+        # except EvaluationError as e:
+        #     raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
+        # except Exception as e:
+        #     raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
+
         return res
+
+    async def _resolve_call_prev(self, call: Call, cxt):
+        args = call.args
+        kwargs = call.kwargs
+        f = call.func
+        new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{f}"), parent=cxt)
+        args = asyncio.gather(*[self.eval_expr(a, new_cxt) for a in args])
+        keys = list(kwargs.keys())
+        values = asyncio.gather(*[self.eval_expr(v, new_cxt) for v in kwargs.values()])
+        f, args, values = await asyncio.gather(self.eval_expr(f, new_cxt), args, values)
+        kwargs = dict(zip(keys, values))
+        self._callback(CallInEvalStart(cxt, call))
+        # we cannot actually do *args **kwargs, due to complicated signature of f.
+        # but is there a way to tell how the arguments are passed?
+        # signature: (d1, d2, /, a, b, *args,c=7, **kwargs)
+        # call_sig: (1,2,3,4,5)
+        # ends up : (3,4,5,a=1,b=2), which is correct,
+        # but it becomes args = (3,4,5), kwargs=(a=1,b=2)
+        # so, doing f(*args,**kwargs) will end up with f(3,4,5, a=1, b=2)
+        # this is unexpected for the user, sice the user expects f(1,2,3,4,5)
+        # to fix this, we need to convert kwargs to args considering the signature.
+        res = f(*args, **kwargs)
+        logger.info(f"{args=} {kwargs=}")
+        self._callback(CallInEvalEnd(cxt, call, res))
+        return res
+
+
 
     async def _provide(self, key: IBindKey, cxt: ProvideContext):
         # we need to think which one to ask provider
