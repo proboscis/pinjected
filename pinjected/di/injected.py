@@ -393,7 +393,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
         from pinjected.di.partially_injected import Partial
-        return Partial(original_function, injection_targets)
+        modifier = Injected._get_args_keeper(injection_targets, inspect.signature(original_function))
+        return Partial(original_function, injection_targets,modifier)
     @staticmethod
     def _get_args_keeper(injection_targets, original_sig):
         original_args_with_Injected = []
