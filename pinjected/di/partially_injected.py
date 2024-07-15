@@ -1,19 +1,26 @@
 import inspect
-from typing import Callable, Set
+from typing import Callable, Set, Optional
 
 from pinjected import Injected
+from pinjected.di.args_modifier import ArgsModifier
 from pinjected.di.injected import DictInjected
+from pinjected.di.proxiable import DelegatedVar
 
 
 class Partial(Injected):
 
-    def __init__(self, src_function: Callable, injection_targets: dict[str, Injected]):
+    def __init__(self,
+                 src_function: Callable,
+                 injection_targets: dict[str, Injected],
+                 modifier: Optional[ArgsModifier] = None
+                 ):
         self.src_function = src_function
         self.injection_targets = injection_targets
         self.func_sig = inspect.signature(self.src_function)
         self.modified_sig = self.get_modified_signature()
-        self.injections = Injected.dict(**self.injection_targets)
+        self.injections = Injected.dict(**self.injection_targets).eval()
         self.__is_async_function__ = inspect.iscoroutinefunction(self.src_function)
+        self.modifier = modifier
 
     def get_modified_signature(self):
         params = self.func_sig.parameters.copy()
@@ -122,4 +129,18 @@ class Partial(Injected):
         return f"{self.src_function.__name__}<{self.injections.__repr_expr__()}>"
 
     def __call__(self, *args, **kwargs):
+        if self.modifier is not None:
+            args, kwargs, causes = self.args_modifier(args, kwargs)
+            causes: list[Injected]
+            called = self.src.proxy(*args, **kwargs)
+            dyn_deps = set()
+            for c in causes:
+                assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
+                if isinstance(c, DelegatedVar):
+                    c = c.eval()
+                dyn = c.dynamic_dependencies()
+                assert isinstance(dyn, set), f"dyn:{dyn} is not a set"
+                dyn_deps |= c.dynamic_dependencies()
+            called = called.eval().add_dynamic_dependencies(dyn_deps)
+            return called.proxy
         return self.proxy(*args, **kwargs)
