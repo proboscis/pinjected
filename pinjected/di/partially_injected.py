@@ -129,18 +129,21 @@ class Partial(Injected):
         return f"{self.src_function.__name__}<{self.injections.__repr_expr__()}>"
 
     def __call__(self, *args, **kwargs):
-        # if self.modifier is not None:
-        #     args, kwargs, causes = self.modifier(args, kwargs)
-        #     causes: list[Injected]
-        #     called = self.proxy(*args, **kwargs)
-        #     dyn_deps = set()
-        #     for c in causes:
-        #         assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
-        #         if isinstance(c, DelegatedVar):
-        #             c = c.eval()
-        #         dyn = c.dynamic_dependencies()
-        #         assert isinstance(dyn, set), f"dyn:{dyn} is not a set"
-        #         dyn_deps |= c.dynamic_dependencies()
-        #     called = called.eval().add_dynamic_dependencies(dyn_deps)
-        #     return called.proxy
+        if self.modifier is not None:
+            from loguru import logger
+            logger.info(f'before modification:{args,kwargs}')
+            args, kwargs, causes = self.modifier(args, kwargs)
+            logger.info(f"modifier reuslt:{args,kwargs,causes}")
+            causes: list[Injected]
+            called = self.proxy(*args, **kwargs)
+            dyn_deps = set()
+            for c in causes:
+                assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
+                if isinstance(c, DelegatedVar):
+                    c = c.eval()
+                dyn = c.dynamic_dependencies()
+                assert isinstance(dyn, set), f"dyn:{dyn} is not a set"
+                dyn_deps |= c.dynamic_dependencies()
+            called = called.eval().add_dynamic_dependencies(dyn_deps)
+            return called.proxy
         return self.proxy(*args, **kwargs)
