@@ -12,7 +12,7 @@ class Partial(Injected):
         self.injection_targets = injection_targets
         self.func_sig = inspect.signature(self.src_function)
         self.modified_sig = self.get_modified_signature()
-        self.injections = DictInjected(**self.injection_targets)
+        self.injections = Injected.dict(**self.injection_targets)
         self.__is_async_function__ = inspect.iscoroutinefunction(self.src_function)
 
     def get_modified_signature(self):
