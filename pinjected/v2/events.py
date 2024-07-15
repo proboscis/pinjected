@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from pinjected.di.ast import Expr, Call
+from pinjected.di.ast_expr import Expr, Call
 from pinjected.v2.keys import IBindKey
 from pinjected.v2.provide_context import ProvideContext
 

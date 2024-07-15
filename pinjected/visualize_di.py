@@ -13,7 +13,7 @@ from returns.pipeline import is_successful
 from returns.result import safe, Failure
 
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.ast import show_expr
+from pinjected.di.ast_expr import show_expr
 from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
