@@ -34,9 +34,9 @@ class KeepArgsPure:  # ArgsModifier
                 if name in self.targets:
                     results.append(value)
                 wrapped_value = Injected.pure(value) if name in self.targets else value
-                if param.kind == param.POSITIONAL_ONLY:
+                if param.kind in (param.POSITIONAL_ONLY,param.POSITIONAL_OR_KEYWORD):
                     new_args.append(wrapped_value)
-                elif param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY):
+                elif param.kind == param.KEYWORD_ONLY:
                     new_kwargs[name] = wrapped_value
 
         return tuple(new_args), new_kwargs, results
