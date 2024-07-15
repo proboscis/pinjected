@@ -3,7 +3,7 @@ from typing import Set, Awaitable, TypeVar, Callable
 
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
-from pinjected.di.ast_expr import Expr, Object, show_expr, UnaryOp, Call, BiOp, Attr, GetItem
+from pinjected.di.ast import Expr, Object, show_expr, UnaryOp, Call, BiOp, Attr, GetItem
 from pinjected.di.injected import InjectedPure, InjectedFunction, InjectedByName
 from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, \

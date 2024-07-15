@@ -1,4 +1,4 @@
-from pinjected.di.ast_expr import Object
+from pinjected.di.ast import Object
 
 
 def test_object():

@@ -31,7 +31,7 @@ from loguru import logger
 
 from pinjected import Injected
 from pinjected.di.app_injected import walk_replace, EvaledInjected
-from pinjected.di.ast_expr import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
+from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
