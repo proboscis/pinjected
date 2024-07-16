@@ -130,10 +130,7 @@ class Partial(Injected):
 
     def __call__(self, *args, **kwargs):
         if self.modifier is not None:
-            from loguru import logger
-            logger.info(f'before modification:{args,kwargs}')
             args, kwargs, causes = self.modifier(args, kwargs)
-            logger.info(f"modifier reuslt:{args,kwargs,causes}")
             causes: list[Injected]
             called = self.proxy(*args, **kwargs)
             dyn_deps = set()
