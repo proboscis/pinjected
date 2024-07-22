@@ -31,7 +31,7 @@ from loguru import logger
 
 from pinjected import Injected
 from pinjected.di.app_injected import walk_replace, EvaledInjected
-from pinjected.di.ast import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
+from pinjected.di.expr_util import Expr, Object, Call, BiOp, UnaryOp, Attr, GetItem, show_expr, Cache
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
@@ -279,15 +279,21 @@ class AsyncResolver:
         self._callback(CallInEvalEnd(cxt, call, res))
         return res
 
-    async def _provide(self, key: IBindKey, cxt: ProvideContext):
+    async def _provide(self, key: IBindKey, cxt: ProvideContext, provider=None):
         # we need to think which one to ask provider
         # if we have the binding for the key, use our own scope
+        if provider is None:
+            provider = self._provide
+
         async with self.locks.get(key):
             self._callback(RequestEvent(cxt, key))
             if key in self.objects:
                 data = self.objects[key]
                 self._callback(ProvideEvent(cxt, key, data))
                 return data
+            # TODO invalidate appropriately.
+            # TODO ask parent if not invalidated
+
             elif key in self.design:
                 # logger.info(f"{cxt.trace_str}")
                 # we are responsible for providing this
@@ -296,7 +302,7 @@ class AsyncResolver:
                 tasks = []
                 for dep_key in dep_keys:
                     n_cxt = ProvideContext(self, key=dep_key, parent=cxt)
-                    tasks.append(self._provide(dep_key, n_cxt))
+                    tasks.append(provider(dep_key, n_cxt))
                 res = await asyncio.gather(*tasks)
                 deps = dict(zip(dep_keys, res))
                 self._callback(DepsReadyEvent(cxt, key, deps))
@@ -308,12 +314,12 @@ class AsyncResolver:
                 return data
             else:
                 if self.parent is not None:
-                    return await self.parent._provide(key, cxt)
+                    return await self.parent._provide(key, cxt, provider)
                 else:
                     raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
 
     def child_session(self, overrides: "Design"):
-        return AsyncResolver(overrides, parent=self)
+        return AsyncResolver(self.design+overrides, parent=self)
 
     async def resolve_deps(self, keys: set[IBindKey], cxt):
         tasks = [self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys]
@@ -426,7 +432,7 @@ class AsyncResolver:
         logger.info(f"providing {repr}")
         return await self._provide_providable(tgt)
 
-    async def provide_or(self,tgt:Providable,default):
+    async def provide_or(self, tgt: Providable, default):
         try:
             return await self.provide(tgt)
         except Exception as e:

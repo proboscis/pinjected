@@ -19,3 +19,13 @@ def test_args_pure():
     called = function(x, "1", "2")
     assert d.provide(called) == 'x12', f"expected x12, got {d.provide(called)}"
 
+
+def test_something():
+    assert type(0) == int, "0 must be int"
+
+@instance
+def run_test(dep1,dep2):
+    return 0
+
+
+__meta_design__ = instances()

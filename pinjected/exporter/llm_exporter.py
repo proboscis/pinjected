@@ -10,7 +10,7 @@ import cytoolz
 
 from pinjected import Design, Injected, injected, instances, providers, instance
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.ast import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
+from pinjected.di.expr_util import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
 from pinjected.di.injected import InjectedPure, InjectedFunction, PartialInjectedFunction, ZippedInjected, \
     MappedInjected, InjectedByName, FrameInfo, MZippedInjected, DictInjected
 from pinjected.di.proxiable import DelegatedVar

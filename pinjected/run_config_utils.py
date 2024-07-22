@@ -40,7 +40,7 @@ from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
 from pinjected import Injected, Design, injected_function, Designed
-from pinjected.di.ast import Expr, Call, Object
+from pinjected.di.expr_util import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
