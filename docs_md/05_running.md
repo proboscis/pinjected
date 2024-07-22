@@ -99,7 +99,7 @@ Now we can switch llm with llm_openai, llm_azure, llm_llama... by specifying a i
 
 ## __meta_design__
 
-`pinjected run` reads __meta_design__ variables in every parent package of the target variable:
+`pinjected run` reads `__meta_design__` variables in every parent package of the target variable:
 
 ```
 - some_package
