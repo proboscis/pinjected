@@ -1,4 +1,4 @@
-from pinjected.di.ast import Expr, Object
+from pinjected.di.expr_util import Expr, Object
 
 
 def test_expr():
