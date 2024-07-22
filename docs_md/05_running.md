@@ -114,7 +114,7 @@ Which in this case results in equivalent to running the following script:
 
 ```python
 meta_design = some_package.__meta_design__ + some_package.module1.__meta_design + some_package.module1.util.__meta_design__
-overrides = meta_design['overrides']
+overrides = meta_design.provide('overrides')
 default_design = import_if_exist(meta_design['default_design_path'])
 g = (default_design + overrides).to_graph()
 g[some_package.module1.util.run]
