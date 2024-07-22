@@ -18,6 +18,9 @@ class IBindKey(ABC):
 class StrBindKey(IBindKey):
     name: str
 
+    def __post_init__(self):
+        assert isinstance(self.name, str)
+
     def ide_hint_string(self):
         if len(self.name) >= 20:
             return f"{self.name[:10]}...{self.name[-10:]}"

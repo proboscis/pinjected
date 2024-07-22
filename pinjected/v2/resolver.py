@@ -121,6 +121,11 @@ class AsyncResolver:
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
     callbacks: list[IResolverCallback] = field(default=None)
+    """
+    if parent exists, we need to check if the injection targets
+    needs to be re-created due overrides, or not.
+    
+    """
 
     def add_callback(self, callback: IResolverCallback):
         self.callbacks.append(callback)
@@ -291,14 +296,16 @@ class AsyncResolver:
                 data = self.objects[key]
                 self._callback(ProvideEvent(cxt, key, data))
                 return data
-            # TODO invalidate appropriately.
-            # TODO ask parent if not invalidated
+            overridden_keys = set(self.design.keys())
+            d = self._design_from_ancestors()
+            bind: IBind = d.bindings[key]
+            dep_keys = set(bind.complete_dependencies)
 
-            elif key in self.design:
-                # logger.info(f"{cxt.trace_str}")
+            if dep_keys & overridden_keys or key in overridden_keys:
+                # Create instance, when the deps or the key is overriden
                 # we are responsible for providing this
-                bind: IBind = self.design.bindings[key]
-                dep_keys = list(bind.dependencies)
+                # bind: IBind = self.design.bindings[key]
+                # dep_keys = list(bind.dependencies)
                 tasks = []
                 for dep_key in dep_keys:
                     n_cxt = ProvideContext(self, key=dep_key, parent=cxt)
@@ -319,7 +326,7 @@ class AsyncResolver:
                     raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
 
     def child_session(self, overrides: "Design"):
-        return AsyncResolver(self.design+overrides, parent=self)
+        return AsyncResolver(overrides, parent=self)
 
     async def resolve_deps(self, keys: set[IBindKey], cxt):
         tasks = [self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys]
