@@ -105,10 +105,10 @@ class DIGraph:
                         injected = Injected.by_name(v)
                     case type():
                         injected = Injected.bind(v)
-                    case f if callable(f):
-                        injected = Injected.bind(f)
                     case Injected():
                         injected = v
+                    case f if callable(f):
+                        injected = Injected.bind(f)
                 self.direct_injected[dep_name] = injected
 
                 # logger.info(f"add direct injected node:\n{tabulate.tabulate(list(self.direct_injected.items()))}")
