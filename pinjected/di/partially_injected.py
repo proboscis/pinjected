@@ -21,6 +21,7 @@ class Partial(Injected):
         self.injections = Injected.dict(**self.injection_targets).eval()
         self.__is_async_function__ = inspect.iscoroutinefunction(self.src_function)
         self.modifier = modifier
+        self.dynamic_cache = dict()
 
     def get_modified_signature(self):
         params = self.func_sig.parameters.copy()
@@ -132,7 +133,6 @@ class Partial(Injected):
         if self.modifier is not None:
             args, kwargs, causes = self.modifier(args, kwargs)
             causes: list[Injected]
-            called = self.proxy(*args, **kwargs)
             dyn_deps = set()
             for c in causes:
                 assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
@@ -141,6 +141,13 @@ class Partial(Injected):
                 dyn = c.dynamic_dependencies()
                 assert isinstance(dyn, set), f"dyn:{dyn} is not a set"
                 dyn_deps |= c.dynamic_dependencies()
-            called = called.eval().add_dynamic_dependencies(dyn_deps)
-            return called.proxy
+            dyn_deps = frozenset(dyn_deps)
+
+            if dyn_deps not in self.dynamic_cache:
+                dyn_self = self.add_dynamic_dependencies(*dyn_deps)
+                dyn_self.__is_async_function__ = self.__is_async_function__
+                self.dynamic_cache[dyn_deps] = dyn_self
+            dyn_self = self.dynamic_cache[dyn_deps]
+            called = dyn_self.proxy(*args, **kwargs)
+            return called
         return self.proxy(*args, **kwargs)

@@ -280,7 +280,7 @@ class AsyncResolver:
         # this is unexpected for the user, sice the user expects f(1,2,3,4,5)
         # to fix this, we need to convert kwargs to args considering the signature.
         res = f(*args, **kwargs)
-        logger.info(f"{args=} {kwargs=}")
+        #logger.info(f"{args=} {kwargs=}")
         self._callback(CallInEvalEnd(cxt, call, res))
         return res
 

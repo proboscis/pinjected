@@ -8,6 +8,7 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional
 
+import cloudpickle
 from frozendict import frozendict
 from makefun import create_function
 from returns.result import safe
@@ -16,7 +17,6 @@ from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.args_modifier import ArgsModifier, KeepArgsPure
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
-import cloudpickle
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -426,9 +426,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def tuple(*srcs: "Injected"):
-
-        srcs = [Injected.wrap_injected_if_not(s) for s in srcs]
-        return Injected.mzip(*srcs).map(lambda t: tuple(t))
+        # from pinjected.di.static_method_impl import ituple
+        # srcs = [Injected.wrap_injected_if_not(s) for s in srcs]
+        # return Injected.mzip(*srcs).map(lambda t: tuple(t))
+        return Injected.pure(tuple).proxy(srcs)
+        # return ituple(*srcs)
 
     @staticmethod
     def wrap_injected_if_not(tgt: Union["Injected", DelegatedVar, Any]):
@@ -442,7 +444,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def list(*srcs: Union["Injected", "DelegatedVar"]):
-        return Injected.mzip(*srcs).map(list)
+        # from pinjected.di.static_method_impl import ilist
+        # return Injected.mzip(*srcs).map(list)
+        return Injected.pure(list).proxy(srcs)
+        # return ilist(*srcs)
 
     @staticmethod
     def async_gather(*srcs: "Injected[Awaitable]"):
@@ -484,6 +489,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
+        # from pinjected.di.static_method_impl import idict
+        # return idict(**kwargs)
         # raise RuntimeError("disabled")
         # keys = list(kwargs.keys())
         # return Injected.mzip(*[kwargs[k] for k in keys]).map(lambda t: {k: v for k, v in zip(keys, t)})
@@ -574,8 +581,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         top = targets[0]
         while queue:
             next = queue.pop(0)
-            top = Injected.mzip(top, next)
-        return top.proxy[1]
+            top = Injected.tuple(top, next)
+        return top[1]
 
     @staticmethod
     def conditional_preparation(
@@ -740,47 +747,6 @@ async def auto_await(tgt):
 
 @dataclass
 class AsyncInjectedCache(Injected[T]):
-    """
-    Represents a specialized caching mechanism within an asynchronous dependency injection system.
-
-    This class manages the caching of results from asynchronous operations or programs. By monitoring dependencies defined in the system's design, it optimizes resource usage and performance, ensuring that results for repeated operations are reused when applicable.
-
-    Attributes:
-    -----------
-    cache : Injected[IAsyncDict]
-        An asynchronous dictionary acting as the cache storage.
-
-    program : Injected[Awaitable[T]]
-        The main program or operation whose results are to be cached. It is wrapped in an `Injected` to ensure compatibility with the dependency injection system.
-
-    program_dependencies : list[Injected]
-        Specific dependencies that the program relies on, which may influence the caching mechanism.
-
-    Methods:
-    --------
-    __post_init__(self):
-        Initializes the internal structures and ensures the 'program' is of type 'Injected'. Sets up the asynchronous caching strategy.
-
-    get_provider(self):
-        Retrieves the provider function responsible for fetching or computing the necessary data, handling caching logic in the background.
-
-    dependencies(self) -> Set[str]:
-        Identifies and returns a set of static dependencies required by the caching system.
-
-    dynamic_dependencies(self) -> Set[str]:
-        Determines and returns a set of dynamic dependencies that can change over runtime, affecting the caching mechanism.
-
-    __hash__(self):
-        Provides a unique hash representing the current state of the cache configuration, aiding in cache invalidation and recognition.
-
-    Usage:
-    ------
-    The `AsyncInjectedCache` class is particularly useful in scenarios involving repetitive asynchronous operations where results can be cached to improve performance. It intercepts calls to the encapsulated 'program', checks the 'cache' for existing results, and either returns the cached data or proceeds with the operation, caching the new results. This process is seamless to the user, ensuring efficient use of resources and faster data retrieval, thanks to asynchronous processing.
-
-    Note:
-    -----
-    This class requires careful handling of dependencies, especially when they are awaitable. The caching mechanism relies on the consistency and predictability of these dependencies to function correctly.
-    """
     cache: Injected[IAsyncDict]
     program: Injected[Awaitable[T]]
     program_dependencies: list[Injected]
@@ -790,34 +756,41 @@ class AsyncInjectedCache(Injected[T]):
         assert isinstance(self.program, Injected)
         assert isinstance(self.program_dependencies, list), f"program_dependencies:{self.program_dependencies}"
 
-        from pinjected.di.decorators import cached_coroutine
-        @cached_coroutine
-        async def impl(session, cache: IAsyncDict, *deps):
+        from pinjected.v2.resolver import AsyncResolver
+        # @cached_coroutine
+        async def impl(__resolver__: AsyncResolver, cache: IAsyncDict, deps: list):
+            # deps are all awaited here.
+            # deps are only used to calc hash key
             from loguru import logger
-            # deps can be awaitable, so beware...
             assert isinstance(cache, IAsyncDict)
-            deps = await asyncio.gather(*[auto_await(t) for t in deps])
             logger.info(f"Checking cache for {self.program} with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
             hash_key = sha256_key
             if not await cache.contains(hash_key):
                 logger.info(f"Cache miss for {deps} in {cache}")
-                data = await session[self.program]
+                data = await __resolver__[self.program]
                 logger.info(f"Cache miss for {deps}, tried {cache}, writing...")
                 await cache.set(hash_key, data)
                 logger.info(f"Writen to cache for {deps} to {cache}")
             else:
                 logger.info(f"Cache hit for {deps},loading from {cache}")
-            res = await cache.get(hash_key)
-            logger.info(f"Cache hit for {deps}, loaded from {cache}")
+            try:
+                res = await cache.get(hash_key)
+                logger.info(f"Cache hit for {deps}, loaded from {cache}")
+            except Exception as e:
+                logger.warning(f"failed to get from cache:{e}, recalculating")
+                res = await __resolver__[self.program]
+                await cache.set(hash_key, res)
+                logger.info(f"recalculated and written to cache for {deps} to {cache}")
             return res
 
-        deps = Injected.list(
-            Injected.by_name("session"),
-            self.cache,
-            *self.program_dependencies,
+        self.impl = Injected.bind(
+            impl,
+            __resolver__=Injected.by_name("__resolver__"),
+            cache=self.cache,
+            deps=Injected.list(*self.program_dependencies)
         )
-        self.impl = deps.map(lambda t: impl(*t))
+
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 

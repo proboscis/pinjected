@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Callable, Any, List, Awaitable
 
-from pinjected import Injected
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.validation import ValResult
@@ -139,6 +138,7 @@ class DesignOverrideContext:
         # logger.debug(f"global_ids:{global_ids}")
         # find instance of DelegatedVar and Injected in the changed globals
         target_vars = dict()
+        from pinjected import Injected
         for k in changed_keys:
             v = parent_globals[k]
             if isinstance(v, DelegatedVar):
