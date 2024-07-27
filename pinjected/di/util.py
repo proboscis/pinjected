@@ -311,6 +311,14 @@ def providers(**kwargs):
     return add_code_locations(d, kwargs, inspect.currentframe())
 
 
+def design(**kwargs):
+    _injecteds = {k: v for k, v in kwargs.items() if isinstance(v, Injected) or isinstance(v, DelegatedVar)}
+    _instances = {k: v for k, v in kwargs.items() if not isinstance(v, Injected) and not isinstance(v, DelegatedVar)}
+
+    d = DesignImpl().bind_instance(**_instances).bind_provider(**_injecteds)
+    return add_code_locations(d, kwargs, inspect.currentframe())
+
+
 def add_code_locations(design, kwargs, frame):
     try:
         locs = get_code_locations(list(kwargs.keys()), frame)
@@ -441,8 +449,6 @@ def validations(**kwargs: ValidationFunc):
         assert callable(f)
         validators[key] = get_validator(f)
     return AddValidation(EmptyDesign, _validations=validators)
-
-
 
 
 def injecteds(**kwargs):
