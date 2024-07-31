@@ -429,7 +429,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # from pinjected.di.static_method_impl import ituple
         # srcs = [Injected.wrap_injected_if_not(s) for s in srcs]
         # return Injected.mzip(*srcs).map(lambda t: tuple(t))
-        return Injected.pure(tuple).proxy(srcs)
+        return Injected.pure(_en_tuple).proxy(*srcs)
         # return ituple(*srcs)
 
     @staticmethod
@@ -446,7 +446,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def list(*srcs: Union["Injected", "DelegatedVar"]):
         # from pinjected.di.static_method_impl import ilist
         # return Injected.mzip(*srcs).map(list)
-        return Injected.pure(list).proxy(srcs)
+        return Injected.pure(_en_list).proxy(*srcs)
         # return ilist(*srcs)
 
     @staticmethod
@@ -1356,3 +1356,10 @@ def add_viz_metadata(metadata: Dict[str, Any]):
         return tgt
 
     return impl
+
+def _en_tuple(*items):
+    return tuple(items)
+
+def _en_list(*items):
+    return list(items)
+

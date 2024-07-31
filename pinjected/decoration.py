@@ -25,9 +25,9 @@ def update_if_registered(
             from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
             key = StrBindKey(binding_key) if binding_key is not None else StrBindKey(tgt.__name__)
             IMPLICIT_BINDINGS[key] = BindInjected(
-                p,
+                updated,
                 _metadata=meta
             )
-            return p
+            return updated.proxy
         case _:
             return PartialInjectedFunction(updated)
