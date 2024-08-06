@@ -9,7 +9,7 @@ from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.validation import ValResult
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind
-from pinjected.v2.keys import IBindKey
+from pinjected.v2.keys import IBindKey, StrBindKey
 
 ProvisionValidator = Callable[[IBindKey, Any], Awaitable[ValResult]]
 
@@ -29,7 +29,11 @@ class Design(ABC):
 
     def purify(self, target: "Providable"):
         resolver = DependencyResolver(self)
-        return resolver.purified_design(target).unbind('__resolver__').unbind('session').unbind('__design__')
+        return resolver.purified_design(target).unbind(
+            StrBindKey('__resolver__')).unbind(
+            StrBindKey('session')).unbind(
+            StrBindKey('__design__')).unbind(
+            StrBindKey('__task_group__'))
 
     def __enter__(self):
         frame = inspect.currentframe().f_back
@@ -84,6 +88,18 @@ class Design(ABC):
         from pinjected.v2.resolver import AsyncResolver
         logger.warning(f"Design.to_graph is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking()
+
+    def diff(self, other):
+        from pinjected.di.util import get_dict_diff
+        d = get_dict_diff(self.bindings, other.bindings)
+        return d
+
+    def inspect_picklability(self):
+        from pinjected.di.util import check_picklable
+        from loguru import logger
+        logger.info(f"checking picklability of bindings")
+        check_picklable(self.bindings)
+
 
 
 
