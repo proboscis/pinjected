@@ -414,13 +414,3 @@ class DesignImpl(Design):
                 return _wrapper
         return method
 
-    def diff(self, other):
-        from pinjected.di.util import get_dict_diff
-        d = get_dict_diff(self.bindings, other.bindings)
-        return d
-
-    def inspect_picklability(self):
-        from pinjected.di.util import check_picklable
-        from loguru import logger
-        logger.info(f"checking picklability of bindings")
-        check_picklable(self.bindings)

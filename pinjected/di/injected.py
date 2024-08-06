@@ -537,6 +537,15 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         return self.map(lambda coroutine: asyncio.run(impl(coroutine)))
 
+    @staticmethod
+    def dynamic(tgt:str):
+        async def provide_from_resolver(__resolver__):
+            return await __resolver__[tgt]
+        return Injected.bind(
+            provide_from_resolver,
+            _dynamic_dependencies_={tgt}
+        )
+
     def add_dynamic_dependencies(self, *deps: Union[str, set[str]]):
         deps_set = set()
         for item in deps:
