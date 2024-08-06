@@ -7,6 +7,70 @@ from pinjected.di.injected import DictInjected
 from pinjected.di.proxiable import DelegatedVar
 
 
+def get_final_args_kwargs(
+        modified_sig,
+        original_sig,
+        __injected__: dict,
+        *args,
+        **kwargs):
+    """
+    the target cannot be VAR_POSITIONAL or VAR_KEYWORD, i.e. *args, **kwargs
+
+    iterate through original signature, and replace the injected targets with the provided values.
+    the injected values may be Postional only, Positional or Keyword, or Keyword only. so we need to split them.
+    """
+    # from loguru import logger
+    bound_args = modified_sig.bind(*args, **kwargs)
+    # logger.info(f"original args: {args} kwargs: {kwargs}")
+    # logger.info(f"injection targets:{__injected__}")
+    new_args = []
+    new_kwargs = {}
+
+    def add_by_type(param, value):
+        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+            # logger.info(f"add {param.name} as args")
+            new_args.append(value)
+        elif param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            # logger.info(f"add {param.name} as args")
+            new_args.append(value)
+        elif param.kind == inspect.Parameter.KEYWORD_ONLY:
+            # logger.info(f"add {param.name} as kwargs")
+            new_kwargs[param.name] = value
+        # logger.info(f"current new_args:{new_args}, {new_kwargs}")
+
+    for param in original_sig.parameters.values():
+        # logger.info(f"checking param:{param}")
+        if param.name in __injected__:
+            # logger.info(f"add {param.name} by injection")
+            add_by_type(param, __injected__[param.name])
+        elif param.name in bound_args.arguments:
+            # logger.info(f"add {param.name} by bound_args")
+            add_by_type(param, bound_args.arguments[param.name])
+        elif param.default != inspect.Parameter.empty:
+            # logger.info(f"add {param.name} from default")
+            add_by_type(param, param.default)
+
+    bound_vargs = [varg for varg in modified_sig.parameters.values() if
+                   varg.kind == inspect.Parameter.VAR_POSITIONAL]
+    bound_kwargs = [varg for varg in modified_sig.parameters.values() if
+                    varg.kind == inspect.Parameter.VAR_KEYWORD]
+
+    if bound_vargs:
+        # from loguru import logger
+        # logger.info(f"modified_sig:{self.modified_sig}")
+        # logger.info(f"bound args:{bound_args}")
+        # logger.info(f"call args:{args} kwargs:{kwargs}")
+        varg_name = bound_vargs[0].name
+        if varg_name in bound_args.arguments:
+            new_args.extend(bound_args.arguments[varg_name])
+    if bound_kwargs:
+        vkwarg = bound_kwargs[0].name
+        if vkwarg in bound_args.arguments:
+            new_kwargs.update(bound_args.arguments[bound_kwargs[0].name])
+    # logger.info(f"final args:{new_args}, kwarg:{new_kwargs}")
+    return tuple(new_args), new_kwargs
+
+
 class Partial(Injected):
 
     def __init__(self,
@@ -30,62 +94,14 @@ class Partial(Injected):
         return inspect.Signature(parameters=list(params.values()))
 
     def final_args_kwargs(self, __injected__: dict, *args, **kwargs):
-        """
-        the target cannot be VAR_POSITIONAL or VAR_KEYWORD, i.e. *args, **kwargs
+        return get_final_args_kwargs(
+            self.modified_sig,
+            self.func_sig,
+            __injected__,
+            *args,
+            **kwargs
+        )
 
-        iterate through original signature, and replace the injected targets with the provided values.
-        the injected values may be Postional only, Positional or Keyword, or Keyword only. so we need to split them.
-        """
-        # from loguru import logger
-        bound_args = self.modified_sig.bind(*args, **kwargs)
-        # logger.info(f"original args: {args} kwargs: {kwargs}")
-        # logger.info(f"injection targets:{__injected__}")
-        new_args = []
-        new_kwargs = {}
-
-        def add_by_type(param, value):
-            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
-                # logger.info(f"add {param.name} as args")
-                new_args.append(value)
-            elif param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
-                # logger.info(f"add {param.name} as args")
-                new_args.append(value)
-            elif param.kind == inspect.Parameter.KEYWORD_ONLY:
-                # logger.info(f"add {param.name} as kwargs")
-                new_kwargs[param.name] = value
-            # logger.info(f"current new_args:{new_args}, {new_kwargs}")
-
-        for param in self.func_sig.parameters.values():
-            # logger.info(f"checking param:{param}")
-            if param.name in self.injection_targets:
-                # logger.info(f"add {param.name} by injection")
-                add_by_type(param, __injected__[param.name])
-            elif param.name in bound_args.arguments:
-                # logger.info(f"add {param.name} by bound_args")
-                add_by_type(param, bound_args.arguments[param.name])
-            elif param.default != inspect.Parameter.empty:
-                # logger.info(f"add {param.name} from default")
-                add_by_type(param, param.default)
-
-        bound_vargs = [varg for varg in self.modified_sig.parameters.values() if
-                       varg.kind == inspect.Parameter.VAR_POSITIONAL]
-        bound_kwargs = [varg for varg in self.modified_sig.parameters.values() if
-                        varg.kind == inspect.Parameter.VAR_KEYWORD]
-
-        if bound_vargs:
-            # from loguru import logger
-            # logger.info(f"modified_sig:{self.modified_sig}")
-            # logger.info(f"bound args:{bound_args}")
-            # logger.info(f"call args:{args} kwargs:{kwargs}")
-            varg_name = bound_vargs[0].name
-            if varg_name in bound_args.arguments:
-                new_args.extend(bound_args.arguments[varg_name])
-        if bound_kwargs:
-            vkwarg = bound_kwargs[0].name
-            if vkwarg in bound_args.arguments:
-                new_kwargs.update(bound_args.arguments[bound_kwargs[0].name])
-        # logger.info(f"final args:{new_args}, kwarg:{new_kwargs}")
-        return tuple(new_args), new_kwargs
 
     def call_with_injected(self, __injected__: dict, *args, **kwargs):
         args, kwargs = self.final_args_kwargs(__injected__, *args, **kwargs)
