@@ -67,12 +67,14 @@ def pcached(cache_attr_name, keys: set[str] = None):
 
     return impl
 
+
 def _pcached_impl(method, cache_attr_name, keys: set[str]):
     """
     Actual implementation where all required info is present here.
     """
     keys = set(keys)
     method_sig = inspect.signature(method)
+    method_name = method.__name__
     logger.info(f"method:{method}")
     logger.info(f"method sig:{method_sig}")
     self_keys = {k.replace("self.", "") for k in keys if k.startswith('self.')}
@@ -84,9 +86,9 @@ def _pcached_impl(method, cache_attr_name, keys: set[str]):
     async def method_impl(self, *args, **kwargs):
         # hm, have args... we need to extract what we are interested in
         bound = method_sig.bind(self, *args, **kwargs)
-        keys_from_args = [bound.arguments[k] for k in arg_keys]
-        keys_from_self = [getattr(self, k) for k in self_keys]
-        cache_key = tuple(keys_from_args + keys_from_self)
+        keys_from_args = tuple(bound.arguments[k] for k in arg_keys)
+        keys_from_self = tuple(getattr(self, k) for k in self_keys)
+        cache_key = method_name, keys_from_args, keys_from_self
         cache = getattr(self, cache_attr_name)
 
         if cache_key in cache:
@@ -113,7 +115,7 @@ class PClassExample:
     a: str
     cache: dict
 
-    @pcached('cache',{'x'})
+    @pcached('cache', {'x'})
     async def test_method(self, x):
         return self._dep1, self.a, x
 
@@ -136,7 +138,7 @@ def test_dataclass_caching():
 
 def test_pclass_caching():
     async def impl():
-        from pinjected import design,injected
+        from pinjected import design, injected
         d = design(
             dep1="dep_1",
             my_cache=dict()
@@ -156,6 +158,5 @@ def test_pclass_caching():
 
 
 if __name__ == '__main__':
-
     test_dataclass_caching()
     test_pclass_caching()
