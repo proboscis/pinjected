@@ -9,6 +9,18 @@ from pinjected.global_configs import pinjected_TRACK_ORIGIN
 
 T = TypeVar("T")
 
+ASSERT_PICKLABLE = False
+
+
+def assert_picklable(target, name):
+    import cloudpickle
+    if not ASSERT_PICKLABLE:
+        return
+    try:
+        cloudpickle.dumps(target)
+    except Exception as e:
+        raise RuntimeError(f"target {name} is not picklable.\ntype={type(target)}\nvalue={target}") from e
+
 
 class Expr(Generic[T], ABC):
     """
@@ -103,6 +115,8 @@ class BiOp(Expr):
         assert isinstance(self.left, Expr), f"{self.left} is not an Expr"
         assert isinstance(self.right, Expr), f"{self.right} is not an Expr"
         assert isinstance(self.name, str), f"{self.name} is not a str"
+        assert_picklable(self.left, "left")
+        assert_picklable(self.right, "right")
 
     def __getstate__(self):
         return self.name, self.left, self.right, self.origin_frame
@@ -123,6 +137,7 @@ class UnaryOp(Expr):
         super().__post_init__()
         assert isinstance(self.target, Expr), f"{self.target} is not an Expr"
         assert isinstance(self.name, str), f"{self.name} is not a str"
+        assert_picklable(self.target, "target")
 
     def __getstate__(self):
         return self.name, self.target, self.origin_frame
@@ -140,6 +155,14 @@ class Call(Expr):
     args: Tuple[Expr] = field(default_factory=tuple)
     kwargs: Dict[str, Expr] = field(default_factory=dict)
 
+    def __post_init__(self):
+        super().__post_init__()
+        assert_picklable(self.func, "func")
+        for i, arg in enumerate(self.args):
+            assert_picklable(arg, f"args[{i}]")
+        for k, v in self.kwargs.items():
+            assert_picklable(v, f"kwargs[{k}]")
+
     def __getstate__(self):
         return self.func, self.args, self.kwargs, self.origin_frame
 
@@ -155,6 +178,12 @@ class Attr(Expr):
     data: Expr
     attr_name: str  # static access so no ast involved
 
+    def __post_init__(self):
+        super().__post_init__()
+        assert isinstance(self.data, Expr), f"{self.data} is not an Expr"
+        assert isinstance(self.attr_name, str), f"{self.attr_name} is not a str"
+        assert_picklable(self.data, "data")
+
     def __getstate__(self):
         return self.data, self.attr_name, self.origin_frame
 
@@ -169,6 +198,13 @@ class Attr(Expr):
 class GetItem(Expr):
     data: Expr
     key: Expr
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert isinstance(self.data, Expr), f"{self.data} is not an Expr"
+        assert isinstance(self.key, Expr), f"{self.key} is not an Expr"
+        assert_picklable(self.data, "data")
+        assert_picklable(self.key, "key")
 
     def __getstate__(self):
         return self.data, self.key, self.origin_frame
@@ -186,6 +222,10 @@ class Object(Expr):
     Use this to construct an AST and then compile it for any use.
     """
     data: Any  # holds user data
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert_picklable(self.data, 'data')
 
     def __getstate__(self):
         return self.data, self.origin_frame
@@ -209,6 +249,7 @@ class Cache(Expr):
     src: Expr
 
     def __post_init__(self):
+        super().__post_init__()
         assert isinstance(self.src, Expr), f"{self.src} is not an Expr"
 
     def __getstate__(self):

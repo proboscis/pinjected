@@ -1,3 +1,5 @@
+from asyncio import TaskGroup
+
 from loguru import logger
 
 from pinjected.di.design_interface import ProvisionValidator
@@ -158,16 +160,18 @@ class AsyncResolver:
 
         self.design = self.design + providers(
             __resolver__=dummy,
-            __design__=dummy
+            __design__=dummy,
+            __task_group__=dummy,
         )
         self.objects = {
             StrBindKey("__resolver__"): self,
-            StrBindKey("__design__"): self.design
+            StrBindKey("__design__"): self.design,
         }
         self.eval_memos = {}
         self.eval_locks = defaultdict(asyncio.Lock)
         self.destruction_lock = asyncio.Lock()
         self.destructed = False
+        self.provision_depth = 0
 
     async def _optimize(self, expr: Expr):
         """
@@ -280,7 +284,7 @@ class AsyncResolver:
         # this is unexpected for the user, sice the user expects f(1,2,3,4,5)
         # to fix this, we need to convert kwargs to args considering the signature.
         res = f(*args, **kwargs)
-        #logger.info(f"{args=} {kwargs=}")
+        # logger.info(f"{args=} {kwargs=}")
         self._callback(CallInEvalEnd(cxt, call, res))
         return res
 
@@ -428,16 +432,28 @@ class AsyncResolver:
         logger.debug(f"provision validated.")
 
     async def provide(self, tgt: Providable):
-        await self.validate_provision(tgt)
-        match tgt:
-            case EvaledInjected(val, ast):
-                repr = show_expr(ast)
-            case DelegatedVar(value, cxt) as dv:
-                repr = show_expr(dv.eval().ast)
-            case _:
-                repr = str(tgt)
-        logger.info(f"providing {repr}")
-        return await self._provide_providable(tgt)
+        self.provision_depth += 1
+        try:
+            if self.provision_depth == 1:
+                async with TaskGroup() as tg:
+                    await self.validate_provision(tgt)
+                    match tgt:
+                        case EvaledInjected(val, ast):
+                            repr = show_expr(ast)
+                        case DelegatedVar(value, cxt) as dv:
+                            repr = show_expr(dv.eval().ast)
+                        case _:
+                            repr = str(tgt)
+                    logger.info(f"providing {repr}")
+                    tg_key = StrBindKey('__task_group__')
+                    self.objects[tg_key] = tg
+                    res = await self._provide_providable(tgt)
+                    del self.objects[tg_key]
+                return res
+            else:
+                return await self._provide_providable(tgt)
+        finally:
+            self.provision_depth -= 1
 
     async def provide_or(self, tgt: Providable, default):
         try:
