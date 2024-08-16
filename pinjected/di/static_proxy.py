@@ -62,6 +62,13 @@ def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
     return DelegatedVar(tgt, cxt)
 
 
+def en_list(thing):
+    return list(thing)
+
+
+def en_tuple(thing):
+    return tuple(thing)
+
 
 def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
     def _eval(expr):
@@ -83,10 +90,10 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
         match expr:
             case Object([*items] as x) if isinstance(x, list):
                 t = app.zip(*[ensure_pure(item) for item in items])
-                return app.map(t, list)
+                return app.map(t, en_list)
             case Object(([*items] as x)) if isinstance(x, tuple):
                 t = app.zip(*[ensure_pure(item) for item in items])
-                return app.map(t, tuple)
+                return app.map(t, en_tuple)
             case Object({**items} as x) if isinstance(x, dict):
                 values = app.zip(*[ensure_pure(item) for item in items.values()])
                 return app.map(values, lambda t: {k: v for k, v in zip(items.keys(), t)})
@@ -104,7 +111,7 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                 def apply(t):
                     from loguru import logger
                     func, args, kwargs = t
-                    #args,kwargs = fix_args_kwargs(func,args,kwargs)
+                    # args,kwargs = fix_args_kwargs(func,args,kwargs)
                     return func(*args, **kwargs)
 
                 applied = app.map(app.zip(injected_func, args, kwargs), apply)

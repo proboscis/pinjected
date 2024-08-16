@@ -19,6 +19,7 @@ from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_var_path import ModuleVarPath
 
 __meta_design__ = instances(
+    # ah, this makes my code load my_design
     default_design_paths=["pinjected.ide_supports.default_design.my_design"]
 )
 
