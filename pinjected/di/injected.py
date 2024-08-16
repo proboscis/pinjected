@@ -372,7 +372,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
         # return MappedInjected(self, f)
         if not inspect.iscoroutinefunction(f):
-            @functools.wraps(f)
+            #@functools.wraps(f) #wraps breaks built-in function to be unpicklable...
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
 
@@ -511,6 +511,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def ensure_injected(data: Union["Injected", DelegatedVar]):
         match data:
             case DelegatedVar():
+                # this eval() causes the proxy to be unpicklable. but we can't tell why.
                 return Injected.ensure_injected(data.eval())
             case Injected():
                 return data

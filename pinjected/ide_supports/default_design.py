@@ -9,7 +9,7 @@ from pinjected.exporter.llm_exporter import add_export_config
 from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths
 from pinjected.module_inspector import get_project_root
 from pinjected.run_config_utils import injected_to_idea_configs
-
+# This design is used for ide supports
 my_design = instances(
     logger=loguru.logger,
     runner_script_path=pinjected.run_config_utils.__file__,

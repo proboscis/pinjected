@@ -5,6 +5,7 @@ Here i make a converter of a class.
 
 """
 import inspect
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import wraps
 
@@ -142,8 +143,9 @@ class InjectedMethod:
 
 def convert_method_into_dynamic_injected_method(key: str, method, dynamic_deps_mapping: dict[str, Injected]):
     signature = inspect.signature(method)
-    assert inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(
-        method), f"method:{method} must be async to be converted."
+    if not (inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(method)):
+        logger.warning(f"method:{method} is not async method. double check if it's asynccontextmanager")
+
     assert 'self' in signature.parameters.keys()
     logger.info(f"method parameters:{signature.parameters.keys()}")
     logger.info(f"converting method:{method}")

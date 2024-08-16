@@ -36,8 +36,10 @@ async def test_variable():
   """
   return 1
 
+from returns.maybe import Some, Nothing
 __meta_design__ = instances(
     default_design_path='test_package.design',
+    default_working_dir=Some("/home/user/test_repo"), # use Some() to override, and Nothing to infer from the project structure.
 )
 ```
 

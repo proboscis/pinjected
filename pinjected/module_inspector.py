@@ -34,6 +34,13 @@ def get_project_root(start_path: str) -> str:
             raise ValueError("Project root not found")
         current_path = parent_path
         logger.debug(f"current_path:{current_path}")
+    # this handles the case where
+    # /repos/repo_name/package/__init__.py
+    # but not the case where
+    # /repos/repo_name/src/package/__init__.py
+    # how can we detect if src should be included?
+    if (p_path := Path(current_path).parent).name == 'src':
+        current_path = str(p_path)
     return current_path
 
 

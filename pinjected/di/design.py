@@ -21,15 +21,6 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-def map_wrap(src, f):
-    @wraps(src)
-    def wrapper(*args, **kwargs):
-        return f(src(*args, **kwargs))
-
-    wrapper.__signature__ = inspect.signature(src)
-    return wrapper
-
-
 def remove_kwargs_from_func(f, kwargs: List[str]):
     deps = extract_dependency_including_self(f)
     to_remove = set(kwargs)
@@ -63,7 +54,7 @@ class MergedDesign(Design):
         for src in reversed(self.srcs):  # the last one takes precedence
             if item in src:
                 res = src[item]
-                assert isinstance(res, IBind), f"item must be IBind, but got {type(res)}"
+                assert isinstance(res, IBind), f"item must be IBind, but got {type(res)}=={res}"
                 return res
         raise KeyError(f"{item} not found in any of the sources")
 
@@ -366,7 +357,7 @@ class DesignImpl(Design):
     def __getitem__(self, item: IBindKey | str):
         if isinstance(item, str):
             item = StrBindKey(item)
-        assert isinstance(item, IBindKey), f"item must be IBindKey or a str, but got {type(item)}"
+        assert isinstance(item, IBindKey), f"item must be IBindKey, but got {type(item)}=={item}"
         return self.bindings[item]
 
     def __str__(self):
