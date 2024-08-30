@@ -5,6 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Mapping
 
+from beartype import beartype
 from loguru import logger
 from returns.maybe import Some
 
@@ -20,7 +21,7 @@ from pinjected.module_var_path import ModuleVarPath
 
 __meta_design__ = instances(
     # ah, this makes my code load my_design
-    default_design_paths=["pinjected.ide_supports.default_design.my_design"]
+    default_design_paths=["pinjected.ide_supports.default_design.pinjected_internal_design"]
 )
 
 from pinjected.run_helpers.run_injected import run_injected
@@ -68,9 +69,10 @@ def load_meta_context(
 
 
 @injected
+@beartype
 def create_idea_configurations(
         inspect_and_make_configurations,
-        module_path,
+        module_path:Path,
         print_to_stdout,
         /,
         wrap_output_with_tag=True

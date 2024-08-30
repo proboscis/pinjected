@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Callable, Any, List, Awaitable
 
+from beartype import beartype
+
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.validation import ValResult
@@ -24,6 +26,7 @@ class Design(ABC):
         pass
 
     @abstractmethod
+    @beartype
     def __getitem__(self, item: IBindKey | str) -> IBind:
         pass
 
@@ -161,6 +164,7 @@ class DesignOverrideContext:
                 target_vars[k] = v
             if isinstance(v, Injected):
                 target_vars[k] = v
-        mod_name = inspect.getmodule(frame).__name__
+        mod_name = frame.f_globals["__name__"]
+        #mod_name = inspect.getmodule(frame).__name__
         # logger.info(f"found targets:\n{pformat(target_vars)}")
         return [ModuleVarPath(mod_name + "." + v) for v in target_vars.keys()]

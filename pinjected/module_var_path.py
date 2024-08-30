@@ -33,12 +33,12 @@ class ModuleVarPath:
         return f"from {self.module_name} import {self.var_name}"
 
     @property
-    def module_file_path(self):
+    def module_file_path(self)->Path:
         if self.module_name in sys.modules:
-            return sys.modules[self.module_name].__file__
+            return Path(sys.modules[self.module_name].__file__)
         else:
             __import__(self.module_name)
-            return sys.modules[self.module_name].__file__
+            return Path(sys.modules[self.module_name].__file__)
 
     @staticmethod
     def from_local_variable(var_name):

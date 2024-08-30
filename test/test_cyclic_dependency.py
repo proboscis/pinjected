@@ -11,10 +11,10 @@ from pinjected.v2.resolver import AsyncResolver
 
 def test_validation():
     d = instances(
-        x = 0
+        x=0
     ) + providers(
-        y = lambda x: x,
-        x = lambda y: y
+        y=lambda x: x,
+        x=lambda y: y
     )
     with pytest.raises(DependencyResolutionError) as e:
         asyncio.run(AsyncResolver(d)['y'])
@@ -25,10 +25,10 @@ def test_validation():
     with pytest.raises(DependencyResolutionError) as e:
         asyncio.run(AsyncResolver(d)[injected('z') + injected('z')])
     logger.info(f"successfully detected dep error as :{e}")
-    d2 =instances(
-        x = 0
+    d2 = instances(
+        x=0
     ) + providers(
-        y = lambda x:1
+        y=lambda x: 1
     )
 
     assert asyncio.run(AsyncResolver(d2)[injected('y') + injected('y')]) == 2
