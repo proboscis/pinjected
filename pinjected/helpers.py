@@ -1,6 +1,8 @@
 import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from beartype import beartype
 from returns.maybe import maybe
 from typing import Optional
 
@@ -15,11 +17,12 @@ from pinjected.runnables import get_runnables
 patch_maybe()
 
 @injected_function
+@beartype
 def inspect_and_make_configurations(
         injected_to_idea_configs,
         logger,
         /,
-        module_path
+        module_path:Path
 ) -> IdeaRunConfigurations:
     runnables = get_runnables(module_path)
     logger.info(f"Found {len(runnables)} injecteds")

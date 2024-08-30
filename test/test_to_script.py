@@ -125,51 +125,6 @@ def alpha(CONST):
     return CONST + 1
 
 
-def test_something():
-    from loguru import logger
-    llm_design:Design = instances() + load_user_default_design()
-    logger.info(f"llm_design: {llm_design}")
-    logger.info(f"{pformat(llm_design.bindings)}")
-    a_llm = AsyncResolver(llm_design).to_blocking().provide('a_llm__gpt4_turbo')
-
-    test_target = f(g(CONST + alpha))
-
-    d: Design = instances(
-        x=0
-    ) + providers(
-        f=f,
-        v=CONST,
-        target=test_target
-    )
-    dig: DIGraph = d.to_vis_graph()
-    dig.parse_injected(g)
-    """
-    so, in order to form a script from digraph,
-    I need to:
-    1. make each injected as an expression.
-
-    The result should look like:
-    Instances:
-    x = 0
-    y = 1
-    Providers:
-    def provider_func(x,y):
-        ... local variable declarations ...
-        ....
-    z = provider_func(x,y)
-    ASTs:
-    def lambda_0(x,y):
-        __res__ = ... constructed ast ...
-        return __res__
-    z = lambda_0(x,y)
-
-    Yeah, let's do it.
-    """
-
-    exporter = PinjectedCodeExporter(d, a_llm)
-
-    src = asyncio.run(exporter.export('target'))
-    print(src)
 
 
 # print(f"__________________")

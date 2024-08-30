@@ -1,30 +1,33 @@
 import sys
 from pathlib import Path
 
-from pinjected import Injected
+import pinjected
+from pinjected import *
 from pinjected.di.util import instances
 from pinjected.helper_structure import MetaContext
 from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.run_helpers.run_injected import run_injected
 from loguru import logger
-TEST_MODULE = Path("../pinjected/test_package/child/module1.py")
+
+from pinjected.v2.resolver import AsyncResolver
+
+p_root = Path(__file__).parent.parent
+TEST_MODULE = p_root/"pinjected/test_package/child/module1.py"
+import pytest
 
 
-def test_create_configurations():
-    configs = create_idea_configurations(
-        TEST_MODULE.expanduser(),
-        default_design_path="dummy_path"
-    )
-    logger.info(configs)
-    mc = MetaContext.gather_from_path('../pinjected/ide_supports/create_configs.py')
-    (mc.final_design + instances(
-        # print_to_stdout=True,
+@pytest.mark.asyncio
+async def test_create_configurations():
+    from pinjected.ide_supports.default_design import pinjected_internal_design
+    configs = create_idea_configurations()
+    mc = await MetaContext.a_gather_from_path(p_root/"pinjected/ide_supports/create_configs.py")
+    dd = (await mc.a_final_design) + design(
         module_path=TEST_MODULE,
         interpreter_path=sys.executable,
-        # meta_context = mc,
-        # logger = logger,
-        # runner_script_path= Path(__file__),
-    )).provide(configs)
+    ) + pinjected_internal_design
+    rr = AsyncResolver(dd)
+    res = await rr[configs]
+    print(res)
 
 
 test_design = instances(x=0)

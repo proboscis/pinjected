@@ -98,9 +98,9 @@ def run_anything(
         meta_overrides = meta_resolver.provide("overrides") + meta_overrides
 
         # add overrides from with block
-        meta_overrides += DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
+        contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
+        meta_overrides += contextual_overrides        # obtain internal hooks from the meta_design
 
-        # obtain internal hooks from the meta_design
         if StrBindKey('provision_callback') in meta_design:
             provision_callback = meta_resolver.provide('provision_callback')
         else:
