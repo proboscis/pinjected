@@ -1,10 +1,13 @@
 import asyncio
+import multiprocessing
 
 try:
     from asyncio import TaskGroup
 except ImportError:
     from loguru import logger
-    logger.warning("Using compatibility.task_group.TaskGroup since TaskGroup from python 3.11 is not available.")
+    current_process = multiprocessing.current_process()
+    if "SpawnProcess" not in current_process.name:
+        logger.warning(f"Using compatibility.task_group.TaskGroup since TaskGroup from python 3.11 is not available.")
     class TaskGroup:
         def __init__(self):
             self.tasks = []

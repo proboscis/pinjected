@@ -4,6 +4,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from beartype import beartype
+
 
 @dataclass(frozen=True)
 class ModuleVarPath:
@@ -56,8 +58,8 @@ class ModuleVarPath:
     def depending_import_lines(self):
         return find_import_statements_in_module(self.module_name)
 
-
-def load_variable_by_module_path(full_module_path):
+@beartype
+def load_variable_by_module_path(full_module_path:str):
     from loguru import logger
     logger.info(f"loading {full_module_path}")
     module_path_parts = full_module_path.split('.')

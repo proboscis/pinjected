@@ -429,7 +429,7 @@ class AsyncResolver:
                 errors = list(digraph.di_dfs_validation("__root__"))
 
         if errors:
-            raise DependencyResolutionError(f"Errors in dependency resolution: {pformat(errors)}", causes=errors)
+            raise DependencyResolutionError(f"Errors in dependency resolution:\n{pformat(errors)}\n", causes=errors)
         logger.debug(f"provision validated.")
 
     async def provide(self, tgt: Providable):
@@ -489,11 +489,14 @@ class AsyncResolver:
                     if not inspect.iscoroutinefunction(destructor):
                         destructor = a_destructor(destructor)
                     destructions.append(destructor(v))
-            logger.info(f"waiting for {len(destructions)} destructors to finish.")
-            results = await asyncio.gather(*destructions)
-            logger.success(f"all destructors finished with results:{results}")
+            if destructions:
+                logger.info(f"waiting for {len(destructions)} destructors to finish.")
+                results = await asyncio.gather(*destructions)
+                logger.success(f"all destructors finished with results:{results}")
+                logger.success(f"Resolver destructed")
+            else:
+                results = []
             self.destructed = True
-            logger.success(f"Resolver destructed")
             return results
 
 

@@ -2,6 +2,7 @@ import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pprint import pformat
 from typing import Dict, Callable, Any, List, Awaitable
 
 from beartype import beartype
@@ -140,13 +141,14 @@ class DesignOverrideContext:
         parent_globals = self.init_frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
         # logger.debug(f"enter->\n"+pformat(global_ids))
+        #print("enter->\n"+pformat(global_ids))
         self.last_global_ids = global_ids
 
     def exit(self, frame: inspect.FrameInfo) -> list[ModuleVarPath]:
         # get parent global variables
         parent_globals = frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
-        # logger.debug("exit->\n"+pformat(global_ids))
+        #print("exit->\n"+pformat(global_ids))
         changed_keys = []
         for k in global_ids:
             if k in self.last_global_ids:
@@ -164,6 +166,7 @@ class DesignOverrideContext:
                 target_vars[k] = v
             if isinstance(v, Injected):
                 target_vars[k] = v
+
         mod_name = frame.f_globals["__name__"]
         #mod_name = inspect.getmodule(frame).__name__
         # logger.info(f"found targets:\n{pformat(target_vars)}")
