@@ -1,4 +1,4 @@
-from pinjected import Injected, injected, instance
+from pinjected import *
 from pinjected.di.util import instances, providers
 
 __meta_design__ = instances(
@@ -31,6 +31,9 @@ def test_function(a, b):
 @injected
 def test_function2(a, /, b):
     pass
+
+variable_x:IProxy = injected('x')
+variable_y:Injected = injected('y')
 
 
 

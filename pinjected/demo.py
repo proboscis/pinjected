@@ -3,7 +3,6 @@ from telnetlib import IP
 from typing import Callable
 
 from pinjected import injected,Design,instances,IProxy
-import openai
 
 __meta_design__: Design = instances(
     default_design_paths=["pinjected.demo.default_design"]
@@ -20,6 +19,7 @@ default_design: Design = instances(
 @injected
 def LLM(load_openai_api_key: str, model, max_tokens, /, prompt) -> str:
     # openai_api_key = Path("~/openai_api_key.txt").expanduser().read_text().strip()
+    import openai
     return openai.Completion.create(
         load_openai_api_key(), prompt=prompt, model=model, max_tokens=max_tokens
     )["choices"][0]["text"]

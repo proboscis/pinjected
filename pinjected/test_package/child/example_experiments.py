@@ -1,5 +1,7 @@
 from pinjected import *
 
+Model = object
+Dataset = object
 
 @injected
 def build_model(

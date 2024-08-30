@@ -34,3 +34,5 @@ pinjected = "pinjected.main_impl:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
+tqdm = "^4.66.5"
+click = "^8.1.7"
