@@ -5,7 +5,7 @@ from pinjected.helper_structure import MetaContext
 from pinjected.module_inspector import get_project_root
 from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.module_helper import walk_module_attr
-
+from pinjected import *
 
 def test_get_project_root():
     # this is a host dependent test...
@@ -27,12 +27,3 @@ def test_gather_meta_design():
     test_file = "/Users/s22625/repos/pinject-design/pinjected/test_package/child/module1.py"
     mc: MetaContext = MetaContext.gather_from_path(Path(test_file))
     mc.final_design.provide('name') == "test_package.child.module1"
-
-
-def test_config_creator():
-    test_file = "/Users/s22625/repos/pinject-design/pinjected/test_package/child/module1.py"
-    confs = create_idea_configurations(
-        module_path=test_file,
-        print_to_stdout=False
-    )
-    pprint(confs)

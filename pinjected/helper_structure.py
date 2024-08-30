@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+
+from beartype import beartype
 from loguru import logger
 from pathlib import Path
 from typing import Dict, List
@@ -52,6 +54,7 @@ class MetaContext:
         )
 
     @staticmethod
+    @beartype
     def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
         import asyncio
         return asyncio.run(MetaContext.a_gather_from_path(file_path, meta_design_name))

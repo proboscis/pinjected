@@ -859,7 +859,7 @@ class InjectedWithDynamicDependencies(Injected[T]):
         return self.src.dynamic_dependencies() | self._dynamic_dependencies
 
     def __repr_expr__(self):
-        return f"InjectedWithDynamicDependencies({self.src.__repr_expr__()}, {self._dynamic_dependencies})"
+        return self.src.__repr_expr__()
 
 
 class MappedInjected(Injected):

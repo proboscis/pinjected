@@ -39,8 +39,8 @@ def get_project_root(start_path: str) -> str:
     # but not the case where
     # /repos/repo_name/src/package/__init__.py
     # how can we detect if src should be included?
-    if (p_path := Path(current_path).parent).name == 'src':
-        current_path = str(p_path)
+    if (p_path := Path(current_path)).name == 'src':
+        current_path = str(p_path.parent)
     return current_path
 
 

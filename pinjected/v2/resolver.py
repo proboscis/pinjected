@@ -1,7 +1,7 @@
-from asyncio import TaskGroup
 
 from loguru import logger
 
+from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import ProvisionValidator
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.validation import ValFailure, ValSuccess
@@ -348,7 +348,8 @@ class AsyncResolver:
                 case _:
                     raise TypeError(f"validator must return ValFailure or ValSuccess, got {res}")
         else:
-            logger.debug(f"no validator found for {str(key)[:100]} from {self.design}")
+            pass
+            #logger.debug(f"no validator found for {str(key)[:100]} from {self.design}")
 
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)

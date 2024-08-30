@@ -1,12 +1,15 @@
 import asyncio
 import inspect
 
+import pytest
 from frozendict import frozendict
 
 from pinjected import *
 from pinjected import Injected
 from pinjected.di.partially_injected import Partial
 from loguru import logger
+
+from pinjected.v2.resolver import AsyncResolver
 
 
 def target_function(d1, d2, d3, /, a, b, *args, named=4, **kwargs):
@@ -69,8 +72,8 @@ def test_partial_injected():
     func = asyncio.run(provider())
     logger.info(func("a", "b", "args1", "args2", named=5, kw1='kw1', kw2='kw2'))
 
-
-def test_with_design():
+@pytest.mark.asyncio
+async def test_with_design():
     wrapped = Partial(
         target_function,
         injection_targets=dict(
@@ -84,7 +87,9 @@ def test_with_design():
         d2=2,
         d3=3
     )
-    assert d.provide(wrapped('a', 'b', named=5, kw1='kw1', kw2='kw2')) == target_without_args
+    r = AsyncResolver(d)
+    data = await r[wrapped('a', 'b', 'args1', 'args2', named=5, kw1='kw1', kw2='kw2')]
+    assert data == target_result
 
 
 def test_with_injected_decorator():
