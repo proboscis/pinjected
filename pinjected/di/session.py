@@ -2,7 +2,6 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from pinject.scoping import BindableScopes
 
 
 @dataclass
@@ -77,18 +76,3 @@ class ChildScope(ISessionScope):
 
     def __contains__(self, item):
         return item in self.cache or item in self.parent
-
-
-@dataclass
-class OverridenBindableScopes:
-    parent: BindableScopes
-    override_targets: set
-
-    def __post_init__(self):
-        self.scopes = dict()
-
-    def get_sub_scope(self, binding):
-        if binding.scope_id not in self.scopes:
-            parent_scope = self.parent.get_sub_scope(binding)
-            self.scopes[binding.scope_id] = ChildScope(parent_scope, self.override_targets)
-        return self.scopes[binding.scope_id]
