@@ -3,6 +3,7 @@ import shelve
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from pprint import pformat
 from typing import Callable, Literal, Generic, TypeVar
 
 from beartype import beartype
@@ -77,9 +78,10 @@ class Annotation:
 class VariableInFile:
     file_path: Path
     name: str
-    def to_module_var_path(self)->ModuleVarPath:
+
+    def to_module_var_path(self) -> ModuleVarPath:
         root = get_project_root(str(self.file_path))
-        module_path = get_module_path(root,self.file_path)
+        module_path = get_module_path(root, self.file_path)
         module_var_path = module_path + '.' + self.name
         return ModuleVarPath(module_var_path)
 
@@ -149,8 +151,12 @@ class PinjectedTestAggregator:
 
     def gather(self, root: Path) -> list[VariableInFile]:
         root = root.expanduser()
+        if root.is_file():
+            root = root.parent
+        logger.info(f"gathering test targets from {root}")
         py_files = list(root.rglob("*.py"))
-        target_files = []
+        logger.info(f"found {len(py_files)} python files")
+        targets = []
         for py_file in py_files:
             try:
                 accepted = self.cached_data.get_data(py_file)
@@ -158,5 +164,8 @@ class PinjectedTestAggregator:
                 logger.warning(f"error while checking {py_file}: {e}")
                 continue
             if accepted:
-                target_files.extend(accepted)
-        return target_files
+                targets.extend(accepted)
+        logger.info(f"found {len(targets)} test targets")
+        mvps = [target.to_module_var_path().path for target in targets]
+        logger.info(f"test targets:\n {pformat(mvps)}")
+        return targets
