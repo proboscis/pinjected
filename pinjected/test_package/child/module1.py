@@ -1,6 +1,7 @@
 from pinjected import *
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.util import instances, providers
+from pinjected.test_helper.test_runner import test_current_file
 
 design01 = instances(name='design01')
 design02 = design01 + instances(name='design02')
@@ -45,6 +46,8 @@ with design(
         c="cc"
     ):
         test_cc = injected('c')
+
+run_test:IProxy = test_current_file()
 
 __meta_design__ = instances(
     overrides=design(

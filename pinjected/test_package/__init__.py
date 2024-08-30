@@ -1,10 +1,11 @@
-from pinjected import injected_function
+from pinjected import *
 from pinjected.di.util import instances, providers
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.helper_structure import IdeaRunConfiguration
+from pinjected.test_helper.test_runner import test_tree
 
 
-@injected_function
+@injected
 def dummy_config_creator_for_test(
         runner_script_path,
         interpreter_path,
@@ -23,6 +24,8 @@ def dummy_config_creator_for_test(
             working_dir=default_working_dir.value_or("."),
         )
     ]
+
+run_test_module:IProxy = test_tree()
 
 
 __meta_design__ = instances(
