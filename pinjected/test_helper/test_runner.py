@@ -195,6 +195,39 @@ async def __pinjected__internal_design():
 
 
 """
+Public interfaces:
+"""
+
+
+def test_current_file():
+    import inspect
+    frame = inspect.currentframe().f_back
+    file = frame.f_globals["__file__"]
+    return a_visualize_test_results(
+        a_run_tests(
+            injected('pinjected_test_aggregator').gather_from_file(Path(file)),
+        )
+    )
+
+
+@injected
+def test_tagged(*tags: str):
+    raise NotImplementedError()
+
+
+def test_tree():
+    import inspect
+    frame = inspect.currentframe().f_back
+    file = frame.f_globals["__file__"]
+
+    return a_visualize_test_results(
+        a_run_tests(
+            injected('pinjected_test_aggregator').gather(Path(file)),
+        )
+    )
+
+
+"""
 So, pytest is like an interface to run bunch of small entrypoints.
 For me, I can generalize this to running bunch of entrypoints with tags.
 So, I want to tag many entrypoints and run them easily from the IDE by either clicking or via action.
