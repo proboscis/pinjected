@@ -27,13 +27,13 @@ class ModuleVarSpec(Generic[T]):
 def get_project_root(start_path: str) -> str:
     from loguru import logger
     current_path = os.path.dirname(os.path.abspath(start_path))
-    logger.debug(f"current_path:{current_path}")
+    #logger.debug(f"current_path:{current_path}")
     while os.path.exists(os.path.join(current_path, "__init__.py")):
         parent_path = os.path.dirname(current_path)
         if parent_path == current_path:
             raise ValueError("Project root not found")
         current_path = parent_path
-        logger.debug(f"current_path:{current_path}")
+        #logger.debug(f"current_path:{current_path}")
     # this handles the case where
     # /repos/repo_name/package/__init__.py
     # but not the case where

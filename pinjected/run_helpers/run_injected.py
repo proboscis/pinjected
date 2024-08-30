@@ -1,8 +1,16 @@
 import asyncio
+import io
+import multiprocessing
 import os
+import sys
+import traceback
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
+from pprint import pformat
 from typing import Awaitable, Optional
 
+from beartype import beartype
 from loguru import logger
 from returns.result import safe, Result
 
@@ -57,9 +65,73 @@ def run_injected(
     )
 
 
+@beartype
+async def a_run_target(var_path: str, design_path: Optional[str] = None):
+    design, meta_overrides, var = await a_get_run_context(design_path, var_path)
+    design += meta_overrides
+    async with TaskGroup() as tg:
+        dd = design + instances(
+            __task_group__=tg
+        )
+        resolver = AsyncResolver(dd)
+        _res = await resolver.provide(var)
+        if isinstance(_res, Awaitable):
+            _res = await _res
+    await resolver.destruct()
+    return _res
+
+
+def _remote_task(var_path: str):
+    from loguru import logger
+
+    async def impl():
+        design, meta_overrides, var = await a_get_run_context(None, var_path)
+        design += meta_overrides
+        async with TaskGroup() as tg:
+            dd = design + instances(
+                __task_group__=tg
+            )
+            resolver = AsyncResolver(dd)
+            _res = await resolver.provide(var)
+            if isinstance(_res, Awaitable):
+                _res = await _res
+        await resolver.destruct()
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    logger.remove()
+    logger.add(stderr)
+    try:
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            res = asyncio.run(impl())
+        trace_str = None
+    except Exception as e:
+        res = e
+        trace_str = traceback.format_exc()
+    logger.remove()
+
+    return stdout.getvalue(), stderr.getvalue(), trace_str, res
+
+
+_enter_count = 0
+@beartype
+async def a_run_target__mp(var_path: str):
+    global _enter_count
+    from loguru import logger
+    _enter_count += 1
+    if _enter_count == 1:
+        logger.remove()
+    with ProcessPoolExecutor(1) as executor:
+        res = await asyncio.get_event_loop().run_in_executor(executor, _remote_task, var_path)
+    if _enter_count == 1:
+        logger.add(sys.stderr)
+    _enter_count -= 1
+    return res
+
+
 def run_anything(
         cmd: str,
-        var_path,
+        var_path: str,
         design_path: Optional[str],
         overrides=instances(),
         return_result=False,
@@ -69,42 +141,7 @@ def run_anything(
 ):
     from loguru import logger
     with disable_internal_logging():
-
-        loaded_var = load_variable_by_module_path(var_path)
-        meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
-        if not isinstance(meta, dict):
-            meta = {}
-
-        meta_overrides = meta.get("overrides", instances())
-
-        meta_cxt: MetaContext = MetaContext.gather_from_path(ModuleVarPath(var_path).module_file_path)
-        design = resolve_design(design_path, meta_cxt)
-
-        # here, actually the loaded variable maybe an instance of Designed.
-        # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
-        # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
-        match (var := load_variable_by_module_path(var_path)):
-            case Injected() | DelegatedVar():
-                var = Injected.ensure_injected(var)
-            case Designed():
-                design += var.design
-                var = var.internal_injected
-        """
-        I need to get the design overrides from with context and add it to the overrides
-        """
-
-        meta_design = instances(overrides=instances()) + meta_cxt.accumulated
-        meta_resolver = AsyncResolver(meta_design).to_blocking()
-        meta_overrides = meta_resolver.provide("overrides") + meta_overrides
-
-        # add overrides from with block
-        contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
-        meta_overrides += contextual_overrides        # obtain internal hooks from the meta_design
-
-        if StrBindKey('provision_callback') in meta_design:
-            provision_callback = meta_resolver.provide('provision_callback')
-        else:
-            provision_callback = None
+        design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
 
     design += (meta_overrides + overrides)
     logger.info(f"running target:{var} with {design_path} + {overrides}")
@@ -150,12 +187,12 @@ def run_anything(
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{var.dependencies()}")
             DIGraph(design).show_injected_html(var)
-        elif cmd =='export_visualization_html':
+        elif cmd == 'export_visualization_html':
             from loguru import logger
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{var.dependencies()}")
             dst = Path(".pinjected_visualization/")
-            res_html:Path = DIGraph(design).save_as_html(var,dst)
+            res_html: Path = DIGraph(design).save_as_html(var, dst)
             logger.info(f"exported to {res_html}")
 
         elif cmd == 'to_script':
@@ -173,18 +210,54 @@ def run_anything(
         # console = Console()
         # console.print_exception(show_locals=False)
         raise e
-    logger.info(f"run_injected result:\n{res}")
+    logger.success(f"pinjected run result:\n{pformat(res)}")
     notify(f"Run result:\n{str(res)[:100]}")
     if return_result:
         logger.info(f"delegating the result to fire..")
         return res
 
 
-def resolve_design(design_path, meta_cxt):
+async def a_get_run_context(design_path, var_path):
+    loaded_var = load_variable_by_module_path(var_path)
+    meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
+    if not isinstance(meta, dict):
+        meta = {}
+    meta_overrides = meta.get("overrides", instances())
+    meta_cxt: MetaContext = await MetaContext.a_gather_from_path(ModuleVarPath(var_path).module_file_path)
+    design = await a_resolve_design(design_path, meta_cxt)
+    # here, actually the loaded variable maybe an instance of Designed.
+    # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
+    # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
+    match (var := load_variable_by_module_path(var_path)):
+        case Injected() | DelegatedVar():
+            var = Injected.ensure_injected(var)
+        case Designed():
+            design += var.design
+            var = var.internal_injected
+    """
+            I need to get the design overrides from with context and add it to the overrides
+            """
+    meta_design = instances(overrides=instances()) + meta_cxt.accumulated
+    meta_resolver = AsyncResolver(meta_design)
+    meta_overrides = (await meta_resolver.provide("overrides")) + meta_overrides
+    # add overrides from with block
+    contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
+    meta_overrides += contextual_overrides  # obtain internal hooks from the meta_design
+    if StrBindKey('provision_callback') in meta_design:
+        provision_callback = await meta_resolver.provide('provision_callback')
+    else:
+        provision_callback = None
+    return design, meta_overrides, var
+
+
+async def a_resolve_design(design_path, meta_cxt):
     if design_path is None:
         if StrBindKey("default_design_paths") in meta_cxt.accumulated:
-            design_path = AsyncResolver(meta_cxt.accumulated).to_blocking().provide("default_design_paths")[0]
-            design: Design = load_variable_by_module_path(design_path)
+            design_paths = (await AsyncResolver(meta_cxt.accumulated).provide("default_design_paths"))
+            if design_paths:
+                design: Design = load_variable_by_module_path(design_paths[0])
+            else:
+                design: Design = EmptyDesign
         else:
             design: Design = EmptyDesign
     else:

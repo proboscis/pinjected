@@ -45,12 +45,12 @@ def run_with_meta_context(
     """
     if not "__meta_design__" in Path(context_module_file_path).read_text():
         raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
-    meta_context = MetaContext.gather_from_path(context_module_file_path)
+    meta_context = MetaContext.gather_from_path(Path(context_module_file_path))
     default = instances(
         default_design_paths=[]
     )
     instance_overrides = instances(
-        module_path=context_module_file_path,
+        module_path=Path(context_module_file_path),
         interpreter_path=sys.executable,
         meta_context=meta_context,
     ) + instances(**kwargs)
@@ -72,7 +72,7 @@ def load_meta_context(
 @beartype
 def create_idea_configurations(
         inspect_and_make_configurations,
-        module_path:Path,
+        module_path: Path,
         print_to_stdout,
         /,
         wrap_output_with_tag=True

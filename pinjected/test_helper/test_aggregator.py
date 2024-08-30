@@ -1,14 +1,15 @@
+import ast
+import shelve
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal, Generic, TypeVar
 
 from beartype import beartype
-
-from pinjected.module_var_path import ModuleVarPath
-import shelve
-import ast
 from loguru import logger
+
+from pinjected.module_inspector import get_project_root, get_module_path
+from pinjected.module_var_path import ModuleVarPath
 
 
 def check_meta_design_variable(file_path):
@@ -38,6 +39,9 @@ T = TypeVar("T")
 @beartype
 @dataclass
 class TimeCachedFileData(Generic[T]):
+    """
+    A class to cache data from files, and return the data if the file is newer than the cache.
+    """
     cache_path: Path
     file_to_data: Callable[[Path], T]
 
@@ -62,32 +66,6 @@ class TimeCachedFileData(Generic[T]):
                 cache[key] = (data, t)
             return data
 
-@beartype
-@dataclass
-class TimeCachedFileAggregator(Generic[T]):
-    cache_path: Path
-    accept_file: Callable[[Path], list[T]]
-
-    def __post_init__(self):
-        self.accept_cache = TimeCachedFileData(
-            cache_path=self.cache_path,
-            file_to_data=self.accept_file
-        )
-
-    def gather_target_files(self, root: Path) -> list[Path]:
-        root = root.expanduser()
-        py_files = list(root.rglob("*.py"))
-        target_files = []
-        for py_file in py_files:
-            try:
-                accepted = self.accept_cache.get_data(py_file)
-            except Exception as e:
-                logger.warning(f"error while checking {py_file}: {e}")
-                continue
-            if accepted:
-                target_files.append(py_file)
-        return target_files
-
 
 @dataclass
 class Annotation:
@@ -99,9 +77,17 @@ class Annotation:
 class VariableInFile:
     file_path: Path
     name: str
+    def to_module_var_path(self)->ModuleVarPath:
+        root = get_project_root(str(self.file_path))
+        module_path = get_module_path(root,self.file_path)
+        module_var_path = module_path + '.' + self.name
+        return ModuleVarPath(module_var_path)
 
 
-def find_annotations(file_path: str) -> list[Annotation]:
+def find_pinjected_annotations(file_path: str) -> list[Annotation]:
+    """
+    find pinjected related annotations in a file.
+    """
     with open(file_path, 'r') as file:
         tree = ast.parse(file.read())
 
@@ -113,7 +99,7 @@ def find_annotations(file_path: str) -> list[Annotation]:
             # Check for @injected or @instance decorators
             for decorator in node.decorator_list:
                 if isinstance(decorator, ast.Name) and decorator.id in ['injected', 'instance']:
-                    #prefix = 'async ' if isinstance(node, ast.AsyncFunctionDef) else ''
+                    # prefix = 'async ' if isinstance(node, ast.AsyncFunctionDef) else ''
                     results.append(Annotation(f"{node.name}", f'@{decorator.id}'))
 
         # Check for variable annotations and assignments
@@ -134,7 +120,7 @@ def find_annotations(file_path: str) -> list[Annotation]:
 
 
 def find_annotated_vars(file_path: Path) -> list[VariableInFile]:
-    anns = find_annotations(file_path)
+    anns = find_pinjected_annotations(file_path)
     return [VariableInFile(file_path, ann.name) for ann in anns]
 
 
@@ -143,6 +129,7 @@ def find_run_targets(path: Path) -> list[VariableInFile]:
         return find_annotated_vars(path)
     else:
         return []
+
 
 def find_test_targets(path: Path) -> list[VariableInFile]:
     run_targets = find_run_targets(path)
@@ -156,6 +143,9 @@ class PinjectedTestAggregator:
         cache_path=Path("~/.cache/pinjected/test_targets.shelve").expanduser(),
         file_to_data=find_test_targets
     )
+
+    def gather_from_file(self, file: Path) -> list[VariableInFile]:
+        return self.cached_data.get_data(file)
 
     def gather(self, root: Path) -> list[VariableInFile]:
         root = root.expanduser()
