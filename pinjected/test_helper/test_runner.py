@@ -161,11 +161,12 @@ async def a_visualize_test_results(
     async for res in ensure_agen(tests):
         res: PinjectedTestResult
         if res.failed():
-            logger.error(f"{res.target.to_module_var_path().path} -> {res.value}")
-            print(f"============================= STDERR ===============================")
+            mod_path = res.target.to_module_var_path().path
+            logger.error(f"{mod_path} -> {res.value}")
+            print(f"============================= STDERR({mod_path}) ===============================")
             print(res.stderr)
             logger.error(res.trace)
-            print(f"====================================================================")
+            print(f"================================================================================")
             pass
         else:
             logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
@@ -200,19 +201,32 @@ Public interfaces:
 """
 
 
-@injected
 def test_current_file():
-    pass
+    import inspect
+    frame = inspect.currentframe().f_back
+    file = frame.f_globals["__file__"]
+    return a_visualize_test_results(
+        a_run_tests(
+            injected('pinjected_test_aggregator').gather_from_file(Path(file)),
+        )
+    )
 
 
 @injected
 def test_tagged(*tags: str):
-    pass
+    raise NotImplementedError()
 
 
-@injected
 def test_tree():
-    pass
+    import inspect
+    frame = inspect.currentframe().f_back
+    file = frame.f_globals["__file__"]
+
+    return a_visualize_test_results(
+        a_run_tests(
+            injected('pinjected_test_aggregator').gather(Path(file)),
+        )
+    )
 
 
 """
