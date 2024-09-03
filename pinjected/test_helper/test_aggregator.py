@@ -82,6 +82,8 @@ class VariableInFile:
     def to_module_var_path(self) -> ModuleVarPath:
         root = get_project_root(str(self.file_path))
         module_path = get_module_path(root, self.file_path)
+        if module_path.startswith("src."):
+            module_path = module_path[4:]
         module_var_path = module_path + '.' + self.name
         return ModuleVarPath(module_var_path)
 

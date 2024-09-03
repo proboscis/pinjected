@@ -116,6 +116,7 @@ async def a_run_tests(
     # hmm, i want a queue here...
     from loguru import logger
     n_worker = multiprocessing.cpu_count()
+    logger.info(f"n_worker={n_worker}")
     queue = asyncio.Queue()
     results = asyncio.Queue()
 
@@ -125,7 +126,7 @@ async def a_run_tests(
         for _ in range(n_worker):
             await queue.put(('stop', None))
 
-    async def worker():
+    async def worker(idx):
         while True:
             task, target = await queue.get()
             if task == 'stop':
@@ -136,8 +137,8 @@ async def a_run_tests(
 
     async with TaskGroup() as tg:
         tg.create_task(enqueue())
-        for _ in range(n_worker):
-            tg.create_task(worker())
+        for i in range(n_worker):
+            tg.create_task(worker(i))
         stop_count = 0
         while True:
             task, res = await results.get()
@@ -199,32 +200,19 @@ Public interfaces:
 """
 
 
+@injected
 def test_current_file():
-    import inspect
-    frame = inspect.currentframe().f_back
-    file = frame.f_globals["__file__"]
-    return a_visualize_test_results(
-        a_run_tests(
-            injected('pinjected_test_aggregator').gather_from_file(Path(file)),
-        )
-    )
+    pass
 
 
 @injected
 def test_tagged(*tags: str):
-    raise NotImplementedError()
+    pass
 
 
+@injected
 def test_tree():
-    import inspect
-    frame = inspect.currentframe().f_back
-    file = frame.f_globals["__file__"]
-
-    return a_visualize_test_results(
-        a_run_tests(
-            injected('pinjected_test_aggregator').gather(Path(file)),
-        )
-    )
+    pass
 
 
 """
