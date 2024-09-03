@@ -2,10 +2,9 @@ from pathlib import Path
 from pprint import pprint
 
 from pinjected.helper_structure import MetaContext
-from pinjected.module_inspector import get_project_root
-from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.module_helper import walk_module_attr
-from pinjected import *
+from pinjected.module_inspector import get_project_root
+
 
 def test_get_project_root():
     # this is a host dependent test...

@@ -10,6 +10,7 @@ from pathlib import Path
 from pprint import pformat
 from typing import Awaitable, Optional
 
+import cloudpickle
 from beartype import beartype
 from loguru import logger
 from returns.result import safe, Result
@@ -24,6 +25,7 @@ from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.notification import notify
 from pinjected.run_config_utils import load_variable_from_script
+from pinjected.run_helpers.mp_util import run_in_process
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
@@ -67,26 +69,10 @@ def run_injected(
 
 @beartype
 async def a_run_target(var_path: str, design_path: Optional[str] = None):
+    print(f"running target:{var_path} with design {design_path}")
     design, meta_overrides, var = await a_get_run_context(design_path, var_path)
     design += meta_overrides
-    async with TaskGroup() as tg:
-        dd = design + instances(
-            __task_group__=tg
-        )
-        resolver = AsyncResolver(dd)
-        _res = await resolver.provide(var)
-        if isinstance(_res, Awaitable):
-            _res = await _res
-    await resolver.destruct()
-    return _res
-
-
-def _remote_task(var_path: str):
-    from loguru import logger
-
-    async def impl():
-        design, meta_overrides, var = await a_get_run_context(None, var_path)
-        design += meta_overrides
+    try:
         async with TaskGroup() as tg:
             dd = design + instances(
                 __task_group__=tg
@@ -95,34 +81,47 @@ def _remote_task(var_path: str):
             _res = await resolver.provide(var)
             if isinstance(_res, Awaitable):
                 _res = await _res
+        print(f"run_target {var_path} result:{_res}")
+    finally:
         await resolver.destruct()
+        print(f"destructed resolver")
+    return _res
 
+
+def _remote_test(var_path: str):
+    from loguru import logger
+    import cloudpickle
     stdout = io.StringIO()
     stderr = io.StringIO()
     logger.remove()
     logger.add(stderr)
     try:
         with redirect_stdout(stdout), redirect_stderr(stderr):
-            res = asyncio.run(impl())
-        trace_str = None
+            res = asyncio.run(a_run_target(var_path=var_path))
+            trace_str = None
     except Exception as e:
-        res = e
+        res = str(e)
         trace_str = traceback.format_exc()
+        logger.error(f"remote test failed with {e}")
     logger.remove()
-
-    return stdout.getvalue(), stderr.getvalue(), trace_str, res
+    logger.add(sys.stderr)
+    final_tuple = cloudpickle.dumps((stdout.getvalue(), stderr.getvalue(), trace_str, res))
+    return final_tuple
 
 
 _enter_count = 0
+
+
 @beartype
 async def a_run_target__mp(var_path: str):
     global _enter_count
+    import jsonpickle
     from loguru import logger
     _enter_count += 1
     if _enter_count == 1:
         logger.remove()
-    with ProcessPoolExecutor(1) as executor:
-        res = await asyncio.get_event_loop().run_in_executor(executor, _remote_task, var_path)
+    res = await run_in_process(_remote_test, var_path)
+    res = cloudpickle.loads(res)
     if _enter_count == 1:
         logger.add(sys.stderr)
     _enter_count -= 1
@@ -149,7 +148,7 @@ def run_anything(
     # logger.info(f"metadata obtained from pinjected: {meta}")
 
     # here we load the defaults and overrides from the user's environment
-    design = load_user_default_design() + design + load_user_overrides_design()
+    # design = load_user_default_design() + design + load_user_overrides_design()
 
     res = None
 
@@ -247,6 +246,8 @@ async def a_get_run_context(design_path, var_path):
         provision_callback = await meta_resolver.provide('provision_callback')
     else:
         provision_callback = None
+    design = load_user_default_design() + design
+    meta_overrides += load_user_overrides_design()
     return design, meta_overrides, var
 
 
