@@ -1,10 +1,13 @@
 import asyncio
 import multiprocessing
-from typing import Callable, Any
+from asyncio import Future
+from dataclasses import dataclass
+from typing import Callable, Any, Generic, TypeVar
 
 """
 This module is to avoid using ProcessPoolExecutor, since it's buggy.
 """
+
 
 def process_runner(func: Callable, args: tuple, result_queue: multiprocessing.Queue):
     try:
@@ -13,9 +16,37 @@ def process_runner(func: Callable, args: tuple, result_queue: multiprocessing.Qu
     except Exception as e:
         result_queue.put(("error", str(e)))
 
+
+T = TypeVar('T')
+
+
+@dataclass
+class FutureWithStd(Generic[T]):
+    result: Future[T]
+    stdout_queue: asyncio.Queue
+    stderr_queue: asyncio.Queue
+
+    async def _stream_from_queue(self, queue: asyncio.Queue):
+        while True:
+            kind, data = await queue.get()
+            if kind == "end":
+                break
+            yield data
+
+    async def stream_stdout(self):
+        async for data in self._stream_from_queue(self.stdout_queue):
+            yield data
+
+    async def stream_stderr(self):
+        async for data in self._stream_from_queue(self.stderr_queue):
+            yield data
+
+
 async def run_in_process(func: Callable, *args: Any) -> Any:
     result_queue = multiprocessing.Queue()
     process = multiprocessing.Process(target=process_runner, args=(func, args, result_queue))
+    # here, I want to capture the stdout and stderr of the process
+    # and
 
     process.start()
 

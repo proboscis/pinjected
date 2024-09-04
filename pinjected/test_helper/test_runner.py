@@ -11,19 +11,18 @@ Using PinjectedTestAggregator, We want to run the tests in organized manner...
 
 """
 import asyncio
-import io
 import multiprocessing
-import sys
-from contextlib import redirect_stdout, redirect_stderr
+from abc import abstractmethod, ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional, Literal
 
 from returns.result import ResultE, Success, Failure
+
 from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
-from pinjected.module_inspector import get_project_root, get_module_path
-from pinjected.run_helpers.run_injected import run_injected, run_anything, a_run_target, a_run_target__mp
+from pinjected.run_helpers.run_injected import a_run_target__mp
+from pinjected.test_helper.rich_task_viz import task_visualizer
 from pinjected.test_helper.test_aggregator import VariableInFile, PinjectedTestAggregator
 
 
@@ -105,10 +104,40 @@ def ensure_agen(items: list[VariableInFile] | AsyncIterator[VariableInFile]):
     return items
 
 
+class ITestEvent(ABC):
+    @abstractmethod
+    @property
+    def name(self):
+        pass
+
+
+@dataclass
+class TestMainEvent(ITestEvent):
+    name = "test_runner"
+    kind: Literal['start', 'end']
+
+
+@dataclass
+class TestStatus:
+    message: str
+
+
+@dataclass
+class TestEvent(ITestEvent):
+    name: str
+    data: Literal['queued', 'start'] | PinjectedTestResult | TestStatus
+
+
+@injected
+async def a_pinjected_test_event_callback(e: ITestEvent):
+    pass
+
+
 @injected
 async def a_run_tests(
         a_pinjected_run_test,
         ensure_agen,
+        a_pinjected_test_event_callback,
         logger,
         /,
         tests: list[VariableInFile] | AsyncIterator[VariableInFile],
@@ -119,23 +148,33 @@ async def a_run_tests(
     logger.info(f"n_worker={n_worker}")
     queue = asyncio.Queue()
     results = asyncio.Queue()
-
-    async def enqueue():
-        async for target in ensure_agen(tests):
-            await queue.put(('task', target))
-        for _ in range(n_worker):
-            await queue.put(('stop', None))
-
-    async def worker(idx):
-        while True:
-            task, target = await queue.get()
-            if task == 'stop':
-                await results.put(('stop', None))
-                break
-            res = await a_pinjected_run_test(target)
-            await results.put(('result', res))
-
+    await a_pinjected_test_event_callback(TestMainEvent('start'))
     async with TaskGroup() as tg:
+        async def enqueue():
+            async for target in ensure_agen(tests):
+                fut = asyncio.Future()
+                key = target.to_module_var_path().path
+                await queue.put(('task', target, fut))
+                await a_pinjected_test_event_callback(
+                    TestEvent(key, 'queued')
+                )
+
+            for _ in range(n_worker):
+                await queue.put(('stop', target, None))
+
+        async def worker(idx):
+            while True:
+                task, target, fut = await queue.get()
+                if task == 'stop':
+                    await results.put(('stop', None))
+                    break
+                key = target.to_module_var_path().path
+                await a_pinjected_test_event_callback(TestEvent(key, 'start'))
+                res = await a_pinjected_run_test(target)
+                await a_pinjected_test_event_callback(TestEvent(key, res))
+                fut.set_result(res)
+                await results.put(('result', res))
+
         tg.create_task(enqueue())
         for i in range(n_worker):
             tg.create_task(worker(i))
@@ -160,16 +199,16 @@ async def a_visualize_test_results(
     results = []
     async for res in ensure_agen(tests):
         res: PinjectedTestResult
+        # Nasty something breaks the stdout, and rich ends up corrupted.
         if res.failed():
             mod_path = res.target.to_module_var_path().path
-            logger.error(f"{mod_path} -> {res.value}")
             print(f"============================= STDERR({mod_path}) ===============================")
             print(res.stderr)
             logger.error(res.trace)
             print(f"================================================================================")
             pass
         else:
-            logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
+            # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
             pass
         results.append(res)
     failures = [r for r in results if r.failed()]
