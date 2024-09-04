@@ -121,6 +121,8 @@ async def a_run_target__mp(var_path: str):
     if _enter_count == 1:
         logger.remove()
     res = await run_in_process(_remote_test, var_path)
+    # I want to stream the stdout and stderr to the caller. but how?
+    # I can return a set of Future and
     res = cloudpickle.loads(res)
     if _enter_count == 1:
         logger.add(sys.stderr)
