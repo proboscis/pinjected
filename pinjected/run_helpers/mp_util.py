@@ -44,7 +44,12 @@ class FutureWithStd(Generic[T]):
 
 async def run_in_process(func: Callable, *args: Any) -> Any:
     result_queue = multiprocessing.Queue()
-    process = multiprocessing.Process(target=process_runner, args=(func, args, result_queue))
+    process = multiprocessing.Process(
+        target=process_runner,
+        args=(func, args, result_queue),
+
+    )
+
     # here, I want to capture the stdout and stderr of the process
     # and
 

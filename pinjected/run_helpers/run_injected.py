@@ -38,6 +38,11 @@ def run_injected(
         *args,
         **kwargs
 ):
+    no_notification = kwargs.pop("no_notification", False)
+    if no_notification:
+        notify_impl = lambda msg, *args, **kwargs: None
+    else:
+        notify_impl = notify
     logger.info(
         f"run_injected called with cmd:{cmd}, var_path:{var_path}, design_path:{design_path}, args:{args}, kwargs:{kwargs}"
     )
@@ -64,6 +69,7 @@ def run_injected(
         overrides=overrides,
         call_args=args,
         call_kwargs=kwargs,
+        notify=notify_impl
     )
 
 

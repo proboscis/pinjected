@@ -30,6 +30,7 @@ def run(
     :param kwargs: overrides for the design. e.g. "api_key=1234"
 
     """
+    no_notification = kwargs.pop('pinjected_no_notification', False)
     kwargs_overrides = parse_kwargs_as_design(**kwargs)
     ovr = instances()
     if meta_context_path is not None:
@@ -42,7 +43,8 @@ def run(
     Currently, the metacontext only gathers a context for the module.
     So, I need another implementation in addition to MetaContext.
     """
-    return run_injected("get", var_path, design_path, return_result=True, overrides=ovr)
+    return run_injected("get", var_path, design_path, return_result=True, overrides=ovr,
+                        no_notification=no_notification)
 
 
 def check_config():
