@@ -255,6 +255,7 @@ async def a_pinjected_test_event_callback(
     viz: RichTaskVisualizer = None
     spinners = dict()
     failures = []
+    from rich.markup import escape
 
     async def impl(e: ITestEvent):
         nonlocal viz, failures
@@ -268,6 +269,7 @@ async def a_pinjected_test_event_callback(
                     mod_path = tgt.to_module_var_path().path
                     mod_file = tgt.file_path
                     msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
+                    msg = escape(msg)
                     panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
                     rich.print(panel)
             case TestEvent(_, 'queued'):
@@ -278,7 +280,7 @@ async def a_pinjected_test_event_callback(
                 spinners[e.name] = spinner
                 viz.update_status(e.name, spinner)
             case TestEvent(_, TestStatus(msg)):
-                viz.update_message(e.name, msg)
+                viz.update_message(e.name, escape(msg))
                 pass
             case TestEvent(_, PinjectedTestResult() as res):
                 if res.failed():
@@ -334,9 +336,10 @@ async def a_run_tests(
                 fut.set_result(res)
                 await results.put(('result', res))
 
-        tg.create_task(enqueue())
+        enqueue_task = tg.create_task(enqueue())
+        worker_tasks = []
         for i in range(n_worker):
-            tg.create_task(worker(i))
+            worker_tasks.append(tg.create_task(worker(i)))
         stop_count = 0
         while True:
             task, res = await results.get()
@@ -346,6 +349,10 @@ async def a_run_tests(
                     break
             else:
                 yield res
+
+        await enqueue_task
+        for wt in worker_tasks:
+            await wt
     await a_pinjected_test_event_callback(TestMainEvent('end'))
 
 
