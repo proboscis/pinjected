@@ -12,17 +12,24 @@ Using PinjectedTestAggregator, We want to run the tests in organized manner...
 """
 import asyncio
 import multiprocessing
+import os
 from abc import abstractmethod, ABC
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional, Literal
 
+import rich
+from beartype import beartype
 from returns.result import ResultE, Success, Failure
+from rich.console import Group
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.spinner import Spinner
 
 from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.run_helpers.run_injected import a_run_target__mp
-from pinjected.test_helper.rich_task_viz import task_visualizer
+from pinjected.test_helper.rich_task_viz import task_visualizer, RichTaskVisualizer
 from pinjected.test_helper.test_aggregator import VariableInFile, PinjectedTestAggregator
 
 
@@ -44,8 +51,98 @@ class PinjectedTestResult:
         return isinstance(self.value, Failure)
 
 
+def escape_loguru_tags(text):
+    return text.replace('<', '\<')
+
+
+class CommandException(Exception):
+    def __init__(self, message, code, stdout, stderr):
+        super().__init__(message)
+        self.message = message
+        self.stdout = stdout
+        self.stderr = stderr
+        self.code = code
+
+    def __reduce__(self):
+        return self.__class__, (self.message, self.code, self.stdout, self.stderr)
+
+
 @injected
-async def a_pinjected_run_test(logger, /, target: VariableInFile) -> PinjectedTestResult:
+async def a_pinjected_run_test(
+        logger,
+        a_pinjected_test_event_callback,
+        /,
+        target: VariableInFile
+) -> PinjectedTestResult:
+    import sys
+    interpreter_path = sys.executable
+    key = target.to_module_var_path().path
+    command = f"{interpreter_path} -m pinjected run {target.to_module_var_path().path} --pinjected_no_notification"
+
+    # prev_state = await a_get_stty_state()
+
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.PIPE,
+        # WARNING! STDIN must be set, or the pseudo terminal will get reused and mess up the terminal
+    )
+
+    # Stream and capture stdout and stderr
+    async def read_stream(tgt, kind: str):
+        try:
+            data = ""
+            async for line in tgt:
+                line = line.decode()
+                data += line
+                # logger.info(f"{kind}: {escape_loguru_tags(line)}")
+                await a_pinjected_test_event_callback(TestEvent(key, TestStatus(line)))
+            return data
+        except Exception as e:
+            logger.error(f"read_stream failed with {e}")
+            raise e
+
+    async with TaskGroup() as tg:
+        # logger.info(f"waiting for command to finish: {command}")
+        read_stdout_task = tg.create_task(read_stream(proc.stdout, 'stdout'))
+        read_stderr_task = tg.create_task(read_stream(proc.stderr, 'stderr'))
+        # logger.info(f"waiting for proc.wait()")
+        result = await proc.wait()
+        # logger.info(f"proc.wait() finished with {result}")
+        stdout = await read_stdout_task
+        # logger.info(f"stdout finished")
+        stderr = await read_stderr_task
+        # logger.info(f"stderr finished")
+    # logger.info(f"command finished with:\n{stdout},{stderr}\nExitCode:{result}")
+    if result == 0:
+        # logger.success(f"command <<{command}>> finished with ExitCode:{result}")
+        result = Success(result)
+        trace = None
+    else:
+        import traceback
+        # logger.error(f"command: <<{command}>> failed with code {result}.")
+        trace = traceback.format_exc()
+        exc = CommandException(
+            f"command: <<{command}>> failed with code {result}.",
+            # f"\nstdout: {stdout}"
+            # f"\nstderr: {stderr}",
+            code=result,
+            stdout=stdout,
+            stderr=stderr
+        )
+        result = Failure(exc)
+    return PinjectedTestResult(
+        target=target,
+        stdout=stdout,
+        stderr=stderr,
+        value=result,
+        trace=trace
+    )
+
+
+@injected
+async def a_pinjected_run_test__multiprocess(logger, /, target: VariableInFile) -> PinjectedTestResult:
     """
     1. get the ModuleVarPath from VariableInFile. but how?
     """
@@ -55,6 +152,8 @@ async def a_pinjected_run_test(logger, /, target: VariableInFile) -> PinjectedTe
     # logger.add(stderr)
     # with redirect_stdout(stdout), redirect_stderr(stderr):
     # from loguru import logger
+    # there is no way to capture the stdout/stderr using multiprocessing.Process
+    # so we should instead use asyncio.create_subprocess_shell.
     stdout, stderr, trace, res = await a_run_target__mp(
         mvp.path,
     )
@@ -105,15 +204,11 @@ def ensure_agen(items: list[VariableInFile] | AsyncIterator[VariableInFile]):
 
 
 class ITestEvent(ABC):
-    @abstractmethod
-    @property
-    def name(self):
-        pass
+    pass
 
 
 @dataclass
 class TestMainEvent(ITestEvent):
-    name = "test_runner"
     kind: Literal['start', 'end']
 
 
@@ -129,8 +224,73 @@ class TestEvent(ITestEvent):
 
 
 @injected
-async def a_pinjected_test_event_callback(e: ITestEvent):
-    pass
+async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
+    # logger.info(f"TestEvent: {e}")
+    match e:
+        case TestEvent(name, PinjectedTestResult() as res):
+            from rich.panel import Panel
+            from rich.console import Console
+            import rich
+            if res.failed():
+                tgt: VariableInFile = res.target
+                mod_path = tgt.to_module_var_path().path
+                mod_file = tgt.file_path
+                msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
+                panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
+                rich.print(panel)
+                pass
+            else:
+                rich.print(
+                    Panel(f"Success: {res.target.to_module_var_path().path}", title="Success", style="bold green")
+                )
+                # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
+                pass
+
+
+@instance
+async def a_pinjected_test_event_callback(
+        logger,
+):
+    viz_iter: AsyncIterator[RichTaskVisualizer] = task_visualizer()
+    viz: RichTaskVisualizer = None
+    spinners = dict()
+    failures = []
+
+    async def impl(e: ITestEvent):
+        nonlocal viz, failures
+        match e:
+            case TestMainEvent('start'):
+                viz = await viz_iter.__aenter__()
+            case TestMainEvent('end'):
+                await viz_iter.__aexit__(None, None, None)
+                for res in failures:
+                    tgt: VariableInFile = res.target
+                    mod_path = tgt.to_module_var_path().path
+                    mod_file = tgt.file_path
+                    msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
+                    panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
+                    rich.print(panel)
+            case TestEvent(_, 'queued'):
+                viz.add(e.name, "queued", "")
+            case TestEvent(_, 'start'):
+                # viz.update_message(e.name, "running")
+                spinner = Spinner("aesthetic")
+                spinners[e.name] = spinner
+                viz.update_status(e.name, spinner)
+            case TestEvent(_, TestStatus(msg)):
+                viz.update_message(e.name, msg)
+                pass
+            case TestEvent(_, PinjectedTestResult() as res):
+                if res.failed():
+                    viz.update_status(e.name, f"[bold red]Failed[/bold red]")
+                    lines = res.stderr.split('\n')
+                    viz.update_message(e.name, f"{lines[-3:]}")
+                    failures.append(res)
+                else:
+                    viz.update_status(e.name, f"[bold green]Success[/bold green]")
+                    viz.update_message(e.name, f"done")
+
+    return impl
 
 
 @injected
@@ -138,7 +298,6 @@ async def a_run_tests(
         a_pinjected_run_test,
         ensure_agen,
         a_pinjected_test_event_callback,
-        logger,
         /,
         tests: list[VariableInFile] | AsyncIterator[VariableInFile],
 ):
@@ -187,6 +346,7 @@ async def a_run_tests(
                     break
             else:
                 yield res
+    await a_pinjected_test_event_callback(TestMainEvent('end'))
 
 
 @injected
@@ -200,16 +360,7 @@ async def a_visualize_test_results(
     async for res in ensure_agen(tests):
         res: PinjectedTestResult
         # Nasty something breaks the stdout, and rich ends up corrupted.
-        if res.failed():
-            mod_path = res.target.to_module_var_path().path
-            print(f"============================= STDERR({mod_path}) ===============================")
-            print(res.stderr)
-            logger.error(res.trace)
-            print(f"================================================================================")
-            pass
-        else:
-            # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
-            pass
+
         results.append(res)
     failures = [r for r in results if r.failed()]
     # success = [r for r in results if not r.failed()]
