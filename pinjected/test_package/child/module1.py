@@ -1,3 +1,5 @@
+import asyncio
+
 from pinjected import *
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.util import instances, providers
@@ -20,9 +22,13 @@ def test_function(a, b):
     pass
 
 
-@injected
+@instance
 def test_function2(a, /, b):
     pass
+
+@instance
+async def test_long_test():
+    await asyncio.sleep(5)
 
 
 variable_x: IProxy = injected('x')
