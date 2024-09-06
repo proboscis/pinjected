@@ -28,7 +28,7 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
 
     relative_path = file_path.relative_to(root_module_path)
     if str(relative_path).startswith('src/'):
-        logger.warning(f"file_path starts with src/")
+        logger.debug(f"file_path starts with src/")
         relative_path = Path(str(relative_path).replace('src/', '',1))
     logger.debug(f"relative path:{relative_path}")
     module_name = os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
