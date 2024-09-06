@@ -147,10 +147,12 @@ def run_anything(
         notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs)
 ):
     from loguru import logger
-    with disable_internal_logging():
-        design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
+    #with disable_internal_logging():
+    design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
 
     design += (meta_overrides + overrides)
+    logger.info(f"loaded design:{design.bindings.keys()}")
+    logger.info(f"meta_overrides:{meta_overrides.bindings.keys()}")
     logger.info(f"running target:{var} with {design_path} + {overrides}")
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
@@ -313,8 +315,10 @@ def load_user_default_design() -> Design:
     :return:
     """
     design_path = os.environ.get('PINJECTED_DEFAULT_DESIGN_PATH', "")
-    return load_design_from_paths(find_dot_pinjected(), "default_design").value_or(instances()) + _load_design(
+    design = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(instances()) + _load_design(
         design_path).value_or(instances())
+    logger.info(f"loaded default design:{pformat(design.bindings.keys())}")
+    return design
 
 
 @safe
@@ -345,5 +349,7 @@ def load_user_overrides_design():
     :return:
     """
     design_path = os.environ.get('PINJECTED_OVERRIDE_DESIGN_PATH', "")
-    return load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(instances()) + _load_design(
+    design = load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(instances()) + _load_design(
         design_path).value_or(instances())
+    logger.info(f"loaded override design:{pformat(design.bindings.keys())}")
+    return design
