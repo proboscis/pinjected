@@ -257,6 +257,15 @@ async def a_pinjected_test_event_callback(
     failures = []
     from rich.markup import escape
 
+    def show_failure(res:PinjectedTestResult):
+        tgt: VariableInFile = res.target
+        mod_path = tgt.to_module_var_path().path
+        mod_file = tgt.file_path
+        msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
+        msg = escape(msg)
+        panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
+        rich.print(panel)
+
     async def impl(e: ITestEvent):
         nonlocal viz, failures
         match e:
@@ -265,13 +274,7 @@ async def a_pinjected_test_event_callback(
             case TestMainEvent('end'):
                 await viz_iter.__aexit__(None, None, None)
                 for res in failures:
-                    tgt: VariableInFile = res.target
-                    mod_path = tgt.to_module_var_path().path
-                    mod_file = tgt.file_path
-                    msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
-                    msg = escape(msg)
-                    panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
-                    rich.print(panel)
+                    show_failure(res)
             case TestEvent(_, 'queued'):
                 viz.add(e.name, "queued", "")
             case TestEvent(_, 'start'):
