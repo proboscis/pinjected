@@ -12,7 +12,7 @@ def run(
         var_path: str,
         design_path: str = None,
         overrides: str = None,
-        meta_context_path:str= None,
+        meta_context_path: str = None,
         **kwargs
 ):
     """
@@ -43,14 +43,16 @@ def run(
     Currently, the metacontext only gathers a context for the module.
     So, I need another implementation in addition to MetaContext.
     """
-    return run_injected("get", var_path, design_path, return_result=True, overrides=ovr,
-                        no_notification=no_notification)
+    return run_injected(
+        "get", var_path, design_path,
+        return_result=False, overrides=ovr,
+        no_notification=no_notification)
 
 
 def check_config():
     from loguru import logger
     from pprint import pformat
-    default:Design = load_user_default_design()
+    default: Design = load_user_default_design()
     overrides = load_user_overrides_design()
     logger.info(f"displaying default design bindings:")
     logger.info(default.table_str())
