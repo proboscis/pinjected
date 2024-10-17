@@ -47,7 +47,11 @@ def get_project_root(start_path: str) -> str:
 def get_module_path(root_path, module_path):
     relative_path = os.path.relpath(module_path, root_path)
     without_extension = os.path.splitext(relative_path)[0]
-    return without_extension.replace(os.path.sep, ".")
+    path = without_extension.replace(os.path.sep, ".")
+    if path.startswith('src.'):
+        # TODO this is a hack to remove src from the path... how can i detect the name of top level package?
+        path = path[4:]
+    return path
 
 
 def inspect_module_for_type(module_path: Union[str, Path], accept: Callable[[str, Any], bool]) -> List[
