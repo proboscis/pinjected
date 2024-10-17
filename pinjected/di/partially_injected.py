@@ -128,6 +128,7 @@ class Partial(Injected):
         async def impl(__injected__: dict):
             def inner_impl(*args, **kwargs):
                 return self.call_with_injected(__injected__, *args, **kwargs)
+            inner_impl.__name__ = self.src_function.__name__
 
             return inner_impl
 
