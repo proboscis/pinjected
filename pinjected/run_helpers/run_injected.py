@@ -6,9 +6,10 @@ import sys
 import traceback
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import redirect_stdout, redirect_stderr
+from dataclasses import dataclass
 from pathlib import Path
 from pprint import pformat
-from typing import Awaitable, Optional
+from typing import Awaitable, Optional, Callable
 
 import cloudpickle
 from beartype import beartype
@@ -26,6 +27,7 @@ from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_pat
 from pinjected.notification import notify
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.run_helpers.mp_util import run_in_process
+from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
@@ -76,15 +78,19 @@ def run_injected(
 @beartype
 async def a_run_target(var_path: str, design_path: Optional[str] = None):
     print(f"running target:{var_path} with design {design_path}")
-    design, meta_overrides, var = await a_get_run_context(design_path, var_path)
-    design += meta_overrides
+    cxt: RunContext = await a_get_run_context(design_path, var_path)
+    # design, meta_overrides, var = await a_get_run_context(design_path, var_path)
+    design = cxt.design + cxt.meta_overrides
     try:
         async with TaskGroup() as tg:
             dd = design + instances(
                 __task_group__=tg
             )
-            resolver = AsyncResolver(dd)
-            _res = await resolver.provide(var)
+            resolver = AsyncResolver(
+                dd,
+                callbacks=cxt.provision_callback or []
+            )
+            _res = await resolver.provide(cxt.var)
             if isinstance(_res, Awaitable):
                 _res = await _res
         print(f"run_target {var_path} result:{_res}")
@@ -147,13 +153,13 @@ def run_anything(
         notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs)
 ):
     from loguru import logger
-    #with disable_internal_logging():
-    design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
-
-    design += (meta_overrides + overrides)
+    # with disable_internal_logging():
+    #design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
+    cxt:RunContext = asyncio.run(a_get_run_context(design_path, var_path))
+    design = cxt.design + cxt.meta_overrides + overrides
     logger.info(f"loaded design:{design.bindings.keys()}")
-    logger.info(f"meta_overrides:{meta_overrides.bindings.keys()}")
-    logger.info(f"running target:{var} with {design_path} + {overrides}")
+    logger.info(f"meta_overrides:{cxt.meta_overrides.bindings.keys()}")
+    logger.info(f"running target:{cxt.var} with {design_path} + {overrides}")
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
 
@@ -163,13 +169,16 @@ def run_anything(
     res = None
 
     def run_target(d, tgt):
-        # here, I want to specify what to use for the provision callback.
+        # TODO here, I want to specify what to use for the provision callback.
         async def task():
             async with TaskGroup() as tg:
                 dd = d + instances(
                     __task_group__=tg
                 )
-                resolver = AsyncResolver(dd)
+                resolver = AsyncResolver(
+                    dd,
+                    callbacks=cxt.provision_callback or []
+                )
                 _res = await resolver.provide(tgt)
 
                 if isinstance(_res, Awaitable):
@@ -184,24 +193,24 @@ def run_anything(
         if cmd == 'call':
             args = call_args or []
             kwargs = call_kwargs or {}
-            var = Injected.ensure_injected(var).proxy
+            var = Injected.ensure_injected(cxt.var).proxy
             logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
             res = run_target(design, var(*args, **kwargs))
         elif cmd == 'get':
-            res = run_target(design, var)
+            res = run_target(design, cxt.var)
         elif cmd == 'fire':
             raise RuntimeError('fire is deprecated. use get.')
         elif cmd == 'visualize':
             from loguru import logger
             logger.info(f"visualizing {var_path} with design {design_path}")
-            logger.info(f"deps:{var.dependencies()}")
-            DIGraph(design).show_injected_html(var)
+            logger.info(f"deps:{cxt.var.dependencies()}")
+            DIGraph(design).show_injected_html(cxt.var)
         elif cmd == 'export_visualization_html':
             from loguru import logger
             logger.info(f"exporting visualization {var_path} with design {design_path}")
-            logger.info(f"deps:{var.dependencies()}")
+            logger.info(f"deps:{cxt.var.dependencies()}")
             dst = Path(".pinjected_visualization/")
-            res_html: Path = DIGraph(design).save_as_html(var, dst)
+            res_html: Path = DIGraph(design).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
 
         elif cmd == 'to_script':
@@ -226,7 +235,15 @@ def run_anything(
         return res
 
 
-async def a_get_run_context(design_path, var_path):
+@dataclass
+class RunContext:
+    design: Design
+    meta_overrides: Design
+    var: Injected
+    provision_callback: Optional[IResolverCallback]
+
+
+async def a_get_run_context(design_path, var_path) -> RunContext:
     loaded_var = load_variable_by_module_path(var_path)
     meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
     if not isinstance(meta, dict):
@@ -258,7 +275,7 @@ async def a_get_run_context(design_path, var_path):
         provision_callback = None
     design = load_user_default_design() + design
     meta_overrides += load_user_overrides_design()
-    return design, meta_overrides, var
+    return RunContext(design, meta_overrides, var, provision_callback)
 
 
 async def a_resolve_design(design_path, meta_cxt):

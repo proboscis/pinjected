@@ -3,7 +3,6 @@ from typing import Callable, Set, Optional
 
 from pinjected import Injected
 from pinjected.di.args_modifier import ArgsModifier
-from pinjected.di.injected import DictInjected
 from pinjected.di.proxiable import DelegatedVar
 
 

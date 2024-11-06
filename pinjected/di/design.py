@@ -301,11 +301,10 @@ class DesignImpl(Design):
         from pinjected.v2.resolver import AsyncResolver, BaseResolverCallback
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
-            #callback = BaseResolverCallback()
             callbacks = []
         else:
             assert isinstance(callback, IResolverCallback)
-            callbacks=[callback]
+            callbacks = [callback]
         return AsyncResolver(
             DesignImpl(_bindings=bindings),
             callbacks=callbacks
@@ -404,4 +403,3 @@ class DesignImpl(Design):
                 _wrapper.__signature__ = inspect.signature(method)
                 return _wrapper
         return method
-
