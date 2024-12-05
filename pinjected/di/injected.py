@@ -372,7 +372,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     def map(self, f: Callable[[T], U]) -> 'Injected[U]':
         # return MappedInjected(self, f)
         if not inspect.iscoroutinefunction(f):
-            #@functools.wraps(f) #wraps breaks built-in function to be unpicklable...
+            # @functools.wraps(f) #wraps breaks built-in function to be unpicklable...
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
 
@@ -508,8 +508,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return injected_proxy(self)
 
     @staticmethod
-    def ensure_injected(data: Union["Injected", DelegatedVar]):
+    def ensure_injected(data: Union["Injected", DelegatedVar, str]):
         match data:
+            case str():
+                return Injected.by_name(data)
             case DelegatedVar():
                 # this eval() causes the proxy to be unpicklable. but we can't tell why.
                 return Injected.ensure_injected(data.eval())
@@ -539,9 +541,10 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return self.map(lambda coroutine: asyncio.run(impl(coroutine)))
 
     @staticmethod
-    def dynamic(tgt:str):
+    def dynamic(tgt: str):
         async def provide_from_resolver(__resolver__):
             return await __resolver__[tgt]
+
         return Injected.bind(
             provide_from_resolver,
             _dynamic_dependencies_={tgt}
@@ -612,6 +615,56 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def __repr_expr__(self):
         raise NotImplementedError()
+
+    def rebind_dependencies(self, **mapping: str)->'Injected':
+        """
+        rebinds the dependencies with the given mapping.
+        :param mapping: a dictionary of old_name -> new_name
+        Usage example:
+        --------------
+        .. code-block:: python
+
+                a = Injected.by_name("a")
+                b = a.map(lambda x:x+1)
+                c = b.rebind_dependencies(a="new_a")
+                assert c.dependencies() == {"new_a"}
+        --------------
+        """
+        return ReboundInjected(self, mapping)
+
+
+@dataclass
+class ReboundInjected(Injected[T]):
+    src: Injected[T]
+    mapping: Dict[str, str]
+
+    def dependencies(self) -> Set[str]:
+        src_deps = self.src.dependencies()
+        new_deps = set()
+        for src_dep in src_deps:
+            mapped = self.mapping.get(src_dep)
+            new_deps.add(mapped)
+        return new_deps
+
+    def dynamic_dependencies(self) -> Set[str]:
+        src_deps = self.src.dynamic_dependencies()
+        new_deps = set()
+        for src_dep in src_deps:
+            mapped = self.mapping.get(src_dep, src_dep)
+            new_deps.add(mapped)
+        return new_deps
+
+    def get_provider(self):
+        def impl(**kwargs):
+            mapped = dict()
+            for k in kwargs:
+                mapped[self.mapping.get(k, k)] = kwargs[k]
+            return self.src.get_provider()(**mapped)
+
+        return impl
+
+    def __repr_expr__(self):
+        return f"ReboundInjected({self.src.__repr_expr__()}, {self.mapping})"
 
 
 @dataclass
@@ -1367,9 +1420,10 @@ def add_viz_metadata(metadata: Dict[str, Any]):
 
     return impl
 
+
 def _en_tuple(*items):
     return tuple(items)
 
+
 def _en_list(*items):
     return list(items)
-
