@@ -445,6 +445,8 @@ class AsyncResolver:
                             repr = show_expr(dv.eval().ast)
                         case _:
                             repr = str(tgt)
+                    if len(repr) > 100:
+                        repr = repr[:50] + "..." + repr[-50:] + f"({len(repr) - 100} more)"
                     logger.info(f"providing {repr}")
                     tg_key = StrBindKey('__task_group__')
                     self.objects[tg_key] = tg
