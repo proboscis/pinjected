@@ -88,7 +88,7 @@ async def a_run_target(var_path: str, design_path: Optional[str] = None):
             )
             resolver = AsyncResolver(
                 dd,
-                callbacks=cxt.provision_callback or []
+                callbacks=[cxt.provision_callback] if cxt.provision_callback else []
             )
             _res = await resolver.provide(cxt.var)
             if isinstance(_res, Awaitable):
@@ -142,6 +142,28 @@ async def a_run_target__mp(var_path: str):
     return res
 
 
+def design_rich_tree(tgt_design, root):
+    d = DIGraph(tgt_design)
+    g = d.create_dependency_digraph_rooted(root).graph
+    from rich.tree import Tree
+    import rich
+    root = Tree('target')
+    trees = dict(
+        __root__=root
+    )
+    for dep, item in g.edges:
+        if item not in trees:
+            trees[item] = Tree(item)
+        if dep not in trees:
+            trees[dep] = Tree(dep)
+        trees[item].add(trees[dep])
+    from rich.console import Console
+    console = Console(file=io.StringIO())
+    console.print(root)
+    tree_str = console.file.getvalue()
+    return tree_str
+
+
 def run_anything(
         cmd: str,
         var_path: str,
@@ -154,12 +176,15 @@ def run_anything(
 ):
     from loguru import logger
     # with disable_internal_logging():
-    #design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
-    cxt:RunContext = asyncio.run(a_get_run_context(design_path, var_path))
+    # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
+    cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
     design = cxt.design + cxt.meta_overrides + overrides
-    logger.info(f"loaded design:{design.bindings.keys()}")
-    logger.info(f"meta_overrides:{cxt.meta_overrides.bindings.keys()}")
-    logger.info(f"running target:{cxt.var} with {design_path} + {overrides}")
+    logger.info(f"loaded design:{design}")
+    logger.info(f"meta_overrides:{cxt.meta_overrides}")
+    logger.info(f"running target:{var_path} with design {design_path}")
+    tree_str=design_rich_tree(design, cxt.var)
+    logger.info(f"Dependency Tree:\n{tree_str}")
+
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
 
@@ -177,7 +202,7 @@ def run_anything(
                 )
                 resolver = AsyncResolver(
                     dd,
-                    callbacks=cxt.provision_callback or []
+                    callbacks=[cxt.provision_callback] if cxt.provision_callback else []
                 )
                 _res = await resolver.provide(tgt)
 
