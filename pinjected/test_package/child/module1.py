@@ -31,8 +31,11 @@ async def test_long_test():
     await asyncio.sleep(5)
 
 
+
+
 variable_x: IProxy = injected('x')
 variable_y: Injected = injected('y')
+
 
 viz_target_design = providers(
     a=a,
@@ -40,9 +43,15 @@ viz_target_design = providers(
 )
 test_runnable = Injected.pure("hello world")
 
+
+
 @instance
 def test_always_failure():
     raise RuntimeError("This is always failure")
+
+
+
+
 
 with design(
         c="c"
