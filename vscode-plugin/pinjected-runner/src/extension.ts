@@ -9,6 +9,15 @@ import { promisify } from 'util';
 const runConfigCache: { [filename: string]: { [varname: string]: RunConfig[] } } = {};
 const execPromise = promisify(cp.exec);
 
+interface CooldownInfo {
+    lastUpdate: number;
+    promise?: Promise<{[varName: string]: RunConfig[]}>;
+}
+
+const lastUpdateTime: { [filePath: string]: number } = {};
+const COOLDOWN_PERIOD = 5000; // 5 seconds in milliseconds
+
+
 async function execAsync(command: string): Promise<string> {
 	console.log("Executing command:", command);
     try {
@@ -20,10 +29,10 @@ async function execAsync(command: string): Promise<string> {
     } catch (error) {
         if (error instanceof Error) {
             const execError = error as cp.ExecException;
-            console.error('Command execution failed:', execError.message);
-            if (execError.stderr) {
-                console.error('stderr:', execError.stderr.toString());
-            }
+            // console.error('Command execution failed:', execError.message);
+            // if (execError.stderr) {
+            //     console.error('Command execution failed:', execError.stderr.toString());
+            // }
             throw execError;
         }
         throw error;
@@ -51,7 +60,7 @@ class RunButtonDecoration extends vscode.Disposable {
 	public updateDecorations(editor: vscode.TextEditor) {
 		if (this.isUpdating) {
 			console.log('Update in progress. Ignoring new update request.');
-			vscode.window.showInformationMessage('Decoration update in progress. Please wait.');
+			// vscode.window.showInformationMessage('Decoration update in progress. Please wait.');
 			return;
 		}
 
@@ -258,34 +267,59 @@ function extractPinjectedJson(text: string): PinjectedOutput {
 	throw new Error('Failed to extract pinjected JSON');
 }
 
+// async function updateRunConfigsInFile(filePath: string) {
+// 	// this gets called for every change in the file.
+// 	// I need to add some cooltime to this function.
+
+
+
+// 	const python_path = await getPythonPath();
+// 	const cacheKey = `${filePath}`;
+// 	try {
+// 		const result = await execAsync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`);
+
+// 		const pinjectedOutput: PinjectedOutput = extractPinjectedJson(result);
+
+// 		runConfigCache[cacheKey] = pinjectedOutput.configs;
+// 	} catch (error) {
+// 		vscode.window.showErrorMessage(`Failed to get run configuration for file ${filePath}. Error: ${error}`);
+// 		// Since the error is very long,
+// 		// i need to show the full error message to the user. via vscode.
+// 		// what options do i have?
+// 		// 1. showErrorMessage
+// 		// 2. showInformationMessage
+// 		// 3. showWarningMessage
+
+
+// 	}
+// 	return runConfigCache[cacheKey];
+// }
+
 async function updateRunConfigsInFile(filePath: string) {
-	// this gets called for every change in the file.
-	// I need to add some cooltime to this function.
+    const now = Date.now();
+    const lastUpdate = lastUpdateTime[filePath] || 0;
+    
+    // Check if we're still in cooldown period
+    if (now - lastUpdate < COOLDOWN_PERIOD) {
+        console.log('Skipping update due to cooldown period');
+        return runConfigCache[filePath];
+    }
 
-
-
-	const python_path = await getPythonPath();
-	const cacheKey = `${filePath}`;
-	try {
-		const result = await execAsync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`);
-
-		const pinjectedOutput: PinjectedOutput = extractPinjectedJson(result);
-
-		runConfigCache[cacheKey] = pinjectedOutput.configs;
-	} catch (error) {
-		vscode.window.showErrorMessage(`Failed to get run configuration for file ${filePath}. Error: ${error}`);
-		// Since the error is very long,
-		// i need to show the full error message to the user. via vscode.
-		// what options do i have?
-		// 1. showErrorMessage
-		// 2. showInformationMessage
-		// 3. showWarningMessage
-
-
-	}
-	return runConfigCache[cacheKey];
+    const python_path = await getPythonPath();
+    try {
+        const result = await execAsync(`${python_path} -m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations "${filePath}"`);
+        
+        const pinjectedOutput: PinjectedOutput = extractPinjectedJson(result);
+        runConfigCache[filePath] = pinjectedOutput.configs;
+        
+        // Update the last update time
+        lastUpdateTime[filePath] = now;
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to get run configuration for file ${filePath}. Error: ${error}`);
+    }
+    
+    return runConfigCache[filePath];
 }
-
 
 async function getRunConfigs(filePath: string, varName: string): Promise<RunConfig[]> {
 	const python_path = await getPythonPath();
@@ -323,25 +357,25 @@ export function activate(context: vscode.ExtensionContext) {
 	runButtonDecoration = new RunButtonDecoration();
 
 	
-	vscode.window.onDidChangeActiveTextEditor(
-		(editor) => {
-			if (editor) {
-				runButtonDecoration.updateDecorations(editor);
-			}
-		},
-		null,
-		context.subscriptions
-	);
+	// vscode.window.onDidChangeActiveTextEditor(
+	// 	(editor) => {
+	// 		if (editor) {
+	// 			runButtonDecoration.updateDecorations(editor);
+	// 		}
+	// 	},
+	// 	null,
+	// 	context.subscriptions
+	// );
 
-	vscode.workspace.onDidChangeTextDocument(
-		(event) => {
-			if (vscode.window.activeTextEditor && event.document === vscode.window.activeTextEditor.document) {
-				runButtonDecoration.updateDecorations(vscode.window.activeTextEditor);
-			}
-		},
-		null,
-		context.subscriptions
-	);
+	// vscode.workspace.onDidChangeTextDocument(
+	// 	(event) => {
+	// 		if (vscode.window.activeTextEditor && event.document === vscode.window.activeTextEditor.document) {
+	// 			runButtonDecoration.updateDecorations(vscode.window.activeTextEditor);
+	// 		}
+	// 	},
+	// 	null,
+	// 	context.subscriptions
+	// );
 
 
 	context.subscriptions.push(

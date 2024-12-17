@@ -1,5 +1,6 @@
 from pinjected import *
 
+
 Model = object
 Dataset = object
 
@@ -35,6 +36,7 @@ def build_dataset(
     return Dataset
 
 
+
 dataset_1: IProxy[Dataset] = build_dataset('dataset_1', 100)
 dataset_2: IProxy[Dataset] = build_dataset('dataset_2', 200)
 dataset_3: IProxy[Dataset] = build_dataset('dataset_3', 300)
@@ -61,8 +63,15 @@ experiment_3_1: IProxy[float] = run_experiment(model_3, dataset_1)
 experiment_3_2: IProxy[float] = run_experiment(model_3, dataset_2)
 experiment_3_3: IProxy[float] = run_experiment(model_3, dataset_3)
 
+
 run_all_experiments: IProxy[list[float]] = Injected.list(
     experiment_1_1, experiment_1_2, experiment_1_3,
     experiment_2_1, experiment_2_2, experiment_2_3,
     experiment_3_1, experiment_3_2, experiment_3_3
+)
+
+
+
+__meta_design__ = design(
+    
 )

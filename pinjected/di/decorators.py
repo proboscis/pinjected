@@ -59,9 +59,13 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
 
 
     new_f = Injected.inject_partially(f, **tgts)
+    if isinstance(f, type):
+        key_name = f"new_{f.__name__}"
+    else:
+        key_name = f.__name__
 
     from pinjected.di.metadata.bind_metadata import BindMetadata
-    IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
+    IMPLICIT_BINDINGS[StrBindKey(key_name)] = BindInjected(
         new_f,
         _metadata=Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
     )
