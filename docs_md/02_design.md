@@ -4,7 +4,7 @@ The Design class is a fundamental concept in Pinjected that allows you to define
 Adding Bindings
 You can create a Design by combining different types of bindings:
 ```python 
-from pinjected import instances, providers, classes
+from pinjected import instances, providers, classes, design
 from dataclasses import dataclass
 
 
@@ -32,12 +32,23 @@ d = instances(
 ) + classes(
     dep=DepObject
 )
+d2 = design( # same definition as the d. This automatically switches instances/providers/classes depending on the type of the object
+    a=0,
+    b=1,
+    c=lambda a, b: a + b,
+    d=lambda a, b, c: a + b + c,
+    dep=DepObject
+)
 ```
 In this example, we create a Design by combining:
 
 - instances(): Binds concrete values
 - providers(): Binds functions that provide values
 - classes(): Binds classes to be instantiated
+- design(): Automatically switches instances/providers/classes depending on the type of the object
+  - If the object is a class, it is bound as a class
+  - If the object is a callable, it is bound as a provider
+  - If the object is an object that is not callable (i.e,, no __call__ method), it is bound as an instance
   
 ## Resolving Dependencies
 To resolve dependencies and create objects based on a Design, you can use the to_graph() method.
