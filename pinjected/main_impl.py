@@ -33,23 +33,21 @@ def run(
     :param kwargs: overrides for the design. e.g. "api_key=1234"
 
     """
-    no_notification = kwargs.pop('pinjected_no_notification', False)
-    kwargs_overrides = parse_kwargs_as_design(**kwargs)
-    ovr = instances()
-    if meta_context_path is not None:
-        mc = MetaContext.gather_from_path(Path(meta_context_path))
-        ovr += mc.final_design
-    ovr += parse_overrides(overrides)
-    ovr += kwargs_overrides
-    """
-    We need a functionality to get the design for a variable path.
-    Currently, the metacontext only gathers a context for the module.
-    So, I need another implementation in addition to MetaContext.
-    """
-    return run_injected(
-        "get", var_path, design_path,
-        return_result=False, overrides=ovr,
-        no_notification=no_notification)
+
+    async def a_prep():
+        kwargs_overrides = parse_kwargs_as_design(**kwargs)
+        ovr = instances()
+        if meta_context_path is not None:
+            mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
+            ovr += await mc.a_final_design
+        ovr += parse_overrides(overrides)
+        ovr += kwargs_overrides
+        cxt: RunContext = await a_get_run_context(design_path, var_path)
+        cxt = cxt.add_design(ovr)
+        res = await cxt.a_run()
+        # now we've got the function to call
+
+    return asyncio.run(a_prep())
 
 
 def check_config():
@@ -119,6 +117,7 @@ def call(
     - design_paths: list[str] to be accumulated
     - meta_context_path: str # a path to gather meta context from.
     """
+
     # no_notification = kwargs.pop('pinjected_no_notification', False)
     async def a_prep():
         from loguru import logger
@@ -132,16 +131,19 @@ def call(
         cxt: RunContext = await a_get_run_context(design_path, var_path)
         cxt = cxt.add_design(ovr)
         func = await cxt.a_run()
+
         # now we've got the function to call
         def call_impl(*args, **kwargs):
             # here we wrap the original function so that it won't return anything for the `fire`
             logger.info(f"calling {var_path} with {args} {kwargs}")
             res = func(*args, **kwargs)
             if isawaitable(res):
-                res= asyncio.run(res)
+                res = asyncio.run(res)
             logger.info(f"result: {res}")
+
         # now, the resulting function canbe async, can fire handle that?
         return call_impl
+
     return asyncio.run(a_prep())
 
 
