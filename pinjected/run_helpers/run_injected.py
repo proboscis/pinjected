@@ -6,7 +6,7 @@ import sys
 import traceback
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import redirect_stdout, redirect_stderr
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from pprint import pformat
 from typing import Awaitable, Optional, Callable
@@ -182,7 +182,7 @@ def run_anything(
     logger.info(f"loaded design:{design}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
     logger.info(f"running target:{var_path} with design {design_path}")
-    tree_str=design_rich_tree(design, cxt.var)
+    tree_str = design_rich_tree(design, cxt.var)
     logger.info(f"Dependency Tree:\n{tree_str}")
 
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
@@ -193,36 +193,9 @@ def run_anything(
 
     res = None
 
-    def run_target(d, tgt):
-        # TODO here, I want to specify what to use for the provision callback.
-        async def task():
-            async with TaskGroup() as tg:
-                dd = d + instances(
-                    __task_group__=tg
-                )
-                resolver = AsyncResolver(
-                    dd,
-                    callbacks=[cxt.provision_callback] if cxt.provision_callback else []
-                )
-                _res = await resolver.provide(tgt)
-
-                if isinstance(_res, Awaitable):
-                    # logger.info(f"awaiting awaitable")
-                    _res = await _res
-            await resolver.destruct()
-            return _res
-
-        return asyncio.run(task())
-
     try:
-        if cmd == 'call':
-            args = call_args or []
-            kwargs = call_kwargs or {}
-            var = Injected.ensure_injected(cxt.var).proxy
-            logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
-            res = run_target(design, var(*args, **kwargs))
-        elif cmd == 'get':
-            res = run_target(design, cxt.var)
+        if cmd == 'get':
+            res = cxt.add_design(overrides).run()
         elif cmd == 'fire':
             raise RuntimeError('fire is deprecated. use get.')
         elif cmd == 'visualize':
@@ -241,7 +214,7 @@ def run_anything(
         elif cmd == 'to_script':
             from loguru import logger
             d = design + providers(
-                __root__=var
+                __root__=cxt.var
             )
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
@@ -260,12 +233,54 @@ def run_anything(
         return res
 
 
-@dataclass
+def call_impl(call_args, call_kwargs, cxt, design):
+    args = call_args or []
+    kwargs = call_kwargs or {}
+    var = Injected.ensure_injected(cxt.var).proxy
+    logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
+    res = _run_target(design, var(*args, **kwargs), cxt)
+    return res
+
+
+@dataclass(frozen=True)
 class RunContext:
     design: Design
     meta_overrides: Design
     var: Injected
     provision_callback: Optional[IResolverCallback]
+
+    def add_design(self, design: Design):
+        return replace(
+            self,
+            design=self.design + design
+        )
+
+    async def a_run(self):
+        final_design = self.design + self.meta_overrides
+        logger.info(f"loaded design:{final_design}")
+        logger.info(f"meta_overrides:{self.meta_overrides}")
+        logger.info(f"running target:{self.var} with design {final_design}")
+        tree_str = design_rich_tree(final_design, self.var)
+        logger.info(f"Dependency Tree:\n{tree_str}")
+        async with TaskGroup() as tg:
+            dd = final_design + instances(
+                __task_group__=tg
+            )
+            resolver = AsyncResolver(
+                dd,
+                callbacks=[self.provision_callback] if self.provision_callback else []
+            )
+            _res = await resolver.provide(self.var)
+
+            if isinstance(_res, Awaitable):
+                # logger.info(f"awaiting awaitable")
+                _res = await _res
+        await resolver.destruct()
+        return _res
+
+    def run(self):
+        return asyncio.run(self.a_run())
+
 
 
 async def a_get_run_context(design_path, var_path) -> RunContext:
