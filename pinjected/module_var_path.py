@@ -24,6 +24,9 @@ class ModuleVarPath:
 
     @property
     def module_name(self):
+        split_path = self.path.split(".")
+        if len(split_path) == 1:
+            return split_path[0]
         module = ".".join(self.path.split(".")[:-1])
         return module
 

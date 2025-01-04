@@ -139,7 +139,7 @@ def call(
             res = func(*args, **kwargs)
             if isawaitable(res):
                 res = asyncio.run(res)
-            logger.info(f"result: {res}")
+            logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
 
         # now, the resulting function canbe async, can fire handle that?
         return call_impl
