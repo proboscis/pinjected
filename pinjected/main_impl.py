@@ -1,3 +1,5 @@
+import asyncio
+from inspect import isawaitable
 from pathlib import Path
 
 from pinjected import Design, instances, providers, Injected
@@ -5,7 +7,8 @@ from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.helper_structure import MetaContext
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
-from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design
+from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
+    a_get_run_context, RunContext
 
 
 def run(
@@ -51,7 +54,6 @@ def run(
 
 def check_config():
     from loguru import logger
-    from pprint import pformat
     default: Design = load_user_default_design()
     overrides = load_user_overrides_design()
     logger.info(f"displaying default design bindings:")
@@ -99,11 +101,56 @@ def parse_overrides(overrides) -> Design:
             return instances()
 
 
+def call(
+        var_path: str,
+        design_path: str = None,
+        overrides: str = None,
+        meta_context_path: str = None,
+        **kwargs
+):
+    """
+    Now we have multiples similar functions and having hard time distinguishing them.
+    run -> run_injected -> run_anything -> _run_target
+    call -> run_injected -> run_anything -> call_impl
+    # this is very complicated. we should clean this up.
+    the cause I think is that 'run' has special kwargs and kwargs in common arguments.
+    So first I need to separate options.
+    - var_path
+    - design_paths: list[str] to be accumulated
+    - meta_context_path: str # a path to gather meta context from.
+    """
+    # no_notification = kwargs.pop('pinjected_no_notification', False)
+    async def a_prep():
+        from loguru import logger
+        kwargs_overrides = parse_kwargs_as_design(**kwargs)
+        ovr = instances()
+        if meta_context_path is not None:
+            mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
+            ovr += await mc.a_final_design
+        ovr += parse_overrides(overrides)
+        ovr += kwargs_overrides
+        cxt: RunContext = await a_get_run_context(design_path, var_path)
+        cxt = cxt.add_design(ovr)
+        func = await cxt.a_run()
+        # now we've got the function to call
+        def call_impl(*args, **kwargs):
+            # here we wrap the original function so that it won't return anything for the `fire`
+            logger.info(f"calling {var_path} with {args} {kwargs}")
+            res = func(*args, **kwargs)
+            if isawaitable(res):
+                res= asyncio.run(res)
+            logger.info(f"result: {res}")
+        # now, the resulting function canbe async, can fire handle that?
+        return call_impl
+    return asyncio.run(a_prep())
+
+
 def main():
     import fire
 
     fire.Fire(dict(
         run=run,
+        call=call,
         check_config=check_config,
         create_overloads=process_file
     ))
