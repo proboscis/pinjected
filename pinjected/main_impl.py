@@ -12,10 +12,11 @@ from pinjected.run_helpers.run_injected import run_injected, load_user_default_d
 
 
 def run(
-        var_path: str,
+        var_path: str = None,
         design_path: str = None,
         overrides: str = None,
         meta_context_path: str = None,
+        base64_encoded_json: str = None,
         **kwargs
 ):
     """
@@ -33,6 +34,15 @@ def run(
     :param kwargs: overrides for the design. e.g. "api_key=1234"
 
     """
+    if base64_encoded_json is not None:
+        import json
+    import base64
+    data: dict = json.loads(base64.b64decode(base64_encoded_json).decode())
+    var_path = data.pop('var_path')
+    design_path = data.pop('design_path', None)
+    overrides = data.pop('overrides', None)
+    meta_context_path = data.pop('meta_context_path', None)
+    kwargs = data
 
     async def a_prep():
         kwargs_overrides = parse_kwargs_as_design(**kwargs)
@@ -99,11 +109,20 @@ def parse_overrides(overrides) -> Design:
             return instances()
 
 
+def decode_b64json(text):
+    import json
+    import base64
+    data: dict = json.loads(base64.b64decode(text).decode())
+    return data
+
+
 def call(
-        var_path: str,
+        var_path: str = None,
         design_path: str = None,
         overrides: str = None,
         meta_context_path: str = None,
+        base64_encoded_json: str = None,
+        call_kwargs_base64_json: str = None,
         **kwargs
 ):
     """
@@ -117,10 +136,18 @@ def call(
     - design_paths: list[str] to be accumulated
     - meta_context_path: str # a path to gather meta context from.
     """
+    from loguru import logger
+    if base64_encoded_json is not None:
+        data = decode_b64json(base64_encoded_json)
+        var_path = data.pop('var_path')
+        design_path = data.pop('design_path', None)
+        overrides = data.pop('overrides', None)
+        meta_context_path = data.pop('meta_context_path', None)
+        kwargs = data
+        logger.info(f"decoded {var_path=} {design_path=} {overrides=} {meta_context_path=} {kwargs=}")
 
     # no_notification = kwargs.pop('pinjected_no_notification', False)
     async def a_prep():
-        from loguru import logger
         kwargs_overrides = parse_kwargs_as_design(**kwargs)
         ovr = instances()
         if meta_context_path is not None:
@@ -131,18 +158,25 @@ def call(
         cxt: RunContext = await a_get_run_context(design_path, var_path)
         cxt = cxt.add_design(ovr)
         func = await cxt.a_run()
-
-        # now we've got the function to call
-        def call_impl(*args, **kwargs):
-            # here we wrap the original function so that it won't return anything for the `fire`
-            logger.info(f"calling {var_path} with {args} {kwargs}")
-            res = func(*args, **kwargs)
+        if call_kwargs_base64_json is not None:
+            call_kwargs = decode_b64json(call_kwargs_base64_json)
+            logger.info(f"calling {var_path} with {call_kwargs}(decoded)")
+            res = func(**call_kwargs)
             if isawaitable(res):
-                res = asyncio.run(res)
+                res = await res
             logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
+        else:
+            # now we've got the function to call
+            def call_impl(*args, **call_kwargs):
+                # here we wrap the original function so that it won't return anything for the `fire`
+                logger.info(f"calling {var_path} with {args} {call_kwargs}")
+                res = func(*args, **call_kwargs)
+                if isawaitable(res):
+                    res = asyncio.run(res)
+                logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
 
-        # now, the resulting function canbe async, can fire handle that?
-        return call_impl
+            # now, the resulting function canbe async, can fire handle that?
+            return call_impl
 
     return asyncio.run(a_prep())
 
