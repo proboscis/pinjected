@@ -321,6 +321,8 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 return f"{_show_expr(wrapped)}"
             case UnaryOp('await', Expr() as tgt):
                 return f"(await {_show_expr(tgt)})"
+            case UnaryOp(op, Expr() as tgt):
+                return f"{op}({_show_expr(tgt)})"
             case Cache(Expr() as tgt):
                 return f"{_show_expr(tgt)}"
             case _:
