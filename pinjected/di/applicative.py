@@ -37,3 +37,9 @@ class Applicative(Generic[T], ABC):
 
     def _await_(self, tgt: T):
         raise NotImplementedError("await not implemented")
+
+    def unary(self, op: str, tgt: T):
+        raise NotImplementedError("unary not implemented")
+
+    def biop(self, op: str, tgt: T, other):
+        raise NotImplementedError("biop not implemented")

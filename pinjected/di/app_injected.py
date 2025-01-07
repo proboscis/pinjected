@@ -36,6 +36,48 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
 
         return tgt.map(awaiter)
 
+    def unary(self, op: str, tgt: T):
+        async def unary_op(x):
+            if op == '-':
+                return -x
+            if op == '~':
+                return ~x
+            if op == 'len':
+                return len(x)
+            raise NotImplementedError(f"unary op {op} not implemented")
+
+        return tgt.map(unary_op)
+
+    def biop(self, op: str, tgt: T, other):
+        async def bi_op(x, y):
+            if op == '+':
+                return x + y
+            if op == '-':
+                return x - y
+            if op == '*':
+                return x * y
+            if op == '/':
+                return x / y
+            if op == '%':
+                return x % y
+            if op == '**':
+                return x ** y
+            if op == '<<':
+                return x << y
+            if op == '>>':
+                return x >> y
+            if op == '&':
+                return x & y
+            if op == '^':
+                return x ^ y
+            if op == '|':
+                return x | y
+            if op == '//':
+                return x // y
+            raise NotImplementedError(f"bi op {op} not implemented")
+
+        return tgt.map(lambda x: other.map(lambda y: bi_op(x, y)))
+
 
 @dataclass
 class EvaledInjected(Injected[T]):
