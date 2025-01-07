@@ -148,6 +148,9 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
             case UnaryOp('await', Expr() as tgt):
                 injected_tgt = _eval(tgt)
                 return app._await_(injected_tgt)
+            case UnaryOp(op, Expr() as tgt):
+                injected_tgt = _eval(tgt)
+                return app.unary(op, injected_tgt)
             case _:
                 raise RuntimeError(f"unsupported ast found!:{type(expr)},{expr}")
 
