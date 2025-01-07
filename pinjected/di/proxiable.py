@@ -102,5 +102,8 @@ class DelegatedVar(Generic[T]):
     def __eq__(self, other):
         return self.cxt.biop_impl('==', self.value, other)
 
+    def __invert__(self):
+        return self.cxt.unary_impl('~', self.value)
+
     def await__(self):
         return self.cxt.unary_impl('await', self.value)
