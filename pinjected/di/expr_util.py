@@ -99,6 +99,18 @@ class Expr(Generic[T], ABC):
                 return BiOp("==", self, self._wrap_if_non_expr(other))
             case _:
                 raise NotImplementedError(f"biop {op} not implemented")
+    def unary(self, op):
+        match op:
+            case '-':
+                return UnaryOp("-", self)
+            case '~':
+                return UnaryOp("~", self)
+            case 'not':
+                return UnaryOp("not", self)
+            case 'await':
+                return UnaryOp("await", self)
+            case _:
+                raise NotImplementedError(f"unary {op} not implemented")
 
     def _await_(self):
         return UnaryOp("await", self)
