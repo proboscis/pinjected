@@ -51,11 +51,7 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
         return self.pure(tgt.biop(op, other))
 
     def unary_impl(self, op: str, tgt: Expr[T]):
-        match op:
-            case 'await':
-                return self.pure(tgt._await_())
-            case _:
-                raise NotImplementedError(f"unary {op} not implemented")
+        return self.pure(tgt.unary(op))
 
 
 def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
