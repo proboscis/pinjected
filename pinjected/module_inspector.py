@@ -26,21 +26,24 @@ class ModuleVarSpec(Generic[T]):
 @memoize
 def get_project_root(start_path: str) -> str:
     from loguru import logger
-    current_path = os.path.dirname(os.path.abspath(start_path))
-    #logger.debug(f"current_path:{current_path}")
+    # current_path = os.path.dirname(os.path.abspath(start_path))
+    if not os.path.isdir(start_path):
+        current_path = os.path.dirname(os.path.abspath(start_path))
+    else:
+        current_path = start_path
+    logger.debug(f"current_path:{current_path}")
     while os.path.exists(os.path.join(current_path, "__init__.py")):
         parent_path = os.path.dirname(current_path)
         if parent_path == current_path:
             raise ValueError("Project root not found")
         current_path = parent_path
-        #logger.debug(f"current_path:{current_path}")
-    # this handles the case where
-    # /repos/repo_name/package/__init__.py
-    # but not the case where
-    # /repos/repo_name/src/package/__init__.py
-    # how can we detect if src should be included?
-    if (p_path := Path(current_path)).name == 'src':
+        logger.debug(f"current_path:{current_path}")
+
+    init_path = Path(current_path) / '__init__.py'
+    logger.info(f"checking init_path:{init_path}")
+    if (p_path := Path(current_path)).name == 'src' and not init_path.exists():
         current_path = str(p_path.parent)
+    logger.info(f"found project root:{current_path}")
     return current_path
 
 
@@ -48,17 +51,23 @@ def get_module_path(root_path, module_path):
     relative_path = os.path.relpath(module_path, root_path)
     without_extension = os.path.splitext(relative_path)[0]
     path = without_extension.replace(os.path.sep, ".")
-    if path.startswith('src.'):
-        # TODO this is a hack to remove src from the path... how can i detect the name of top level package?
-        path = path[4:]
+    if str(path).split('.')[0] == 'src':
+        if not (Path(root_path) / 'src' / '__init__.py').exists():
+            # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
+            # Although 'src' should not be in the module path at all, i handle this specific case.
+            # Probably we should make this part adjustable from __meta_design__ or something.
+            path = path[4:]
     return path
 
 
 def inspect_module_for_type(module_path: Union[str, Path], accept: Callable[[str, Any], bool]) -> List[
     ModuleVarSpec[T]]:
+    from loguru import logger
+    logger.debug(f"inspecting module:{module_path}")
     if isinstance(module_path, Path):
         module_path = str(module_path)
-    from loguru import logger
+    logger.debug(f"get project root from {module_path}")
+    logger.debug(f"dirname of module_path:{os.path.dirname(module_path)}")
     project_root = get_project_root(os.path.dirname(module_path))
     logger.info(f"project_root:{project_root}")
     module_name = get_module_path(project_root, module_path)
