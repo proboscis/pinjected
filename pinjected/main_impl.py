@@ -36,13 +36,13 @@ def run(
     """
     if base64_encoded_json is not None:
         import json
-    import base64
-    data: dict = json.loads(base64.b64decode(base64_encoded_json).decode())
-    var_path = data.pop('var_path')
-    design_path = data.pop('design_path', None)
-    overrides = data.pop('overrides', None)
-    meta_context_path = data.pop('meta_context_path', None)
-    kwargs = data
+        import base64
+        data: dict = json.loads(base64.b64decode(base64_encoded_json).decode())
+        var_path = data.pop('var_path')
+        design_path = data.pop('design_path', None)
+        overrides = data.pop('overrides', None)
+        meta_context_path = data.pop('meta_context_path', None)
+        kwargs = data
 
     async def a_prep():
         kwargs_overrides = parse_kwargs_as_design(**kwargs)
@@ -55,6 +55,8 @@ def run(
         cxt: RunContext = await a_get_run_context(design_path, var_path)
         cxt = cxt.add_design(ovr)
         res = await cxt.a_run()
+        from loguru import logger
+        logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
         # now we've got the function to call
 
     return asyncio.run(a_prep())
