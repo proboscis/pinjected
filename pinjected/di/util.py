@@ -14,7 +14,7 @@ from returns.result import Failure, Success
 
 from pinjected.di.design import DesignImpl, AddValidation
 from pinjected.di.validation import ValSuccess, ValFailure
-from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
+from pinjected.di.injected import Injected, InjectedPure, InjectedFromFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
@@ -137,7 +137,7 @@ def get_class_aware_args(f):
 
 def to_readable_name(o):
     match o:
-        case BindInjected(InjectedFunction(func, _), _):
+        case BindInjected(InjectedFromFunction(func, _), _):
             return func.__name__
         case BindInjected(InjectedPure(value), _):
             return value
