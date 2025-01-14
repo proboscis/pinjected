@@ -262,7 +262,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def bind(_target_function_, _dynamic_dependencies_: set[str] = None,
-             **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFunction":
+             **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFromFunction":
         assert not isinstance(_target_function_, Injected), f"target_function should not be an instance of Injected"
         # if isinstance(_target_function_, Injected):
         #     _target_function_ = _target_function_.get_provider()
@@ -280,7 +280,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 "not available")
         else:
             async_target_function = _target_function_
-        res = InjectedFunction(
+        res = InjectedFromFunction(
             original_function=_target_function_,
             target_function=async_target_function,
             kwargs_mapping=kwargs_mapping,
@@ -1022,8 +1022,10 @@ def assert_kwargs_type(v):
         raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
 
 
-class InjectedFunction(Injected[T]):
-    # since the behavior differs in classes extending Generic[T]
+class InjectedFromFunction(Injected[T]):
+    """
+    Used for Injected.bind
+    """
     __match_args__ = ("target_function", "kwargs_mapping")
 
     def __init__(self,
@@ -1062,7 +1064,7 @@ class InjectedFunction(Injected[T]):
         self._dynamic_dependencies = dynamic_dependencies
 
     def override_mapping(self, **kwargs: Union[str, type, Callable, Injected]):
-        return InjectedFunction(self.target_function, {**self.kwargs_mapping, **kwargs})
+        return InjectedFromFunction(self.target_function, {**self.kwargs_mapping, **kwargs})
 
     def get_provider(self):
         signature = self.get_signature()

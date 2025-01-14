@@ -1,4 +1,5 @@
 import inspect
+from dataclasses import dataclass
 from typing import Callable, Set, Optional
 
 from pinjected import Injected
@@ -70,6 +71,37 @@ def get_final_args_kwargs(
     return tuple(new_args), new_kwargs
 
 
+@dataclass
+class PartiallyInjectedFunction:
+    """
+    An object to be returned for @injected functions after provision.
+    @injected
+    def func(a,/,b):
+        pass
+    assert type(d.provide(func)) == PartiallyInjectedFunction
+    """
+    injected_params: dict
+    name: str
+    src_function: Callable
+    final_sig: inspect.Signature
+    func_sig: inspect.Signature
+
+    def __post_init__(self):
+        self.__name__ = self.name
+        self.__signature__ = self.final_sig
+
+    def __call__(self, *args, **kwargs):
+        args, kwargs = get_final_args_kwargs(
+            self.final_sig,
+            self.func_sig,
+            self.injected_params,
+            *args,
+            **kwargs
+        )
+        res = self.src_function(*args, **kwargs)
+        return res
+
+
 class Partial(Injected):
 
     def __init__(self,
@@ -101,7 +133,6 @@ class Partial(Injected):
             **kwargs
         )
 
-
     def call_with_injected(self, __injected__: dict, *args, **kwargs):
         args, kwargs = self.final_args_kwargs(__injected__, *args, **kwargs)
         res = self.src_function(*args, **kwargs)
@@ -109,32 +140,22 @@ class Partial(Injected):
 
     def get_provider(self):
         """
-        def example(pos_only, /, normal, *args, kw_only, **kwargs):
-            pass
-        inspect.Parameter.POSITIONAL_ONLY -> pos_only
-        "/"
-        inspect.Parameter.POSITIONAL_OR_KEYWORD -> normal
-        inspect.Parameter.VAR_POSITIONAL -> args
-        "* or *args"
-        inspect.Parameter.KEYWORD_ONLY -> kw_only
-        inspect.Parameter.VAR_KEYWORD -> kwargs
-
-        Now, I want to replace the args in injection_targets to become
-        the first positional only arg:__injected__:dict
-        and keep the rest to be same
+        Here we want to return a provider function that can return a injected function object.
         """
 
-        async def impl(__injected__: dict):
-            def inner_impl(*args, **kwargs):
-                return self.call_with_injected(__injected__, *args, **kwargs)
-            inner_impl.__name__ = self.src_function.__name__
-
-            return inner_impl
-
         return Injected.bind(
-            impl,
+            self._provider_impl,
             __injected__=self.injections,
         ).get_provider()
+
+    async def _provider_impl(self, __injected__: dict):
+        return PartiallyInjectedFunction(
+            injected_params=__injected__,
+            name=self.src_function.__name__,
+            src_function=self.src_function,
+            final_sig=self.modified_sig,
+            func_sig=self.func_sig
+        )
 
     def dependencies(self) -> Set[str]:
         return self.injections.dependencies()
