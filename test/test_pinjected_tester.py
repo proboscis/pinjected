@@ -19,7 +19,7 @@ from pinjected.test_helper.test_runner import a_pinjected_run_all_test, a_pinjec
 from pinjected.v2.resolver import AsyncResolver
 
 P_ROOT = Path(__file__).parent.parent
-d = pinjected_internal_design
+d = AsyncResolver(pinjected_internal_design)
 
 
 def test_find_target_variables():
@@ -54,8 +54,7 @@ async def test_run_test_with_context():
 
 @pytest.mark.asyncio
 async def test_run_all_test():
-    r = AsyncResolver(d)
-    async for res in await r.provide(a_pinjected_run_all_test(
+    async for res in await d.provide(a_pinjected_run_all_test(
             P_ROOT / "pinjected"
     )):
         res:PinjectedTestResult
@@ -66,8 +65,7 @@ async def test_run_all_test():
 
 @pytest.mark.asyncio
 async def test_viz_all_test():
-    r = AsyncResolver(d)
-    await r.provide(a_visualize_test_results(
+    await d.provide(a_visualize_test_results(
         a_pinjected_run_all_test(
             P_ROOT / "pinjected"
         )
