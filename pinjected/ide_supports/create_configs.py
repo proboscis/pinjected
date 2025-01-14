@@ -12,7 +12,7 @@ from returns.maybe import Some
 import pinjected
 import pinjected.global_configs
 from pinjected import instances, Injected, Design, instance, injected
-from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
+from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import MetaContext, IdeaRunConfigurations
@@ -146,7 +146,7 @@ def list_completions(
     def key_to_completion(key):
         tgt = total_mappings[key]
         match tgt:
-            case PartialInjectedFunction(InjectedFunction(object(__original__=func), kw_mapping)):
+            case PartialInjectedFunction(InjectedFromFunction(object(__original__=func), kw_mapping)):
                 name, signature = get_filtered_signature(func)
                 return dict(
                     name=name,

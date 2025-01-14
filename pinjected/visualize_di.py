@@ -14,7 +14,7 @@ from returns.result import safe, Failure
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
-from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
+from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
@@ -96,7 +96,7 @@ class DIGraph:
         #        else:
         #            assert False
         _id = self.injected_to_id[i]
-        if isinstance(i, InjectedFunction):
+        if isinstance(i, InjectedFromFunction):
             deps = []
             for k, v in i.kwargs_mapping.items():
                 dep_name = f"{k}_{_id}"
@@ -260,7 +260,7 @@ class DIGraph:
         match tgt:
             case InjectedWithDefaultDesign(src, default_design):
                 return self.parse_injected(src)
-            case InjectedFunction(f) as _if:
+            case InjectedFromFunction(f) as _if:
                 try:
                     desc = f"Injected:{safe(getattr)(_if.original_function, '__name__').value_or(repr(f))}"
                 except Exception as e:
@@ -270,7 +270,7 @@ class DIGraph:
             case InjectedPure(v):
                 desc = f"Pure:{v}"
                 return ("injected", desc, self.get_source_repr(v) if isinstance(v, Callable) else str(v))
-            case PartialInjectedFunction(InjectedFunction(src)):
+            case PartialInjectedFunction(InjectedFromFunction(src)):
                 desc = f"partial=>{src.__name__}"
                 return ("injected", desc, self.get_source_repr(src))
             case PartialInjectedFunction(src):

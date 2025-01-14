@@ -4,7 +4,7 @@ from typing import Set, Awaitable, TypeVar, Callable
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
 from pinjected.di.expr_util import Expr, Object, show_expr, UnaryOp, Call, BiOp, Attr, GetItem
-from pinjected.di.injected import InjectedPure, InjectedFunction, InjectedByName
+from pinjected.di.injected import InjectedPure, InjectedFromFunction, InjectedByName
 from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, \
     AstProxyContextImpl
@@ -120,7 +120,7 @@ def reduce_injected_expr(expr: Expr):
     match expr:
         case Object(InjectedPure(value)):
             return str(value)
-        case Object(InjectedFunction(func, kwargs)):
+        case Object(InjectedFromFunction(func, kwargs)):
             reduced = reduce_injected_expr(Object(kwargs))
             return f"{func.__name__}({reduced})"
         case Object(DelegatedVar() as dv):
