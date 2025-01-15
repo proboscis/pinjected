@@ -8,6 +8,8 @@ Welcome to Pinjected, a powerful dependency injection and dependency resolver li
 pip install pinjected
 ```
 
+[日本語記事](https://zenn.dev/proboscis/articles/4a10d26b13a940)
+
 # Table of Contents
 
 - [Introduction](docs_md/01_introduction.md)
