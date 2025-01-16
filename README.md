@@ -8,6 +8,18 @@ Welcome to Pinjected, a powerful dependency injection and dependency resolver li
 pip install pinjected
 ```
 
+## Development Setup
+
+This project uses Poetry for dependency management. The `poetry.lock` file is committed to the repository to ensure reproducible builds across all environments.
+
+```bash
+# Install poetry if you haven't already
+pip install poetry
+
+# Install dependencies
+poetry install
+```
+
 [日本語記事](https://zenn.dev/proboscis/articles/4a10d26b13a940)
 
 # Table of Contents
