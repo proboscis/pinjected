@@ -44,14 +44,14 @@ def database_config():
     }
 
 @instance
-def create_connection(database_config):
+def database_connection(database_config):
     # Dependencies are automatically injected
     return f"Connected to {database_config['name']} at {database_config['host']}:{database_config['port']}"
 
 # Create a design with our configurations
 design = providers(
     db_config=database_config,
-    connection=create_connection
+    connection=database_connection
 )
 
 # Use the dependency injection
