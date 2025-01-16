@@ -10,15 +10,17 @@ pip install pinjected
 
 ## Development Setup
 
-This project uses Poetry for dependency management. The `poetry.lock` file is committed to the repository to ensure reproducible builds across all environments.
+This project uses Poetry for dependency management. Due to cross-platform development between Mac and Ubuntu environments, we do not commit the `poetry.lock` file. This allows each developer to generate a lock file appropriate for their platform.
 
 ```bash
 # Install poetry if you haven't already
 pip install poetry
 
-# Install dependencies
+# Install dependencies (this will generate a poetry.lock file for your platform)
 poetry install
 ```
+
+Note: The `poetry.lock` file is intentionally excluded from version control to avoid cross-platform compatibility issues.
 
 [日本語記事](https://zenn.dev/proboscis/articles/4a10d26b13a940)
 
