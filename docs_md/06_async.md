@@ -81,7 +81,21 @@ assert (await g[z]) == 3
 ## Advanced Async Patterns
 For more complex async scenarios and performance optimization, see the [Advanced Usage Guide](11_advanced_usage.md). Here are some additional patterns:
 
-Note: The `@instance` decorator is meant for providing objects asynchronously (especially for initializing large or time-consuming resources), while `@injected` is used for general-purpose functions including tasks and logic. The examples below use `@injected` since they perform tasks rather than initialize resources.
+Note: The `@instance` decorator is meant for providing objects asynchronously (especially for initializing large or time-consuming resources), while `@injected` is used for general-purpose functions including tasks and logic. When using these decorators:
+
+1. Use `@instance` for:
+   - Initializing heavy resources (databases, connection pools)
+   - Creating long-lived objects that should be reused
+   - Setting up shared resources asynchronously
+
+2. Use `@injected` for:
+   - Task execution and business logic
+   - Functions that need to be called with specific arguments
+   - Operations that should be performed on demand
+
+Best Practice: Always call `@injected` functions within other functions (often within `@instance` functions) rather than using them directly as dependencies. This pattern ensures proper dependency injection and maintains clear separation between resource initialization and task execution.
+
+The examples below use `@injected` since they perform tasks rather than initialize resources:
 
 ### Parallel Task Execution
 ```python
@@ -103,17 +117,27 @@ async def heavy_task_2():
 @injected
 async def parallel_processor(heavy_task_1, heavy_task_2, /):
     """Tasks are automatically executed in parallel"""
-    return f"{heavy_task_1}_{heavy_task_2}"
+    # Call the injected functions to execute them
+    result1 = await heavy_task_1()
+    result2 = await heavy_task_2()
+    return f"{result1}_{result2}"
+
+@instance
+async def task_manager(parallel_processor):
+    """Demonstrates calling an @injected function within @instance"""
+    # Call the injected function to execute the parallel tasks
+    return await parallel_processor()
 
 # The tasks will execute concurrently, taking ~2 seconds total
 # instead of ~3 seconds if executed sequentially
 d = providers(
     task1=heavy_task_1,
     task2=heavy_task_2,
-    result=parallel_processor
+    processor=parallel_processor,
+    manager=task_manager
 )
 async_g = d.to_resolver()
-result = await async_g['result']  # "result_1_result_2"
+result = await async_g['manager']  # "result_1_result_2"
 ```
 
 ### Error Handling
@@ -131,14 +155,22 @@ async def unreliable_service(fallback_value, /):
         await asyncio.sleep(1)
         raise ConnectionError("Service unavailable")
     except ConnectionError:
-        return fallback_value
+        # Call the injected fallback function
+        return await fallback_value()
+
+@instance
+async def service_manager(unreliable_service):
+    """Demonstrates calling an @injected function within @instance"""
+    # Call the injected function to handle the service with fallback
+    return await unreliable_service()
 
 d = providers(
     fallback=fallback_value,
-    service=unreliable_service
+    service=unreliable_service,
+    manager=service_manager
 )
 async_g = d.to_resolver()
-result = await async_g['service']  # Uses fallback value
+result = await async_g['manager']  # Uses fallback value
 ```
 
 

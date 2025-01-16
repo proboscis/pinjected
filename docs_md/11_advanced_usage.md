@@ -12,7 +12,12 @@ This guide covers advanced topics and best practices for using Pinjected in comp
 ## Performance Optimization
 
 ### Concurrency Strategies
-When working with async dependencies, Pinjected automatically handles parallel resolution of dependencies. The `@instance` decorator is used for initializing resources asynchronously (like database pools or heavy objects), while `@injected` is used for task execution and business logic. Here are some strategies to optimize performance:
+When working with async dependencies, Pinjected automatically handles parallel resolution of dependencies. The key to efficient async operations is understanding when to use `@instance` vs `@injected`:
+
+- `@instance`: Use for initializing resources that will be shared across multiple operations
+- `@injected`: Use for tasks that need to be executed on demand and called within other functions
+
+The `@instance` decorator is used for initializing resources asynchronously (like database pools or heavy objects), while `@injected` is used for task execution and business logic. Here are some strategies to optimize performance:
 
 ```python
 from pinjected import instances, providers, injected, instance
@@ -111,7 +116,16 @@ async def heavy_task_2():
 @injected
 async def combined_result(heavy_task_1, heavy_task_2, /):
     """Dependencies are resolved in parallel automatically"""
-    return f"{heavy_task_1}_{heavy_task_2}"
+    # Call the injected functions to execute them
+    result1 = await heavy_task_1()
+    result2 = await heavy_task_2()
+    return f"{result1}_{result2}"
+
+@instance
+async def task_orchestrator(combined_result):
+    """Demonstrates calling an @injected function within @instance"""
+    # Call the injected function to execute the parallel tasks
+    return await combined_result()
 ```
 
 ### Error Handling in Async Operations
