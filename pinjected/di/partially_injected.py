@@ -109,9 +109,11 @@ class Partial(Injected):
                  injection_targets: dict[str, Injected],
                  modifier: Optional[ArgsModifier] = None
                  ):
-        # Get the original function name, preserving it through the injection chain
-        original_name = getattr(src_function, "__name__", "unnamed_injected_function")
-        super().__init__(original_name=original_name)
+        # Validate that we have a proper function name
+        if not hasattr(src_function, "__name__"):
+            raise ValueError("Lambda or anonymous functions are not supported in partial injection.")
+            
+        super().__init__(original_name=src_function.__name__)
         
         self.src_function = src_function
         self.injection_targets = injection_targets

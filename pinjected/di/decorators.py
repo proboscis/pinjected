@@ -61,9 +61,11 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     # Create a partially injected function - name preservation is handled in Partial.__init__
     new_f = Injected.inject_partially(f, **tgts)
     
-    # Determine the key name for binding (used in the global registry)
-    # Get the name from the original function
-    func_name = f.__name__ if hasattr(f, "__name__") else "unnamed_function"
+    # Get the name from the original function and validate it
+    if not hasattr(f, "__name__"):
+        raise ValueError("Cannot register a function without a proper name in the global registry. Lambda or anonymous functions are not supported.")
+    
+    func_name = f.__name__
     if isinstance(f, type):
         key_name = f"new_{func_name}"
     else:
