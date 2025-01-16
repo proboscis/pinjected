@@ -1,3 +1,16 @@
+"""
+This module defines the Design interface for the pinjected dependency injection system.
+The interface was extracted (as per issue #26) to provide a clear contract for dependency
+configuration and management. This separation enables multiple implementations with different
+strategies for handling dependencies, validations, and metadata.
+
+Key implementations of this interface can be found in design.py:
+- MergedDesign: Combines multiple designs with precedence rules
+- AddValidation: Adds validation capabilities to existing designs
+- MetaDataDesign: Handles metadata-only designs
+- DesignImpl: Standard implementation with direct bindings management
+"""
+
 import asyncio
 import inspect
 from abc import ABC, abstractmethod
