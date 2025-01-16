@@ -81,18 +81,20 @@ assert (await g[z]) == 3
 ## Advanced Async Patterns
 For more complex async scenarios and performance optimization, see the [Advanced Usage Guide](11_advanced_usage.md). Here are some additional patterns:
 
+Note: The `@instance` decorator is meant for providing objects asynchronously (especially for initializing large or time-consuming resources), while `@injected` is used for general-purpose functions including tasks and logic. The examples below use `@injected` since they perform tasks rather than initialize resources.
+
 ### Parallel Task Execution
 ```python
 from pinjected import instances, providers, injected, instance
 import asyncio
 
-@instance
+@injected
 async def heavy_task_1():
     """Simulate a CPU-intensive task"""
     await asyncio.sleep(2)
     return "result_1"
 
-@instance
+@injected
 async def heavy_task_2():
     """Simulate an I/O-bound task"""
     await asyncio.sleep(1)
@@ -119,7 +121,7 @@ result = await async_g['result']  # "result_1_result_2"
 from pinjected import instances, providers, injected, instance
 import asyncio
 
-@instance
+@injected
 async def fallback_value():
     return "fallback"
 

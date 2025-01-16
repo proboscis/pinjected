@@ -12,7 +12,7 @@ This guide covers advanced topics and best practices for using Pinjected in comp
 ## Performance Optimization
 
 ### Concurrency Strategies
-When working with async dependencies, Pinjected automatically handles parallel resolution of dependencies. Here are some strategies to optimize performance:
+When working with async dependencies, Pinjected automatically handles parallel resolution of dependencies. The `@instance` decorator is used for initializing resources asynchronously (like database pools or heavy objects), while `@injected` is used for task execution and business logic. Here are some strategies to optimize performance:
 
 ```python
 from pinjected import instances, providers, injected, instance
@@ -30,7 +30,7 @@ async def worker(resource_pool, /):
     async with resource_pool.acquire() as resource:
         return await process_with_resource(resource)
 
-@instance
+@injected
 async def parallel_processor(worker):
     """Process multiple items concurrently with controlled resource usage"""
     tasks = [worker() for _ in range(10)]
@@ -98,12 +98,12 @@ system = providers(
 
 ### Parallel Dependency Resolution
 ```python
-@instance
+@injected
 async def heavy_task_1():
     await asyncio.sleep(1)  # Simulate heavy work
     return "result_1"
 
-@instance
+@injected
 async def heavy_task_2():
     await asyncio.sleep(1)  # Simulate heavy work
     return "result_2"
