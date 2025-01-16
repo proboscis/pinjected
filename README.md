@@ -5,7 +5,7 @@
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
 
 ## Prerequisites
-- Python 3.7 or higher
+- Python 3.10 or higher
 - Basic understanding of Python decorators and functions
 
 ## Installation
