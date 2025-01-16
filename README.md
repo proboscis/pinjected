@@ -25,6 +25,20 @@ Dependency injection is a design pattern where objects receive their dependencie
 - **instances()**: Creates a design with value-based dependencies
 - **Design**: Configuration registry that manages dependencies
 - **to_graph()**: Creates an object graph that resolves dependencies
+=======
+## Development Setup
+
+This project uses Poetry for dependency management. Due to cross-platform development between Mac and Ubuntu environments, we do not commit the `poetry.lock` file. This allows each developer to generate a lock file appropriate for their platform.
+
+```bash
+# Install poetry if you haven't already
+pip install poetry
+
+# Install dependencies (this will generate a poetry.lock file for your platform)
+poetry install
+```
+
+Note: The `poetry.lock` file is intentionally excluded from version control to avoid cross-platform compatibility issues.
 
 [日本語記事](https://zenn.dev/proboscis/articles/4a10d26b13a940)
 
