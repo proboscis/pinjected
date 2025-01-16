@@ -78,4 +78,65 @@ assert (await g[z]) == 3
 
 ```
 
+## Advanced Async Patterns
+For more complex async scenarios and performance optimization, see the [Advanced Usage Guide](11_advanced_usage.md). Here are some additional patterns:
+
+### Parallel Task Execution
+```python
+from pinjected import instances, providers, injected, instance
+import asyncio
+
+@instance
+async def heavy_task_1():
+    """Simulate a CPU-intensive task"""
+    await asyncio.sleep(2)
+    return "result_1"
+
+@instance
+async def heavy_task_2():
+    """Simulate an I/O-bound task"""
+    await asyncio.sleep(1)
+    return "result_2"
+
+@injected
+async def parallel_processor(heavy_task_1, heavy_task_2, /):
+    """Tasks are automatically executed in parallel"""
+    return f"{heavy_task_1}_{heavy_task_2}"
+
+# The tasks will execute concurrently, taking ~2 seconds total
+# instead of ~3 seconds if executed sequentially
+d = providers(
+    task1=heavy_task_1,
+    task2=heavy_task_2,
+    result=parallel_processor
+)
+async_g = d.to_resolver()
+result = await async_g['result']  # "result_1_result_2"
+```
+
+### Error Handling
+```python
+from pinjected import instances, providers, injected, instance
+import asyncio
+
+@instance
+async def fallback_value():
+    return "fallback"
+
+@injected
+async def unreliable_service(fallback_value, /):
+    try:
+        await asyncio.sleep(1)
+        raise ConnectionError("Service unavailable")
+    except ConnectionError:
+        return fallback_value
+
+d = providers(
+    fallback=fallback_value,
+    service=unreliable_service
+)
+async_g = d.to_resolver()
+result = await async_g['service']  # Uses fallback value
+```
+
 
