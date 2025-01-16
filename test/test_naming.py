@@ -12,5 +12,6 @@ def test_naming_convention_for_injected_function():
         x=0
     )
     func = d.provide(target_function)
+    logger.info(f"Function name: {func.__name__}")
     assert type(
         func) == PartiallyInjectedFunction, f"@injected function must return PartiallyInjectedFunction after resolution, got {type(func)}"

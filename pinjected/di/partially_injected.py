@@ -109,6 +109,10 @@ class Partial(Injected):
                  injection_targets: dict[str, Injected],
                  modifier: Optional[ArgsModifier] = None
                  ):
+        # Get the original function name, preserving it through the injection chain
+        original_name = getattr(src_function, "__name__", "unnamed_injected_function")
+        super().__init__(original_name=original_name)
+        
         self.src_function = src_function
         self.injection_targets = injection_targets
         self.func_sig = inspect.signature(self.src_function)

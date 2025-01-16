@@ -6,7 +6,8 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
-from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional
+from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional, cast
+from typing_extensions import TypeGuard
 
 import cloudpickle
 from frozendict import frozendict
@@ -228,9 +229,17 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+        """Create a partially injected function that preserves the original function's name.
+        
+        Args:
+            original_function: The function to inject dependencies into
+            injection_targets: The dependencies to inject
+            
+        Returns:
+            An Injected[Callable] that preserves the original function's name
+        """
         from pinjected.di.partially_injected import Partial
         modifier = Injected._get_args_keeper(injection_targets, inspect.signature(original_function))
-        # TODO move this modifier to @injected decorator.
         return Partial(original_function, injection_targets, modifier)
 
     @staticmethod
@@ -300,20 +309,39 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         already_injected = {k: v for k, v in kwargs.items() if isinstance(v, (Injected, DelegatedVar))}
         return Injected.bind(_target_function, **en_injected, **already_injected)
 
-    def _faster_get_fname(self):
-
+    def _faster_get_fname(self, original_name: str = None):
+        """
+        Generate a readable name for an injected function.
+        
+        Args:
+            original_name: The original function's name. If not provided, will try to get module context.
+            
+        Returns:
+            A human-readable name that preserves the original function name while adding minimal context.
+        """
         try:
             frame = sys._getframe().f_back.f_back.f_back.f_back
             mod = frame.f_globals["__name__"]
-            name = frame.f_lineno
-            return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
+            # If we have an original name, use it as the primary identifier
+            if original_name:
+                # Add module context but keep it short by using the last part
+                mod_suffix = mod.split('.')[-1]
+                return f"{original_name}_{mod_suffix}".replace("<", "__").replace(">", "__")
+            # Fallback to old behavior but make it more readable
+            return f"injected_{mod.split('.')[-1]}".replace("<", "__").replace(">", "__")
         except Exception as e:
-            # from loguru import logger
-            # logger.warning(f"failed to get name of the injected location.")
-            return f"__unknown_module__maybe_due_to_pickling__"
+            # If we have an original name, use it; otherwise fall back to a generic name
+            return original_name if original_name else "unknown_injected_function"
 
-    def __init__(self):
-        self.fname = self._faster_get_fname()
+    def __init__(self, original_name: str = None):
+        """Initialize an Injected instance.
+        
+        Args:
+            original_name: The original name of the function being injected.
+                         Used to generate more readable function names.
+        """
+        self.original_name = original_name
+        self.fname = self._faster_get_fname(original_name)
 
     @staticmethod
     def partial(f: 'Injected[Callable]', *args: "Injected", **kwargs: "Injected"):

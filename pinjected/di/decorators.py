@@ -58,11 +58,16 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
             tgts[k] = Injected.by_name(k)
 
 
+    # Create a partially injected function - name preservation is handled in Partial.__init__
     new_f = Injected.inject_partially(f, **tgts)
+    
+    # Determine the key name for binding (used in the global registry)
+    # Get the name from the original function
+    func_name = f.__name__ if hasattr(f, "__name__") else "unnamed_function"
     if isinstance(f, type):
-        key_name = f"new_{f.__name__}"
+        key_name = f"new_{func_name}"
     else:
-        key_name = f.__name__
+        key_name = func_name
 
     from pinjected.di.metadata.bind_metadata import BindMetadata
     IMPLICIT_BINDINGS[StrBindKey(key_name)] = BindInjected(
