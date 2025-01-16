@@ -816,7 +816,7 @@ class AutoSyncGraph:
 def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):
     from pinjected.di.dynamic_proxy import DynamicProxyContextImpl
     return DynamicProxyContextImpl(
-        lambda a: a.value,
+        lambda a: a.__value__,
         lambda x: SessionValue(
             parent,
             Designed.bind(Injected.pure(x)),

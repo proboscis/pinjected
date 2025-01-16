@@ -1,4 +1,4 @@
-from pinjected import *
+from pinjected import injected, IProxy, Injected, design, instance
 
 
 Model = object
@@ -70,8 +70,20 @@ run_all_experiments: IProxy[list[float]] = Injected.list(
     experiment_3_1, experiment_3_2, experiment_3_3
 )
 
+@injected
+def evaluate(model,/,dataset):
+    pass
+
+@instance
+def logger():
+    return None
+
+
 
 
 __meta_design__ = design(
-    
+    overrides=design(
+        device='cpu',
+        model='model'
+    )
 )
