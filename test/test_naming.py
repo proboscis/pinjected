@@ -18,24 +18,27 @@ def test_naming_convention_for_injected_function():
         func) == PartiallyInjectedFunction, f"@injected function must return PartiallyInjectedFunction after resolution, got {type(func)}"
 
 
-def test_lambda_functions_not_allowed():
-    """Test that lambda functions are not allowed in @injected decorator and Injected.bind."""
+def test_lambda_functions_in_bind():
+    """Test that lambda functions are allowed in Injected.bind but not in @injected decorator."""
     from pinjected import injected, Injected
+    from pinjected.di.util import instances
 
-    # Test lambda in Injected.bind
-    with pytest.raises(ValueError, match="Lambda or anonymous functions are not supported"):
-        Injected.bind(lambda x: x + 1)
+    # Test lambda in Injected.bind - should work
+    bound = Injected.bind(lambda x: x + 1)
+    g = instances(x=1).to_graph()
+    assert g[bound] == 2
 
-    # Test lambda in @injected decorator
-    with pytest.raises(ValueError, match="Lambda or anonymous functions are not supported"):
+    # Test lambda in @injected decorator - should raise error
+    with pytest.raises(ValueError, match="Lambda or anonymous functions are not supported with @injected decorator"):
         @injected
         def wrapper():
             return lambda x: x + 1
 
 
-def test_unnamed_functions_not_allowed():
-    """Test that functions without __name__ attribute are not allowed."""
+def test_unnamed_functions():
+    """Test that functions without __name__ attribute are not allowed in @injected."""
     from pinjected import injected, Injected
+    from pinjected.di.util import instances
 
     # Create a function without __name__
     def make_unnamed():
@@ -43,12 +46,14 @@ def test_unnamed_functions_not_allowed():
         delattr(f, "__name__")  # Force remove name
         return f
 
-    # Test in Injected.bind
-    with pytest.raises(ValueError, match="Cannot register a function without a proper name"):
-        Injected.bind(make_unnamed())
+    # Test in Injected.bind - should work
+    unnamed = make_unnamed()
+    bound = Injected.bind(unnamed)
+    g = instances(x=1).to_graph()
+    assert g[bound] == 2
 
-    # Test in @injected decorator
-    with pytest.raises(ValueError, match="Cannot register a function without a proper name"):
+    # Test in @injected decorator - should raise error
+    with pytest.raises(ValueError, match="Cannot register a function without a proper name in the global registry"):
         @injected
         def wrapper():
             return make_unnamed()

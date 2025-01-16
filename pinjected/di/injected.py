@@ -228,19 +228,22 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+    @staticmethod
+    def inject_partially(original_function: Callable, from_injected_decorator: bool = False, **injection_targets: "Injected") -> "Injected[Callable]":
         """Create a partially injected function that preserves the original function's name.
         
         Args:
             original_function: The function to inject dependencies into
+            from_injected_decorator: Whether this is being called from the @injected decorator
             injection_targets: The dependencies to inject
             
         Returns:
             An Injected[Callable] that preserves the original function's name
         """
         from pinjected.di.partially_injected import Partial
-        modifier = Injected._get_args_keeper(injection_targets, inspect.signature(original_function))
-        return Partial(original_function, injection_targets, modifier)
+        from pinjected.di.args_modifier import ArgsModifier
+        modifier: Optional[ArgsModifier] = Injected._get_args_keeper(injection_targets, inspect.signature(original_function))
+        return Partial(original_function, injection_targets, modifier, from_injected_decorator=from_injected_decorator)
 
     @staticmethod
     def _get_args_keeper(injection_targets, original_sig):

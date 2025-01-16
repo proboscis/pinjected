@@ -107,13 +107,19 @@ class Partial(Injected):
     def __init__(self,
                  src_function: Callable,
                  injection_targets: dict[str, Injected],
-                 modifier: Optional[ArgsModifier] = None
+                 modifier: Optional[ArgsModifier] = None,
+                 from_injected_decorator: bool = False
                  ):
-        # Validate that we have a proper function name
-        if not hasattr(src_function, "__name__"):
-            raise ValueError("Lambda or anonymous functions are not supported in partial injection.")
+        # Only validate function name when used with @injected decorator
+        if from_injected_decorator and not hasattr(src_function, "__name__"):
+            raise ValueError("Lambda or anonymous functions are not supported with @injected decorator")
             
-        super().__init__(original_name=src_function.__name__)
+        # Get original name if available, otherwise use a generated name for lambdas
+        original_name = getattr(src_function, "__name__", "unnamed_function")
+        if original_name == "<lambda>":
+            original_name = "_lambda_"
+            
+        super().__init__(original_name=original_name)
         
         self.src_function = src_function
         self.injection_targets = injection_targets

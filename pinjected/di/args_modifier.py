@@ -1,16 +1,22 @@
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Callable, Any, TypeVar, Union, List, Dict, Tuple, TYPE_CHECKING
 
-ArgsModifier = Callable[[tuple, dict], tuple[tuple, dict, list["Injected"]]]
+if TYPE_CHECKING:
+    from pinjected import Injected
+else:
+    Injected = Any
+
+T = TypeVar('T')
+ArgsModifier = Callable[[Tuple, Dict], Tuple[Tuple, Dict, List["Injected"]]]
 
 
 @dataclass
-class KeepArgsPure:  # ArgsModifier
+class KeepArgsPure:  # ArgsModifier implementation
     signature: inspect.Signature
     targets: set[str]  # arguments in this targets will be wrapped with Injected.Pure()
 
-    def __call__(self, args: Any, kwargs: Any) -> tuple[tuple, dict]:
+    def __call__(self, args: Tuple, kwargs: Dict) -> Tuple[Tuple, Dict, List["Injected"]]:
         from pinjected import Injected
         # from loguru import logger
         # logger.info(f"args:{args},kwargs:{kwargs}")
