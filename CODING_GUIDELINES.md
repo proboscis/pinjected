@@ -23,9 +23,9 @@ def provider_function():
     return specific_implementation
 
 @injected
-async def consumer_function(dependency: Type):
-    # dependency is automatically injected
-    result = await dependency.process()
+async def consumer_function(dependency: Type / arg1: str, arg2: int):
+    # dependency is automatically injected, arg1 and arg2 are regular arguments
+    result = await dependency.process(arg1, arg2)
 ```
 
 ### Async Patterns
