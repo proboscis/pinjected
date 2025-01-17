@@ -26,7 +26,8 @@ Dependency injection is a design pattern where objects receive their dependencie
 - **Design**: Configuration registry that manages dependencies
 - **to_graph()**: Creates an object graph that resolves dependencies
 =======
-## Development Setup
+## Development
+Please refer to [Coding Guidelines](CODING_GUIDELINES.md) for development standards and best practices.
 
 This project uses Poetry for dependency management. Due to cross-platform development between Mac and Ubuntu environments, we do not commit the `poetry.lock` file. This allows each developer to generate a lock file appropriate for their platform.
 
