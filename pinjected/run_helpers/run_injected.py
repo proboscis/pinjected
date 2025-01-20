@@ -4,7 +4,7 @@ import os
 import sys
 import traceback
 from contextlib import redirect_stdout, redirect_stderr
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, field
 from pathlib import Path
 from pprint import pformat
 from typing import Awaitable, Optional
@@ -244,15 +244,21 @@ class RunContext:
     meta_overrides: Design
     var: Injected
     provision_callback: Optional[IResolverCallback]
+    overrides:Design = field(default_factory=instances)
 
     def add_design(self, design: Design):
         return replace(
             self,
             design=self.design + design
         )
+    def add_overrides(self, overrides: Design):
+        return replace(
+            self,
+            overrides=self.overrides + overrides
+        )
 
     async def a_run(self):
-        final_design = self.design + self.meta_overrides
+        final_design = self.design + self.meta_overrides + self.overrides
         logger.info(f"loaded design:{final_design}")
         logger.info(f"meta_overrides:{self.meta_overrides}")
         logger.info(f"running target:{self.var} with design {final_design}")
