@@ -53,7 +53,7 @@ def run(
         ovr += parse_overrides(overrides)
         ovr += kwargs_overrides
         cxt: RunContext = await a_get_run_context(design_path, var_path)
-        cxt = cxt.add_design(ovr)
+        cxt = cxt.add_overrides(ovr)
         res = await cxt.a_run()
         from loguru import logger
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
