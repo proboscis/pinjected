@@ -88,6 +88,16 @@ class EvaledInjected(Injected[T]):
     def __post_init__(self):
         assert isinstance(self.ast, Expr)
         self.__expr__ = self.ast
+        
+    @property
+    def __value__(self) -> Injected[T]:
+        """Implement DelegatedVar interface for backward compatibility"""
+        return self.value
+        
+    @__value__.setter
+    def __value__(self, value: Injected[T]):
+        """Implement DelegatedVar interface for backward compatibility"""
+        self.value = value
 
     def dependencies(self) -> Set[str]:
         return self.value.dependencies()
