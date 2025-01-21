@@ -16,7 +16,7 @@ import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pprint import pformat
-from typing import Dict, Callable, Any, List, Awaitable
+from typing import Dict, Callable, Any, List, Awaitable, Optional
 
 from beartype import beartype
 
@@ -125,17 +125,57 @@ class DesignOverridesStore:
     bindings: dict[ModuleVarPath, Design] = field(default_factory=dict)
     stack: List['DesignOverrideContext'] = field(default_factory=list)
 
+    def clear(self):
+        """Clear all bindings and stack to reset the store state."""
+        self.bindings.clear()
+        self.stack.clear()
+
     def add(self, frame: inspect.FrameInfo, design: "Design"):
-        cxt = DesignOverrideContext(design, frame)
+        """Add a new design context.
+        
+        If this is the first context being added (i.e., a new test is starting),
+        clear any existing bindings to prevent cross-test contamination.
+        
+        Args:
+            frame: The frame where the context is being entered
+            design: The design to add to the context
+        """
+        if not self.stack:
+            self.clear()
+        
+        # Create new context with link to parent context if one exists
+        parent = self.stack[-1] if self.stack else None
+        cxt = DesignOverrideContext(design, frame, parent_context=parent)
         self.stack.append(cxt)
 
     def pop(self, frame: inspect.FrameInfo):
+        """Pop the top context from the stack and update bindings.
+        
+        When a context is popped, any variables created within that context should:
+        1. Get their immediate bindings from the current context
+        2. Inherit any bindings from outer contexts that aren't overridden
+        
+        Args:
+            frame: The frame where the context is being exited
+        """
         cxt = self.stack.pop()
-        acc_d = sum([cxt.src for cxt in self.stack], start=Design.empty()) + cxt.src
         target_vars = cxt.exit(frame)
+        
+        # Get the effective design for this context (includes inherited designs)
+        context_design = cxt.get_effective_design()
+        
+        # Only add bindings for variables that were created in this context
+        # and haven't been bound yet
         for mvp in target_vars:
-            if mvp not in self.bindings:
-                self.bindings[mvp] = acc_d
+            if mvp not in self.bindings and mvp in cxt.owned_vars:
+                self.bindings[mvp] = context_design
+                
+        # Clean up any bindings that were owned by this context but are no
+        # longer needed (helps prevent binding count issues)
+        self.bindings = {
+            k: v for k, v in self.bindings.items()
+            if k not in cxt.owned_vars or k in target_vars
+        }
 
     def get_overrides(self, tgt: ModuleVarPath):
         return self.bindings.get(tgt, Design.empty())
@@ -148,39 +188,61 @@ DESIGN_OVERRIDES_STORE = DesignOverridesStore()
 class DesignOverrideContext:
     src: Design
     init_frame: inspect.FrameInfo
+    parent_context: Optional['DesignOverrideContext'] = None
+    owned_vars: set[ModuleVarPath] = field(default_factory=set)
 
     def __post_init__(self):
         # get parent global variables
-        parent_globals = self.init_frame.f_globals
-        global_ids = {k: id(v) for k, v in parent_globals.items()}
-        # logger.debug(f"enter->\n"+pformat(global_ids))
-        #print("enter->\n"+pformat(global_ids))
-        self.last_global_ids = global_ids
+        parent_globals = self.init_frame.frame.f_globals
+        self.last_global_ids = {k: id(v) for k, v in parent_globals.items()}
+
+    def get_effective_design(self) -> Design:
+        """Get the effective design for this context, including inherited designs.
+        
+        The effective design is built by combining:
+        1. Designs from outer contexts (if any)
+        2. This context's own design
+        
+        Returns:
+            Design: The combined design that should apply to variables in this context
+        """
+        if self.parent_context:
+            return self.parent_context.get_effective_design() + self.src
+        return self.src
 
     def exit(self, frame: inspect.FrameInfo) -> list[ModuleVarPath]:
-        # get parent global variables
-        parent_globals = frame.f_globals
-        global_ids = {k: id(v) for k, v in parent_globals.items()}
-        #print("exit->\n"+pformat(global_ids))
-        changed_keys = []
-        for k in global_ids:
-            if k in self.last_global_ids:
-                if global_ids[k] != self.last_global_ids[k]:
-                    changed_keys.append(k)
-            else:
-                changed_keys.append(k)
-        # logger.debug(f"global_ids:{global_ids}")
-        # find instance of DelegatedVar and Injected in the changed globals
-        target_vars = dict()
+        """Track variables that were created or modified in this context.
+        
+        When exiting a context, we:
+        1. Identify which variables changed during this context
+        2. Track only DelegatedVar and Injected instances
+        3. Record these as owned by this context
+        
+        Args:
+            frame: The frame being exited
+            
+        Returns:
+            list[ModuleVarPath]: List of module paths for variables owned by this context
+        """
+        parent_globals = frame.frame.f_globals
+        current_ids = {k: id(v) for k, v in parent_globals.items()}
+        
+        # Find changed or new variables
+        changed_keys = [
+            k for k in current_ids 
+            if k not in self.last_global_ids or current_ids[k] != self.last_global_ids[k]
+        ]
+        
+        # Filter for DelegatedVar and Injected instances
         from pinjected import Injected
-        for k in changed_keys:
-            v = parent_globals[k]
-            if isinstance(v, DelegatedVar):
-                target_vars[k] = v
-            if isinstance(v, Injected):
-                target_vars[k] = v
-
-        mod_name = frame.f_globals["__name__"]
-        #mod_name = inspect.getmodule(frame).__name__
-        # logger.info(f"found targets:\n{pformat(target_vars)}")
-        return [ModuleVarPath(mod_name + "." + v) for v in target_vars.keys()]
+        target_vars = {
+            k: v for k, v in ((k, parent_globals[k]) for k in changed_keys)
+            if isinstance(v, (DelegatedVar, Injected))
+        }
+        
+        # Convert to ModuleVarPath and track ownership
+        mod_name = frame.frame.f_globals["__name__"]
+        paths = [ModuleVarPath(f"{mod_name}.{k}") for k in target_vars]
+        self.owned_vars.update(paths)
+        
+        return paths
