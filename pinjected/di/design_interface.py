@@ -193,7 +193,11 @@ class DesignOverrideContext:
 
     def __post_init__(self):
         # get parent global variables
-        parent_globals = self.init_frame.frame.f_globals
+        # Handle both FrameInfo and direct frame objects
+        if isinstance(self.init_frame, inspect.FrameInfo):
+            parent_globals = self.init_frame.frame.f_globals
+        else:
+            parent_globals = self.init_frame.f_globals
         self.last_global_ids = {k: id(v) for k, v in parent_globals.items()}
 
     def get_effective_design(self) -> Design:
@@ -224,7 +228,11 @@ class DesignOverrideContext:
         Returns:
             list[ModuleVarPath]: List of module paths for variables owned by this context
         """
-        parent_globals = frame.frame.f_globals
+        # Handle both FrameInfo and direct frame objects
+        if isinstance(frame, inspect.FrameInfo):
+            parent_globals = frame.frame.f_globals
+        else:
+            parent_globals = frame.f_globals
         current_ids = {k: id(v) for k, v in parent_globals.items()}
         
         # Find changed or new variables
@@ -241,7 +249,7 @@ class DesignOverrideContext:
         }
         
         # Convert to ModuleVarPath and track ownership
-        mod_name = frame.frame.f_globals["__name__"]
+        mod_name = parent_globals["__name__"]
         paths = [ModuleVarPath(f"{mod_name}.{k}") for k in target_vars]
         self.owned_vars.update(paths)
         
