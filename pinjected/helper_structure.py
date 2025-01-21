@@ -80,12 +80,14 @@ class MetaContext:
         # Start with user default design
         base_design = load_user_default_design()
         
-        # Apply default_design_paths if explicitly requested
-        if StrBindKey('default_design_paths') in acc:
-            base_design = base_design + design
-        
-        # Apply accumulated design to override any defaults
+        # Apply accumulated design first to establish base bindings
         base_design = base_design + acc
+        
+        # Apply default_design_paths only for keys not in accumulated design
+        if StrBindKey('default_design_paths') in acc:
+            for key in design.keys():
+                if key not in acc:
+                    base_design = base_design + instances(**{str(key): design[key]})
         
         # Apply overrides from accumulated design last to ensure highest precedence
         if StrBindKey('overrides') in acc:
