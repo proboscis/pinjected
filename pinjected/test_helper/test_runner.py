@@ -52,7 +52,7 @@ class PinjectedTestResult:
 
 
 def escape_loguru_tags(text):
-    return text.replace('<', '\<')
+    return text.replace('<', r'\<')
 
 
 class CommandException(Exception):
