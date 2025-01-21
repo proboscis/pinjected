@@ -6,12 +6,21 @@ from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import get_project_root
 
 
-def test_get_project_root():
-    # this is a host dependent test...
-    root = get_project_root(
-        "/Users/s22625/repos/archpainter/archpainter/style_transfer/iccv_artifacts.py",
-    )
-    assert root == "/Users/s22625/repos/archpainter"
+def test_get_project_root(tmp_path):
+    # Create a test project structure
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    (project_dir / "__init__.py").touch()
+
+    # Create a nested directory structure
+    sub_dir = project_dir / "subdir" / "nested"
+    sub_dir.mkdir(parents=True)
+    test_file = sub_dir / "test_file.py"
+    test_file.touch()
+
+    # Test that get_project_root correctly finds the root
+    root = get_project_root(str(test_file))
+    assert root == str(project_dir)
 
 
 def test_walk_module_attr():
