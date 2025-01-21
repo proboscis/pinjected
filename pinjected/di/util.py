@@ -399,7 +399,8 @@ def classes(**kwargs):
 
     Parameters:
     -----------
-    \\*\\*kwargs : dict
+    **kwargs : dict
+
         Arbitrary keyword arguments. Each key is a string that represents the dependency name, and the value is the class to be bound.
 
     Returns:
