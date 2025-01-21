@@ -41,7 +41,7 @@ from returns.result import safe, Success, Failure
 
 from pinjected import Injected, Design, injected_function, Designed
 from pinjected.di.expr_util import Expr, Call, Object
-from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
+from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
 from pinjected.exporter.llm_exporter import add_export_config
@@ -310,7 +310,7 @@ def extract_extra_codes(ast: Expr) -> ModuleVarPath:
     # TODO include the module path in the Inejcted Function
     match ast:
         case Call(
-            Object(InjectedFunction(object(__original_code__=code, __name__=name, __module__=mod), _args)),
+            Object(InjectedFromFunction(object(__original_code__=code, __name__=name, __module__=mod), _args)),
             args,
             kwargs):
             mvp = ModuleVarPath(f"{mod}.{name}")
@@ -339,7 +339,7 @@ def make_sandbox_extra(tgt: ModuleVarSpec):
 {impl}
 {usage}
 """
-        case PartialInjectedFunction(InjectedFunction(object(__original_code__=usage), args)):
+        case PartialInjectedFunction(InjectedFromFunction(object(__original_code__=usage), args)):
             return f"""
 {usage}
 """

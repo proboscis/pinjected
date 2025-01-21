@@ -11,7 +11,7 @@ import cytoolz
 from pinjected import Design, Injected, injected, instances, providers, instance
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
-from pinjected.di.injected import InjectedPure, InjectedFunction, PartialInjectedFunction, ZippedInjected, \
+from pinjected.di.injected import InjectedPure, InjectedFromFunction, PartialInjectedFunction, ZippedInjected, \
     MappedInjected, InjectedByName, FrameInfo, MZippedInjected, DictInjected
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.exporter.optimize_import_stmts import fix_imports
@@ -207,10 +207,10 @@ class PinjectedCodeExporter:
         from loguru import logger
         #logger.info(f"finding matching mapping for {data}")
         match data:
-            case InjectedFunction(f, kwargs_mapping):
+            case InjectedFromFunction(f, kwargs_mapping):
                 for k, v in self.mappings.items():
                     match v:
-                        case PartialInjectedFunction(InjectedFunction(_f)) if f == _f:
+                        case PartialInjectedFunction(InjectedFromFunction(_f)) if f == _f:
                             return k
         return None
 
@@ -336,7 +336,7 @@ class PinjectedCodeExporter:
         match src:
             case InjectedPure() as p:
                 blocks += [await self.to_source__instance(assign_target, p)]
-            case InjectedFunction(tgt_func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as f if hasattr(f,
+            case InjectedFromFunction(tgt_func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as f if hasattr(f,
                                                                                                                '__is_partial__'):
                 assign_blocks = await self.get_blocks_for_func_call(
                     assign_target,
@@ -346,7 +346,7 @@ class PinjectedCodeExporter:
                     call=False
                 )
                 blocks += assign_blocks
-            case InjectedFunction(func_called, {'injected_kwargs': DictInjected(kwargs_mapping)}) as _if:
+            case InjectedFromFunction(func_called, {'injected_kwargs': DictInjected(kwargs_mapping)}) as _if:
                 # aha, we need to solve the keyword mappings and add it as code blocks
                 # logger.warning(f"kwargs_mapping for injected_function:{kwargs_mapping}")
                 assign_blocks = await self.get_blocks_for_func_call(
@@ -358,7 +358,7 @@ class PinjectedCodeExporter:
                 )
                 blocks += assign_blocks
 
-            case InjectedFunction(tgt_func, {}) as _if:
+            case InjectedFromFunction(tgt_func, {}) as _if:
                 # when this is matching the caller is expecting a function call (for assignment)
                 assign_blocks = await self.get_blocks_for_func_call(
                     assign_target,
@@ -371,7 +371,7 @@ class PinjectedCodeExporter:
                 blocks += assign_blocks
 
             case PartialInjectedFunction(
-                InjectedFunction(func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as ifunc) as pif:
+                InjectedFromFunction(func, {'injected_kwargs': DictInjected(kwargs_mapping)}) as ifunc) as pif:
                 assign_blocks = await self.get_blocks_for_func_call(
                     assign_target,
                     ifunc,
@@ -381,7 +381,7 @@ class PinjectedCodeExporter:
                 )
                 blocks += assign_blocks
 
-            case PartialInjectedFunction(InjectedFunction(func, kwargs_mapping) as ifunc) as pif:
+            case PartialInjectedFunction(InjectedFromFunction(func, kwargs_mapping) as ifunc) as pif:
                 logger.warning(f"kwargs_mapping for partial_injected_function:{kwargs_mapping}")
                 # ah,, in some cases the PartialInjectedFunction is manually created without Injected.partial
 
@@ -482,7 +482,7 @@ class PinjectedCodeExporter:
             assert '<lambda>' not in b.code, f"lambda found in code block:{b.code},blocks:\n{pformat(blocks)}"
         return blocks
 
-    async def get_blocks_for_func_call(self, assign_target, f: InjectedFunction, kwargs_mapping, visited,
+    async def get_blocks_for_func_call(self, assign_target, f: InjectedFromFunction, kwargs_mapping, visited,
                                        call: bool):
         from loguru import logger
         key_to_symbol = dict()
