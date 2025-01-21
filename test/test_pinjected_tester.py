@@ -70,18 +70,6 @@ async def test_viz_all_test():
             P_ROOT / "pinjected"
         )
     ))
-import wandb
-def test_wandb_1():
-    wandb.init(
-        name='test1'
-    )
-
-def test_wandb_2():
-    wandb.init(
-        name='test2'
-    )
-
-
 
 
 if __name__ == '__main__':
