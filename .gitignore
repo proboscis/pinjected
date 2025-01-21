@@ -8,3 +8,5 @@
 *.iml
 *.idea
 poetry.lock
+.vscode/
+requirements*.lock
