@@ -35,7 +35,16 @@ jobs:
         run: |
           poetry install
 
+      - name: Configure test environment
+        env:
+          WANDB_MODE: "disabled"
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "Setting up test environment"
+
       - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           cd test
-          poetry run pytest
+          poetry run pytest -v --tb=short
