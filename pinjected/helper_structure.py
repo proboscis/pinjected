@@ -43,11 +43,12 @@ class MetaContext:
         overrides = EmptyDesign
         for item in designs:
             logger.debug(f"{meta_design_name} at :{item.var_path}")
+            # First apply the design itself to get bindings like 'name'
             res = res + item.var
+            # Then collect any overrides
             overrides += await AsyncResolver(item.var).provide_or("overrides", EmptyDesign)
-        res += instances(
-            overrides=overrides
-        )
+        # Apply overrides last
+        res = res + instances(overrides=overrides)
         return MetaContext(
             trace=designs,
             accumulated=res
@@ -70,13 +71,17 @@ class MetaContext:
         acc = self.accumulated
         # g = acc.to_resolver()
         r = AsyncResolver(acc)
+        # First get any overrides from the accumulated design
+        overrides = await r.provide_or('overrides', EmptyDesign)
+        
+        # Then load design from default_design_paths if specified
         if StrBindKey('default_design_paths') in acc:
             module_path = (await r['default_design_paths'])[0]
             design = load_variable_by_module_path(module_path)
         else:
             design = EmptyDesign
-        overrides = await r.provide_or('overrides', EmptyDesign)
 
+        # Apply overrides last to ensure they take precedence
         return load_user_default_design() + design + overrides + load_user_overrides_design()
 
     @staticmethod
