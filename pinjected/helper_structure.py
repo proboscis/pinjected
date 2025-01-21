@@ -77,8 +77,21 @@ class MetaContext:
             design = EmptyDesign
         overrides = await r.provide_or('overrides', EmptyDesign)
 
-        # First apply the accumulated design, then any overrides from default designs
-        return load_user_default_design() + acc + design + overrides + load_user_overrides_design()
+        # Start with user default design
+        base_design = load_user_default_design()
+        
+        # Apply default_design_paths if explicitly requested
+        if StrBindKey('default_design_paths') in acc:
+            base_design = base_design + design
+        
+        # Apply accumulated design to override any defaults
+        base_design = base_design + acc
+        
+        # Apply overrides from accumulated design last to ensure highest precedence
+        if StrBindKey('overrides') in acc:
+            base_design = base_design + overrides
+            
+        return base_design + load_user_overrides_design()
 
     @staticmethod
     def load_default_design_for_variable(var: ModuleVarPath | str):
