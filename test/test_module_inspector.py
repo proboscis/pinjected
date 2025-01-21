@@ -35,9 +35,9 @@ def test_get_project_root(tmp_path):
 
 
 def test_walk_module_attr():
-    test_file = "/Users/s22625/repos/pinject-design/pinjected/test_package/child/module1.py"
+    test_file = Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
     items = []
-    for item in walk_module_attr(Path(test_file), "__meta_design__"):
+    for item in walk_module_attr(test_file, "__meta_design__"):
         items.append(item)
     pprint(items)
 
