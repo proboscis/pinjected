@@ -18,7 +18,7 @@ from rich.panel import Panel
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import Expr
 from pinjected.di.designed import Designed
-from pinjected.di.injected import Injected, InjectedByName, InjectedFunction
+from pinjected.di.injected import Injected, InjectedByName, InjectedFromFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.di.proxiable import DelegatedVar
@@ -569,7 +569,7 @@ class DependencyResolver:
                 from loguru import logger
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
-            case InjectedFunction(func, kwargs) as IF if IF.origin_frame is not None:
+            case InjectedFromFunction(func, kwargs) as IF if IF.origin_frame is not None:
                 frame = IF.origin_frame
                 original = frame.filename + ":" + str(frame.lineno)
                 key = f"InjectedFunction#{str(id(tgt))}"
@@ -816,7 +816,7 @@ class AutoSyncGraph:
 def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):
     from pinjected.di.dynamic_proxy import DynamicProxyContextImpl
     return DynamicProxyContextImpl(
-        lambda a: a.value,
+        lambda a: a.__value__,
         lambda x: SessionValue(
             parent,
             Designed.bind(Injected.pure(x)),

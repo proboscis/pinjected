@@ -4,11 +4,136 @@
 # Pinjected
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
 
+## Prerequisites
+- Python 3.10 or higher
+- Basic understanding of Python decorators and functions
+
+## Installation
 ```bash
 pip install pinjected
 ```
 
+## What is Dependency Injection?
+Dependency injection is a design pattern where objects receive their dependencies from an external source rather than creating them internally. This makes code more:
+- **Flexible**: Easy to change implementations
+- **Testable**: Simple to mock dependencies
+- **Maintainable**: Clear separation of concerns
+
+## Core Concepts
+- **@instance**: Decorator that marks a function as a dependency provider
+- **providers()**: Creates a design with function-based dependencies
+- **instances()**: Creates a design with value-based dependencies
+- **Design**: Configuration registry that manages dependencies
+- **to_graph()**: Creates an object graph that resolves dependencies
+=======
+## Development
+Please refer to [Coding Guidelines](CODING_GUIDELINES.md) for development standards and best practices.
+
+This project uses Poetry for dependency management. Due to cross-platform development between Mac and Ubuntu environments, we do not commit the `poetry.lock` file. This allows each developer to generate a lock file appropriate for their platform.
+
+```bash
+# Install poetry if you haven't already
+pip install poetry
+
+# Install dependencies (this will generate a poetry.lock file for your platform)
+poetry install
+```
+
+Note: The `poetry.lock` file is intentionally excluded from version control to avoid cross-platform compatibility issues.
+
 [日本語記事](https://zenn.dev/proboscis/articles/4a10d26b13a940)
+
+# Quick Start Guide
+
+## Basic Example
+```python
+from pinjected import instances, providers, instance
+
+# Define a simple configuration
+@instance
+def database_config():
+    return {
+        "host": "localhost",
+        "port": 5432,
+        "name": "mydb"
+    }
+
+@instance
+def database_connection(database_config):
+    # Dependencies are automatically injected
+    return f"Connected to {database_config['name']} at {database_config['host']}:{database_config['port']}"
+
+# Create a design with our configurations
+design = providers(
+    db_config=database_config,
+    connection=database_connection
+)
+
+# Use the dependency injection
+graph = design.to_graph()
+connection = graph['connection']
+print(connection)  # "Connected to mydb at localhost:5432"
+```
+
+## Common Use Cases
+
+### 1. Configuration Management
+```python
+from pinjected import instances, providers
+
+# Base configuration
+base_config = instances(
+    api_url="https://api.example.com",
+    timeout=30
+)
+
+# Development overrides
+dev_config = base_config + instances(
+    api_url="http://localhost:8000"
+)
+
+# Production overrides
+prod_config = base_config + instances(
+    timeout=60
+)
+```
+
+### 2. Service Dependencies
+```python
+from pinjected import instance, providers
+
+@instance
+def api_client(api_url, timeout):
+    return f"Client configured with {api_url} (timeout: {timeout}s)"
+
+@instance
+def service(api_client):
+    return f"Service using {api_client}"
+
+# Create and use the service
+design = dev_config + providers(
+    client=api_client,
+    service=service
+)
+graph = design.to_graph()
+my_service = graph['service']
+```
+
+### 3. Testing with Mock Dependencies
+```python
+# Override dependencies for testing
+test_config = instances(
+    api_url="mock://test",
+    timeout=1
+)
+
+test_design = test_config + providers(
+    client=api_client,
+    service=service
+)
+```
+
+For more detailed documentation and advanced features, see:
 
 # Table of Contents
 

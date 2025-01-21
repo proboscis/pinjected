@@ -111,10 +111,10 @@ def test_ensure_injected():
     cloudpickle.dumps(evaled_fine_ast)
     cloudpickle.dumps(evaled_damn_ast.ast)  # this should be okey
     check(evaled_damn_ast)
-    logger.info(f"evaled_damn_ast.value:{evaled_damn_ast.value}")
-    logger.info(f"evaled_damn_ast.value.src:{evaled_damn_ast.value.src}")
-    cloudpickle.dumps(evaled_damn_ast.value.src)  # so, this evaled value is not picklable
-    cloudpickle.dumps(evaled_damn_ast.value)  # so, this evaled value is not picklable
+    logger.info(f"evaled_damn_ast.value:{evaled_damn_ast.__value__}")
+    logger.info(f"evaled_damn_ast.value.src:{evaled_damn_ast.__value__.src}")
+    cloudpickle.dumps(evaled_damn_ast.__value__.src)  # so, this evaled value is not picklable
+    cloudpickle.dumps(evaled_damn_ast.__value__)  # so, this evaled value is not picklable
 
     cloudpickle.dumps(evaled_damn_ast)  # this should fail.
     cloudpickle.dumps(Injected.pure('something').proxy((0,)).eval())  # this is not
