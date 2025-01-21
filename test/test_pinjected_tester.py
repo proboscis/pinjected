@@ -23,7 +23,7 @@ d = AsyncResolver(pinjected_internal_design)
 
 
 def test_find_target_variables():
-    items = find_pinjected_annotations(P_ROOT / "pinjected/test_package/child/module1.py")
+    items = find_pinjected_annotations(str(P_ROOT / "test/test_package/child/module1.py"))
     assert all(isinstance(item, Annotation) for item in items)
     logger.info(f"found items:{items}")
     assert len(items) > 0
@@ -31,8 +31,8 @@ def test_find_target_variables():
 
 def test_test_aggregator():
     agg = PinjectedTestAggregator()
-    # targets = agg.gather(P_ROOT / "pinjected")
-    targets = agg.gather(Path("~/repos/proboscis-env-manager/src").expanduser())
+    # Use test_package directory which contains our test files
+    targets = agg.gather(P_ROOT / "test/test_package")
     logger.info(f"found {len(targets)} target files")
     # logger.info(f"targets: {pformat(targets)}")
     assert len(targets) > 0
@@ -54,9 +54,10 @@ async def test_run_test_with_context():
 
 @pytest.mark.asyncio
 async def test_run_all_test():
-    async for res in await d.provide(a_pinjected_run_all_test(
-            P_ROOT / "pinjected"
-    )):
+    test_runner = await d[a_pinjected_run_all_test(
+            P_ROOT / "test/test_package"
+    )]
+    async for res in test_runner:
         res:PinjectedTestResult
         if res.failed():
             logger.error(f"{res.target.to_module_var_path().path} -> {res.value}")
@@ -65,11 +66,11 @@ async def test_run_all_test():
 
 @pytest.mark.asyncio
 async def test_viz_all_test():
-    await d.provide(a_visualize_test_results(
-        a_pinjected_run_all_test(
-            P_ROOT / "pinjected"
-        )
-    ))
+    test_runner = await d[a_pinjected_run_all_test(
+            P_ROOT / "test/test_package"
+    )]
+    visualizer = await d[a_visualize_test_results(test_runner)]
+    await visualizer
 import wandb
 def test_wandb_1():
     wandb.init(
