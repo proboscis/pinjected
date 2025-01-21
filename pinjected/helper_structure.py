@@ -81,8 +81,8 @@ class MetaContext:
         else:
             design = EmptyDesign
 
-        # Apply overrides last to ensure they take precedence
-        return load_user_default_design() + design + overrides + load_user_overrides_design()
+        # Apply in order: user defaults, loaded design, accumulated design (for name binding), overrides, user overrides
+        return load_user_default_design() + design + acc + overrides + load_user_overrides_design()
 
     @staticmethod
     def load_default_design_for_variable(var: ModuleVarPath | str):
