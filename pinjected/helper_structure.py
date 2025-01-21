@@ -43,11 +43,14 @@ class MetaContext:
         overrides = EmptyDesign
         for item in designs:
             logger.debug(f"{meta_design_name} at :{item.var_path}")
-            res = res + item.var
+            logger.debug(f"Current design bindings before: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+            # First collect any overrides
             overrides += await AsyncResolver(item.var).provide_or("overrides", EmptyDesign)
-        res += instances(
-            overrides=overrides
-        )
+            # Then apply the design itself to ensure its bindings (like 'name') take precedence
+            res = res + item.var
+            logger.debug(f"Current design bindings after: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+        # Apply overrides last
+        res = res + instances(overrides=overrides)
         return MetaContext(
             trace=designs,
             accumulated=res
@@ -70,14 +73,18 @@ class MetaContext:
         acc = self.accumulated
         # g = acc.to_resolver()
         r = AsyncResolver(acc)
+        # First get any overrides from the accumulated design
+        overrides = await r.provide_or('overrides', EmptyDesign)
+        
+        # Then load design from default_design_paths if specified
         if StrBindKey('default_design_paths') in acc:
             module_path = (await r['default_design_paths'])[0]
             design = load_variable_by_module_path(module_path)
         else:
             design = EmptyDesign
-        overrides = await r.provide_or('overrides', EmptyDesign)
 
-        return load_user_default_design() + design + overrides + load_user_overrides_design()
+        # Apply in order: user defaults, loaded design, accumulated design (for name binding), overrides, user overrides
+        return load_user_default_design() + design + acc + overrides + load_user_overrides_design()
 
     @staticmethod
     def load_default_design_for_variable(var: ModuleVarPath | str):
