@@ -644,7 +644,7 @@ class BaseResolverCallback(IResolverCallback):
         # self.logger.info(f"{self.provider_status_string()}")
 
     def clean_msg(self, msg):
-        return msg.replace("<", "\<").replace(">", "\>")
+        return msg.replace("<", r"\<").replace(">", r"\>")
 
     def on_eval_request(self, event):
         expr = self.expr_repr(event.expr)
