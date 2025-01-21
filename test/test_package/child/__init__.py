@@ -1,0 +1,1 @@
+"""Test package child module"""
