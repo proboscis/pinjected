@@ -43,10 +43,12 @@ class MetaContext:
         overrides = EmptyDesign
         for item in designs:
             logger.debug(f"{meta_design_name} at :{item.var_path}")
-            # First apply the design itself to get bindings like 'name'
-            res = res + item.var
-            # Then collect any overrides
+            logger.debug(f"Current design bindings before: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+            # First collect any overrides
             overrides += await AsyncResolver(item.var).provide_or("overrides", EmptyDesign)
+            # Then apply the design itself to ensure its bindings (like 'name') take precedence
+            res = res + item.var
+            logger.debug(f"Current design bindings after: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
         # Apply overrides last
         res = res + instances(overrides=overrides)
         return MetaContext(
