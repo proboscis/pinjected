@@ -7,18 +7,25 @@ from pinjected.module_inspector import get_project_root
 
 
 def test_get_project_root(tmp_path):
-    # Create a test project structure
+    # Create a test project structure where the package root has __init__.py
+    # but the project root (parent) does not
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
-    (project_dir / "__init__.py").touch()
+    
+    # Create the package directory with __init__.py
+    package_dir = project_dir / "package"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").touch()
 
-    # Create a nested directory structure
-    sub_dir = project_dir / "subdir" / "nested"
+    # Create a nested directory structure with a test file
+    sub_dir = package_dir / "subdir" / "nested"
     sub_dir.mkdir(parents=True)
+    (sub_dir / "__init__.py").touch()  # Make it a proper Python package
     test_file = sub_dir / "test_file.py"
     test_file.touch()
 
-    # Test that get_project_root correctly finds the root
+    # Test that get_project_root correctly finds the project root
+    # (the directory above the one containing __init__.py)
     root = get_project_root(str(test_file))
     assert root == str(project_dir)
 
