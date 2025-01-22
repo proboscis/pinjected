@@ -35,9 +35,13 @@ def test_ovr_store():
 
 
 
-def test_with_design():
+def test_with_design(override_store_isolation):
+    """
+    Test nested design contexts with store isolation.
+    
+    Uses override_store_isolation fixture to ensure test has a clean store state.
+    """
     global x, y, DESIGN_OVERRIDES_STORE
-    #DESIGN_OVERRIDES_STORE = DesignOverridesStore()
     with instances(bind='level1', group='l1'):
         x = injected('hello')
         with instances(bind='level2'):
