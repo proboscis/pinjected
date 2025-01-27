@@ -6,6 +6,7 @@ from pinjected import Design, instances, providers, Injected
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.helper_structure import MetaContext
+from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
     a_get_run_context, RunContext
@@ -45,15 +46,16 @@ def run(
         kwargs = data
 
     async def a_prep():
-        kwargs_overrides = parse_kwargs_as_design(**kwargs)
-        ovr = instances()
-        if meta_context_path is not None:
-            mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
-            ovr += await mc.a_final_design
-        ovr += parse_overrides(overrides)
-        ovr += kwargs_overrides
-        cxt: RunContext = await a_get_run_context(design_path, var_path)
-        cxt = cxt.add_overrides(ovr)
+        with disable_internal_logging():
+            kwargs_overrides = parse_kwargs_as_design(**kwargs)
+            ovr = instances()
+            if meta_context_path is not None:
+                mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
+                ovr += await mc.a_final_design
+            ovr += parse_overrides(overrides)
+            ovr += kwargs_overrides
+            cxt: RunContext = await a_get_run_context(design_path, var_path)
+            cxt = cxt.add_overrides(ovr)
         res = await cxt.a_run()
         from loguru import logger
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
