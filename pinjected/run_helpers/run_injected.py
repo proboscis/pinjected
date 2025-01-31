@@ -29,15 +29,10 @@ from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
+from pinjected.cli_visualizations import design_rich_tree
 
 
-def run_injected(
-        cmd,
-        var_path,
-        design_path: str = None,
-        *args,
-        **kwargs
-):
+def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
     no_notification = kwargs.pop("no_notification", False)
     if no_notification:
         notify_impl = lambda msg, *args, **kwargs: None
@@ -69,7 +64,7 @@ def run_injected(
         overrides=overrides,
         call_args=args,
         call_kwargs=kwargs,
-        notify=notify_impl
+        notify=notify_impl,
     )
 
 
@@ -81,12 +76,9 @@ async def a_run_target(var_path: str, design_path: Optional[str] = None):
     design = cxt.design + cxt.meta_overrides
     try:
         async with TaskGroup() as tg:
-            dd = design + instances(
-                __task_group__=tg
-            )
+            dd = design + instances(__task_group__=tg)
             resolver = AsyncResolver(
-                dd,
-                callbacks=[cxt.provision_callback] if cxt.provision_callback else []
+                dd, callbacks=[cxt.provision_callback] if cxt.provision_callback else []
             )
             _res = await resolver.provide(cxt.var)
             if isinstance(_res, Awaitable):
@@ -101,6 +93,7 @@ async def a_run_target(var_path: str, design_path: Optional[str] = None):
 def _remote_test(var_path: str):
     from loguru import logger
     import cloudpickle
+
     stdout = io.StringIO()
     stderr = io.StringIO()
     logger.remove()
@@ -115,7 +108,9 @@ def _remote_test(var_path: str):
         logger.error(f"remote test failed with {e}")
     logger.remove()
     logger.add(sys.stderr)
-    final_tuple = cloudpickle.dumps((stdout.getvalue(), stderr.getvalue(), trace_str, res))
+    final_tuple = cloudpickle.dumps(
+        (stdout.getvalue(), stderr.getvalue(), trace_str, res)
+    )
     return final_tuple
 
 
@@ -126,6 +121,7 @@ _enter_count = 0
 async def a_run_target__mp(var_path: str):
     global _enter_count
     from loguru import logger
+
     _enter_count += 1
     if _enter_count == 1:
         logger.remove()
@@ -139,38 +135,20 @@ async def a_run_target__mp(var_path: str):
     return res
 
 
-def design_rich_tree(tgt_design, root):
-    d = DIGraph(tgt_design)
-    g = d.create_dependency_digraph_rooted(root).graph
-    from rich.tree import Tree
-    root = Tree('target')
-    trees = dict(
-        __root__=root
-    )
-    for dep, item in g.edges:
-        if item not in trees:
-            trees[item] = Tree(item)
-        if dep not in trees:
-            trees[dep] = Tree(dep)
-        trees[item].add(trees[dep])
-    from rich.console import Console
-    console = Console(file=io.StringIO())
-    console.print(root)
-    tree_str = console.file.getvalue()
-    return tree_str
 
 
 def run_anything(
-        cmd: str,
-        var_path: str,
-        design_path: Optional[str],
-        overrides=instances(),
-        return_result=False,
-        call_args=None,
-        call_kwargs=None,
-        notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs)
+    cmd: str,
+    var_path: str,
+    design_path: Optional[str],
+    overrides=instances(),
+    return_result=False,
+    call_args=None,
+    call_kwargs=None,
+    notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
     from loguru import logger
+
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
     cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
@@ -190,32 +168,34 @@ def run_anything(
     res = None
 
     try:
-        if cmd == 'get':
+        if cmd == "get":
             res = cxt.add_design(overrides).run()
-        elif cmd == 'fire':
-            raise RuntimeError('fire is deprecated. use get.')
-        elif cmd == 'visualize':
+        elif cmd == "fire":
+            raise RuntimeError("fire is deprecated. use get.")
+        elif cmd == "visualize":
             from loguru import logger
+
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             DIGraph(design).show_injected_html(cxt.var)
-        elif cmd == 'export_visualization_html':
+        elif cmd == "export_visualization_html":
             from loguru import logger
+
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             dst = Path(".pinjected_visualization/")
             res_html: Path = DIGraph(design).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
 
-        elif cmd == 'to_script':
+        elif cmd == "to_script":
             from loguru import logger
-            d = design + providers(
-                __root__=cxt.var
-            )
+
+            d = design + providers(__root__=cxt.var)
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
         import traceback
-        notify(f"Run failed with error:\n{e}", sound='Frog')
+
+        notify(f"Run failed with error:\n{e}", sound="Frog")
         # trace = traceback.format_exc()
         # Path(f"run_failed_{var_path}.err.log").write_text(str(e) + "\n" + trace)
         # from rich.console import Console
@@ -244,18 +224,13 @@ class RunContext:
     meta_overrides: Design
     var: Injected
     provision_callback: Optional[IResolverCallback]
-    overrides:Design = field(default_factory=instances)
+    overrides: Design = field(default_factory=instances)
 
     def add_design(self, design: Design):
-        return replace(
-            self,
-            design=self.design + design
-        )
+        return replace(self, design=self.design + design)
+
     def add_overrides(self, overrides: Design):
-        return replace(
-            self,
-            overrides=self.overrides + overrides
-        )
+        return replace(self, overrides=self.overrides + overrides)
 
     async def a_run(self):
         final_design = self.design + self.meta_overrides + self.overrides
@@ -265,12 +240,10 @@ class RunContext:
         tree_str = design_rich_tree(final_design, self.var)
         logger.info(f"Dependency Tree:\n{tree_str}")
         async with TaskGroup() as tg:
-            dd = final_design + instances(
-                __task_group__=tg
-            )
+            dd = final_design + instances(__task_group__=tg)
             resolver = AsyncResolver(
                 dd,
-                callbacks=[self.provision_callback] if self.provision_callback else []
+                callbacks=[self.provision_callback] if self.provision_callback else [],
             )
             _res = await resolver.provide(self.var)
 
@@ -284,14 +257,15 @@ class RunContext:
         return asyncio.run(self.a_run())
 
 
-
 async def a_get_run_context(design_path, var_path) -> RunContext:
     loaded_var = load_variable_by_module_path(var_path)
     meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
     if not isinstance(meta, dict):
         meta = {}
     meta_overrides = meta.get("overrides", instances())
-    meta_cxt: MetaContext = await MetaContext.a_gather_from_path(ModuleVarPath(var_path).module_file_path)
+    meta_cxt: MetaContext = await MetaContext.a_gather_from_path(
+        ModuleVarPath(var_path).module_file_path
+    )
     design = await a_resolve_design(design_path, meta_cxt)
     # here, actually the loaded variable maybe an instance of Designed.
     # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
@@ -311,8 +285,8 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
     # add overrides from with block
     contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
     meta_overrides += contextual_overrides  # obtain internal hooks from the meta_design
-    if StrBindKey('provision_callback') in meta_design:
-        provision_callback = await meta_resolver.provide('provision_callback')
+    if StrBindKey("provision_callback") in meta_design:
+        provision_callback = await meta_resolver.provide("provision_callback")
     else:
         provision_callback = None
     design = load_user_default_design() + design
@@ -323,7 +297,9 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
 async def a_resolve_design(design_path, meta_cxt):
     if design_path is None:
         if StrBindKey("default_design_paths") in meta_cxt.accumulated:
-            design_paths = (await AsyncResolver(meta_cxt.accumulated).provide("default_design_paths"))
+            design_paths = await AsyncResolver(meta_cxt.accumulated).provide(
+                "default_design_paths"
+            )
             if design_paths:
                 design: Design = load_variable_by_module_path(design_paths[0])
             else:
@@ -356,6 +332,7 @@ def load_design_from_paths(paths, design_name) -> Result:
                 logger.warning(f"{design_name} is not defined in {path}.")
             except Exception as e:
                 import traceback
+
                 logger.warning(f"failed to load design from {path}:{design_name}.")
                 logger.warning(e)
                 logger.warning(traceback.format_exc())
@@ -373,9 +350,10 @@ def load_user_default_design() -> Design:
     /home/user/design.py:my_design
     :return:
     """
-    design_path = os.environ.get('PINJECTED_DEFAULT_DESIGN_PATH', "")
-    design = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(instances()) + _load_design(
-        design_path).value_or(instances())
+    design_path = os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
+    design = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(
+        instances()
+    ) + _load_design(design_path).value_or(instances())
     logger.info(f"loaded default design:{pformat(design.bindings.keys())}")
     return design
 
@@ -389,11 +367,12 @@ def _load_design(design_path):
     for pair in pairs:
         if pair == "":
             continue
-        script_path, var_name = pair.split(':')
+        script_path, var_name = pair.split(":")
         design = load_variable_from_script(script_path, var_name)
         if design is not None:
-            assert isinstance(design,
-                              Design), f"design loaded from {script_path}:{var_name} is not a Design instance, but is {type(design)}."
+            assert isinstance(
+                design, Design
+            ), f"design loaded from {script_path}:{var_name} is not a Design instance, but is {type(design)}."
             res += design
     return res
 
@@ -407,8 +386,9 @@ def load_user_overrides_design():
     /home/user/design.py:my_design
     :return:
     """
-    design_path = os.environ.get('PINJECTED_OVERRIDE_DESIGN_PATH', "")
-    design = load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(instances()) + _load_design(
-        design_path).value_or(instances())
+    design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
+    design = load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(
+        instances()
+    ) + _load_design(design_path).value_or(instances())
     logger.info(f"loaded override design:{pformat(design.bindings.keys())}")
     return design
