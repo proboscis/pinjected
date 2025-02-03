@@ -1,8 +1,14 @@
 import io
 from pinjected.di.injected import (
-    Injected, InjectedWithDefaultDesign, InjectedFromFunction,
-    InjectedPure, PartialInjectedFunction, MappedInjected,
-    ZippedInjected, MZippedInjected, InjectedByName
+    Injected,
+    InjectedWithDefaultDesign,
+    InjectedFromFunction,
+    InjectedPure,
+    PartialInjectedFunction,
+    MappedInjected,
+    ZippedInjected,
+    MZippedInjected,
+    InjectedByName,
 )
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
@@ -24,7 +30,7 @@ def format_injected_for_tree(injected: Injected) -> str:
     elif isinstance(injected, InjectedPure):
         v = injected.value
         if isinstance(v, str):
-            return f'{v}'
+            return f"<str instance>"
         elif isinstance(v, type):
             return f"<class '{v.__name__}'>"
         elif callable(v):
@@ -65,14 +71,14 @@ def design_rich_tree(tgt_design, root):
             if len(value_str) > 50:
                 value_str = value_str[:47] + "... (truncated)"
             typ = type(value)
-            if 'key' in node.lower() or 'secret' in node.lower():
-                value_str = "********"
+            # if 'key' in node.lower() or 'secret' in node.lower():
+            #     value_str = "********"
             return Text.assemble(
                 (node, Style(color="cyan", bold=True)),
                 (" -> ", Style(color="white")),
                 (typ.__name__, Style(color="blue")),
                 (" : ", Style(color="white")),
-                (value_str, Style(color="yellow"))
+                (value_str, Style(color="yellow")),
             )
         except Exception as e:
             return Text(f"{node} (Error: {str(e)})", style="red")
@@ -85,8 +91,9 @@ def design_rich_tree(tgt_design, root):
         if dep not in trees:
             trees[dep] = Tree(get_node_label(dep))
         trees[item].add(trees[dep])
-    
+
     from rich.console import Console
+
     console = Console(file=io.StringIO())
     console.print(root)
     tree_str = console.file.getvalue()
