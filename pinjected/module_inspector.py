@@ -20,12 +20,20 @@ class ModuleVarSpec(Generic[T]):
     @property
     def module_file_path(self):
         from pinjected.module_var_path import ModuleVarPath
+
         return ModuleVarPath(self.var_path).module_file_path
+
+    def __str__(self):
+        return f"ModuleVarSpect({self.var_path} with type {type(self.var)})"
+
+    def __repr__(self) -> str:
+        self.__str__()
 
 
 @memoize
 def get_project_root(start_path: str) -> str:
     from loguru import logger
+
     # current_path = os.path.dirname(os.path.abspath(start_path))
     if not os.path.isdir(start_path):
         current_path = os.path.dirname(os.path.abspath(start_path))
@@ -39,9 +47,9 @@ def get_project_root(start_path: str) -> str:
         current_path = parent_path
         logger.debug(f"current_path:{current_path}")
 
-    init_path = Path(current_path) / '__init__.py'
+    init_path = Path(current_path) / "__init__.py"
     logger.info(f"checking init_path:{init_path}")
-    if (p_path := Path(current_path)).name == 'src' and not init_path.exists():
+    if (p_path := Path(current_path)).name == "src" and not init_path.exists():
         current_path = str(p_path.parent)
     logger.info(f"found project root:{current_path}")
     return current_path
@@ -51,8 +59,8 @@ def get_module_path(root_path, module_path):
     relative_path = os.path.relpath(module_path, root_path)
     without_extension = os.path.splitext(relative_path)[0]
     path = without_extension.replace(os.path.sep, ".")
-    if str(path).split('.')[0] == 'src':
-        if not (Path(root_path) / 'src' / '__init__.py').exists():
+    if str(path).split(".")[0] == "src":
+        if not (Path(root_path) / "src" / "__init__.py").exists():
             # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
             # Although 'src' should not be in the module path at all, i handle this specific case.
             # Probably we should make this part adjustable from __meta_design__ or something.
@@ -60,9 +68,11 @@ def get_module_path(root_path, module_path):
     return path
 
 
-def inspect_module_for_type(module_path: Union[str, Path], accept: Callable[[str, Any], bool]) -> List[
-    ModuleVarSpec[T]]:
+def inspect_module_for_type(
+    module_path: Union[str, Path], accept: Callable[[str, Any], bool]
+) -> List[ModuleVarSpec[T]]:
     from loguru import logger
+
     logger.debug(f"inspecting module:{module_path}")
     if isinstance(module_path, Path):
         module_path = str(module_path)
@@ -83,11 +93,11 @@ def inspect_module_for_type(module_path: Union[str, Path], accept: Callable[[str
     results = []
     for attr_name, attr_value in vars(module).items():
         if accept(attr_name, attr_value):
-            full_module_path = f'{module_name}.{attr_name}'
+            full_module_path = f"{module_name}.{attr_name}"
             results.append(ModuleVarSpec(var=attr_value, var_path=full_module_path))
 
     return results
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     fire.Fire()
