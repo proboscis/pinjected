@@ -32,26 +32,26 @@ class ModuleVarSpec(Generic[T]):
 
 @memoize
 def get_project_root(start_path: str) -> str:
-    from loguru import logger
+    from pinjected.logging import logger
 
     # current_path = os.path.dirname(os.path.abspath(start_path))
     if not os.path.isdir(start_path):
         current_path = os.path.dirname(os.path.abspath(start_path))
     else:
         current_path = start_path
-    logger.debug(f"current_path:{current_path}")
+    logger.trace(f"current_path:{current_path}")
     while os.path.exists(os.path.join(current_path, "__init__.py")):
         parent_path = os.path.dirname(current_path)
         if parent_path == current_path:
             raise ValueError("Project root not found")
         current_path = parent_path
-        logger.debug(f"current_path:{current_path}")
+        logger.trace(f"current_path:{current_path}")
 
     init_path = Path(current_path) / "__init__.py"
-    logger.info(f"checking init_path:{init_path}")
+    logger.trace(f"checking init_path:{init_path}")
     if (p_path := Path(current_path)).name == "src" and not init_path.exists():
         current_path = str(p_path.parent)
-    logger.info(f"found project root:{current_path}")
+    logger.success(f"found project root:{current_path}")
     return current_path
 
 
@@ -71,7 +71,7 @@ def get_module_path(root_path, module_path):
 def inspect_module_for_type(
     module_path: Union[str, Path], accept: Callable[[str, Any], bool]
 ) -> List[ModuleVarSpec[T]]:
-    from loguru import logger
+    from pinjected.logging import logger
 
     logger.debug(f"inspecting module:{module_path}")
     if isinstance(module_path, Path):

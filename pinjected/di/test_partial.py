@@ -7,7 +7,7 @@ from frozendict import frozendict
 from pinjected import *
 from pinjected import Injected
 from pinjected.di.partially_injected import Partial
-from loguru import logger
+from pinjected.logging import logger
 
 from pinjected.v2.resolver import AsyncResolver
 

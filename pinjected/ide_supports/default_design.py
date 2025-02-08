@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import loguru
 from returns.maybe import Some
+from pinjected.logging import logger
 
 import pinjected.run_config_utils
 from pinjected import instances, providers, Design
@@ -11,7 +11,7 @@ from pinjected.module_inspector import get_project_root
 from pinjected.run_config_utils import injected_to_idea_configs
 # This design is used for ide supports
 pinjected_internal_design:Design = instances(
-    logger=loguru.logger,
+    logger=logger,
     runner_script_path=pinjected.run_config_utils.__file__,
     custom_idea_config_creator=lambda spec: [],  # type ConfigCreator
     # this becomes recursive and overflows if we call meta_session inside a parent design...

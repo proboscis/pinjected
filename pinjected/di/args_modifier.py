@@ -12,7 +12,7 @@ class KeepArgsPure:  # ArgsModifier
 
     def __call__(self, args: Any, kwargs: Any) -> tuple[tuple, dict]:
         from pinjected import Injected
-        # from loguru import logger
+        # from pinjected.logging import logger
         # logger.info(f"args:{args},kwargs:{kwargs}")
         # logger.info(f"signature:{self.signature}")
 

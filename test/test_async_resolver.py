@@ -11,7 +11,7 @@ d = instances(
 def test_async_resolver():
     @instance
     async def y(x, /):
-        from loguru import logger
+        from pinjected.logging import logger
         logger.info(f"running y")
         return x + 1
 

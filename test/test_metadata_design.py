@@ -2,7 +2,7 @@ import asyncio
 
 from pinjected import instances, Design
 from pinjected.di.design import AddSummary, AddTags
-from loguru import logger
+from pinjected.logging import logger
 
 from pinjected.v2.resolver import AsyncResolver
 

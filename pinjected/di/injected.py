@@ -308,7 +308,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             name = frame.f_lineno
             return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
         except Exception as e:
-            # from loguru import logger
+            # from pinjected.logging import logger
             # logger.warning(f"failed to get name of the injected location.")
             return f"__unknown_module__maybe_due_to_pickling__"
 
@@ -376,7 +376,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
 
-            # from loguru import logger
+            # from pinjected.logging import logger
             # logger.warning(f"converting {f} to async function")
 
             new_f = async_f
@@ -396,8 +396,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             # return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
             return mod, name
         except Exception as e:
-            # from loguru import logger
-            from loguru import logger
+            # from pinjected.logging import logger
+            from pinjected.logging import logger
             logger.warning(f"failed to get name of the injected location, due to {e}")
             return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
 
@@ -743,7 +743,7 @@ class InjectedCache(Injected[T]):
         self.program = Injected.ensure_injected(self.program)
 
         async def impl(t):
-            from loguru import logger
+            from pinjected.logging import logger
             resolver, cache, *deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -824,7 +824,7 @@ class AsyncInjectedCache(Injected[T]):
         async def impl(__resolver__: AsyncResolver, cache: IAsyncDict, deps: list):
             # deps are all awaited here.
             # deps are only used to calc hash key
-            from loguru import logger
+            from pinjected.logging import logger
             assert isinstance(cache, IAsyncDict)
             logger.info(f"Checking cache for {self.program} with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -975,7 +975,7 @@ def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[In
         try:
             argspec = inspect.getfullargspec(dep)
         except Exception as e:
-            from loguru import logger
+            from pinjected.logging import logger
             logger.error(f"failed to get argspec of {dep}. of type {type(dep)}")
             raise e
 
@@ -1035,7 +1035,7 @@ class InjectedFromFunction(Injected[T]):
                  dynamic_dependencies: Optional[Set[str]] = None
                  ):
         # I think we need to know where this class is instantiated outside of pinjected_package
-        from loguru import logger
+        from pinjected.logging import logger
         self.origin_frame = get_instance_origin("pinjected")
         self.original_function = original_function
         super().__init__()
@@ -1070,7 +1070,7 @@ class InjectedFromFunction(Injected[T]):
         signature = self.get_signature()
 
         async def impl(**kwargs):
-            from loguru import logger
+            from pinjected.logging import logger
             deps = dict()
 
             async def update(key):
@@ -1284,7 +1284,7 @@ class DictInjected(Injected):
         super().__init__()
         self.srcs = {k: Injected.ensure_injected(v) for k, v in srcs.items()}
         assert all(isinstance(s, Injected) for s in self.srcs.values()), self.srcs
-        from loguru import logger
+        from pinjected.logging import logger
         logger.warning(f"use of DictInjected is deprecated. use Injected.dict instead.")
 
     def dependencies(self) -> Set[str]:

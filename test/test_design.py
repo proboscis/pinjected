@@ -2,7 +2,7 @@ from pinjected import Injected, EmptyDesign, instances, providers
 from pinjected.v2.resolver import AsyncResolver
 
 def test_injected_proxy():
-    from loguru import logger
+    from pinjected.logging import logger
     hello = Injected.pure("hello").proxy
     func_proxy = Injected.pure(lambda x: x + 1).proxy
     # hmm,

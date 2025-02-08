@@ -87,7 +87,7 @@ def check_picklable(tgt: dict):
         failures = rec_val_filter(lambda v: isinstance(v[0], Failure), rec_check)
         # failures = [(k, v, tgt[k]) for k, v in target_check.items() if isinstance(v, Failure)]
 
-        from loguru import logger
+        from pinjected.logging import logger
         logger.error(f"Failed to pickle target: {pformat(failures)}")
         logger.error(f"if the error message contains EncodedFile pickling error, "
                      f"check whether the logging module is included in the target object or not.")
@@ -325,7 +325,7 @@ def add_code_locations(design, kwargs, frame):
         metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
         # metas = dict()
     except OSError as ose:
-        from loguru import logger
+        from pinjected.logging import logger
         logger.warning(f"failed to get code locations:{ose}")
         metas = dict()
 

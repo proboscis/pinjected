@@ -16,21 +16,21 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
     :param attr_name:
     :return:
     """
-    from loguru import logger
+    from pinjected.logging import logger
     if root_module_path is None:
         root_module_path = Path(get_project_root(str(file_path)))
     file_path = file_path.absolute()
     assert str(file_path).endswith(".py"), f"a python file path must be provided, got:{file_path}"
-    logger.debug(f"project root path:{root_module_path}")
+    logger.trace(f"project root path:{root_module_path}")
     if not str(file_path).startswith(str(root_module_path)):
         # logger.error(f"file path {file_path} is not under root module path {root_module_path}")
         return
 
     relative_path = file_path.relative_to(root_module_path)
     if str(relative_path).startswith('src/'):
-        logger.debug(f"file_path starts with src/")
+        logger.trace(f"file_path starts with src/")
         relative_path = Path(str(relative_path).replace('src/', '',1))
-    logger.debug(f"relative path:{relative_path}")
+    logger.trace(f"relative path:{relative_path}")
     module_name = os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
     if module_name not in sys.modules:
         logger.info(f"importing module: {module_name}")
