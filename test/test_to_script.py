@@ -10,7 +10,7 @@ from pinjected.visualize_di import DIGraph
 
 #
 # def to_content(img: "Image"):
-#     from loguru import logger
+#     from pinjected.logging import logger
 #     # convert Image into jpeg bytes
 #     jpg_bytes = io.BytesIO()
 #     img.convert('RGB').save(jpg_bytes, format='jpeg', quality=95)
@@ -25,7 +25,7 @@ from pinjected.visualize_di import DIGraph
 #
 # @injected
 # async def a_repeat_for_rate_limit(task):
-#     from loguru import logger
+#     from pinjected.logging import logger
 #     while True:
 #         try:
 #             return await task()

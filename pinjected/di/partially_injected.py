@@ -19,7 +19,7 @@ def get_final_args_kwargs(
     iterate through original signature, and replace the injected targets with the provided values.
     the injected values may be Postional only, Positional or Keyword, or Keyword only. so we need to split them.
     """
-    # from loguru import logger
+    # from pinjected.logging import logger
     bound_args = modified_sig.bind(*args, **kwargs)
     # logger.info(f"original args: {args} kwargs: {kwargs}")
     # logger.info(f"injection targets:{__injected__}")
@@ -56,7 +56,7 @@ def get_final_args_kwargs(
                     varg.kind == inspect.Parameter.VAR_KEYWORD]
 
     if bound_vargs:
-        # from loguru import logger
+        # from pinjected.logging import logger
         # logger.info(f"modified_sig:{self.modified_sig}")
         # logger.info(f"bound args:{bound_args}")
         # logger.info(f"call args:{args} kwargs:{kwargs}")

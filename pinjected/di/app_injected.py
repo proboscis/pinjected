@@ -28,7 +28,7 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
 
     def _await_(self, tgt: Injected):
         async def awaiter(x):
-            # from loguru import logger
+            # from pinjected.logging import logger
             # logger.info(f"awaiting {x} due to await UnaryOp")
             res = await x
             # logger.info(f"obtained {res} for UnaryOp")
@@ -163,7 +163,7 @@ def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
 
 def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
     memo = dict()
-    from loguru import logger
+    from pinjected.logging import logger
 
     def impl(expr):
         match expr:
@@ -195,7 +195,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
 
 
 def await_awaitables(expr: Expr[T]) -> Expr:
-    from loguru import logger
+    from pinjected.logging import logger
     # logger.info(f"await_awaitables {expr}")
 
     def transformer(expr: Expr):

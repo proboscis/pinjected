@@ -95,13 +95,13 @@ class Design(ABC):
         return self.bindings.keys()
 
     def provide(self,tgt:str|IBindKey):
-        from loguru import logger
+        from pinjected.logging import logger
         from pinjected.v2.resolver import AsyncResolver
         logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking().provide(tgt)
 
     def to_graph(self):
-        from loguru import logger
+        from pinjected.logging import logger
         from pinjected.v2.resolver import AsyncResolver
         logger.warning(f"Design.to_graph is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking()
@@ -113,7 +113,7 @@ class Design(ABC):
 
     def inspect_picklability(self):
         from pinjected.di.util import check_picklable
-        from loguru import logger
+        from pinjected.logging import logger
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
 

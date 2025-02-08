@@ -35,7 +35,7 @@ from typing import Optional, List, Dict, OrderedDict, Callable, Any
 
 import loguru
 from cytoolz import memoize
-from loguru import logger
+from pinjected.logging import logger
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
@@ -272,7 +272,7 @@ default_design = design = providers(
     #    str(project_root)),
     # default_design_path=lambda default_design_paths: default_design_paths[0]
 ) + instances(
-    logger=loguru.logger,
+    logger=logger,
     custom_idea_config_creator=lambda x: [],  # type ConfigCreator
     # meta_context=meta_context,
     # module_path=self.module_path,
@@ -530,7 +530,7 @@ def run_main():
     """
     import inspect
     import fire
-    from loguru import logger
+    from pinjected.logging import logger
     module_path = provide_module_path(logger, inspect.currentframe().f_back)
     cfg = ConfigCreationArgs(
         module_path=module_path,
@@ -577,7 +577,7 @@ def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
 
 @memoize
 def get_designs_from_module(module_path: Path):
-    from loguru import logger
+    from pinjected.logging import logger
     logger.info(f"trying to import designs from {module_path}")
 
     def accept(name, x):

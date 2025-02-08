@@ -119,7 +119,7 @@ def injected_instance(f) -> Injected:
     sig: inspect.Signature = inspect.signature(f)
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
     called_partial = Injected.inject_partially(f, **tgts)()
-    from loguru import logger
+    from pinjected.logging import logger
     #logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
     instance = called_partial.eval()
     # instance = Injected.bind(f)
@@ -197,7 +197,7 @@ def injected_method(f):
 
 class CachedAwaitable:
     def __init__(self, coro):
-        from loguru import logger
+        from pinjected.logging import logger
         # logger.warning(f'CachedAwaitable created with {coro}')
         self.coro = coro
         self._cache = None
@@ -208,7 +208,7 @@ class CachedAwaitable:
         return self._get_result().__await__()
 
     async def _get_result(self):
-        from loguru import logger
+        from pinjected.logging import logger
         # logger.warning(f"accessing cached coroutine:{self.coro}")
         async with self._lock:
             if not self._has_run:

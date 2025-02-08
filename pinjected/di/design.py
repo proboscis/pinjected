@@ -254,14 +254,14 @@ class DesignImpl(Design):
         bindings = self._bindings.copy()
         for k, v in kwargs.items():
             if isinstance(v, type):
-                from loguru import logger
+                from pinjected.logging import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
             bindings[StrBindKey(k)] = BindInjected(Injected.pure(v))
         return DesignImpl(_bindings=bindings)
 
     @staticmethod
     def to_bind(tgt) -> IBind:
-        from loguru import logger
+        from pinjected.logging import logger
         match tgt:
             case IBind():
                 return tgt
@@ -393,7 +393,7 @@ class DesignImpl(Design):
                 method.__name__ = name
                 return method
             except AttributeError as ae:
-                from loguru import logger
+                from pinjected.logging import logger
                 logger.warning(f"somehow failed to assign new name to a provider function. trying to wrap.")
 
                 def _wrapper(self, *args, **kwargs):

@@ -154,7 +154,7 @@ async def a_pinjected_run_test__multiprocess(logger, /, target: VariableInFile) 
     # stderr = io.StringIO()
     # logger.add(stderr)
     # with redirect_stdout(stdout), redirect_stderr(stderr):
-    # from loguru import logger
+    # from pinjected.logging import logger
     # there is no way to capture the stdout/stderr using multiprocessing.Process
     # so we should instead use asyncio.create_subprocess_shell.
     stdout, stderr, trace, res = await a_run_target__mp(
@@ -328,7 +328,7 @@ async def a_run_tests(
         tests: list[VariableInFile] | AsyncIterator[VariableInFile],
 ):
     # hmm, i want a queue here...
-    from loguru import logger
+    from pinjected.logging import logger
     n_worker = multiprocessing.cpu_count()
     logger.info(f"n_worker={n_worker}")
     queue = asyncio.Queue()

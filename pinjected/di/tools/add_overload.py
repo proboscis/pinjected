@@ -3,7 +3,7 @@ import inspect
 import textwrap
 from typing import List, Dict, Any
 from typing import overload
-from loguru import logger
+from pinjected.logging import logger
 from pinjected import injected, instances
 
 def process_file(file_path):

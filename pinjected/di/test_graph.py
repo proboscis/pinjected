@@ -52,7 +52,7 @@ def test_child_session():
 
 
     # for this to work we need to track all the dependenciy tree of a binding.
-    from loguru import logger
+    from pinjected.logging import logger
     logger.info(grandchild_g)
     logger.info(grandchild_g.resolver._design_from_ancestors().bindings)
     objs = grandchild_g.resolver.objects

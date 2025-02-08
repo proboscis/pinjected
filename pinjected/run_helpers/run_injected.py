@@ -11,7 +11,7 @@ from typing import Awaitable, Optional
 
 import cloudpickle
 from beartype import beartype
-from loguru import logger
+from pinjected.logging import logger
 from returns.result import safe, Result
 
 from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign
@@ -91,7 +91,7 @@ async def a_run_target(var_path: str, design_path: Optional[str] = None):
 
 
 def _remote_test(var_path: str):
-    from loguru import logger
+    from pinjected.logging import logger
     import cloudpickle
 
     stdout = io.StringIO()
@@ -120,7 +120,7 @@ _enter_count = 0
 @beartype
 async def a_run_target__mp(var_path: str):
     global _enter_count
-    from loguru import logger
+    from pinjected.logging import logger
 
     _enter_count += 1
     if _enter_count == 1:
@@ -147,7 +147,7 @@ def run_anything(
     call_kwargs=None,
     notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
-    from loguru import logger
+    from pinjected.logging import logger
 
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
@@ -173,13 +173,13 @@ def run_anything(
         elif cmd == "fire":
             raise RuntimeError("fire is deprecated. use get.")
         elif cmd == "visualize":
-            from loguru import logger
+            from pinjected.logging import logger
 
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             DIGraph(design).show_injected_html(cxt.var)
         elif cmd == "export_visualization_html":
-            from loguru import logger
+            from pinjected.logging import logger
 
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
@@ -188,7 +188,7 @@ def run_anything(
             logger.info(f"exported to {res_html}")
 
         elif cmd == "to_script":
-            from loguru import logger
+            from pinjected.logging import logger
 
             d = design + providers(__root__=cxt.var)
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
@@ -258,40 +258,41 @@ class RunContext:
 
 
 async def a_get_run_context(design_path, var_path) -> RunContext:
-    loaded_var = load_variable_by_module_path(var_path)
-    meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
-    if not isinstance(meta, dict):
-        meta = {}
-    meta_overrides = meta.get("overrides", instances())
-    meta_cxt: MetaContext = await MetaContext.a_gather_from_path(
-        ModuleVarPath(var_path).module_file_path
-    )
-    design = await a_resolve_design(design_path, meta_cxt)
-    # here, actually the loaded variable maybe an instance of Designed.
-    # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
-    # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
-    match (var := load_variable_by_module_path(var_path)):
-        case Injected() | DelegatedVar():
-            var = Injected.ensure_injected(var)
-        case Designed():
-            design += var.design
-            var = var.internal_injected
-    """
-            I need to get the design overrides from with context and add it to the overrides
-            """
-    meta_design = instances(overrides=instances()) + meta_cxt.accumulated
-    meta_resolver = AsyncResolver(meta_design)
-    meta_overrides = (await meta_resolver.provide("overrides")) + meta_overrides
-    # add overrides from with block
-    contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
-    meta_overrides += contextual_overrides  # obtain internal hooks from the meta_design
-    if StrBindKey("provision_callback") in meta_design:
-        provision_callback = await meta_resolver.provide("provision_callback")
-    else:
-        provision_callback = None
-    design = load_user_default_design() + design
-    meta_overrides += load_user_overrides_design()
-    return RunContext(design, meta_overrides, var, provision_callback)
+    with logger.contextualize(tag="get_run_context"):
+        loaded_var = load_variable_by_module_path(var_path)
+        meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
+        if not isinstance(meta, dict):
+            meta = {}
+        meta_overrides = meta.get("overrides", instances())
+        meta_cxt: MetaContext = await MetaContext.a_gather_from_path(
+            ModuleVarPath(var_path).module_file_path
+        )
+        design = await a_resolve_design(design_path, meta_cxt)
+        # here, actually the loaded variable maybe an instance of Designed.
+        # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
+        # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
+        match (var := load_variable_by_module_path(var_path)):
+            case Injected() | DelegatedVar():
+                var = Injected.ensure_injected(var)
+            case Designed():
+                design += var.design
+                var = var.internal_injected
+        """
+                I need to get the design overrides from with context and add it to the overrides
+                """
+        meta_design = instances(overrides=instances()) + meta_cxt.accumulated
+        meta_resolver = AsyncResolver(meta_design)
+        meta_overrides = (await meta_resolver.provide("overrides")) + meta_overrides
+        # add overrides from with block
+        contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
+        meta_overrides += contextual_overrides  # obtain internal hooks from the meta_design
+        if StrBindKey("provision_callback") in meta_design:
+            provision_callback = await meta_resolver.provide("provision_callback")
+        else:
+            provision_callback = None
+        design = load_user_default_design() + design
+        meta_overrides += load_user_overrides_design()
+        return RunContext(design, meta_overrides, var, provision_callback)
 
 
 async def a_resolve_design(design_path, meta_cxt):
@@ -354,7 +355,9 @@ def load_user_default_design() -> Design:
     design = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(
         instances()
     ) + _load_design(design_path).value_or(instances())
-    logger.info(f"loaded default design:{pformat(design.bindings.keys())}")
+    # logger.info(f"loaded default design:{pformat(design.bindings.keys())}")
+    for k,v in design.bindings.items():
+        logger.info(f"User overrides :{k} -> {type(v)}")
     return design
 
 
