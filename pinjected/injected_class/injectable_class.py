@@ -9,7 +9,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import wraps
 
-from loguru import logger
+from pinjected.logging import logger
 
 from pinjected import Injected
 from pinjected.compatibility.task_group import TaskGroup

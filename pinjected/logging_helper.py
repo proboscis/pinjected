@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from loguru import logger
+from pinjected.logging import logger
 
 
 @contextmanager

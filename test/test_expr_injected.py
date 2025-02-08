@@ -1,5 +1,5 @@
 from pinjected import injected, instance, Injected, instances, providers
-from loguru import logger
+from pinjected.logging import logger
 from pinjected.di.app_injected import await_awaitables
 
 

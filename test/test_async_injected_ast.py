@@ -1,12 +1,12 @@
 from sys import stderr, stdout
 
-from loguru import logger
+from pinjected.logging import logger
 
 from pinjected import instance, injected, instances, Injected, providers
 
 
 def test_async_ast():
-    from loguru import logger
+    from pinjected.logging import logger
     logger.remove()
     logger.add(stdout, colorize=True)
     @instance
@@ -100,7 +100,7 @@ def test_async_partial():
 
 
 def test_injected():
-    from loguru import logger
+    from pinjected.logging import logger
     logger.remove()
     logger.add(stdout, colorize=True)
 
@@ -116,7 +116,7 @@ def test_injected():
         return 'x'
 
     partial_x = Injected.inject_partially(provide_x)()
-    from loguru import logger
+    from pinjected.logging import logger
     logger.info(f"partial_x => :{partial_x}")
     logger.info(f"partial x provider:{partial_x.eval().get_provider()}")
     d = providers(

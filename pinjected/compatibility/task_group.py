@@ -4,7 +4,7 @@ import multiprocessing
 try:
     from asyncio import TaskGroup
 except ImportError:
-    from loguru import logger
+    from pinjected.logging import logger
     current_process = multiprocessing.current_process()
     if "SpawnProcess" not in current_process.name:
         logger.warning(f"Using compatibility.task_group.TaskGroup since TaskGroup from python 3.11 is not available.")
