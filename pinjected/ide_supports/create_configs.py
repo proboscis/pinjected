@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Mapping
 
 from beartype import beartype
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 from returns.maybe import Some
 
 import pinjected

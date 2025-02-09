@@ -4,7 +4,7 @@ import pytest
 
 from pinjected import instances, providers, injected
 from pinjected.exceptions import DependencyResolutionError
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected.v2.resolver import AsyncResolver
 

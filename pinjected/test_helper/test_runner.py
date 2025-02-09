@@ -328,7 +328,7 @@ async def a_run_tests(
         tests: list[VariableInFile] | AsyncIterator[VariableInFile],
 ):
     # hmm, i want a queue here...
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     n_worker = multiprocessing.cpu_count()
     logger.info(f"n_worker={n_worker}")
     queue = asyncio.Queue()

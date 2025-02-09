@@ -11,7 +11,7 @@ from typing import Awaitable, Optional
 
 import cloudpickle
 from beartype import beartype
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 from returns.result import safe, Result
 
 from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign
@@ -91,7 +91,7 @@ async def a_run_target(var_path: str, design_path: Optional[str] = None):
 
 
 def _remote_test(var_path: str):
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     import cloudpickle
 
     stdout = io.StringIO()
@@ -120,7 +120,7 @@ _enter_count = 0
 @beartype
 async def a_run_target__mp(var_path: str):
     global _enter_count
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
 
     _enter_count += 1
     if _enter_count == 1:
@@ -147,7 +147,7 @@ def run_anything(
     call_kwargs=None,
     notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
 
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
@@ -173,13 +173,13 @@ def run_anything(
         elif cmd == "fire":
             raise RuntimeError("fire is deprecated. use get.")
         elif cmd == "visualize":
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
 
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             DIGraph(design).show_injected_html(cxt.var)
         elif cmd == "export_visualization_html":
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
 
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
@@ -188,7 +188,7 @@ def run_anything(
             logger.info(f"exported to {res_html}")
 
         elif cmd == "to_script":
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
 
             d = design + providers(__root__=cxt.var)
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))

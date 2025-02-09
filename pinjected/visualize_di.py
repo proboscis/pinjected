@@ -8,7 +8,7 @@ from typing import Callable, List, Union
 
 import networkx as nx
 from cytoolz import memoize
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Failure
 
@@ -241,7 +241,7 @@ class DIGraph:
             res = file + "\n" + src
 
         except Exception as e:
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
             logger.warning(f"{repr(e)[:100]} error from {repr(f)[:100]}")
             res = f"failed:{f} from {f}"
         return res
@@ -310,7 +310,7 @@ class DIGraph:
         )
 
     def create_graph_from_nodes(self, nodes: List[str], replace_missing=True):
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"making dependency graph for {nodes}.")
         nx_graph = nx.DiGraph()
         # why am I seeing no deps?
@@ -436,7 +436,7 @@ g = d.to_graph()
         if isinstance(roots, str):
             roots = [roots]
         # hmm,
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"making dependency graph for {roots}.")
         nx_graph = nx.DiGraph()
         # why am I seeing no deps?
@@ -493,7 +493,7 @@ g = d.to_graph()
             G = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
             G.plot_mpl()
         else:
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
             logger.warning("visualization of a design is disabled for non mac os.")
 
     def show_html(self, roots, visualize_missing=True):
