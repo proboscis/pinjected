@@ -1,5 +1,5 @@
 
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import ProvisionValidator
@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pprint import pformat
 from typing import Union, Callable, Dict, Any, Optional
 
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected import Injected
 from pinjected.di.app_injected import walk_replace, EvaledInjected

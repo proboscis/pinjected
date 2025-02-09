@@ -58,7 +58,7 @@ def check(tgt: Injected, trace: list[tuple[str, object]] = None):
     from pinjected.di.app_injected import EvaledInjected
     from pinjected.di.injected import MappedInjected, MZippedInjected, InjectedPure
     import cloudpickle
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     try:
         cloudpickle.dumps(tgt)
         return

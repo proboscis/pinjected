@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 from dataclasses import dataclass
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 from returns.maybe import maybe, Some
 
 from pinjected import providers, instances

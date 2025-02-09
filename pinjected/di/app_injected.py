@@ -163,7 +163,7 @@ def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
 
 def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
     memo = dict()
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
 
     def impl(expr):
         match expr:
@@ -195,7 +195,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
 
 
 def await_awaitables(expr: Expr[T]) -> Expr:
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     # logger.info(f"await_awaitables {expr}")
 
     def transformer(expr: Expr):

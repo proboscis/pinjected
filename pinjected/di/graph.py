@@ -168,7 +168,7 @@ class IScope:
 
     @staticmethod
     def default_trace_logger(event: ProvideEvent):
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         match event:
             case ProvideEvent(trace, "request", data=None):
                 logger.info(f"{' -> '.join(trace)}")
@@ -355,7 +355,7 @@ class DependencyResolver:
         try:
             deps = self.memoized_deps(tgt, include_dynamic=include_dynamic)
         except NoMappingError as ke:
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
             logger.error(f"failed to find dependency for {tgt} in {' -> '.join(trace)}")
             raise NoMappingError(f"failed to find dependency for {tgt} in {' -> '.join(trace)}") from ke
         yield tgt
@@ -383,7 +383,7 @@ class DependencyResolver:
                 res[d] = self._dependency_tree(d, trace + [d])
             return Success(res)
         except NoMappingError as ke:
-            from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
             # msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
             return Failure(DependencyResolutionFailure(tgt, trace, ke))
 
@@ -459,7 +459,7 @@ class DependencyResolver:
 
     def _provide(self, tgt: str, scope: IScope, trace: list[str] = None):
         from collections import deque
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
 
         if trace is None:
             trace = []
@@ -566,20 +566,20 @@ class DependencyResolver:
                 key = Path(ast.origin_frame.filename).name + ":L" + str(ast.origin_frame.lineno) + "#" + str(id(tgt))[
                                                                                                          :6]
                 # key = f"EvaledInjected#{str(id(tgt))}"
-                from pinjected.logging import logger
+                from pinjected.pinjected_logging import logger
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
             case InjectedFromFunction(func, kwargs) as IF if IF.origin_frame is not None:
                 frame = IF.origin_frame
                 original = frame.filename + ":" + str(frame.lineno)
                 key = f"InjectedFunction#{str(id(tgt))}"
-                from pinjected.logging import logger
+                from pinjected.pinjected_logging import logger
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(IF, key)
             case DelegatedVar(value, cxt) as dv:
                 res = self.provide(dv.eval(), scope)
             case Injected():
-                from pinjected.logging import logger
+                from pinjected.pinjected_logging import logger
                 logger.info(f"default injected type:{type(tgt)}")
                 provider = tgt.get_provider()
                 key = provider.__name__ + "#" + str(id(tgt))
@@ -609,7 +609,7 @@ def run_coroutine_in_new_thread(coroutine):
 
     # Function to run the coroutine in a new event loop
     def run_coroutine():
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"running coroutine in new thread")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -732,7 +732,7 @@ class MyObjectGraph(IObjectGraph):
         :param level: 2 when you are direcly calling. set increased number to show the callee
         :return:
         """
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         # I need to get the filename and line number of the caller
         if isinstance(target, Designed):
             return self.child_session(target.design)[target.internal_injected]

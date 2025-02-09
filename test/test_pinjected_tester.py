@@ -9,7 +9,7 @@ import pytest
 
 from pinjected import *
 from tqdm import tqdm
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected.ide_supports.default_design import pinjected_internal_design
 from pinjected.test_helper.test_aggregator import meta_design_acceptor, \

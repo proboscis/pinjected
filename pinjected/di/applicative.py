@@ -25,7 +25,7 @@ class Applicative(Generic[T], ABC):
         items = list(kwargs.items())
         keys = [t[0] for t in items]
         values = [t[1] for t in items]
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         # logger.info(f"keys:{keys}")
         # logger.info(f"values:{values}")
         def mapper(vs):

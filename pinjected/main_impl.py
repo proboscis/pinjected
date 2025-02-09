@@ -57,7 +57,7 @@ def run(
             cxt: RunContext = await a_get_run_context(design_path, var_path)
             cxt = cxt.add_overrides(ovr)
         res = await cxt.a_run()
-        from pinjected.logging import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
         # now we've got the function to call
 
@@ -65,7 +65,7 @@ def run(
 
 
 def check_config():
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     default: Design = load_user_default_design()
     overrides = load_user_overrides_design()
     logger.info(f"displaying default design bindings:")
@@ -140,7 +140,7 @@ def call(
     - design_paths: list[str] to be accumulated
     - meta_context_path: str # a path to gather meta context from.
     """
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     if base64_encoded_json is not None:
         data = decode_b64json(base64_encoded_json)
         var_path = data.pop('var_path')

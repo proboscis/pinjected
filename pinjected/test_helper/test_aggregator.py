@@ -7,7 +7,7 @@ from pprint import pformat
 from typing import Callable, Literal, Generic, TypeVar
 
 from beartype import beartype
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected.module_inspector import get_project_root, get_module_path
 from pinjected.module_var_path import ModuleVarPath

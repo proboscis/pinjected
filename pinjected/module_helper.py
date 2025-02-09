@@ -16,7 +16,7 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
     :param attr_name:
     :return:
     """
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     if root_module_path is None:
         root_module_path = Path(get_project_root(str(file_path)))
     file_path = file_path.absolute()
