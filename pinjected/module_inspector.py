@@ -34,7 +34,7 @@ class ModuleVarSpec(Generic[T]):
 
 @memoize
 def get_project_root(start_path: str) -> str:
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
 
     # current_path = os.path.dirname(os.path.abspath(start_path))
     if not os.path.isdir(start_path):
@@ -73,7 +73,7 @@ def get_module_path(root_path, module_path):
 def inspect_module_for_type(
     module_path: Union[str, Path], accept: Callable[[str, Any], bool]
 ) -> List[ModuleVarSpec[T]]:
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
 
     logger.debug(f"inspecting module:{module_path}")
     if isinstance(module_path, Path):

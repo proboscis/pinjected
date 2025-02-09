@@ -3,7 +3,7 @@ from pinjected.di.partially_injected import PartiallyInjectedFunction
 
 def test_naming_convention_for_injected_function():
     from pinjected import injected, design
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     @injected
     def target_function(x, /, y, z):
         pass

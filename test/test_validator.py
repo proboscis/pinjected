@@ -10,7 +10,7 @@ from pinjected.v2.resolver import AsyncResolver
 
 
 def test_validation_works():
-    from pinjected.logging import logger
+    from pinjected.pinjected_logging import logger
     def assert_int(key: IBindKey, value):
         logger.warning(f"asserting {key} {value}")
         assert isinstance(value, int), f"expected int got {value} for key {key}"

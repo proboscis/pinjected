@@ -7,7 +7,7 @@ from pinjected.di.util import instances
 from pinjected.helper_structure import MetaContext
 from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.run_helpers.run_injected import run_injected
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected.v2.resolver import AsyncResolver
 

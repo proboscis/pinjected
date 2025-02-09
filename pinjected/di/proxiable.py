@@ -51,6 +51,10 @@ class IProxyContext(Generic[T]):
         """
         raise NotImplementedError()
 
+    def magic_method_impl(self, method_name, tgt: T, *args, **kwargs):
+        return NotImplemented
+        #raise NotImplementedError()
+
 
 @dataclass
 class DelegatedVar(Generic[T]):

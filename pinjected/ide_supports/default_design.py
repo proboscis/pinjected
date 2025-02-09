@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from returns.maybe import Some
-from pinjected.logging import logger
+from pinjected.pinjected_logging import logger
 
 import pinjected.run_config_utils
 from pinjected import instances, providers, Design
