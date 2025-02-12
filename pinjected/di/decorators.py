@@ -264,6 +264,10 @@ def reload(*targets: str):
 
 def register(name):
     def impl(tgt:Injected):
-        IMPLICIT_BINDINGS[StrBindKey(name)] = tgt
+        from pinjected.di.metadata.bind_metadata import BindMetadata
+        IMPLICIT_BINDINGS[StrBindKey(name)] = BindInjected(
+            Injected.ensure_injected(tgt),
+            _metadata=Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
+        )
         return tgt
     return impl

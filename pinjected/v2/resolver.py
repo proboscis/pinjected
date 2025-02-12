@@ -427,7 +427,6 @@ class AsyncResolver:
                 tmp_design = d + providers(__root__=tgt)
                 digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
-
         if errors:
             raise DependencyResolutionError(f"Errors in dependency resolution:\n{pformat(errors)}\n", causes=errors)
         logger.debug(f"provision validated.")
