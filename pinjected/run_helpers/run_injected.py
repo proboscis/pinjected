@@ -11,10 +11,10 @@ from typing import Awaitable, Optional
 
 import cloudpickle
 from beartype import beartype
-from pinjected.pinjected_logging import logger
 from returns.result import safe, Result
 
 from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign
+from pinjected.cli_visualizations import design_rich_tree
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.proxiable import DelegatedVar
@@ -23,13 +23,13 @@ from pinjected.helpers import get_design_path_from_var_path
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
 from pinjected.notification import notify
+from pinjected.pinjected_logging import logger
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.run_helpers.mp_util import run_in_process
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
-from pinjected.cli_visualizations import design_rich_tree
 
 
 def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
@@ -135,20 +135,16 @@ async def a_run_target__mp(var_path: str):
     return res
 
 
-
-
 def run_anything(
-    cmd: str,
-    var_path: str,
-    design_path: Optional[str],
-    overrides=instances(),
-    return_result=False,
-    call_args=None,
-    call_kwargs=None,
-    notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
+        cmd: str,
+        var_path: str,
+        design_path: Optional[str],
+        overrides=instances(),
+        return_result=False,
+        call_args=None,
+        call_kwargs=None,
+        notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
-    from pinjected.pinjected_logging import logger
-
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
     cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
@@ -167,19 +163,18 @@ def run_anything(
 
     res = None
 
+    # @logger.catch(exclude="pinjected")
     try:
         if cmd == "get":
             res = cxt.add_design(overrides).run()
         elif cmd == "fire":
             raise RuntimeError("fire is deprecated. use get.")
         elif cmd == "visualize":
-            from pinjected.pinjected_logging import logger
 
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             DIGraph(design).show_injected_html(cxt.var)
         elif cmd == "export_visualization_html":
-            from pinjected.pinjected_logging import logger
 
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
@@ -188,19 +183,11 @@ def run_anything(
             logger.info(f"exported to {res_html}")
 
         elif cmd == "to_script":
-            from pinjected.pinjected_logging import logger
 
             d = design + providers(__root__=cxt.var)
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
-        import traceback
-
         notify(f"Run failed with error:\n{e}", sound="Frog")
-        # trace = traceback.format_exc()
-        # Path(f"run_failed_{var_path}.err.log").write_text(str(e) + "\n" + trace)
-        # from rich.console import Console
-        # console = Console()
-        # console.print_exception(show_locals=False)
         raise e
     logger.success(f"pinjected run result:\n{pformat(res)}")
     notify(f"Run result:\n{str(res)[:100]}")
@@ -220,6 +207,7 @@ def call_impl(call_args, call_kwargs, cxt, design):
 
 @dataclass(frozen=True)
 class RunContext:
+    src_meta_context: MetaContext
     design: Design
     meta_overrides: Design
     var: Injected
@@ -232,7 +220,7 @@ class RunContext:
     def add_overrides(self, overrides: Design):
         return replace(self, overrides=self.overrides + overrides)
 
-    async def a_run(self):
+    async def _a_run(self):
         final_design = self.design + self.meta_overrides + self.overrides
         logger.info(f"loaded design:{final_design}")
         logger.info(f"meta_overrides:{self.meta_overrides}")
@@ -248,10 +236,16 @@ class RunContext:
             _res = await resolver.provide(self.var)
 
             if isinstance(_res, Awaitable):
-                # logger.info(f"awaiting awaitable")
                 _res = await _res
         await resolver.destruct()
         return _res
+
+    async def a_run(self, hide_pinjected_stacktrace=True):
+        try:
+            return await self._a_run()
+        except ExceptionGroup as eg:
+            first_error = eg.exceptions[0]
+            raise first_error from None
 
     def run(self):
         return asyncio.run(self.a_run())
@@ -292,7 +286,13 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
             provision_callback = None
         design = load_user_default_design() + design
         meta_overrides += load_user_overrides_design()
-        return RunContext(design, meta_overrides, var, provision_callback)
+        return RunContext(
+            src_meta_context=meta_cxt,
+            design=design,
+            meta_overrides=meta_overrides,
+            var=var,
+            provision_callback=provision_callback
+        )
 
 
 async def a_resolve_design(design_path, meta_cxt):
@@ -356,7 +356,7 @@ def load_user_default_design() -> Design:
         instances()
     ) + _load_design(design_path).value_or(instances())
     # logger.info(f"loaded default design:{pformat(design.bindings.keys())}")
-    for k,v in design.bindings.items():
+    for k, v in design.bindings.items():
         logger.info(f"User overrides :{k} -> {type(v)}")
     return design
 
