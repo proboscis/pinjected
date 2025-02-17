@@ -10,7 +10,7 @@ from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.v2.keys import StrBindKey
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 @dataclass

@@ -1,7 +1,7 @@
 import asyncio
 
 from pinjected import *
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 design = instances(
     x='x',

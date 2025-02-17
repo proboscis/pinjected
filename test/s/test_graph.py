@@ -3,7 +3,7 @@ from pprint import pprint
 from pinjected import Design, injected_function, Injected
 from pinjected.di.graph import MyObjectGraph, IObjectGraph
 from pinjected.di.util import instances
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 design = instances(
     x=0

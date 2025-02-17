@@ -4,7 +4,7 @@ from pprint import pformat
 from pinjected.exporter.llm_exporter import PinjectedCodeExporter
 from pinjected import instances, providers, injected, Design, instance
 from pinjected.run_helpers.run_injected import load_user_default_design
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
 
 
