@@ -1,5 +1,6 @@
 from pinjected import Injected, EmptyDesign, instances, providers
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
+
 
 def test_injected_proxy():
     from pinjected.pinjected_logging import logger

@@ -16,7 +16,7 @@ from pinjected.test_helper.test_aggregator import meta_design_acceptor, \
     Annotation, PinjectedTestAggregator, find_pinjected_annotations, VariableInFile
 from pinjected.test_helper.test_runner import a_pinjected_run_all_test, a_pinjected_run_test, PinjectedTestResult, \
     a_visualize_test_results
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 P_ROOT = Path(__file__).parent.parent
 d = AsyncResolver(pinjected_internal_design)
