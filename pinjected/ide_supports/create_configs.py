@@ -81,7 +81,7 @@ def create_idea_configurations(
         pinjected.global_configs.pinjected_TRACK_ORIGIN = False
         configs: IdeaRunConfigurations = inspect_and_make_configurations(module_path)
         pinjected.global_configs.pinjected_TRACK_ORIGIN = True
-        logger.info(f"configs:{configs}")
+        # logger.info(f"configs:{configs}")
 
         # since stdout is contaminated by many other modules,
         # We need to think of other way to pass information.

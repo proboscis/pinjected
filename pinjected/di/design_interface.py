@@ -94,7 +94,10 @@ class Design(ABC):
     def keys(self):
         return self.bindings.keys()
 
-    def provide(self,tgt:str|IBindKey):
+    def provide(self,tgt:str|IBindKey,default=None):
+        tgt = StrBindKey(tgt) if isinstance(tgt,str) else tgt
+        if tgt not in self:
+            return default
         from pinjected.pinjected_logging import logger
         from pinjected.v2.resolver import AsyncResolver
         logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")

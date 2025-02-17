@@ -49,7 +49,16 @@ test_runnable = Injected.pure("hello world")
 def test_always_failure():
     raise RuntimeError("This is always failure")
 
+@instance
+def test_missing_deps(missing_dep):
+    return missing_dep
 
+fail = test_always_failure
+x = injected('x')
+@injected
+def iadd(x, y):
+    return x + y
+test_deep_ast_error:IProxy =  iadd(x, iadd(x, iadd(x,fail)))
 
 
 
@@ -67,10 +76,8 @@ run_test:IProxy = test_current_file()
 __meta_design__ = instances(
     overrides=design(
         a="a",
-        b="b"
+        b="b",
+        x="x",
     ),
     name="test_package.child.module1",
-    default_design_paths=[
-        "pinjected.test_package.child.module1.design01"
-    ]
 )
