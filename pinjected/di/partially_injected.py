@@ -164,7 +164,8 @@ class Partial(Injected):
         return self.injections.dynamic_dependencies()
 
     def __repr_expr__(self):
-        return f"{self.src_function.__name__}<{self.injections.__repr_expr__()}>"
+        #return f"{self.src_function.__name__}<{self.injections.__repr_expr__()}>"
+        return f"{self.src_function.__name__}"
 
     def __call__(self, *args, **kwargs):
         if self.modifier is not None:

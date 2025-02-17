@@ -241,11 +241,7 @@ class RunContext:
         return _res
 
     async def a_run(self, hide_pinjected_stacktrace=True):
-        try:
-            return await self._a_run()
-        except ExceptionGroup as eg:
-            first_error = eg.exceptions[0]
-            raise first_error from None
+        return await self._a_run()
 
     def run(self):
         return asyncio.run(self.a_run())

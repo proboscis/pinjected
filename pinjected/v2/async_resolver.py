@@ -22,7 +22,7 @@ from pinjected.v2.events import ResolverEvent, EvalRequestEvent, EvalResultEvent
     RequestEvent, ProvideEvent, DepsReadyEvent
 from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
 from pinjected.v2.provide_context import ProvideContext
-from pinjected.v2.resolver import AsyncLockMap, OPERATORS, UNARY_OPS, Providable
+from pinjected.v2.resolver import AsyncLockMap, OPERATORS, UNARY_OPS, Providable, EvaluationError
 from pinjected.visualize_di import DIGraph
 
 
@@ -164,12 +164,10 @@ class AsyncResolver:
                     raise TypeError(
                         f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
             self._callback(EvalResultEvent(cxt, expr, res))
+        except EvaluationError as e:
+            raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
         except Exception as e:
-            raise e
-        # except EvaluationError as e:
-        #     raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
-        # except Exception as e:
-        #     raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
+            raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
 
         return res
 

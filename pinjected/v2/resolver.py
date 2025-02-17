@@ -99,7 +99,7 @@ EvaluationError:
     Context: {cxt.trace_str}
     Context Expr: {show_expr(cxt_expr)}
     Cause Expr: {show_expr(cause_expr)}
-    Source: {src}
+    Source Error: {src}
         """)
 
 
