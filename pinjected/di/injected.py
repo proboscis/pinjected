@@ -819,7 +819,7 @@ class AsyncInjectedCache(Injected[T]):
         assert isinstance(self.program, Injected)
         assert isinstance(self.program_dependencies, list), f"program_dependencies:{self.program_dependencies}"
 
-        from pinjected.v2.resolver import AsyncResolver
+        from pinjected.v2.async_resolver import AsyncResolver
         # @cached_coroutine
         async def impl(__resolver__: AsyncResolver, cache: IAsyncDict, deps: list):
             # deps are all awaited here.

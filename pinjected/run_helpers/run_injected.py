@@ -28,7 +28,7 @@ from pinjected.run_config_utils import load_variable_from_script
 from pinjected.run_helpers.mp_util import run_in_process
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import StrBindKey
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
 
 

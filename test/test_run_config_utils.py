@@ -9,7 +9,7 @@ from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.run_helpers.run_injected import run_injected
 from pinjected.pinjected_logging import logger
 
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 p_root = Path(__file__).parent.parent
 TEST_MODULE = p_root/"pinjected/test_package/child/module1.py"

@@ -1,6 +1,6 @@
 from pinjected import instances, providers, classes, Design
 from pinjected.ide_supports.create_configs import design_metadata
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 design = instances(
     c=1

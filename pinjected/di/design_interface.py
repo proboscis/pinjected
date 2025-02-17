@@ -99,13 +99,13 @@ class Design(ABC):
         if tgt not in self:
             return default
         from pinjected.pinjected_logging import logger
-        from pinjected.v2.resolver import AsyncResolver
+        from pinjected.v2.async_resolver import AsyncResolver
         logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking().provide(tgt)
 
     def to_graph(self):
         from pinjected.pinjected_logging import logger
-        from pinjected.v2.resolver import AsyncResolver
+        from pinjected.v2.async_resolver import AsyncResolver
         logger.warning(f"Design.to_graph is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking()
 

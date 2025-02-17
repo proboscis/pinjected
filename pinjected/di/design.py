@@ -298,7 +298,8 @@ class DesignImpl(Design):
         return res
 
     def to_resolver(self, callback: Optional[IResolverCallback] = None):
-        from pinjected.v2.resolver import AsyncResolver, BaseResolverCallback
+        from pinjected.v2.resolver import BaseResolverCallback
+        from pinjected.v2.async_resolver import AsyncResolver
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
             callbacks = []

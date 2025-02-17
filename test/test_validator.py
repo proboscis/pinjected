@@ -6,7 +6,7 @@ from pinjected import instances
 from pinjected.di.util import validations
 from pinjected.exceptions import DependencyValidationError
 from pinjected.v2.keys import IBindKey
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_validation_works():
