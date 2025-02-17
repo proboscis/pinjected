@@ -45,6 +45,8 @@ class MetaContext:
             key_to_src = dict()
             for item in designs:
                 logger.info(f"Added {meta_design_name} at :{item.var_path}")
+                for k,v in item.var.bindings.items():
+                    logger.info(f"Binding {k} from {item.var_path}")
                 logger.trace(f"Current design bindings before: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
                 # First collect any overrides
                 overrides += (new_d:=await AsyncResolver(item.var).provide_or("overrides", EmptyDesign))

@@ -57,7 +57,6 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
         elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
             tgts[k] = Injected.by_name(k)
 
-
     new_f = Injected.inject_partially(f, **tgts)
     if isinstance(f, type):
         key_name = f"new_{f.__name__}"
@@ -65,9 +64,12 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
         key_name = f.__name__
 
     from pinjected.di.metadata.bind_metadata import BindMetadata
+
     IMPLICIT_BINDINGS[StrBindKey(key_name)] = BindInjected(
         new_f,
-        _metadata=Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
+        _metadata=Some(
+            BindMetadata(code_location=Some(get_code_location(parent_frame)))
+        ),
     )
 
     return new_f
@@ -120,30 +122,36 @@ def injected_instance(f) -> Injected:
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
     called_partial = Injected.inject_partially(f, **tgts)()
     from pinjected.pinjected_logging import logger
-    #logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
+
+    # logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
     instance = called_partial.eval()
     # instance = Injected.bind(f)
     from pinjected.di.metadata.bind_metadata import BindMetadata
-    #instance.__is_async_function__ = is_coroutine
+
+    # instance.__is_async_function__ = is_coroutine
     IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
         instance,
-        _metadata=Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
+        _metadata=Some(
+            BindMetadata(
+                code_location=Some(get_code_location(inspect.currentframe().f_back))
+            )
+        ),
     )
     return instance.proxy
 
 
-def injected(tgt: Union[str, type, Callable]):
+def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
     """
-    The ``injected`` decorator automates dependency injection, transforming a target (string, class, or callable) 
-    into an ``Injected`` instance. It specifically treats positional-only parameters as dependencies, 
-    automatically injecting them. In contrast, non-positional-only parameters are left as-is for later 
+    The ``injected`` decorator automates dependency injection, transforming a target (string, class, or callable)
+    into an ``Injected`` instance. It specifically treats positional-only parameters as dependencies,
+    automatically injecting them. In contrast, non-positional-only parameters are left as-is for later
     specification during function or method invocation.
 
     :param tgt: The target indicating what is to be injected. This can be:
                 1. ``str``: the name of a dependency.
                 2. ``type``: a class that needs automated dependency injection for instantiation.
                 3. ``Callable``: a function or method requiring dependencies.
-    :return: An appropriate ``Injected`` instance, proxy, or wrapped entity with dependencies injected, 
+    :return: An appropriate ``Injected`` instance, proxy, or wrapped entity with dependencies injected,
              contingent on the nature of ``tgt``.
 
     **Usage Example:**
@@ -162,16 +170,16 @@ def injected(tgt: Union[str, type, Callable]):
         # For direct dependency retrieval via a string identifier.
         dependency_instance = injected("dependency_key")
 
-    In these examples, ``dependency1`` is a positional-only parameter and treated as a dependency to be 
-    automatically injected. On the other hand, ``normal_param`` is a non-positional-only parameter. It's 
-    not considered a dependency within the automatic injection process, and thus, must be specified 
+    In these examples, ``dependency1`` is a positional-only parameter and treated as a dependency to be
+    automatically injected. On the other hand, ``normal_param`` is a non-positional-only parameter. It's
+    not considered a dependency within the automatic injection process, and thus, must be specified
     during the routine call or object instantiation.
-    
+
 
     .. note::
-        This approach enforces clear demarcation between automatically resolved dependencies 
-        (positional-only) and those parameters that developers need to provide explicitly during 
-        function/method invocation or class instantiation. This strategy enhances code readability 
+        This approach enforces clear demarcation between automatically resolved dependencies
+        (positional-only) and those parameters that developers need to provide explicitly during
+        function/method invocation or class instantiation. This strategy enhances code readability
         and ensures that the dependency injection framework adheres to explicit programming practices.
     """
     if isinstance(tgt, str):
@@ -198,6 +206,7 @@ def injected_method(f):
 class CachedAwaitable:
     def __init__(self, coro):
         from pinjected.pinjected_logging import logger
+
         # logger.warning(f'CachedAwaitable created with {coro}')
         self.coro = coro
         self._cache = None
@@ -209,6 +218,7 @@ class CachedAwaitable:
 
     async def _get_result(self):
         from pinjected.pinjected_logging import logger
+
         # logger.warning(f"accessing cached coroutine:{self.coro}")
         async with self._lock:
             if not self._has_run:
@@ -243,7 +253,9 @@ def dynamic(*providables):
     """
 
     def impl(tgt):
-        all_deps = set(sum([list(extract_dependency(p)) for p in providables], start=[]))
+        all_deps = set(
+            sum([list(extract_dependency(p)) for p in providables], start=[])
+        )
         match tgt:
             case Injected() as i:
                 return i.add_dynamic_dependencies(*all_deps)
@@ -262,12 +274,19 @@ def reload(*targets: str):
     """
     yield
 
+
 def register(name):
-    def impl(tgt:Injected):
+    def impl(tgt: Injected):
         from pinjected.di.metadata.bind_metadata import BindMetadata
+
         IMPLICIT_BINDINGS[StrBindKey(name)] = BindInjected(
             Injected.ensure_injected(tgt),
-            _metadata=Some(BindMetadata(code_location=Some(get_code_location(inspect.currentframe().f_back))))
+            _metadata=Some(
+                BindMetadata(
+                    code_location=Some(get_code_location(inspect.currentframe().f_back))
+                )
+            ),
         )
         return tgt
+
     return impl
