@@ -762,7 +762,7 @@ class InjectedCache(Injected[T]):
             Injected.by_name("__resolver__"),
             self.cache,
             *self.program_dependencies
-        ).map(impl)
+        ).eval().map(impl)
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 
