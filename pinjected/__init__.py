@@ -4,6 +4,7 @@ from pinjected.di.util import EmptyDesign, instances, providers, classes, destru
 from pinjected.di.design_interface import Design
 from pinjected.di.designed import Designed
 from pinjected.di.proxiable import DelegatedVar as IProxy
+from pinjected.v2.async_resolver import AsyncResolver
 
 __all__ = [
     "Injected",
@@ -19,4 +20,6 @@ __all__ = [
     "IProxy",
     "design",
     "register",
+    "AsyncResolver"
 ]
+

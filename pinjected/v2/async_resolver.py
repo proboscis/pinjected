@@ -1,12 +1,12 @@
 import asyncio
 import inspect
-from asyncio import TaskGroup
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pprint import pformat
 from typing import Optional, Dict, Any
 
 from pinjected import Injected
+from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.app_injected import walk_replace, EvaledInjected
 from pinjected.di.design_interface import ProvisionValidator
 from pinjected.di.expr_util import Expr, Object, Cache, Call, BiOp, UnaryOp, Attr, GetItem, show_expr

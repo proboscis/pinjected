@@ -94,13 +94,19 @@ class EvaluationError(Exception):
         self.cxt_expr = cxt_expr
         self.cause_expr = cause_expr
         self.src = src
+
         super().__init__(f"""
 EvaluationError:
     Context: {cxt.trace_str}
-    Context Expr: {show_expr(cxt_expr)}
-    Cause Expr: {show_expr(cause_expr)}
+    Context Expr: {self.truncate(show_expr(cxt_expr),100)}
+    Cause Expr: {self.truncate(show_expr(cause_expr),100)}
     Source Error: {src}
         """)
+    def truncate(self,text,n):
+        if len(text) > n:
+            return text[:n] + "..."
+        return text
+
 
 
 @dataclass
