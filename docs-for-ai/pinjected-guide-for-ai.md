@@ -355,24 +355,21 @@ check_dataset: IProxy = injected('dataset')[0]
 
 ## 7. 実装パターンとベストプラクティス
 
-### 7.1 テスト用IProxyオブジェクト
+### 7.1 テスト構造と推奨プラクティス
 
-実装関数と同じファイル内にテスト用のIProxyオブジェクトを配置するパターンが一般的です。
+Pinjectedプロジェクトでは、以下のテスト構造が推奨されています：
+
+1. テストファイルは`<repo_root>/tests/test*.py`の形式で配置する
+2. テスト関数は`@injected_pytest`デコレータを使用して定義する
+3. テスト関数の引数としてテスト対象の関数やオブジェクトを直接注入する
 
 ```python
-@injected
-def process_data(dataset, /, filter_condition=None):
-    # データ処理ロジック
-    return processed_data
-
-# テスト用IProxyオブジェクト
-test_process_data: IProxy = process_data(filter_condition="test")
-```
-
-このIProxyオブジェクトは以下のコマンドで実行できます：
-
-```bash
-python -m pinjected run your_module.test_process_data
+# <repo_root>/tests/test_example.py
+from pinjected.test import injected_pytest
+@injected_pytest()
+def test_some_function(some_function):
+    # some_functionは依存性注入によって提供される
+    return some_function("test_input")
 ```
 
 ### 7.2 依存関係の命名規則
@@ -389,6 +386,208 @@ python -m pinjected run your_module.test_process_data
 - **テスト容易性を考慮**: 単体テストや部分実行がしやすいよう設計
 
 ## 8. 注意点と制限事項
+
+### 7.4 injected_pytestによるテスト自動化
+
+Pinjectedは`injected_pytest`デコレータを提供しており、pinjectedを使用したテスト関数をpytestで実行可能なテスト関数に変換できます。
+
+#### 7.4.1 基本的な使用方法
+
+```python
+from pinjected.test import injected_pytest
+from pinjected import design
+
+# 基本的な使用方法
+@injected_pytest()
+def test_some_function(some_dependency):
+    # some_dependencyは依存性注入によって提供される
+    return some_dependency.do_something()
+
+# デザインをオーバーライドする場合
+test_design = design(
+    some_dependency=MockDependency()
+)
+
+@injected_pytest(test_design)
+def test_with_override(some_dependency):
+    # some_dependencyはtest_designで指定されたMockDependencyが注入される
+    return some_dependency.do_something()
+```
+
+#### 7.4.2 内部動作
+
+`injected_pytest`デコレータは、以下のような処理を行います：
+
+1. 呼び出し元のファイルパスを自動的に取得
+2. テスト関数を`@instance`でラップして依存性注入可能なオブジェクトに変換
+3. 非同期処理を含むテストも実行できるよう、asyncioを使用して実行環境を設定
+4. 指定されたデザインでオーバーライドして依存性を解決
+
+#### 7.4.3 実際の使用例
+
+```python
+import pytest
+from pinjected.test import injected_pytest
+from pinjected import design, instances
+
+# テスト用のモックロガー
+class MockLogger:
+    def __init__(self):
+        self.logs = []
+
+    def info(self, message):
+        self.logs.append(message)
+
+# テスト用のデザイン
+test_design = design()
+test_design += instances(
+    logger=MockLogger()
+)
+
+# injected_pytestを使用してテスト関数を作成
+@injected_pytest(test_design)
+def test_logging_function(logger):
+    logger.info("テストメッセージ")
+    return "テスト成功"
+```
+
+#### 7.4.4 通常のpytestテストとの違い
+
+`injected_pytest`デコレータを使用したテストと通常のpytestテストには以下のような違いがあります：
+
+- **依存性注入**: `injected_pytest`では、テスト関数の引数が自動的に依存性注入によって提供されます
+- **デザインのオーバーライド**: テスト実行時に特定のデザインでオーバーライドできます
+- **非同期サポート**: 非同期処理を含むテストも簡単に実行できます
+- **メタコンテキスト**: 呼び出し元のファイルパスから自動的にメタコンテキストを収集します
+
+#### 7.4.5 非同期処理を含むテストの例
+
+`injected_pytest`は内部で`asyncio.run()`を使用しているため、非同期処理を含むテストも簡単に書くことができます：
+
+```python
+from pinjected.test import injected_pytest
+from pinjected import design, instances
+import asyncio
+
+# 非同期処理を行うモックサービス
+class AsyncMockService:
+    async def fetch_data(self):
+        await asyncio.sleep(0.1)  # 非同期処理をシミュレート
+        return {"status": "success"}
+
+# テスト用のデザイン
+async_test_design = design()
+async_test_design += instances(
+    service=AsyncMockService()
+)
+
+# 非同期処理を含むテスト
+@injected_pytest(async_test_design)
+async def test_async_function(service):
+    # serviceは依存性注入によって提供される
+    # 非同期メソッドを直接awaitできる
+    result = await service.fetch_data()
+    assert result["status"] == "success"
+    return "非同期テスト成功"
+```
+
+#### 7.4.6 注意点とベストプラクティス
+
+`injected_pytest`を使用する際の注意点とベストプラクティスは以下の通りです：
+
+1. **テスト分離**: 各テストは独立して実行できるように設計する
+1. **テスト分離**: 各テストは独立して実行できるように設計する
+2. **モックの活用**: 外部依存はモックに置き換えてテストの信頼性を高める
+3. **デザインの再利用**: 共通のテストデザインを作成して再利用する
+4. **非同期リソースの解放**: 非同期テストでは、リソースが適切に解放されることを確認する
+5. **エラーハンドリング**: 例外が発生した場合の挙動も考慮したテストを書く
+
+```python
+# 共通のテストデザインを作成して再利用する例
+base_test_design = design(
+    logger=MockLogger(),
+    config=test_config
+)
+```
+
+#### 7.4.7 複雑な依存関係を持つテストの例
+
+実際のプロジェクトでは、複数の依存関係を持つ複雑なテストケースが必要になることがあります。以下は、データベース、キャッシュ、ロガーなど複数の依存関係を持つテストの例です：
+
+```python
+from pinjected.test import injected_pytest
+from pinjected import design, instances, injected
+
+# モックデータベース
+class MockDatabase:
+    def __init__(self):
+        self.data = {}
+    
+    def get(self, key):
+        return self.data.get(key)
+    
+    def set(self, key, value):
+        self.data[key] = value
+
+# モックキャッシュ
+class MockCache:
+    def __init__(self):
+        self.cache = {}
+    
+    def get(self, key):
+        return self.cache.get(key)
+    
+    def set(self, key, value, ttl=None):
+        self.cache[key] = value
+
+# テスト対象の関数
+@injected
+def fetch_user_data(database, cache, logger, /, user_id: str):
+    # キャッシュをチェック
+    cached_data = cache.get(f"user:{user_id}")
+    if cached_data:
+        logger.info(f"Cache hit for user {user_id}")
+        return cached_data
+    
+    # データベースから取得
+    logger.info(f"Cache miss for user {user_id}, fetching from database")
+    data = database.get(f"user:{user_id}")
+    if data:
+        # キャッシュに保存
+        cache.set(f"user:{user_id}", data, ttl=3600)
+    return data
+
+# 複雑なテストケース
+@injected_pytest(design(
+    database=MockDatabase(),
+    cache=MockCache(),
+    logger=MockLogger()
+))
+def test_fetch_user_data_cache_miss(fetch_user_data):
+    # テストデータをセットアップ
+    user_id = "user123"
+    user_data = {"name": "Test User", "email": "test@example.com"}
+    database.set(f"user:{user_id}", user_data)
+    
+    # 関数を実行（キャッシュミスのケース）
+    result = fetch_user_data(user_id)
+    
+    # 検証
+    assert result == user_data
+    assert cache.get(f"user:{user_id}") == user_data
+    assert any("Cache miss" in log for log in logger.logs)
+```
+
+#### 7.4.8 注意点：pytestフィクスチャとの互換性
+
+`injected_pytest`はpytestのフィクスチャ（`@pytest.fixture`）と互換性がありません。pytestフィクスチャを使用する代わりに、Pinjectedの依存性注入メカニズムを活用してテストデータや依存関係を提供することが推奨されます。
+
+```python
+# 誤った使用方法（動作しません）
+@pytest.fixture
+def test_data():
+    return {"key": "value"}
+```
 
 ### 8.1 学習コストと開発体制への影響
 
@@ -415,14 +614,13 @@ python -m pinjected run your_module.test_process_data
 
 ```python
 # 以下のように単にグローバル変数として定義しても注入されない
-my_global_var: IProxy = some_function(arg1="value")
-test_my_function: IProxy = my_function(arg1="test")
+my_global_var = some_function(arg1="value")  # IProxyオブジェクト
 
 # 正しい方法: __meta_design__を使って明示的に注入する
 __meta_design__ = design(
     overrides=design(
-        my_global_var=some_function(arg1="value"),
-        test_my_function=my_function(arg1="test")
+        my_global_var=some_function(arg1="value")
+        # テストは@injected_pytestを使用することを推奨
     )
 )
 ```
@@ -567,12 +765,14 @@ def my_function(dep1, dep2, /, arg1: str):  # すべての依存が/の左側に
 
 #### 4. テスト用変数の定義方法
 
-```python
-# 注意: test_で始まるテストターゲットはテストフレームワークで収集する対象
-# test_で始まる変数をoverrideで設定するのは推奨されない
+テストは`@injected_pytest`デコレータを使用して定義することが推奨されています。
 
-# 推奨される書き方: テスト用変数を直接定義
-test_my_function: IProxy = my_function("test_value", 42)  # @injected関数の場合
+```python
+# 推奨される書き方: @injected_pytestを使用したテスト
+@injected_pytest()
+def test_my_function(my_function):
+    return my_function("test_input")
+
 ```
 
 
