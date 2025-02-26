@@ -13,7 +13,7 @@ import cloudpickle
 from beartype import beartype
 from returns.result import safe, Result
 
-from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign
+from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign, injected
 from pinjected.cli_visualizations import design_rich_tree
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
@@ -26,6 +26,7 @@ from pinjected.notification import notify
 from pinjected.pinjected_logging import logger
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.run_helpers.mp_util import run_in_process
+from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.async_resolver import AsyncResolver
@@ -62,8 +63,6 @@ def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
         design_path=design_path,
         return_result=return_result,
         overrides=overrides,
-        call_args=args,
-        call_kwargs=kwargs,
         notify=notify_impl,
     )
 
@@ -141,14 +140,12 @@ def run_anything(
         design_path: Optional[str],
         overrides=instances(),
         return_result=False,
-        call_args=None,
-        call_kwargs=None,
         notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
     cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
-    design = cxt.design + cxt.meta_overrides + overrides
+    design = cxt.get_final_design()
     logger.info(f"loaded design:{design}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
     logger.info(f"running target:{var_path} with design {design_path}")
@@ -170,30 +167,47 @@ def run_anything(
         elif cmd == "fire":
             raise RuntimeError("fire is deprecated. use get.")
         elif cmd == "visualize":
-
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             DIGraph(design).show_injected_html(cxt.var)
         elif cmd == "export_visualization_html":
-
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             dst = Path(".pinjected_visualization/")
             res_html: Path = DIGraph(design).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
-
         elif cmd == "to_script":
-
             d = design + providers(__root__=cxt.var)
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
-        notify(f"Run failed with error:\n{e}", sound="Frog")
-        raise e
-    logger.success(f"pinjected run result:\n{pformat(res)}")
-    notify(f"Run result:\n{str(res)[:100]}")
-    if return_result:
-        logger.info(f"delegating the result to fire..")
-        return res
+        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
+            if PinjectedHandleMainException.key in design:
+                logger.warning(f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
+                from pinjected import IProxy
+                handler:IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
+                handling = handler(e)
+                handled:Optional[str] = asyncio.run(cxt.a_provide(handling))
+                if handled:
+                    return
+                if not handled:
+                    raise e
+            else:
+                logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
+                notify(f"Run failed with error:\n{e}", sound="Frog")
+                raise e
+    with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
+        logger.success(f"pinjected run result:\n{pformat(res)}")
+        if PinjectedHandleMainResult.key in design:
+            from pinjected import IProxy
+            handler:IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
+            handling = handler(res)
+            asyncio.run(cxt.a_provide(handling))
+        else:
+            logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
+            notify(f"Run result:\n{str(res)[:100]}")
+        if return_result:
+            logger.info(f"delegating the result to fire..")
+            return res
 
 
 def call_impl(call_args, call_kwargs, cxt, design):
@@ -220,8 +234,11 @@ class RunContext:
     def add_overrides(self, overrides: Design):
         return replace(self, overrides=self.overrides + overrides)
 
-    async def _a_run(self):
-        final_design = self.design + self.meta_overrides + self.overrides
+    def get_final_design(self):
+        return self.design + self.meta_overrides + self.overrides
+
+    async def a_provide(self,tgt):
+        final_design = self.get_final_design()
         logger.info(f"loaded design:{final_design}")
         logger.info(f"meta_overrides:{self.meta_overrides}")
         logger.info(f"running target:{self.var} with design {final_design}")
@@ -233,14 +250,17 @@ class RunContext:
                 dd,
                 callbacks=[self.provision_callback] if self.provision_callback else [],
             )
-            _res = await resolver.provide(self.var)
+            _res = await resolver.provide(tgt)
 
             if isinstance(_res, Awaitable):
                 _res = await _res
         await resolver.destruct()
         return _res
 
-    async def a_run(self, hide_pinjected_stacktrace=True):
+    async def _a_run(self):
+        return await self.a_provide(self.var)
+
+    async def a_run(self):
         return await self._a_run()
 
     def run(self):
