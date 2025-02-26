@@ -19,6 +19,7 @@ from pprint import pformat
 from typing import Dict, Callable, Any, List, Awaitable
 
 from beartype import beartype
+from returns.maybe import Maybe, Nothing
 
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
@@ -94,10 +95,10 @@ class Design(ABC):
     def keys(self):
         return self.bindings.keys()
 
-    def provide(self,tgt:str|IBindKey,default=None):
+    def provide(self,tgt:str|IBindKey,default:Maybe=Nothing):
         tgt = StrBindKey(tgt) if isinstance(tgt,str) else tgt
-        if tgt not in self:
-            return default
+        if tgt not in self and default is not Nothing:
+            return default.unwrap()
         from pinjected.pinjected_logging import logger
         from pinjected.v2.async_resolver import AsyncResolver
         logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")

@@ -3,6 +3,7 @@ import asyncio
 from pinjected import injected,design,instance,IProxy, Injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
 from pinjected.di.util import instances, providers
+from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
 from pinjected.test_helper.test_runner import test_current_file
 
 design01 = instances(name='design01')
@@ -72,6 +73,24 @@ with design(
         test_cc = injected('c')
 
 run_test:IProxy = test_current_file()
+
+
+@injected
+async def __handle_exception(logger,/,e:Exception):
+    logger.error(f"Exception: {e}")
+    return "handled"
+@injected
+async def __handle_success(logger,/,result):
+    logger.info(f"Success: {result}")
+
+__test_handling_design = design(
+    **{
+        PinjectedHandleMainException.key.name: __handle_exception,
+        PinjectedHandleMainResult.key.name: __handle_success
+    }
+)
+
+design03 = design01 + __test_handling_design
 
 __meta_design__ = instances(
     overrides=design(
