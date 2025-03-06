@@ -186,7 +186,7 @@ def run_anything(
                 from pinjected import IProxy
                 handler:IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
                 handling = handler(e)
-                handled:Optional[str] = asyncio.run(cxt.a_provide(handling))
+                handled:Optional[str] = asyncio.run(cxt.a_provide(handling,show_debug=False))
                 if handled:
                     return
                 if not handled:
@@ -201,7 +201,7 @@ def run_anything(
             from pinjected import IProxy
             handler:IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
             handling = handler(res)
-            asyncio.run(cxt.a_provide(handling))
+            asyncio.run(cxt.a_provide(handling, show_debug=False))
         else:
             logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
             notify(f"Run result:\n{str(res)[:100]}")
@@ -237,13 +237,14 @@ class RunContext:
     def get_final_design(self):
         return self.design + self.meta_overrides + self.overrides
 
-    async def a_provide(self,tgt):
+    async def a_provide(self, tgt, show_debug=True):
         final_design = self.get_final_design()
-        logger.info(f"loaded design:{final_design}")
-        logger.info(f"meta_overrides:{self.meta_overrides}")
-        logger.info(f"running target:{self.var} with design {final_design}")
-        tree_str = design_rich_tree(final_design, self.var)
-        logger.info(f"Dependency Tree:\n{tree_str}")
+        if show_debug:
+            logger.info(f"loaded design:{final_design}")
+            logger.info(f"meta_overrides:{self.meta_overrides}")
+            logger.info(f"running target:{self.var} with design {final_design}")
+            tree_str = design_rich_tree(final_design, self.var)
+            logger.info(f"Dependency Tree:\n{tree_str}")
         async with TaskGroup() as tg:
             dd = final_design + instances(__task_group__=tg)
             resolver = AsyncResolver(

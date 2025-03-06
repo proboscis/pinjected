@@ -46,9 +46,18 @@ def dataset__mnist(batch_size):
 ```
 
 ### 2.2 @injectedデコレータ
+DI後にintやstrではなく、関数を得たいケースはよくあります。
+```python
+from pinjected import instance
+@instance
+def generate_text(llm_model):
+    def impl(prompt: str):
+        return llm_model.generate(prompt)
+    return impl
+```
+しかし、この記法は冗長であるため、@injectedデコレータが糖衣構文として用意されています。
 
 `@injected`デコレータは、関数引数を「注入対象の引数」と「呼び出し時に指定する引数」に分離できます。`/`の左側が依存として注入され、右側が実行時に渡される引数です。
-
 ```python
 from pinjected import injected
 
@@ -58,6 +67,7 @@ def generate_text(llm_model, /, prompt: str):
     # promptは実行時に任意の値を渡せる
     return llm_model.generate(prompt)
 ```
+これにより、先のimpl関数と等価な関数を簡潔に記述できます。
 
 ### 2.3 design()関数
 
@@ -153,7 +163,7 @@ default_design = design(
 from pinjected import providers, IProxy, design
 
 with design(
-    batch_size=64  # 一時的にbatch_sizeを64へ
+        batch_size=64  # 一時的にbatch_sizeを64へ
 ):
     # このwithブロック内ではbatch_sizeは64として解決される
     train_with_bs_64: IProxy = train()
@@ -222,7 +232,7 @@ class MyClass:
         self.dependency1 = dependency1
         self.dependency2 = dependency2
         self.non_injected_arg = non_injected_arg
-        
+
 # `_`で始まるパラメータ名の扱い
 class AnotherClass:
     def __init__(self, _a_system, _logger, normal_arg):
@@ -241,7 +251,7 @@ class DataclassExample:
     _a_system: callable
     _logger: object
     _storage_resolver: object
-    
+
     # 注入されないパラメータ
     project_name: str
     output_dir: Path = Path("/tmp")
@@ -522,10 +532,10 @@ from pinjected import design, instances, injected
 class MockDatabase:
     def __init__(self):
         self.data = {}
-    
+
     def get(self, key):
         return self.data.get(key)
-    
+
     def set(self, key, value):
         self.data[key] = value
 
@@ -533,10 +543,10 @@ class MockDatabase:
 class MockCache:
     def __init__(self):
         self.cache = {}
-    
+
     def get(self, key):
         return self.cache.get(key)
-    
+
     def set(self, key, value, ttl=None):
         self.cache[key] = value
 
@@ -548,7 +558,7 @@ def fetch_user_data(database, cache, logger, /, user_id: str):
     if cached_data:
         logger.info(f"Cache hit for user {user_id}")
         return cached_data
-    
+
     # データベースから取得
     logger.info(f"Cache miss for user {user_id}, fetching from database")
     data = database.get(f"user:{user_id}")
@@ -568,10 +578,10 @@ def test_fetch_user_data_cache_miss(fetch_user_data):
     user_id = "user123"
     user_data = {"name": "Test User", "email": "test@example.com"}
     database.set(f"user:{user_id}", user_data)
-    
+
     # 関数を実行（キャッシュミスのケース）
     result = fetch_user_data(user_id)
-    
+
     # 検証
     assert result == user_data
     assert cache.get(f"user:{user_id}") == user_data
@@ -642,68 +652,68 @@ __meta_design__ = design(
 `@instance`と`@injected`は、型の観点から見ると以下のように区別できます：
 
 - **`@instance`**: `IProxy[T]`を返す
-  - `T`は関数の戻り値の型
-  - 依存解決された「インスタンス」を表すIProxyオブジェクト
-  - 関数として呼び出すことはできない
+- `T`は関数の戻り値の型
+- 依存解決された「インスタンス」を表すIProxyオブジェクト
+- 関数として呼び出すことはできない
 
 - **`@injected`**: `IProxy[Callable[[non_injected], T]]`を返す
-  - 依存解決可能な「関数」を表すIProxyオブジェクト
-  - 非注入引数を渡して呼び出すことができる
+- 依存解決可能な「関数」を表すIProxyオブジェクト
+- 非注入引数を渡して呼び出すことができる
 
 以下の点に注意が必要です：
 
 1. **`@instance`で定義された関数は直接呼び出せない**：
-   ```python
-   @instance
-   def my_instance(dep1, dep2) -> SomeClass:
-       return SomeClass(dep1, dep2)
-   
-   # my_instanceの型: IProxy[SomeClass]
-   
-   # 誤った使用方法（直接呼び出し）
-   result = my_instance(arg1, arg2)  # エラー！
-   ```
+```python
+@instance
+def my_instance(dep1, dep2) -> SomeClass:
+    return SomeClass(dep1, dep2)
+
+# my_instanceの型: IProxy[SomeClass]
+
+# 誤った使用方法（直接呼び出し）
+result = my_instance(arg1, arg2)  # エラー！
+```
 
 2. **`@injected`関数の呼び出し結果も`IProxy`オブジェクト**：
-   ```python
-   @injected
-   def my_function(dep1, dep2, /, arg1: str, arg2: int) -> Result:
-       return Result(dep1, dep2, arg1, arg2)
-   
-   # my_functionの型: IProxy[Callable[[str, int], Result]]
-   
-   # 呼び出し結果の型
-   f: IProxy[Callable[[str, int], Result]] = my_function
-   y: IProxy[Result] = f("value", 42)  # 呼び出し結果もIProxy
-   ```
+```python
+@injected
+def my_function(dep1, dep2, /, arg1: str, arg2: int) -> Result:
+    return Result(dep1, dep2, arg1, arg2)
+
+# my_functionの型: IProxy[Callable[[str, int], Result]]
+
+# 呼び出し結果の型
+f: IProxy[Callable[[str, int], Result]] = my_function
+y: IProxy[Result] = f("value", 42)  # 呼び出し結果もIProxy
+```
 
 2. **`@injected`で定義された関数は非注入引数を渡して呼び出せる**：
-   ```python
-   @injected
-   def my_function(dep1, dep2, /, arg1: str, arg2: int) -> Result:
-       return Result(dep1, dep2, arg1, arg2)
-   
-   # my_functionの型: IProxy[Callable[[str, int], Result]]
-   
-   # 正しい使用方法
-   result = my_function("value", 42)  # OK
-   ```
+```python
+@injected
+def my_function(dep1, dep2, /, arg1: str, arg2: int) -> Result:
+    return Result(dep1, dep2, arg1, arg2)
+
+# my_functionの型: IProxy[Callable[[str, int], Result]]
+
+# 正しい使用方法
+result = my_function("value", 42)  # OK
+```
 
 4. **クラスに`injected()`を適用する場合**：
-   ```python
-   class MyClass:
-       def __init__(self, dep1, dep2, non_injected_arg: str):
-           self.dep1 = dep1
-           self.dep2 = dep2
-           self.non_injected_arg = non_injected_arg
-   
-   # new_MyClassの型: IProxy[Callable[[str], MyClass]]
-   new_MyClass = injected(MyClass)
-   
-   # 正しい使用方法
-   # my_instanceの型: IProxy[MyClass]
-   my_instance = new_MyClass("value")  # OK
-   ```
+```python
+class MyClass:
+    def __init__(self, dep1, dep2, non_injected_arg: str):
+        self.dep1 = dep1
+        self.dep2 = dep2
+        self.non_injected_arg = non_injected_arg
+
+# new_MyClassの型: IProxy[Callable[[str], MyClass]]
+new_MyClass = injected(MyClass)
+
+# 正しい使用方法
+# my_instanceの型: IProxy[MyClass]
+my_instance = new_MyClass("value")  # OK
+```
 
 これらの型の違いを理解することで、`@instance`と`@injected`の使い分けがより明確になります。
 
