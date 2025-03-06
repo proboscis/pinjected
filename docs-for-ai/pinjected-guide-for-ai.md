@@ -785,16 +785,266 @@ def test_my_function(my_function):
 
 ```
 
+# Pinjected 命名規則ベストプラクティス
+
+## 1. @instanceの命名規則
+
+`@instance`デコレータは依存オブジェクトの「提供者」を定義します。これは何らかのオブジェクトやリソースのインスタンスを返すものです。
+
+### 推奨パターン
+- **名詞形式**: `config`, `database`, `logger`
+- **形容詞_名詞**: `mysql_connection`, `production_settings`
+- **カテゴリ__具体名**: `model__resnet`, `dataset__mnist`
+
+### 避けるべきパターン
+- ~~動詞を含む形式~~: `setup_database`, `initialize_config`, `create_logger`
+- ~~動詞句~~: `get_connection`, `build_model`
+
+### 理由
+`@instance`は「何を提供するか」を表現するため、名詞形式が自然です。動詞を含むと「何をするか」という誤解を招きます。
+
+### 例
+```python
+# 良い例
+@instance
+def rabbitmq_connection(host, port, credentials):
+    return pika.BlockingConnection(...)
+
+# 良い例
+@instance
+def topic_exchange(channel, name):
+    channel.exchange_declare(...)
+    return name
+
+# 悪い例
+@instance
+def setup_database(host, port, username):  # × 動詞を含む
+    return db.connect(...)
+```
+
+## 2. @injectedの命名規則
+
+`@injected`デコレータは部分的に依存解決された「関数」を定義します。
+
+### 推奨パターン
+- **動詞形式**: `send_message`, `process_data`, `validate_user`
+- **動詞_目的語**: `create_user`, `update_config`
+- **非同期関数(async def)には`a_`接頭辞**: `a_fetch_data`, `a_process_queue`
+
+### 例
+```python
+# 良い例
+@injected
+def send_message(channel, /, queue: str, message: str):
+    # ...
+
+# 良い例
+@injected
+def process_image(model, preprocessor, /, image_path: str):
+    # ...
+
+# 非同期関数の良い例
+@injected
+async def a_fetch_data(api_client, /, user_id: str):
+    # ...
+
+# 非同期関数の良い例
+@injected
+async def a_process_queue(queue_service, /, batch_size: int = 10):
+    # ...
+```
+
+## 3. design()内のキー命名規則
+
+`design()`関数内でのキー命名は、依存項目の関係性を明確にします。
+
+### 推奨パターン
+- **スネークケース**: `learning_rate`, `batch_size`
+- **カテゴリ接頭辞**: `db_host`, `rabbitmq_port`, `logger_level`
+- **明確な名前空間**: `service__feature__param`
+
+### 例
+```python
+config_design = design(
+    # 良い例: 明確な関係性
+    rabbitmq_host="localhost",
+    rabbitmq_port=5672,
+    rabbitmq_username="guest",
+    
+    # 良い例: 論理的なグループ化
+    db_host="localhost",
+    db_port=3306,
+)
+```
+
+# Pinjected 型とプロトコルのベストプラクティス
+
+## 1. 型アノテーションの基本原則
+
+Pinjectedでは、適切な型アノテーションを使用することで、コードの安全性と保守性が向上します。特に複数の実装を持つ依存関係では、Protocolを活用した型定義が推奨されます。
+
+### 基本的な型アノテーション
+
+```python
+from typing import List, Dict, Optional, Callable
+
+@instance
+def database_connection(host: str, port: int) -> Connection:
+    return connect_to_db(host, port)
+
+@injected
+def fetch_users(db: Connection, /, user_id: Optional[int] = None) -> List[Dict[str, any]]:
+    # ...
+```
+
+## 2. Protocolを活用した依存関係の型定義
+
+同じインターフェースに対して複数の実装を用意する場合、`Protocol`を活用してインターフェースを定義します。これにより、依存関係の差し替えが型安全に行えます。
+
+### Protocolの定義と活用
+
+```python
+from typing import Protocol, runtime_checkable
+from PIL import Image
+
+# 画像処理プロトコルの定義
+@runtime_checkable
+class ImageProcessor(Protocol):
+    async def __call__(self, image) -> Image.Image:
+        pass
+
+# 実装バリエーション1
+@injected
+async def a_process_image__v1(preprocessor, /, image) -> Image.Image:
+    # 実装1のロジック
+    return processed_image
+
+# 実装バリエーション2（追加の依存あり）
+@injected
+async def a_process_image__v2(preprocessor, enhancer, /, image) -> Image.Image:
+    # 実装2のロジック
+    return processed_image
+
+# プロトコルを型として使用する関数
+@injected
+async def a_use_image_processor(
+    image_processor: ImageProcessor,  # Protocolを型として使用
+    logger,
+    /,
+    image,
+    additional_args: dict
+) -> Image.Image:
+    logger.info(f"Processing image with args: {additional_args}")
+    # image_processorは__call__を実装していることが保証されている
+    return await image_processor(image)
+
+# 設計によるバリエーション切り替え
+base_design = design(
+    a_process_image = a_process_image__v1  # デフォルトはv1を使用
+)
+
+advanced_design = base_design + design(
+    a_process_image = a_process_image__v2  # v2に切り替え
+)
+```
+
+
+# Pinjectedのmainブロックからの実行（非推奨）
+
+Pinjectedはmainブロックから直接使用可能。このパターンは非推奨。
+
+## スクリプトからの実行例
+
+```python
+from pinjected import instance, AsyncResolver, design, Design, IProxy
+import pandas as pd
+
+
+@instance
+async def dataset(dataset_path) -> pd.DataFrame:
+    return pd.read_csv(dataset_path)
+
+
+if __name__ == "__main__":
+    d: Design = design(
+        dataset_path="dataset.csv"
+    )
+    resolver = AsyncResolver(d)
+    dataset_proxy: IProxy = dataset
+    dataset: pd.DataFrame = resolver.provide(dataset_proxy)
+```
+
+## RabbitMQ接続例
+
+```python
+from pinjected import instance, injected, design, Design, AsyncResolver, IProxy
+import pika
+
+@instance
+def rabbitmq_connection(host, port, username, password):
+    credentials = pika.PlainCredentials(username, password)
+    parameters = pika.ConnectionParameters(
+        host=host,
+        port=port,
+        credentials=credentials
+    )
+    return pika.BlockingConnection(parameters)
+
+@instance
+def rabbitmq_channel(rabbitmq_connection):
+    return rabbitmq_connection.channel()
+
+@injected
+def send_message(rabbitmq_channel, /, routing_key: str, message: str):
+    rabbitmq_channel.basic_publish(
+        exchange='',
+        routing_key=routing_key,
+        body=message.encode()
+    )
+    return True
+
+if __name__ == "__main__":
+    d: Design = design(
+        host="localhost",
+        port=5672,
+        username="guest",
+        password="guest"
+    )
+    
+    resolver = AsyncResolver(d)
+    
+    channel_proxy: IProxy = rabbitmq_channel
+    channel = resolver.provide(channel_proxy)
+    
+    send_message_proxy: IProxy = send_message
+    send_func = resolver.provide(send_message_proxy)
+    
+    result = send_func("hello", "Hello World!")
+    print(f"送信結果: {result}")
+```
+
+## 非推奨理由
+
+1. CLIを使用する方が設定変更が容易
+2. コード量が増加
+3. Pinjectedの設計思想に反する
+
+代わりにCLI実行方式を使用:
+
+```bash
+python -m pinjected run my_module.my_function --param1=value1 --param2=value2
+```
+
 
 ## 9. まとめ
 
-Pinjectedは、研究開発現場の実験コードが抱える課題（巨大なcfg依存や膨大なif分岐、部分的テストの難しさなど）に対する効果的な解決策です。
+Pinjectedは研究開発コードの問題(大きなcfg依存、多数のif分岐、テスト困難性)の解決策。
 
 主なメリット:
 
-- **設定管理の柔軟性**: design()による依存定義とCLIオプション、~/.pinjected.pyによるローカル設定上書き
-- **if分岐の削減と可読性向上**: @instanceや@injectedを使った明示的なオブジェクト注入
-- **部分テスト・デバッグの容易化**: 特定コンポーネントの単独実行・確認
-- **高度なDSL的表現**: Injected/IProxyを用いた宣言的かつ直感的な記述
+- **設定管理**: design()によるDI定義、CLIオプション、~/.pinjected.pyでローカル設定対応
+- **コード構造改善**: @instanceと@injectedによるオブジェクト注入でif分岐削減
+- **テスト容易性**: コンポーネント単体実行・検証が簡単
+- **宣言的記述**: Injected/IProxyによるDSL的表現
 
-これらの特徴により、研究開発の反復速度が向上し、拡張や再利用も容易になります。
+結果として開発速度向上、コード再利用性が高まる。
