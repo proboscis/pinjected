@@ -789,7 +789,7 @@ def test_my_function(my_function):
 
 ## 1. @instanceの命名規則
 
-`@instance`デコレータは依存オブジェクトの「提供者」を定義します。これは何らかのオブジェクトやリソースのインスタンスを返すものです。
+`@instance`デコレータは依存オブジェクトの「提供者」を定義。
 
 ### 推奨パターン
 - **名詞形式**: `config`, `database`, `logger`
@@ -797,11 +797,11 @@ def test_my_function(my_function):
 - **カテゴリ__具体名**: `model__resnet`, `dataset__mnist`
 
 ### 避けるべきパターン
-- ~~動詞を含む形式~~: `setup_database`, `initialize_config`, `create_logger`
+- ~~動詞を含む形式~~: `setup_database`, `initialize_config`
 - ~~動詞句~~: `get_connection`, `build_model`
 
 ### 理由
-`@instance`は「何を提供するか」を表現するため、名詞形式が自然です。動詞を含むと「何をするか」という誤解を招きます。
+`@instance`は「何を提供するか」を表現するため名詞形式が適切。動詞だと「何をするか」の誤解を招く。
 
 ### 例
 ```python
@@ -824,7 +824,7 @@ def setup_database(host, port, username):  # × 動詞を含む
 
 ## 2. @injectedの命名規則
 
-`@injected`デコレータは部分的に依存解決された「関数」を定義します。
+`@injected`デコレータは部分的に依存解決された「関数」を定義。
 
 ### 推奨パターン
 - **動詞形式**: `send_message`, `process_data`, `validate_user`
@@ -847,35 +847,70 @@ def process_image(model, preprocessor, /, image_path: str):
 @injected
 async def a_fetch_data(api_client, /, user_id: str):
     # ...
-
-# 非同期関数の良い例
-@injected
-async def a_process_queue(queue_service, /, batch_size: int = 10):
-    # ...
 ```
 
 ## 3. design()内のキー命名規則
 
-`design()`関数内でのキー命名は、依存項目の関係性を明確にします。
+`design()`関数内のキー命名は依存項目の関係性を明確に。
 
 ### 推奨パターン
 - **スネークケース**: `learning_rate`, `batch_size`
-- **カテゴリ接頭辞**: `db_host`, `rabbitmq_port`, `logger_level`
+- **カテゴリ接頭辞**: `db_host`, `rabbitmq_port`
 - **明確な名前空間**: `service__feature__param`
 
 ### 例
 ```python
 config_design = design(
-    # 良い例: 明確な関係性
     rabbitmq_host="localhost",
     rabbitmq_port=5672,
     rabbitmq_username="guest",
     
-    # 良い例: 論理的なグループ化
     db_host="localhost",
     db_port=3306,
 )
 ```
+
+## 4. 非同期関数の命名規則
+
+### @instanceデコレータを使用する非同期関数
+
+@instanceデコレータを使用する非同期関数には`a_`接頭辞を付けない。理由：
+
+1. @instanceで設定されたオブジェクトはpinjected(AsyncResolver)が自動的にawaitして実体化するため、ユーザーが自分でawaitする必要がない
+2. @instanceは内部でawaitが必要ない限り、async defではなくdefで定義可能
+3. @instanceは「何を提供するか」を表現するため、名詞形式の維持が重要
+
+```python
+# 良い例 - a_接頭辞なし
+@instance
+async def rabbitmq_connection(host, port, username, password):
+    connection = await aio_pika.connect_robust(...)
+    return connection
+
+# 悪い例 - 不要なa_接頭辞
+@instance
+async def a_rabbitmq_connection(host, port, username, password):  # × a_接頭辞は不要
+    # ...
+```
+
+### @injectedデコレータを使用する非同期関数
+
+@injectedデコレータを使用する非同期関数には`a_`接頭辞を付ける。
+
+```python
+# 良い例 - a_接頭辞あり
+@injected
+async def a_send_message(rabbitmq_channel, /, routing_key: str, message: str):
+    await rabbitmq_channel.send(...)
+    return True
+
+# 悪い例 - a_接頭辞なし
+@injected
+async def fetch_data(api_client, /, user_id: str):  # × a_接頭辞がない
+    # ...
+```
+
+この命名規則に従うことで関数の役割と処理タイプが明確になり、コードの保守性が向上する。
 
 # Pinjected 型とプロトコルのベストプラクティス
 
@@ -1034,7 +1069,149 @@ if __name__ == "__main__":
 ```bash
 python -m pinjected run my_module.my_function --param1=value1 --param2=value2
 ```
+# @instanceと@injectedの本質的な違い
 
+## 抽象化の対象
+
+`@instance`と`@injected`は異なる抽象を表す:
+
+- **@instance**: 「値」を抽象化するIProxy
+    - 関数実行結果を表す
+    - すべての引数が依存解決済み
+
+- **@injected**: 「関数」を抽象化するIProxy
+    - 部分適用された関数を表す
+    - `/`左側は依存解決済み、右側はまだ必要
+
+`@instance`関数はDIシステムが呼び出し、ユーザーは直接呼び出さないため、デフォルト引数は不適切:
+
+```python
+# 不適切
+@instance
+def database_client(host="localhost", port=5432, user="default"):  # NG
+    return create_db_client(host, port, user)
+
+# 適切
+@instance
+def database_client(host, port, user):  # デフォルト引数なし
+    return create_db_client(host, port, user)
+
+# 設定はdesign()で提供
+base_design = design(
+    host="localhost", 
+    port=5432, 
+    user="default"
+)
+```
+
+## コマンドライン実行の挙動
+
+```python
+# @instance例
+@instance
+def my_instance(dependency1, dependency2):
+    return f"{dependency1} + {dependency2}"
+
+# 型: IProxy[str]
+# pinjected run → "value1 + value2" が出力
+
+# @injected例
+@injected
+def my_injected(dependency1, /, arg1):
+    return f"{dependency1} + {arg1}"
+
+# 型: IProxy[Callable[[str], str]]
+# pinjected run → 関数オブジェクト出力
+```
+
+実行結果が異なる理由:
+- `@instance`: 値を抽象化→実行結果は値
+- `@injected`: 関数を抽象化→実行結果は関数
+
+## IProxyオブジェクトの実行
+
+変数に格納したIProxyやそのメソッド呼び出しもpinjected runの対象になる:
+
+```python
+@instance
+def trainer(dep1):
+    return Trainer()
+
+@instance
+def model(dep2):
+    return Model()
+
+# これらは全てpinjected run可能
+trainer_proxy: IProxy[Trainer] = trainer  # インスタンス参照
+run_training: IProxy = trainer_proxy.train(model)  # メソッド呼び出し
+
+# 実行方法
+# python -m pinjected run module.trainer  # トレーナーインスタンス出力
+# python -m pinjected run module.trainer_proxy  # 同上
+# python -m pinjected run module.run_training  # トレーニング実行結果出力
+```
+
+これらの理解はPinjectedを効果的に活用する上で重要。
+
+# Pinjected エントリポイント設計のベストプラクティス
+
+## 1. IProxy変数を使用したエントリポイント
+
+```python
+# my_module.py
+@instance
+def trainer(dep1, dep2):
+    return Trainer(dep1, dep2)
+
+@instance
+def model(dep3):
+    return Model(dep3)
+
+@injected
+def train_func(trainer,model):
+    return trainer.train(model)
+
+# IProxy変数としてエントリポイントを定義
+run_train_v1:IProxy = train_func() # calling @injected proxy so we get the result of running trainer.train.
+run_train_v2: IProxy = trainer.run(model)
+```
+
+既存のIProxyオブジェクトのメソッド呼び出しや操作結果をエントリポイントとして定義する。
+エントリポイントには必ず`IProxy`型アノテーションをつける必要がある。`IProxy`型アノテーションがない場合、pinjectedはエントリポイントとして認識しない。
+
+## CLIからの実行
+
+両方のエントリポイントは同様にCLIから実行可能:
+
+```bash
+# @instanceを使ったエントリポイントの実行
+python -m pinjected run my_module.run_train_v1
+
+# IProxy変数を使ったエントリポイントの実行 
+python -m pinjected run my_module.run_train_v2
+```
+
+## 注意: @injectedはエントリポイントではない
+
+`@injected`デコレータはエントリポイントの定義には通常使用しない。理由:
+
+```python
+@injected
+def run_something(dep1, dep2, /, arg1, arg2):
+    # 処理内容
+    return result
+```
+
+このように定義した関数をpinjected runで実行すると、実行結果は値ではなく「関数オブジェクト」になる。これは`@injected`が「関数を抽象化するIProxy」を返すため。
+
+@injectedは主に、依存性を注入した上で追加の引数を受け取るような「部分適用関数」を定義する場合に適している。
+
+## エントリポイントの命名規則
+
+エントリポイントには明確な命名規則を使用するべき:
+
+- 推奨: `run_training`, `run_evaluation`, `run_inference`
+- 避けるべき: 具体的動作を表す一般的名前（`train`, `evaluate`, `predict`）
 
 ## 9. まとめ
 
