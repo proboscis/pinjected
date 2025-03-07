@@ -42,7 +42,7 @@ viz_target_design = providers(
     a=a,
     b=b
 )
-test_runnable = Injected.pure("hello world")
+test_runnable:IProxy = Injected.pure("hello world")
 
 
 
