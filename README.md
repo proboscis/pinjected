@@ -2,6 +2,8 @@
 
 
 # Pinjected
+[![codecov](https://codecov.io/gh/proboscis/pinjected/branch/main/graph/badge.svg)](https://codecov.io/gh/proboscis/pinjected)
+
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
 
 ## Prerequisites
