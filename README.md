@@ -5,7 +5,6 @@
 [![codecov](https://codecov.io/gh/proboscis/pinjected/branch/main/graph/badge.svg)](https://codecov.io/gh/proboscis/pinjected)
 
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
-
 ## Prerequisites
 - Python 3.10 or higher
 - Basic understanding of Python decorators and functions
@@ -27,7 +26,7 @@ Dependency injection is a design pattern where objects receive their dependencie
 - **instances()**: Creates a design with value-based dependencies
 - **Design**: Configuration registry that manages dependencies
 - **to_graph()**: Creates an object graph that resolves dependencies
-=======
+
 ## Development
 Please refer to [Coding Guidelines](CODING_GUIDELINES.md) for development standards and best practices.
 
