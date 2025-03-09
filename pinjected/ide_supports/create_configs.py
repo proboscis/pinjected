@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Mapping
 
 from beartype import beartype
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from returns.maybe import Some
 
 import pinjected
 import pinjected.global_configs
 from pinjected import instances, Injected, Design, instance, injected
-from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
+from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import MetaContext, IdeaRunConfigurations
@@ -77,24 +77,25 @@ def create_idea_configurations(
         /,
         wrap_output_with_tag=True
 ):
-    pinjected.global_configs.pinjected_TRACK_ORIGIN = False
-    configs: IdeaRunConfigurations = inspect_and_make_configurations(module_path)
-    pinjected.global_configs.pinjected_TRACK_ORIGIN = True
-    logger.info(f"configs:{configs}")
+    with logger.contextualize(tag="create_idea_configurations"):
+        pinjected.global_configs.pinjected_TRACK_ORIGIN = False
+        configs: IdeaRunConfigurations = inspect_and_make_configurations(module_path)
+        pinjected.global_configs.pinjected_TRACK_ORIGIN = True
+        # logger.info(f"configs:{configs}")
 
-    # since stdout is contaminated by many other modules,
-    # We need to think of other way to pass information.
-    # should I use a tempfile?
-    # or, maybe we can use a separator... like <pinjected>...</pinjected>
-    # so that the caller must parse the output.
+        # since stdout is contaminated by many other modules,
+        # We need to think of other way to pass information.
+        # should I use a tempfile?
+        # or, maybe we can use a separator... like <pinjected>...</pinjected>
+        # so that the caller must parse the output.
 
-    if print_to_stdout:
-        data_str = (json.dumps(asdict(configs)))
-        if wrap_output_with_tag:
-            data_str = f"<pinjected>{data_str}</pinjected>"
-        print(data_str)
-    else:
-        return configs
+        if print_to_stdout:
+            data_str = (json.dumps(asdict(configs)))
+            if wrap_output_with_tag:
+                data_str = f"<pinjected>{data_str}</pinjected>"
+            print(data_str)
+        else:
+            return configs
 
 
 @instance
@@ -146,7 +147,7 @@ def list_completions(
     def key_to_completion(key):
         tgt = total_mappings[key]
         match tgt:
-            case PartialInjectedFunction(InjectedFunction(object(__original__=func), kw_mapping)):
+            case PartialInjectedFunction(InjectedFromFunction(object(__original__=func), kw_mapping)):
                 name, signature = get_filtered_signature(func)
                 return dict(
                     name=name,

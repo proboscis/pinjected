@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import networkx as nx
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from networkx.drawing.nx_agraph import graphviz_layout
 from pyvis.network import Network
 
@@ -47,12 +47,12 @@ class NxGraphUtil:
 
     def show_html(self):
         if "darwin" in platform.system().lower():
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.info(f"showing visualization html")
             self.save_as_html("di_visualiztion.html")
             os.system("open di_visualiztion.html")
         else:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.warning("visualization of a design is disabled for non mac os.")
 
     def show_html_temp(self):

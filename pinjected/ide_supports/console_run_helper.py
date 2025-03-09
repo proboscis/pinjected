@@ -163,7 +163,7 @@ def generate_code_with_reload(
     :param target_name:
     :return:
     """
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     source = Path(script_path).read_text()
     func_table = extract_func_source_and_imports_dict(script_path)
     logger.info(f"func_table:{pformat(func_table)}")

@@ -8,13 +8,13 @@ from typing import Callable, List, Union
 
 import networkx as nx
 from cytoolz import memoize
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Failure
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
-from pinjected.di.injected import Injected, InjectedFunction, InjectedPure, MappedInjected, \
+from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure, MappedInjected, \
     ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
     PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
@@ -96,7 +96,7 @@ class DIGraph:
         #        else:
         #            assert False
         _id = self.injected_to_id[i]
-        if isinstance(i, InjectedFunction):
+        if isinstance(i, InjectedFromFunction):
             deps = []
             for k, v in i.kwargs_mapping.items():
                 dep_name = f"{k}_{_id}"
@@ -241,7 +241,7 @@ class DIGraph:
             res = file + "\n" + src
 
         except Exception as e:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.warning(f"{repr(e)[:100]} error from {repr(f)[:100]}")
             res = f"failed:{f} from {f}"
         return res
@@ -260,7 +260,7 @@ class DIGraph:
         match tgt:
             case InjectedWithDefaultDesign(src, default_design):
                 return self.parse_injected(src)
-            case InjectedFunction(f) as _if:
+            case InjectedFromFunction(f) as _if:
                 try:
                     desc = f"Injected:{safe(getattr)(_if.original_function, '__name__').value_or(repr(f))}"
                 except Exception as e:
@@ -270,7 +270,7 @@ class DIGraph:
             case InjectedPure(v):
                 desc = f"Pure:{v}"
                 return ("injected", desc, self.get_source_repr(v) if isinstance(v, Callable) else str(v))
-            case PartialInjectedFunction(InjectedFunction(src)):
+            case PartialInjectedFunction(InjectedFromFunction(src)):
                 desc = f"partial=>{src.__name__}"
                 return ("injected", desc, self.get_source_repr(src))
             case PartialInjectedFunction(src):
@@ -310,7 +310,7 @@ class DIGraph:
         )
 
     def create_graph_from_nodes(self, nodes: List[str], replace_missing=True):
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"making dependency graph for {nodes}.")
         nx_graph = nx.DiGraph()
         # why am I seeing no deps?
@@ -436,7 +436,7 @@ g = d.to_graph()
         if isinstance(roots, str):
             roots = [roots]
         # hmm,
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"making dependency graph for {roots}.")
         nx_graph = nx.DiGraph()
         # why am I seeing no deps?
@@ -493,7 +493,7 @@ g = d.to_graph()
             G = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
             G.plot_mpl()
         else:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.warning("visualization of a design is disabled for non mac os.")
 
     def show_html(self, roots, visualize_missing=True):
