@@ -14,6 +14,10 @@ permissions:
   repository-projects: read
   security-events: write
 
+env:
+  GH_TOKEN: ${{ secrets.GH_PAT }}
+  GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -23,10 +27,26 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GH_PAT }}
+        
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        
+    - name: Configure Git for private packages
+      run: |
+        git config --global credential.helper store
+        git config --global url."https://${GH_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+        
+    - name: Configure pip for private packages
+      run: |
+        mkdir -p ~/.pip
+        echo "[global]
+        extra-index-url = https://oauth2:${GH_TOKEN}@github.com
+        trusted-host = github.com" > ~/.pip/pip.conf
+        chmod 600 ~/.pip/pip.conf
         
     - name: Install Poetry
       run: |
@@ -42,7 +62,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: .venv
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-poetry-
           
