@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from beartype import beartype
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from pathlib import Path
 from typing import Dict, List
 
@@ -10,7 +10,7 @@ from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.v2.keys import StrBindKey
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 @dataclass
@@ -34,24 +34,35 @@ class MetaContext:
 
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
-        from pinjected import instances
-        if not isinstance(file_path, Path):
-            file_path = Path(file_path)
-        designs = list(walk_module_attr(file_path, meta_design_name))
-        designs.reverse()
-        res = EmptyDesign
-        overrides = EmptyDesign
-        for item in designs:
-            logger.debug(f"{meta_design_name} at :{item.var_path}")
-            res = res + item.var
-            overrides += await AsyncResolver(item.var).provide_or("overrides", EmptyDesign)
-        res += instances(
-            overrides=overrides
-        )
-        return MetaContext(
-            trace=designs,
-            accumulated=res
-        )
+        with logger.contextualize(tag="gather_meta_context"):
+            from pinjected import instances
+            if not isinstance(file_path, Path):
+                file_path = Path(file_path)
+            designs = list(walk_module_attr(file_path, meta_design_name))
+            designs.reverse()
+            res = EmptyDesign
+            overrides = EmptyDesign
+            key_to_src = dict()
+            for item in designs:
+                logger.info(f"Added {meta_design_name} at :{item.var_path}")
+                for k,v in item.var.bindings.items():
+                    logger.info(f"Binding {k} from {item.var_path}")
+                logger.trace(f"Current design bindings before: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+                # First collect any overrides
+                overrides += (new_d:=await AsyncResolver(item.var).provide_or("overrides", EmptyDesign))
+                for k,v in new_d.bindings.items():
+                    key_to_src[k] = item.var_path
+                # Then apply the design itself to ensure its bindings (like 'name') take precedence
+                res = res + item.var
+                logger.trace(f"Current design bindings after: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+            for k,v in key_to_src.items():
+                logger.debug(f"Override Key {k} from {v}")
+            # Apply overrides last
+            res = res + instances(overrides=overrides)
+            return MetaContext(
+                trace=designs,
+                accumulated=res
+            )
 
     @staticmethod
     @beartype
@@ -66,18 +77,23 @@ class MetaContext:
 
     @property
     async def a_final_design(self):
-        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
-        acc = self.accumulated
-        # g = acc.to_resolver()
-        r = AsyncResolver(acc)
-        if StrBindKey('default_design_paths') in acc:
-            module_path = (await r['default_design_paths'])[0]
-            design = load_variable_by_module_path(module_path)
-        else:
-            design = EmptyDesign
-        overrides = await r.provide_or('overrides', EmptyDesign)
+        with logger.contextualize(tag="design_preparation"):
+            from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+            acc = self.accumulated
+            # g = acc.to_resolver()
+            r = AsyncResolver(acc)
+            # First get any overrides from the accumulated design
+            overrides = await r.provide_or('overrides', EmptyDesign)
 
-        return load_user_default_design() + design + overrides + load_user_overrides_design()
+            # Then load design from default_design_paths if specified
+            if StrBindKey('default_design_paths') in acc:
+                module_path = (await r['default_design_paths'])[0]
+                design = load_variable_by_module_path(module_path)
+            else:
+                design = EmptyDesign
+
+            # Apply in order: user defaults, loaded design, accumulated design (for name binding), overrides, user overrides
+            return load_user_default_design() + design + acc + overrides + load_user_overrides_design()
 
     @staticmethod
     def load_default_design_for_variable(var: ModuleVarPath | str):

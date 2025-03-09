@@ -262,7 +262,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def bind(_target_function_, _dynamic_dependencies_: set[str] = None,
-             **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFunction":
+             **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFromFunction":
         assert not isinstance(_target_function_, Injected), f"target_function should not be an instance of Injected"
         # if isinstance(_target_function_, Injected):
         #     _target_function_ = _target_function_.get_provider()
@@ -280,7 +280,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                 "not available")
         else:
             async_target_function = _target_function_
-        res = InjectedFunction(
+        res = InjectedFromFunction(
             original_function=_target_function_,
             target_function=async_target_function,
             kwargs_mapping=kwargs_mapping,
@@ -308,7 +308,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             name = frame.f_lineno
             return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
         except Exception as e:
-            # from loguru import logger
+            # from pinjected.logging import logger
             # logger.warning(f"failed to get name of the injected location.")
             return f"__unknown_module__maybe_due_to_pickling__"
 
@@ -376,7 +376,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             async def async_f(*args, **kwargs):
                 return f(*args, **kwargs)
 
-            # from loguru import logger
+            # from pinjected.logging import logger
             # logger.warning(f"converting {f} to async function")
 
             new_f = async_f
@@ -396,8 +396,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             # return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
             return mod, name
         except Exception as e:
-            # from loguru import logger
-            from loguru import logger
+            # from pinjected.logging import logger
+            from pinjected.pinjected_logging import logger
             logger.warning(f"failed to get name of the injected location, due to {e}")
             return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
 
@@ -743,7 +743,7 @@ class InjectedCache(Injected[T]):
         self.program = Injected.ensure_injected(self.program)
 
         async def impl(t):
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             resolver, cache, *deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -762,7 +762,7 @@ class InjectedCache(Injected[T]):
             Injected.by_name("__resolver__"),
             self.cache,
             *self.program_dependencies
-        ).map(impl)
+        ).eval().map(impl)
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 
@@ -819,12 +819,12 @@ class AsyncInjectedCache(Injected[T]):
         assert isinstance(self.program, Injected)
         assert isinstance(self.program_dependencies, list), f"program_dependencies:{self.program_dependencies}"
 
-        from pinjected.v2.resolver import AsyncResolver
+        from pinjected.v2.async_resolver import AsyncResolver
         # @cached_coroutine
         async def impl(__resolver__: AsyncResolver, cache: IAsyncDict, deps: list):
             # deps are all awaited here.
             # deps are only used to calc hash key
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             assert isinstance(cache, IAsyncDict)
             logger.info(f"Checking cache for {self.program} with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -975,7 +975,7 @@ def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[In
         try:
             argspec = inspect.getfullargspec(dep)
         except Exception as e:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.error(f"failed to get argspec of {dep}. of type {type(dep)}")
             raise e
 
@@ -1022,8 +1022,10 @@ def assert_kwargs_type(v):
         raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
 
 
-class InjectedFunction(Injected[T]):
-    # since the behavior differs in classes extending Generic[T]
+class InjectedFromFunction(Injected[T]):
+    """
+    Used for Injected.bind
+    """
     __match_args__ = ("target_function", "kwargs_mapping")
 
     def __init__(self,
@@ -1033,7 +1035,7 @@ class InjectedFunction(Injected[T]):
                  dynamic_dependencies: Optional[Set[str]] = None
                  ):
         # I think we need to know where this class is instantiated outside of pinjected_package
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         self.origin_frame = get_instance_origin("pinjected")
         self.original_function = original_function
         super().__init__()
@@ -1062,13 +1064,13 @@ class InjectedFunction(Injected[T]):
         self._dynamic_dependencies = dynamic_dependencies
 
     def override_mapping(self, **kwargs: Union[str, type, Callable, Injected]):
-        return InjectedFunction(self.target_function, {**self.kwargs_mapping, **kwargs})
+        return InjectedFromFunction(self.target_function, {**self.kwargs_mapping, **kwargs})
 
     def get_provider(self):
         signature = self.get_signature()
 
         async def impl(**kwargs):
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             deps = dict()
 
             async def update(key):
@@ -1282,7 +1284,7 @@ class DictInjected(Injected):
         super().__init__()
         self.srcs = {k: Injected.ensure_injected(v) for k, v in srcs.items()}
         assert all(isinstance(s, Injected) for s in self.srcs.values()), self.srcs
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         logger.warning(f"use of DictInjected is deprecated. use Injected.dict instead.")
 
     def dependencies(self) -> Set[str]:

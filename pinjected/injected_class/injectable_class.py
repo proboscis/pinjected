@@ -9,7 +9,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import wraps
 
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
 from pinjected import Injected
 from pinjected.compatibility.task_group import TaskGroup
@@ -17,7 +17,7 @@ from pinjected.di.partially_injected import Partial
 from pinjected.injected_class.extract_self_attrs import extract_attribute_accesses
 from pinjected.injected_class.test_module import PClassExample
 from pinjected.v2.keys import StrBindKey
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 import asyncio
 
 

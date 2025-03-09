@@ -52,7 +52,7 @@ class PinjectedTestResult:
 
 
 def escape_loguru_tags(text):
-    return text.replace('<', '\<')
+    return text.replace('<', r'\<')
 
 
 class CommandException(Exception):
@@ -103,6 +103,7 @@ async def a_pinjected_run_test(
             logger.error(f"read_stream failed with {e}")
             raise e
 
+    await a_pinjected_test_event_callback(TestEvent(key, 'start'))
     async with TaskGroup() as tg:
         # logger.info(f"waiting for command to finish: {command}")
         read_stdout_task = tg.create_task(read_stream(proc.stdout, 'stdout'))
@@ -132,13 +133,15 @@ async def a_pinjected_run_test(
             stderr=stderr
         )
         result = Failure(exc)
-    return PinjectedTestResult(
+    res = PinjectedTestResult(
         target=target,
         stdout=stdout,
         stderr=stderr,
         value=result,
         trace=trace
     )
+    await a_pinjected_test_event_callback(TestEvent(key, res))
+    return res
 
 
 @injected
@@ -151,7 +154,7 @@ async def a_pinjected_run_test__multiprocess(logger, /, target: VariableInFile) 
     # stderr = io.StringIO()
     # logger.add(stderr)
     # with redirect_stdout(stdout), redirect_stderr(stderr):
-    # from loguru import logger
+    # from pinjected.logging import logger
     # there is no way to capture the stdout/stderr using multiprocessing.Process
     # so we should instead use asyncio.create_subprocess_shell.
     stdout, stderr, trace, res = await a_run_target__mp(
@@ -251,13 +254,15 @@ async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
 async def a_pinjected_test_event_callback(
         logger,
 ):
-    viz_iter: AsyncIterator[RichTaskVisualizer] = task_visualizer()
+    viz_fac = task_visualizer
+    viz_iter = None
     viz: RichTaskVisualizer = None
     spinners = dict()
+    active_tests = set()
     failures = []
     from rich.markup import escape
 
-    def show_failure(res:PinjectedTestResult):
+    def show_failure(res: PinjectedTestResult):
         tgt: VariableInFile = res.target
         mod_path = tgt.to_module_var_path().path
         mod_file = tgt.file_path
@@ -267,25 +272,33 @@ async def a_pinjected_test_event_callback(
         rich.print(panel)
 
     async def impl(e: ITestEvent):
-        nonlocal viz, failures
+        nonlocal viz,viz_iter, failures, active_tests
+        # We must handle a case where TestMainEvent('start') is not called...
+        # because the testfunction can be called solely.
+
         match e:
-            case TestMainEvent('start'):
-                viz = await viz_iter.__aenter__()
-            case TestMainEvent('end'):
-                await viz_iter.__aexit__(None, None, None)
-                for res in failures:
-                    show_failure(res)
-            case TestEvent(_, 'queued'):
-                viz.add(e.name, "queued", "")
-            case TestEvent(_, 'start'):
-                # viz.update_message(e.name, "running")
+            # case TestMainEvent('start'):
+            #     viz = await viz_iter.__aenter__()
+            # case TestMainEvent('end'):
+            #     await viz_iter.__aexit__(None, None, None)
+            #     for res in failures:
+            #         show_failure(res)
+            # case TestEvent(_, 'queued'):
+            #     viz.add(e.name, "queued", "")
+            case TestEvent(key, 'start'):
+                if viz is None:
+                    viz_iter = viz_fac()
+                    viz = await viz_iter.__aenter__()
+                active_tests.add(key)
+                viz.add(e.name, "running", "")
                 spinner = Spinner("aesthetic")
                 spinners[e.name] = spinner
                 viz.update_status(e.name, spinner)
             case TestEvent(_, TestStatus(msg)):
                 viz.update_message(e.name, escape(msg))
                 pass
-            case TestEvent(_, PinjectedTestResult() as res):
+            case TestEvent(key, PinjectedTestResult() as res):
+                active_tests.remove(key)
                 if res.failed():
                     viz.update_status(e.name, f"[bold red]Failed[/bold red]")
                     lines = res.stderr.split('\n')
@@ -294,6 +307,14 @@ async def a_pinjected_test_event_callback(
                 else:
                     viz.update_status(e.name, f"[bold green]Success[/bold green]")
                     viz.update_message(e.name, f"done")
+
+                if not active_tests:
+                    await viz_iter.__aexit__(None, None, None)
+                    for res in failures:
+                        show_failure(res)
+                    viz = None
+
+
 
     return impl
 
@@ -307,11 +328,12 @@ async def a_run_tests(
         tests: list[VariableInFile] | AsyncIterator[VariableInFile],
 ):
     # hmm, i want a queue here...
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     n_worker = multiprocessing.cpu_count()
     logger.info(f"n_worker={n_worker}")
     queue = asyncio.Queue()
     results = asyncio.Queue()
+
     await a_pinjected_test_event_callback(TestMainEvent('start'))
     async with TaskGroup() as tg:
         async def enqueue():
@@ -333,9 +355,7 @@ async def a_run_tests(
                     await results.put(('stop', None))
                     break
                 key = target.to_module_var_path().path
-                await a_pinjected_test_event_callback(TestEvent(key, 'start'))
                 res = await a_pinjected_run_test(target)
-                await a_pinjected_test_event_callback(TestEvent(key, res))
                 fut.set_result(res)
                 await results.put(('result', res))
 

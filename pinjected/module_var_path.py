@@ -63,7 +63,7 @@ class ModuleVarPath:
 
 @beartype
 def load_variable_by_module_path(full_module_path:str):
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     logger.info(f"loading {full_module_path}")
     module_path_parts = full_module_path.split('.')
     variable_name = module_path_parts[-1]

@@ -7,9 +7,9 @@ from frozendict import frozendict
 from pinjected import *
 from pinjected import Injected
 from pinjected.di.partially_injected import Partial
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 def target_function(d1, d2, d3, /, a, b, *args, named=4, **kwargs):

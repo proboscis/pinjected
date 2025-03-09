@@ -14,7 +14,7 @@ from returns.result import Failure, Success
 
 from pinjected.di.design import DesignImpl, AddValidation
 from pinjected.di.validation import ValSuccess, ValFailure
-from pinjected.di.injected import Injected, InjectedPure, InjectedFunction
+from pinjected.di.injected import Injected, InjectedPure, InjectedFromFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
@@ -87,7 +87,7 @@ def check_picklable(tgt: dict):
         failures = rec_val_filter(lambda v: isinstance(v[0], Failure), rec_check)
         # failures = [(k, v, tgt[k]) for k, v in target_check.items() if isinstance(v, Failure)]
 
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         logger.error(f"Failed to pickle target: {pformat(failures)}")
         logger.error(f"if the error message contains EncodedFile pickling error, "
                      f"check whether the logging module is included in the target object or not.")
@@ -137,7 +137,7 @@ def get_class_aware_args(f):
 
 def to_readable_name(o):
     match o:
-        case BindInjected(InjectedFunction(func, _), _):
+        case BindInjected(InjectedFromFunction(func, _), _):
             return func.__name__
         case BindInjected(InjectedPure(value), _):
             return value
@@ -273,7 +273,7 @@ def providers(**kwargs):
 
     Parameters:
     -----------
-    \*\*kwargs : dict
+    **kwargs : dict
         Arbitrary keyword arguments. Each key represents the name of the dependency, and the value can be either:
         1. A provider function, which is a callable that returns the necessary object for the dependency. This function can itself require other dependencies.
         2. An `Injected` instance which encapsulates both the creation of the dependency and its own dependencies.
@@ -325,7 +325,7 @@ def add_code_locations(design, kwargs, frame):
         metas = {k: BindMetadata(Some(loc)) for k, loc in locs.items()}
         # metas = dict()
     except OSError as ose:
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         logger.warning(f"failed to get code locations:{ose}")
         metas = dict()
 
@@ -399,7 +399,8 @@ def classes(**kwargs):
 
     Parameters:
     -----------
-    \*\*kwargs : dict
+    **kwargs : dict
+
         Arbitrary keyword arguments. Each key is a string that represents the dependency name, and the value is the class to be bound.
 
     Returns:

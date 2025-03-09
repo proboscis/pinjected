@@ -160,7 +160,7 @@ class BindInjected(IBind[T]):
         assert isinstance(self.src, Injected), f"src must be an Injected, got {self.src}"
 
     async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         keys = {StrBindKey(d) for d in self.src.dependencies()}
         dep_dict = {d.name: deps[d] for d in keys}
         func = self.src.get_provider()

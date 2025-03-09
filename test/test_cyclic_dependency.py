@@ -4,9 +4,9 @@ import pytest
 
 from pinjected import instances, providers, injected
 from pinjected.exceptions import DependencyResolutionError
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_validation():

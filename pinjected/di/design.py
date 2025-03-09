@@ -11,7 +11,7 @@ from pinjected.v2.callback import IResolverCallback
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import Injected
-from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFunction
+from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFromFunction
 # from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import IBind, BindInjected, ExprBind
@@ -254,14 +254,14 @@ class DesignImpl(Design):
         bindings = self._bindings.copy()
         for k, v in kwargs.items():
             if isinstance(v, type):
-                from loguru import logger
+                from pinjected.pinjected_logging import logger
                 logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
             bindings[StrBindKey(k)] = BindInjected(Injected.pure(v))
         return DesignImpl(_bindings=bindings)
 
     @staticmethod
     def to_bind(tgt) -> IBind:
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         match tgt:
             case IBind():
                 return tgt
@@ -298,7 +298,8 @@ class DesignImpl(Design):
         return res
 
     def to_resolver(self, callback: Optional[IResolverCallback] = None):
-        from pinjected.v2.resolver import AsyncResolver, BaseResolverCallback
+        from pinjected.v2.resolver import BaseResolverCallback
+        from pinjected.v2.async_resolver import AsyncResolver
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
             callbacks = []
@@ -374,7 +375,7 @@ class DesignImpl(Design):
         res = dict()
         for k, v in self.bindings.items():
             match v:
-                case BindInjected(InjectedFunction(f, args)):
+                case BindInjected(InjectedFromFunction(f, args)):
                     res[k] = f.__name__
                 case BindInjected(InjectedPure(value)):
                     res[k] = str(value)
@@ -393,7 +394,7 @@ class DesignImpl(Design):
                 method.__name__ = name
                 return method
             except AttributeError as ae:
-                from loguru import logger
+                from pinjected.pinjected_logging import logger
                 logger.warning(f"somehow failed to assign new name to a provider function. trying to wrap.")
 
                 def _wrapper(self, *args, **kwargs):

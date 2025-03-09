@@ -4,7 +4,7 @@ from typing import Set, Awaitable, TypeVar, Callable
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
 from pinjected.di.expr_util import Expr, Object, show_expr, UnaryOp, Call, BiOp, Attr, GetItem
-from pinjected.di.injected import InjectedPure, InjectedFunction, InjectedByName
+from pinjected.di.injected import InjectedPure, InjectedFromFunction, InjectedByName
 from pinjected.di.proxiable import T, DelegatedVar
 from pinjected.di.static_proxy import eval_applicative, ast_proxy, \
     AstProxyContextImpl
@@ -28,7 +28,7 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
 
     def _await_(self, tgt: Injected):
         async def awaiter(x):
-            # from loguru import logger
+            # from pinjected.logging import logger
             # logger.info(f"awaiting {x} due to await UnaryOp")
             res = await x
             # logger.info(f"obtained {res} for UnaryOp")
@@ -120,7 +120,7 @@ def reduce_injected_expr(expr: Expr):
     match expr:
         case Object(InjectedPure(value)):
             return str(value)
-        case Object(InjectedFunction(func, kwargs)):
+        case Object(InjectedFromFunction(func, kwargs)):
             reduced = reduce_injected_expr(Object(kwargs))
             return f"{func.__name__}({reduced})"
         case Object(DelegatedVar() as dv):
@@ -163,7 +163,7 @@ def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
 
 def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
     memo = dict()
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
 
     def impl(expr):
         match expr:
@@ -195,7 +195,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
 
 
 def await_awaitables(expr: Expr[T]) -> Expr:
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     # logger.info(f"await_awaitables {expr}")
 
     def transformer(expr: Expr):

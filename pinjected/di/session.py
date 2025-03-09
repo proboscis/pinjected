@@ -23,7 +23,7 @@ class SessionScope(ISessionScope):
     def provide(self, binding_key, default_provider_fn):
         # logger.info(f"{self} provide {binding_key}")
         if not binding_key in self.cache:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             self.provide_depth += 1
             indent = "| " * self.provide_depth
             self.pending.append(binding_key)
@@ -62,7 +62,7 @@ class ChildScope(ISessionScope):
     def provide(self, binding_key, default_provider_fn):
         # logger.info(f"{self} provide {binding_key}")
         if binding_key not in self.cache:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.debug(f"ChildScope: -> {binding_key}")
             if binding_key in self.override_targets:
                 self.cache[binding_key] = default_provider_fn()
