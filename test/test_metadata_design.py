@@ -2,9 +2,9 @@ import asyncio
 
 from pinjected import instances, Design
 from pinjected.di.design import AddSummary, AddTags
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_add_metadata():

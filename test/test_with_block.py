@@ -5,7 +5,7 @@ from pinjected import instances, Injected, injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverrideContext, DesignOverridesStore
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
-from pinjected.v2.resolver import AsyncResolver
+from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_ovr_context():
@@ -34,9 +34,14 @@ def test_ovr_store():
     assert len(store.bindings) == 2
 
 
-def test_with_design():
+
+def test_with_design(override_store_isolation):
+    """
+    Test nested design contexts with store isolation.
+    
+    Uses override_store_isolation fixture to ensure test has a clean store state.
+    """
     global x, y, DESIGN_OVERRIDES_STORE
-    #DESIGN_OVERRIDES_STORE = DesignOverridesStore()
     with instances(bind='level1', group='l1'):
         x = injected('hello')
         with instances(bind='level2'):

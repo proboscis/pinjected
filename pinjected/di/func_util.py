@@ -1,6 +1,6 @@
 import inspect
 from typing import Callable, Tuple, Any, Dict
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
 
 class MissingRequiredArgumentError(ValueError):

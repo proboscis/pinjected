@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from functools import wraps
 
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
 """
 Caching is an important feature for a pclass.

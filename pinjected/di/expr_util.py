@@ -290,7 +290,7 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
 
         reduced = custom(e)
         if reduced:
-            from loguru import logger
+            from pinjected.pinjected_logging import logger
             logger.info(f"reduced:{reduced}")
             return reduced
         match e:

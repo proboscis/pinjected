@@ -58,7 +58,7 @@ def check(tgt: Injected, trace: list[tuple[str, object]] = None):
     from pinjected.di.app_injected import EvaledInjected
     from pinjected.di.injected import MappedInjected, MZippedInjected, InjectedPure
     import cloudpickle
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     try:
         cloudpickle.dumps(tgt)
         return
@@ -86,46 +86,3 @@ def check(tgt: Injected, trace: list[tuple[str, object]] = None):
             raise RuntimeError(f'unknown injected type:{tgt}')
 
 
-def test_ensure_injected():
-    import cloudpickle
-    from loguru import logger
-    cloudpickle.dumps(realistic_various_pairs)
-    cloudpickle.dumps(realistic_styles.eval())
-    cloudpickle.dumps(injected('imagenet_val').sample_with_indices(
-    ).eval())
-    cloudpickle.dumps(Injected.pure([]).proxy.hello.eval())
-
-    cloudpickle.dumps(Injected.pure('something').proxy().eval())  # this is fine
-    cloudpickle.dumps(Injected.pure('something').proxy('hello').eval())  # this is fine
-    cloudpickle.dumps(Injected.pure('something').proxy(None, None).eval())  # this is fine
-
-    fine_ast = Injected.pure('something').proxy()
-    damn_ast = Injected.pure('something').proxy([])
-    evaled_fine_ast = fine_ast.eval()
-    evaled_damn_ast = damn_ast.eval()
-    logger.info(f"fine_ast:{fine_ast}")
-    logger.info(f"damn_ast:{damn_ast}")
-    logger.info(f"evaled_fine_ast:{evaled_fine_ast}")
-    logger.info(f"evaled_damn_ast:{evaled_damn_ast}")
-
-    cloudpickle.dumps(evaled_fine_ast)
-    cloudpickle.dumps(evaled_damn_ast.ast)  # this should be okey
-    check(evaled_damn_ast)
-    logger.info(f"evaled_damn_ast.value:{evaled_damn_ast.value}")
-    logger.info(f"evaled_damn_ast.value.src:{evaled_damn_ast.value.src}")
-    cloudpickle.dumps(evaled_damn_ast.value.src)  # so, this evaled value is not picklable
-    cloudpickle.dumps(evaled_damn_ast.value)  # so, this evaled value is not picklable
-
-    cloudpickle.dumps(evaled_damn_ast)  # this should fail.
-    cloudpickle.dumps(Injected.pure('something').proxy((0,)).eval())  # this is not
-    cloudpickle.dumps(Injected.pure('something').proxy([]).eval())  # this is not
-
-    cloudpickle.dumps(injected('imagenet').sample_with_indices([]))
-    cloudpickle.dumps(injected('imagenet_val').sample_with_indices([]).eval())
-    cloudpickle.dumps(injected('imagenet_val').sample_with_indices(
-        imagenet_various_absolute_idx,
-        injected('image_size')
-    ).eval())
-    cloudpickle.dumps(imagenet_various_samples.eval())
-    cloudpickle.dumps(realistic_various_pairs.eval())
-    # realistic_various_pairs_artifact: Injected = MyArtifact(realistic_various_pairs, "realistic_various_pairs")

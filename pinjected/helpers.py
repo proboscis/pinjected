@@ -54,7 +54,7 @@ class RunnableSpec:
 
 
 def get_design_path_from_var_path(var_path):
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     logger.info(f"looking for default design paths from {var_path}")
     module_path = ".".join(var_path.split(".")[:-1])
     # we need to get the file path from var path
@@ -70,13 +70,13 @@ def get_design_path_from_var_path(var_path):
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     logger.info(f"looking for default design_path")
     return find_module_attr(file_path, '__default_design_path__')
 
 
 def find_default_working_dir(file_path: str) -> Optional[str]:
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     logger.info(f"looking for default working dir")
     return find_module_attr(file_path, '__default_working_dir__')
 
@@ -91,7 +91,7 @@ def find_default_design_paths(module_path, default_design_path: Optional[str]) -
     default_design_path: list[str] = (
             maybe(lambda: default_design_path)() | maybe(find_default_design_path)(module_path)).map(
         lambda p: [p]).value_or([])
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     logger.debug(f"default design paths:{default_design_paths}")
     logger.debug(f"default design path:{default_design_path}")
     default_design_paths = default_design_paths + default_design_path

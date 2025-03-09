@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from pinjected.injected_class.test_module import PClassExample
 
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
 class AttributeReplacer(ast.NodeTransformer):
     def __init__(self, attrs_to_replace):

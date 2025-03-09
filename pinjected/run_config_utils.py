@@ -35,13 +35,13 @@ from typing import Optional, List, Dict, OrderedDict, Callable, Any
 
 import loguru
 from cytoolz import memoize
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
 from pinjected import Injected, Design, injected_function, Designed
 from pinjected.di.expr_util import Expr, Call, Object
-from pinjected.di.injected import PartialInjectedFunction, InjectedFunction
+from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import instances, providers
 from pinjected.exporter.llm_exporter import add_export_config
@@ -272,7 +272,7 @@ default_design = design = providers(
     #    str(project_root)),
     # default_design_path=lambda default_design_paths: default_design_paths[0]
 ) + instances(
-    logger=loguru.logger,
+    logger=logger,
     custom_idea_config_creator=lambda x: [],  # type ConfigCreator
     # meta_context=meta_context,
     # module_path=self.module_path,
@@ -310,7 +310,7 @@ def extract_extra_codes(ast: Expr) -> ModuleVarPath:
     # TODO include the module path in the Inejcted Function
     match ast:
         case Call(
-            Object(InjectedFunction(object(__original_code__=code, __name__=name, __module__=mod), _args)),
+            Object(InjectedFromFunction(object(__original_code__=code, __name__=name, __module__=mod), _args)),
             args,
             kwargs):
             mvp = ModuleVarPath(f"{mod}.{name}")
@@ -339,7 +339,7 @@ def make_sandbox_extra(tgt: ModuleVarSpec):
 {impl}
 {usage}
 """
-        case PartialInjectedFunction(InjectedFunction(object(__original_code__=usage), args)):
+        case PartialInjectedFunction(InjectedFromFunction(object(__original_code__=usage), args)):
             return f"""
 {usage}
 """
@@ -530,7 +530,7 @@ def run_main():
     """
     import inspect
     import fire
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     module_path = provide_module_path(logger, inspect.currentframe().f_back)
     cfg = ConfigCreationArgs(
         module_path=module_path,
@@ -577,7 +577,7 @@ def run_idea_conf(conf: IdeaRunConfiguration, *args, **kwargs):
 
 @memoize
 def get_designs_from_module(module_path: Path):
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     logger.info(f"trying to import designs from {module_path}")
 
     def accept(name, x):

@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from pprint import pformat
 
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from pinjected import Injected
 from pinjected.v2.binds import IBind, BindInjected, ExprBind
 from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey

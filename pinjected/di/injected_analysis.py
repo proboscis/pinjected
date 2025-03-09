@@ -1,9 +1,9 @@
 import inspect
 import sys
-from loguru import logger
+from pinjected.pinjected_logging import logger
 
 def get_instance_origin_slow(package_name):
-    from loguru import logger
+    from pinjected.pinjected_logging import logger
     # Get the current frame
     #logger.debug(f"trying to get the instance origin")
 

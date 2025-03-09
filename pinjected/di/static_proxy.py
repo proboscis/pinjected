@@ -53,6 +53,9 @@ class AstProxyContextImpl(IProxyContext[Expr[T]]):
     def unary_impl(self, op: str, tgt: Expr[T]):
         return self.pure(tgt.unary(op))
 
+    def magic_method_impl(self, method_name, tgt: Expr[T], *args, **kwargs):
+        return self.getattr(tgt, method_name)(*args, **kwargs)
+
 
 def ast_proxy(tgt, cxt=AstProxyContextImpl(lambda x: x)):
     return DelegatedVar(tgt, cxt)
@@ -105,7 +108,7 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                 # so all the arguments are converted into Injected if not, then combined together
                 # so if you are to pass an Injected as an argument, you must wrap it with Injected.pure
                 def apply(t):
-                    from loguru import logger
+                    from pinjected.pinjected_logging import logger
                     func, args, kwargs = t
                     # args,kwargs = fix_args_kwargs(func,args,kwargs)
                     return func(*args, **kwargs)

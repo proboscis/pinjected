@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 from dataclasses import dataclass
-from loguru import logger
+from pinjected.pinjected_logging import logger
 from returns.maybe import maybe, Some
 
 from pinjected import providers, instances
@@ -34,7 +34,7 @@ class ConfigCreationArgs:
                 str(project_root)),
             default_design_path=lambda default_design_paths: default_design_paths[0]
         ) + instances(
-            logger=loguru.logger,
+            logger=logger,
             custom_idea_config_creator=lambda x: [],  # type ConfigCreator
             meta_context=meta_context,
             module_path=self.module_path,

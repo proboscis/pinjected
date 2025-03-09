@@ -1,3 +1,16 @@
+"""
+This module defines the Design interface for the pinjected dependency injection system.
+The interface was extracted (as per issue #26) to provide a clear contract for dependency
+configuration and management. This separation enables multiple implementations with different
+strategies for handling dependencies, validations, and metadata.
+
+Key implementations of this interface can be found in design.py:
+- MergedDesign: Combines multiple designs with precedence rules
+- AddValidation: Adds validation capabilities to existing designs
+- MetaDataDesign: Handles metadata-only designs
+- DesignImpl: Standard implementation with direct bindings management
+"""
+
 import asyncio
 import inspect
 from abc import ABC, abstractmethod
@@ -6,6 +19,7 @@ from pprint import pformat
 from typing import Dict, Callable, Any, List, Awaitable
 
 from beartype import beartype
+from returns.maybe import Maybe, Nothing
 
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
@@ -81,15 +95,18 @@ class Design(ABC):
     def keys(self):
         return self.bindings.keys()
 
-    def provide(self,tgt:str|IBindKey):
-        from loguru import logger
-        from pinjected.v2.resolver import AsyncResolver
+    def provide(self,tgt:str|IBindKey,default:Maybe=Nothing):
+        tgt = StrBindKey(tgt) if isinstance(tgt,str) else tgt
+        if tgt not in self and default is not Nothing:
+            return default.unwrap()
+        from pinjected.pinjected_logging import logger
+        from pinjected.v2.async_resolver import AsyncResolver
         logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking().provide(tgt)
 
     def to_graph(self):
-        from loguru import logger
-        from pinjected.v2.resolver import AsyncResolver
+        from pinjected.pinjected_logging import logger
+        from pinjected.v2.async_resolver import AsyncResolver
         logger.warning(f"Design.to_graph is deprecated. please use AsyncResolver instead.")
         return AsyncResolver(self).to_blocking()
 
@@ -100,7 +117,7 @@ class Design(ABC):
 
     def inspect_picklability(self):
         from pinjected.di.util import check_picklable
-        from loguru import logger
+        from pinjected.pinjected_logging import logger
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
 
