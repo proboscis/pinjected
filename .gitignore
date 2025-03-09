@@ -6,4 +6,4 @@
 *.tar.gz
 *.log
 *.iml
-*.idea
+*.ideapoetry.lock
