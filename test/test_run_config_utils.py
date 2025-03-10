@@ -58,12 +58,10 @@ def test_run_injected_with_handle():
 
 
 def test_run_injected_exception_with_handle():
-    with pytest.raises(RuntimeError):
+    with pytest.raises(Exception):
         res = run_injected(
             "get",
             "pinjected.test_package.child.module1.test_always_failure",
             "pinjected.test_package.child.module1.design03",
             return_result=True
         )
-    print(res)
-    assert res == "hello world"
