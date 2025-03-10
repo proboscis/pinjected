@@ -181,12 +181,13 @@ def run_anything(
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
         # Check if this is an ExceptionGroup that contains a RuntimeError
-        if isinstance(e, ExceptionGroup):
+        # Use hasattr to check for ExceptionGroup compatibility across Python versions
+        if hasattr(e, 'exceptions') and hasattr(e, '__class__') and e.__class__.__name__ == 'ExceptionGroup':
             # Extract the original exception from the ExceptionGroup
             for ex in e.exceptions:
                 if isinstance(ex, RuntimeError):
                     raise ex
-                elif isinstance(ex, ExceptionGroup):
+                elif hasattr(ex, 'exceptions') and hasattr(ex, '__class__') and ex.__class__.__name__ == 'ExceptionGroup':
                     for inner_ex in ex.exceptions:
                         if isinstance(inner_ex, RuntimeError):
                             raise inner_ex

@@ -12,6 +12,13 @@ from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHan
 
 from pinjected.v2.async_resolver import AsyncResolver
 
+# For Python 3.10 compatibility
+try:
+    from exceptiongroup import ExceptionGroup
+except ImportError:
+    # ExceptionGroup is built-in from Python 3.11+
+    pass
+
 p_root = Path(__file__).parent.parent
 TEST_MODULE = p_root/"pinjected/test_package/child/module1.py"
 import pytest
