@@ -12,6 +12,7 @@ from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Failure
 
+from pinjected.di.design_interface import Design
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
 from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure, MappedInjected, \
