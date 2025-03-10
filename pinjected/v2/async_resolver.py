@@ -373,9 +373,17 @@ class AsyncResolver:
                 return res
             else:
                 return await self._provide_providable(tgt)
-        except ExceptionGroup as e:
-            if len(e.exceptions) == 1:
-                raise e.exceptions[0]
+        except Exception as e:
+            import pinjected.compatibility.task_group
+            if hasattr(pinjected.compatibility.task_group, 'ExceptionGroup'):
+                logger.debug(f"using compatibility.task_group.ExceptionGroup")
+                EG = pinjected.compatibility.task_group.ExceptionGroup
+            else:
+                logger.debug(f"using ExceptionGroup")
+                EG = ExceptionGroup
+            if isinstance(e, EG):
+                if len(e.exceptions) == 1:
+                    raise e.exceptions[0]
             raise e
         finally:
             self.provision_depth -= 1
