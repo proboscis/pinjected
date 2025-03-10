@@ -94,13 +94,17 @@ class DIGraph:
                 if src == "logger":
                     example = "from loguru import logger\ndesign(\n    logger=logger\n)"
                 
-                error_msg = (
-                    f"DI key not found: '{src}'\n\n"
-                    f"Available keys: {available_keys_str}\n\n"
-                    f"You need to provide this key in your design. For example:\n\n"
-                    f"{example}\n\n"
-                    f"You can use design(), instances(), providers(), or classes() to bind dependencies."
-                )
+                # For backward compatibility, keep the original error format
+                # This exact format is expected by tests
+                error_msg = f"DI key not found!:{src}"
+                
+                # Add the enhanced information after the original format
+                # This maintains backward compatibility with tests that expect the exact error message
+                error_msg += f"\n\nAvailable keys: {available_keys_str}\n\n"
+                error_msg += f"You need to provide this key in your design. For example:\n\n"
+                error_msg += f"{example}\n\n"
+                error_msg += f"You can use design(), instances(), providers(), or classes() to bind dependencies."
+                
                 raise MissingKeyError(error_msg)
 
         self.deps_impl = deps_impl
