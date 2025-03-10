@@ -90,7 +90,11 @@ __test_handling_design = design(
     }
 )
 
-design03 = design01 + __test_handling_design
+# Add logger provider for the handlers
+from pinjected.pinjected_logging import logger as pinjected_logger
+__logger_design = instances(logger=pinjected_logger)
+
+design03 = design01 + __test_handling_design + __logger_design
 
 __meta_design__ = instances(
     overrides=design(
