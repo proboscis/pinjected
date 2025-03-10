@@ -76,12 +76,12 @@ run_test:IProxy = test_current_file()
 
 
 @injected
-async def __handle_exception(logger,/,e:Exception):
-    logger.error(f"Exception: {e}")
+async def __handle_exception(e:Exception):
+    print(f"Exception: {e}")
     return "handled"
 @injected
-async def __handle_success(logger,/,result):
-    logger.info(f"Success: {result}")
+async def __handle_success(result):
+    print(f"Success: {result}")
 
 __test_handling_design = design(
     **{
