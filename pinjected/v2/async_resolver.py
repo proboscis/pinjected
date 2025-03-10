@@ -363,8 +363,9 @@ class AsyncResolver:
             else:
                 return await self._provide_providable(tgt)
         except ExceptionGroup as e:
-            if len(e.exceptions) == 1 and isinstance(e.exceptions[0], DependencyResolutionError):
+            if len(e.exceptions) == 1:
                 raise e.exceptions[0]
+            raise e
         finally:
             self.provision_depth -= 1
 
