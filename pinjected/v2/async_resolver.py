@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pprint import pformat
@@ -25,16 +24,6 @@ from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
 from pinjected.v2.provide_context import ProvideContext
 from pinjected.v2.resolver import AsyncLockMap, OPERATORS, UNARY_OPS, Providable, EvaluationError
 from pinjected.visualize_di import DIGraph
-
-# ExceptionGroup is only available in Python 3.11+
-if sys.version_info >= (3, 11):
-    from builtins import ExceptionGroup
-else:
-    # Fallback for Python 3.10 and earlier
-    class ExceptionGroup(Exception):
-        def __init__(self, message, exceptions):
-            super().__init__(message)
-            self.exceptions = exceptions
 
 
 @dataclass

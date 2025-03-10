@@ -189,7 +189,6 @@ def run_anything(
                 handled:Optional[str] = asyncio.run(cxt.a_provide(handling,show_debug=False))
                 if handled:
                     logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
-                    return handled
                 raise e
             else:
                 logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
@@ -209,13 +208,6 @@ def run_anything(
             logger.info(f"delegating the result to fire..")
             return res
 
-
-def _run_target(design, tgt, cxt):
-    """
-    Run a target with the given design and context.
-    This is the synchronous version of a_run_target.
-    """
-    return asyncio.run(cxt.a_provide(tgt))
 
 def call_impl(call_args, call_kwargs, cxt, design):
     args = call_args or []

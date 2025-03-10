@@ -93,12 +93,6 @@ class DelegatedVar(Generic[T]):
 
     def __add__(self, other):
         return self.__cxt__.biop_impl('+', self.__value__, other)
-        
-    def __radd__(self, other):
-        # Handle right-side addition (e.g., "string" + DelegatedVar)
-        if isinstance(other, str):
-            return other + str(self.__value__)
-        return NotImplemented
 
     def __mul__(self, other):
         return self.__cxt__.biop_impl('*', self.__value__, other)
