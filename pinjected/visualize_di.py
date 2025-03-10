@@ -83,7 +83,25 @@ class DIGraph:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
             else:
-                raise MissingKeyError(f"DI key not found!:{src}")
+                # Get available keys from the helper
+                available_keys = sorted(list(self.helper.total_mappings().keys()))
+                available_keys_str = ", ".join(available_keys[:10])
+                if len(available_keys) > 10:
+                    available_keys_str += f", ... ({len(available_keys) - 10} more)"
+                
+                # Create a helpful error message with example
+                example = f"from loguru import logger\ndesign(\n    {src}=logger\n)"
+                if src == "logger":
+                    example = "from loguru import logger\ndesign(\n    logger=logger\n)"
+                
+                error_msg = (
+                    f"DI key not found: '{src}'\n\n"
+                    f"Available keys: {available_keys_str}\n\n"
+                    f"You need to provide this key in your design. For example:\n\n"
+                    f"{example}\n\n"
+                    f"You can use design(), instances(), providers(), or classes() to bind dependencies."
+                )
+                raise MissingKeyError(error_msg)
 
         self.deps_impl = deps_impl
 
