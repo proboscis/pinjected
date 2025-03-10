@@ -88,22 +88,22 @@ class DIGraph:
         # Add the enhanced information after the original format
         # This maintains backward compatibility with tests that expect the exact error message
         error_msg += f"\n\nAvailable keys: {available_keys_str}\n\n"
-        error_msg += f"You need to provide this key in your design. Here are examples using different binding methods:\n\n"
+        error_msg += f"You need to provide this key in your design. Here are examples:\n\n"
         
-        # Provide examples using all binding methods
-        error_msg += f"1. Using design():\n"
+        # Provide examples using only design() with different value types
+        error_msg += f"1. For direct values:\n"
         error_msg += f"   design(\n       {src}=value\n   )\n\n"
         
-        error_msg += f"2. Using instances():\n"
-        error_msg += f"   instances(\n       {src}=value\n   )\n\n"
+        error_msg += f"2. For function providers:\n"
+        error_msg += f"   design(\n       {src}=lambda: computed_value\n   )\n\n"
         
-        error_msg += f"3. Using providers():\n"
-        error_msg += f"   providers(\n       {src}=lambda: computed_value\n   )\n\n"
+        error_msg += f"3. For class providers:\n"
+        error_msg += f"   design(\n       {src}=YourClass\n   )\n\n"
         
-        error_msg += f"4. Using classes():\n"
-        error_msg += f"   classes(\n       {src}=YourClass\n   )\n\n"
+        error_msg += f"4. Using __meta_design__ pattern:\n"
+        error_msg += f"   __meta_design__ = design(\n       overrides=design(\n           {src}=value\n       )\n   )\n\n"
         
-        error_msg += f"You can combine these methods using the + operator to create a complete design."
+        error_msg += f"The design() function automatically determines the binding type based on the value type."
         
         return error_msg
         
