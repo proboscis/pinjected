@@ -81,13 +81,9 @@ class DIGraph:
         if len(available_keys) > 10:
             available_keys_str += f", ... ({len(available_keys) - 10} more)"
         
-        # For backward compatibility, keep the original error format
-        # This exact format is expected by tests
-        error_msg = f"DI key not found!:{src}"
-        
-        # Add the enhanced information after the original format
-        # This maintains backward compatibility with tests that expect the exact error message
-        error_msg += f"\n\nAvailable keys: {available_keys_str}\n\n"
+        # Create a more helpful error message without backward compatibility constraints
+        error_msg = f"DI key not found: '{src}'\n\n"
+        error_msg += f"Available keys: {available_keys_str}\n\n"
         error_msg += f"You need to provide this key in your design. Here are examples:\n\n"
         
         # Provide examples using only design() with different value types
