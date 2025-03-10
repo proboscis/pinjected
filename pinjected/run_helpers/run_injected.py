@@ -188,9 +188,8 @@ def run_anything(
                 handling = handler(e)
                 handled:Optional[str] = asyncio.run(cxt.a_provide(handling,show_debug=False))
                 if handled:
-                    return
-                if not handled:
-                    raise e
+                    logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
+                raise e
             else:
                 logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
                 notify(f"Run failed with error:\n{e}", sound="Frog")
