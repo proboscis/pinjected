@@ -252,7 +252,16 @@ def instances(**kwargs):
 
     By enforcing constraints and adding code locations, this function helps maintain a clear and error-resistant
     system design, ensuring that the dependency injection mechanism is used appropriately and effectively.
+    
+    .. deprecated:: 0.3.0
+       Use ``design()`` instead. This function will be removed in a future version.
     """
+    import warnings
+    warnings.warn(
+        "'instances' is deprecated and will be removed in a future version. Use 'design' instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     for k, v in kwargs.items():
         assert not isinstance(v,
                               DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
@@ -306,7 +315,16 @@ def providers(**kwargs):
         # and 'query_executor', respectively, along with their code locations.
 
     This approach consolidates the registration of dependencies, streamlining the setup process and enhancing the traceability and debuggability of the system components.
+    
+    .. deprecated:: 0.3.0
+       Use ``design()`` instead. This function will be removed in a future version.
     """
+    import warnings
+    warnings.warn(
+        "'providers' is deprecated and will be removed in a future version. Use 'design' instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     d = DesignImpl().bind_provider(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
@@ -423,7 +441,16 @@ def classes(**kwargs):
     Note:
     -----
     The function automatically adds code locations for the classes, making it easier to track the source of each dependency within the system.
+    
+    .. deprecated:: 0.3.0
+       Use ``design()`` instead. This function will be removed in a future version.
     """
+    import warnings
+    warnings.warn(
+        "'classes' is deprecated and will be removed in a future version. Use 'design' instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     d = DesignImpl().bind_provider(**kwargs)
     return add_code_locations(d, kwargs, inspect.currentframe())
 
