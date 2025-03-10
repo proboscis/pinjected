@@ -60,7 +60,7 @@ class MissingKeyError(RuntimeError):
 
 @dataclass
 class DIGraph:
-    src: Any  # Was "Design", removed to avoid circular import
+    src: "Design"  # Was "Design", removed to avoid circular import
 
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
