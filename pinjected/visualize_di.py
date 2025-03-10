@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Callable, List, Union, Any
 
 import networkx as nx
 from cytoolz import memoize
@@ -60,11 +60,49 @@ class MissingKeyError(RuntimeError):
 
 @dataclass
 class DIGraph:
-    src: "Design"
+    src: Any  # Was "Design", removed to avoid circular import
 
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
+    def create_missing_key_error_message(self, src: str) -> str:
+        """
+        Create a helpful error message when a dependency injection key is not found.
+        
+        Args:
+            src: The missing key name
+            
+        Returns:
+            A formatted error message with available keys and usage examples
+        """
+        # Get available keys from the helper
+        available_keys = sorted(list(self.helper.total_mappings().keys()))
+        available_keys_str = ", ".join(available_keys[:10])
+        if len(available_keys) > 10:
+            available_keys_str += f", ... ({len(available_keys) - 10} more)"
+        
+        # Create a more helpful error message without backward compatibility constraints
+        error_msg = f"DI key not found: '{src}'\n\n"
+        error_msg += f"Available keys: {available_keys_str}\n\n"
+        error_msg += f"You need to provide this key in your design. Here are examples:\n\n"
+        
+        # Provide examples using only design() with different value types
+        error_msg += f"1. For direct values:\n"
+        error_msg += f"   design(\n       {src}=value\n   )\n\n"
+        
+        error_msg += f"2. For function providers:\n"
+        error_msg += f"   design(\n       {src}=lambda: computed_value\n   )\n\n"
+        
+        error_msg += f"3. For class providers:\n"
+        error_msg += f"   design(\n       {src}=YourClass\n   )\n\n"
+        
+        error_msg += f"4. Using __meta_design__ pattern:\n"
+        error_msg += f"   __meta_design__ = design(\n       overrides=design(\n           {src}=value\n       )\n   )\n\n"
+        
+        error_msg += f"The design() function automatically determines the binding type based on the value type."
+        
+        return error_msg
+        
     def __post_init__(self):
         self.helper = DIGraphHelper(self.src)
         self.explicit_mappings: dict[str, Injected] = self.helper.total_mappings()
@@ -83,7 +121,7 @@ class DIGraph:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
             else:
-                raise MissingKeyError(f"DI key not found!:{src}")
+                raise MissingKeyError(self.create_missing_key_error_message(src))
 
         self.deps_impl = deps_impl
 
@@ -207,7 +245,7 @@ class DIGraph:
 
         yield from dfs(src, [src])
 
-    def distilled(self, tgt: Providable) -> "Design":
+    def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
         from pinjected import providers
         from pinjected import Design
         match tgt:
@@ -511,7 +549,7 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-def create_dependency_graph(d: "Design", roots: List[str], output_file="dependencies.html"):
+def create_dependency_graph(d: Any, roots: List[str], output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
     from pinjected import instances
     dig = DIGraph(d + instances(
         job_type="net_visualization"
