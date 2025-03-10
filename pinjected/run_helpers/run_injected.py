@@ -210,6 +210,13 @@ def run_anything(
             return res
 
 
+def _run_target(design, tgt, cxt):
+    """
+    Run a target with the given design and context.
+    This is the synchronous version of a_run_target.
+    """
+    return asyncio.run(cxt.a_provide(tgt))
+
 def call_impl(call_args, call_kwargs, cxt, design):
     args = call_args or []
     kwargs = call_kwargs or {}
