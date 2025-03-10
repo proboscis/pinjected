@@ -180,6 +180,18 @@ def run_anything(
             d = design + providers(__root__=cxt.var)
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
+        # Check if this is an ExceptionGroup that contains a RuntimeError
+        # Use hasattr to check for ExceptionGroup compatibility across Python versions
+        if hasattr(e, 'exceptions') and hasattr(e, '__class__') and e.__class__.__name__ == 'ExceptionGroup':
+            # Extract the original exception from the ExceptionGroup
+            for ex in e.exceptions:
+                if isinstance(ex, RuntimeError):
+                    raise ex
+                elif hasattr(ex, 'exceptions') and hasattr(ex, '__class__') and ex.__class__.__name__ == 'ExceptionGroup':
+                    for inner_ex in ex.exceptions:
+                        if isinstance(inner_ex, RuntimeError):
+                            raise inner_ex
+        
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
             if PinjectedHandleMainException.key in design:
                 logger.warning(f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
@@ -187,10 +199,12 @@ def run_anything(
                 handler:IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
                 handling = handler(e)
                 handled:Optional[str] = asyncio.run(cxt.a_provide(handling,show_debug=False))
+                # Only return if handled is a non-empty string
+                # If handled is None or empty string, we should raise the original exception
                 if handled:
-                    return
-                if not handled:
-                    raise e
+                    return handled
+                # If we get here, handled is None or empty, so raise the original exception
+                raise e
             else:
                 logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
                 notify(f"Run failed with error:\n{e}", sound="Frog")

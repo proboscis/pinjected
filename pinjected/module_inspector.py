@@ -65,7 +65,7 @@ def get_module_path(root_path, module_path):
         if not (Path(root_path) / "src" / "__init__.py").exists():
             # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
             # Although 'src' should not be in the module path at all, i handle this specific case.
-            # Probably we should make this part adjustable from __meta_design__ or something.
+            # Probably we should make this part adjustable from __pinjected_overrides__ or something.
             path = path[4:]
     return path
 

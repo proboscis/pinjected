@@ -34,6 +34,14 @@ class MetaContext:
 
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
+        if meta_design_name == "__meta_design__":
+            import warnings
+            warnings.warn(
+                "'__meta_design__' is deprecated and will be replaced with '__pinjected_overrides__' in a future version.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            
         with logger.contextualize(tag="gather_meta_context"):
             from pinjected import instances
             if not isinstance(file_path, Path):
@@ -67,6 +75,14 @@ class MetaContext:
     @staticmethod
     @beartype
     def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
+        if meta_design_name == "__meta_design__":
+            import warnings
+            warnings.warn(
+                "'__meta_design__' is deprecated and will be replaced with '__pinjected_overrides__' in a future version.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            
         import asyncio
         return asyncio.run(MetaContext.a_gather_from_path(file_path, meta_design_name))
 
@@ -135,6 +151,15 @@ try:
 except ImportError:
     from pydantic import validator as field_validator
 
+# This variable will be renamed to __pinjected_overrides__ in a future version
 __meta_design__ = instances(
     default_design_paths=["pinjected.helper_structure.__meta_design__"]
+)
+
+# Add deprecation warning when this module is imported
+import warnings
+warnings.warn(
+    "'__meta_design__' is deprecated and will be replaced with '__pinjected_overrides__' in a future version.",
+    DeprecationWarning,
+    stacklevel=1
 )

@@ -112,7 +112,16 @@ def injected_instance(f) -> Injected:
 
     This approach allows the function to be integrated into a dependency injection system easily,
     with the ``Injected`` instance handling the complexities of resolving and managing dependencies.
+    
+    .. deprecated:: 0.3.0
+       Will be renamed to ``@pinjected.object_proxy`` in a future version.
     """
+    import warnings
+    warnings.warn(
+        "'@injected_instance' (and '@instance') is deprecated and will be renamed to '@pinjected.object_proxy' in a future version.",
+        DeprecationWarning,
+        stacklevel=2
+    )
 
     is_coroutine = inspect.iscoroutinefunction(f)
     # if is_coroutine:
@@ -181,7 +190,16 @@ def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
         (positional-only) and those parameters that developers need to provide explicitly during
         function/method invocation or class instantiation. This strategy enhances code readability
         and ensures that the dependency injection framework adheres to explicit programming practices.
+        
+    .. deprecated:: 0.3.0
+       Will be renamed to ``@pinjected.function_proxy`` in a future version.
     """
+    import warnings
+    warnings.warn(
+        "'@injected' is deprecated and will be renamed to '@pinjected.function_proxy' in a future version.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     if isinstance(tgt, str):
         return Injected.by_name(tgt).proxy
     elif isinstance(tgt, type):
@@ -244,7 +262,20 @@ def cached_coroutine(coro_func):
     return wrapper
 
 
-instance = injected_instance
+def instance(f) -> Injected:
+    """
+    Alias for ``injected_instance``.
+    
+    .. deprecated:: 0.3.0
+       Will be renamed to ``@pinjected.object_proxy`` in a future version.
+    """
+    import warnings
+    warnings.warn(
+        "'@instance' is deprecated and will be renamed to '@pinjected.object_proxy' in a future version.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return injected_instance(f)
 
 
 def dynamic(*providables):
