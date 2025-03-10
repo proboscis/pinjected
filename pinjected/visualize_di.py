@@ -66,6 +66,40 @@ class DIGraph:
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
+    def create_missing_key_error_message(self, src: str) -> str:
+        """
+        Create a helpful error message when a dependency injection key is not found.
+        
+        Args:
+            src: The missing key name
+            
+        Returns:
+            A formatted error message with available keys and usage examples
+        """
+        # Get available keys from the helper
+        available_keys = sorted(list(self.helper.total_mappings().keys()))
+        available_keys_str = ", ".join(available_keys[:10])
+        if len(available_keys) > 10:
+            available_keys_str += f", ... ({len(available_keys) - 10} more)"
+        
+        # Create a helpful error message with example
+        example = f"from loguru import logger\ndesign(\n    {src}=logger\n)"
+        if src == "logger":
+            example = "from loguru import logger\ndesign(\n    logger=logger\n)"
+        
+        # For backward compatibility, keep the original error format
+        # This exact format is expected by tests
+        error_msg = f"DI key not found!:{src}"
+        
+        # Add the enhanced information after the original format
+        # This maintains backward compatibility with tests that expect the exact error message
+        error_msg += f"\n\nAvailable keys: {available_keys_str}\n\n"
+        error_msg += f"You need to provide this key in your design. For example:\n\n"
+        error_msg += f"{example}\n\n"
+        error_msg += f"You can use design(), instances(), providers(), or classes() to bind dependencies."
+        
+        return error_msg
+        
     def __post_init__(self):
         self.helper = DIGraphHelper(self.src)
         self.explicit_mappings: dict[str, Injected] = self.helper.total_mappings()
@@ -84,29 +118,7 @@ class DIGraph:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
             else:
-                # Get available keys from the helper
-                available_keys = sorted(list(self.helper.total_mappings().keys()))
-                available_keys_str = ", ".join(available_keys[:10])
-                if len(available_keys) > 10:
-                    available_keys_str += f", ... ({len(available_keys) - 10} more)"
-                
-                # Create a helpful error message with example
-                example = f"from loguru import logger\ndesign(\n    {src}=logger\n)"
-                if src == "logger":
-                    example = "from loguru import logger\ndesign(\n    logger=logger\n)"
-                
-                # For backward compatibility, keep the original error format
-                # This exact format is expected by tests
-                error_msg = f"DI key not found!:{src}"
-                
-                # Add the enhanced information after the original format
-                # This maintains backward compatibility with tests that expect the exact error message
-                error_msg += f"\n\nAvailable keys: {available_keys_str}\n\n"
-                error_msg += f"You need to provide this key in your design. For example:\n\n"
-                error_msg += f"{example}\n\n"
-                error_msg += f"You can use design(), instances(), providers(), or classes() to bind dependencies."
-                
-                raise MissingKeyError(error_msg)
+                raise MissingKeyError(self.create_missing_key_error_message(src))
 
         self.deps_impl = deps_impl
 
