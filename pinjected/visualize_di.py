@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Callable, List, Union, Any
 
 import networkx as nx
 from cytoolz import memoize
@@ -12,7 +12,6 @@ from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
 from returns.result import safe, Failure
 
-from pinjected.di.design_interface import Design
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
 from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure, MappedInjected, \
@@ -61,7 +60,7 @@ class MissingKeyError(RuntimeError):
 
 @dataclass
 class DIGraph:
-    src: "Design"
+    src: Any  # Was "Design", removed to avoid circular import
 
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
@@ -82,11 +81,6 @@ class DIGraph:
         if len(available_keys) > 10:
             available_keys_str += f", ... ({len(available_keys) - 10} more)"
         
-        # Create a helpful error message with example
-        example = f"from loguru import logger\ndesign(\n    {src}=logger\n)"
-        if src == "logger":
-            example = "from loguru import logger\ndesign(\n    logger=logger\n)"
-        
         # For backward compatibility, keep the original error format
         # This exact format is expected by tests
         error_msg = f"DI key not found!:{src}"
@@ -94,9 +88,22 @@ class DIGraph:
         # Add the enhanced information after the original format
         # This maintains backward compatibility with tests that expect the exact error message
         error_msg += f"\n\nAvailable keys: {available_keys_str}\n\n"
-        error_msg += f"You need to provide this key in your design. For example:\n\n"
-        error_msg += f"{example}\n\n"
-        error_msg += f"You can use design(), instances(), providers(), or classes() to bind dependencies."
+        error_msg += f"You need to provide this key in your design. Here are examples using different binding methods:\n\n"
+        
+        # Provide examples using all binding methods
+        error_msg += f"1. Using design():\n"
+        error_msg += f"   design(\n       {src}=value\n   )\n\n"
+        
+        error_msg += f"2. Using instances():\n"
+        error_msg += f"   instances(\n       {src}=value\n   )\n\n"
+        
+        error_msg += f"3. Using providers():\n"
+        error_msg += f"   providers(\n       {src}=lambda: computed_value\n   )\n\n"
+        
+        error_msg += f"4. Using classes():\n"
+        error_msg += f"   classes(\n       {src}=YourClass\n   )\n\n"
+        
+        error_msg += f"You can combine these methods using the + operator to create a complete design."
         
         return error_msg
         
@@ -242,7 +249,7 @@ class DIGraph:
 
         yield from dfs(src, [src])
 
-    def distilled(self, tgt: Providable) -> "Design":
+    def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
         from pinjected import providers
         from pinjected import Design
         match tgt:
@@ -546,7 +553,7 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-def create_dependency_graph(d: "Design", roots: List[str], output_file="dependencies.html"):
+def create_dependency_graph(d: Any, roots: List[str], output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
     from pinjected import instances
     dig = DIGraph(d + instances(
         job_type="net_visualization"
