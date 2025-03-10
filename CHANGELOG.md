@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.241 (2025-03-10)
+
+### Changed
+- Deprecated annotations in favor of type hints for dependency injection
+- Simplified exception handlers by removing logger dependency
+
 ## 0.2.240 (2025-03-10)
 
 ### Fixed
