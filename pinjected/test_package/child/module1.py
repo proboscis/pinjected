@@ -78,7 +78,8 @@ run_test:IProxy = test_current_file()
 @injected
 async def __handle_exception(logger,/,e:Exception):
     logger.error(f"Exception: {e}")
-    return "handled"
+    # Return None to allow the exception to propagate
+    return None
 @injected
 async def __handle_success(logger,/,result):
     logger.info(f"Success: {result}")
