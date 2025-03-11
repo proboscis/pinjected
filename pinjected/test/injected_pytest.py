@@ -34,8 +34,13 @@ def injected_pytest(override: Design = EmptyDesign):
     Note:
         このデコレータは、呼び出し元のファイルパスを自動的に取得します。
     """
+    assert isinstance(override, Design), """override must be a Design instance. perhaps you forgot to use parentheses?
+     For example: @pinjected_test. you must use @pinjected_test() or @pinjected_test(override=<design object>)
+     """
+
     def impl(func):
         return _to_pytest(instance(func), override, inspect.getmodule(func).__file__)
+
 
     return impl
 
