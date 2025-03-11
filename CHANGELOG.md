@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.242 (2025-03-11)
+
+### Added
+- Added experimental v3 proxy-based decorators for better IDE type hints
+
 ## 0.2.241 (2025-03-10)
 
 ### Changed
