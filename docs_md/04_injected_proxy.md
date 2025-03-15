@@ -32,8 +32,8 @@ test_proxy:IProxy[str] = test_inject.proxy
 ## How to use IProxy object
 Identical to Injected object, IProxy object can be used with Design class.
 ```python
-from pinjected import providers,IProxy,Injected
-d = providers(
+from pinjected import design, IProxy, Injected
+d = design(
     x = Injected.pure('hello').proxy # same as passing Injected.pure('hello')
 )
 
@@ -49,25 +49,27 @@ IProxy is a class to provide easy composition of Injected objects and functions 
 
 Let's begin from the simple map/zip example.
 ```python
-from pinjected import providers,IProxy,Injected
+from pinjected import design, IProxy, Injected
 
 x = Injected.pure(1)
 x_plus_one = x.map(lambda x: x + 1)
 
-assert providers()[x_plus_one] == 2, "x_plus_one should be 2"
+assert design()[x_plus_one] == 2, "x_plus_one should be 2"
 ```
 Now, with IProxy, this can be re-written as:
 ```python
-from pinjected import providers,IProxy,Injected
+from pinjected import design, IProxy, Injected
 x = Injected.pure(1).proxy
 x_plus_one = x + 1
-assert providers()[x_plus_one] == 2, "x_plus_one should be 2"
+assert design()[x_plus_one] == 2, "x_plus_one should be 2"
 ```
 This is achieved by overridding the __add__ method of IProxy to create a new IProxy object.
 We have implemented most of the magic methods to make this work, so we can do things like:
 ```python
-from pinjected import instances,IProxy,Injected
+from pinjected import design, IProxy, Injected
 from pathlib import Path
+from typing import Callable
+
 fun = lambda x: x + 1
 
 fun_proxy:IProxy[Callable[[int],int]] = Injected.pure(fun).proxy
@@ -81,7 +83,7 @@ list_proxy:IProxy[list[int]] = Injected.pure([0,1,2]).proxy
 list_item:IProxy[int] = list_proxy[1]
 
 
-g = instances(
+g = design(
     cache_dir=Path("/tmp")
 ).to_graph()
 

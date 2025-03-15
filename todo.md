@@ -76,17 +76,17 @@
 - [x] docs_md/01_introduction.md
 - [x] docs_md/02_design.md
 - [x] docs_md/03_decorators.md
-- [ ] docs_md/04_injected.md
-- [ ] docs_md/04_injected_proxy.md
-- [ ] docs_md/05_running.md
-- [ ] docs_md/06_async.md
-- [ ] docs_md/07_resolver.md
-- [ ] docs_md/08_01_add_config.md
-- [ ] docs_md/08_misc.md
-- [ ] docs_md/09_appendix.md
-- [ ] docs_md/10_updates.md
+- [x] docs_md/04_injected.md
+- [x] docs_md/04_injected_proxy.md
+- [x] docs_md/05_running.md
+- [x] docs_md/06_async.md
+- [x] docs_md/07_resolver.md
+- [x] docs_md/08_01_add_config.md
+- [x] docs_md/08_misc.md
+- [x] docs_md/09_appendix.md
+- [x] docs_md/10_updates.md
 - [x] docs_ja/01_introduction.md
-- [ ] docs_ja/zenn.md
+- [x] docs_ja/zenn.md (メイン部分の確認済み)
 - [x] docs-for-ai/pinjected-guide-for-ai.md
 
 ## 注意点

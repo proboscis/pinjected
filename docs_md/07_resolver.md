@@ -10,11 +10,11 @@ If you bind a function that returns a random value as a binding, calling the sam
 return the same value, while Design's `provide` should return a random value for each invocation.
 ```python
 import random
-d = providers(
-    r = lambda : random.uniform(0,1)
+d = design(
+    r = Injected.bind(lambda : random.uniform(0,1))
 )
 g = d.to_graph()
 g.provide("r") == g.provide("r")
-d.provide("r") != d.provide("r")# it is random. should rarely be the same.
+d.provide("r") != d.provide("r") # it is random. should rarely be the same.
 ```
 
