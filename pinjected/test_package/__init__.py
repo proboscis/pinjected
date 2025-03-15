@@ -23,7 +23,8 @@ def dummy_config_creator_for_test(
         )
     ]
 
-run_test_module:IProxy = test_tree()
+# 非同期関数を直接呼び出すのではなく、最初から非同期を処理できる形に変更
+run_test_module:IProxy = Injected.bind(lambda: test_tree())
 
 
 __meta_design__ = design(
