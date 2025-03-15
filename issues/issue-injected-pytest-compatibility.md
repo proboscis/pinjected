@@ -1,12 +1,12 @@
-# pinjected.test.injected_pytest のAPI移行問題
+# pinjected.test.injected_pytest のAPI移行問題 - 解決済み
 
 ## 問題概要
 
-`pinjected.test.injected_pytest` モジュールの更新において、`instances()` から `design()` への移行が特別な対応を必要とします。単純な置き換えを行うと、`test_injected_pytest_usage` テストが失敗します。
+`pinjected.test.injected_pytest` モジュールの更新において、`instances()` から `design()` への移行が特別な対応を必要としました。単純な置き換えを行うと、`test_injected_pytest_usage` テストが失敗していました。
 
 ## 再現条件
 
-以下の変更を行うと問題が発生します：
+以下の変更を行うと問題が発生していました：
 
 ```diff
 async def impl():
@@ -23,6 +23,7 @@ async def impl():
 
 ```
 FAILED test/test_injected_pytest.py::test_injected_pytest_usage - ExceptionGroup: unhandled errors in a TaskGroup
+TypeError: 'MergedDesign' object is not callable
 ```
 
 ## 原因分析
@@ -31,52 +32,33 @@ FAILED test/test_injected_pytest.py::test_injected_pytest_usage - ExceptionGroup
 2. **スコープ解決の問題**：ローカル変数 `design` が優先され、モジュールの `design()` 関数が参照できない
 3. **テスト環境の特殊性**：`injected_pytest` は特殊なテスト環境を構築するため、一般的な置き換えパターンが適用できない
 
-## 推奨される解決方法
+## 解決方法
 
-### 短期的解決策
-1. この特定のファイルは例外として扱い、非推奨関数を一時的に使用し続ける
-2. 警告抑制を追加してテスト実行時の警告を減らす
+以下の解決策を実装しました：
 
 ```python
-import warnings
-
-# 警告を抑制
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning, message="'instances' is deprecated")
-    design += instances(
-        __task_group__=tg
-    )
-```
-
-### 長期的解決策
-1. 変数名の衝突を解消する方法でリファクタリング
-
-```python
-from pinjected import design as design_func
-
 async def impl():
     mc: MetaContext = await MetaContext.a_gather_from_path(caller_file)
-    design_obj = await mc.a_final_design + override
+    design = await mc.a_final_design + override
     async with TaskGroup() as tg:
-        design_obj += design_func(
+        from pinjected import design as design_fn
+        design += design_fn(
             __task_group__=tg
         )
 ```
 
-2. モジュールを完全にリファクタリングし、内部実装を最新のAPI標準に合わせる
+実装では、関数内で `design` をインポートし直し、異なる名前で参照することで名前の衝突を回避しました。これにより、テストが正常に実行できるようになりました。
 
 ## 影響範囲
 
 - `test/test_injected_pytest.py` でのテスト
 - `pinjected.test.injected_pytest` を使用するユーザーコード（可能性としては低い）
 
-## 優先度
+## 実装の詳細
 
-**中**: 他のコア機能のマイグレーションが完了した後で対応するべき課題です。当面は非推奨関数の使用を継続することで実用上の問題はありません。
-
-## 関連課題
-- API移行の総括
-- テスト環境の現代化
+- コミット [bb8f54f](https://github.com/proboscis/pinjected/commit/bb8f54f) で修正が実装されました
+- `injected_pytest` デコレータのドキュメントも併せて更新し、コード内での参照名の一貫性も改善しました
+- 全テストが正常に通過し、この問題は修正済みと判断できます
 
 ## ノート
-後方互換性のために、一部のコアテストインフラストラクチャでは、完全な移行が難しい場合があります。まれなケースでは、適切な注釈や説明付きでレガシーAPIを継続使用することも検討すべきです。
+この修正により、API移行の重要な問題が解決されました。名前衝突は思わぬところで発生する可能性があるため、他のモジュールでも同様の問題がある場合は同じアプローチで解決できます。
