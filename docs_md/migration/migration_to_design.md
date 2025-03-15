@@ -22,14 +22,16 @@ Pinjected has improved its API design to handle dependency injection in a more c
 design += instances(
     x=0,
     y="string",
-    z=[1, 2, 3]
+    z=[1, 2, 3],
+    add_one=lambda x:x+1
 )
 
 # After migration
 design += design(
     x=0,
     y="string",
-    z=[1, 2, 3]
+    z=[1, 2, 3],
+    add_one=lambda x:x+1
 )
 ```
 
@@ -39,16 +41,40 @@ design += design(
 
 ```python
 # Before migration
+def create_something(x):
+    return x+1
+@injected
+def injected_func(dep1):
+    return dep1+'x'
+@injected
+async def a_injected_func(dep1):
+    return dep1+'a'
+@instance
+def singleton_object1(dep1):
+    return dep1 + 'this is singleton'
+@instance
+async def singleton_object2_async(dep1):
+    return dep1 + "this is singleton with async"
+
 design += providers(
     calc=lambda x, y: x + y,
-    factory=create_something
+    factory=create_something,
+    func1 = injected_func,
+    a_func1 = a_injected_func,
+    singleton1 = singleton_object1,
+    singleton2 = singleton_object2_async,
 )
 
 # After migration
 design += design(
     calc=Injected.bind(lambda x, y: x + y),
-    factory=Injected.bind(create_something)
+    factory=Injected.bind(create_something),
+    func1 = injected_func,
+    a_func1 = a_injected_func,
+    singleton1 = singleton_object1,
+    singleton2 = singleton_object2_async,
 )
+
 ```
 
 ### 3. `classes()` → `design()` + `Injected.bind()`
@@ -95,34 +121,20 @@ design = design(
 
 ## Special Cases
 
-### 1. Using `Injected.pure()`
-
-For simple functions without dependencies, using `Injected.pure()` instead of `Injected.bind()` can improve performance:
+### 1. Using `Injected.pure()` for providing a function.
 
 ```python
 # For simple functions without dependencies
+# before, providing a function with instances
+design = instances(
+    add_one = lambda x:x + 1
+)
+# After, providing a function requires wrapping with Injected.pure
 design += design(
+    #add_one = lambda x: x+1, # this is valid but Injected.pure is more explicit.
     add_one=Injected.pure(lambda x: x + 1),
-    constant_provider=Injected.pure(lambda: "constant value")
 )
 ```
-
-### 2. Handling Async Functions
-
-The correct way to handle async functions:
-
-```python
-# Before migration
-design += providers(
-    async_factory=async_create_something
-)
-
-# After migration
-design += design(
-    async_factory=Injected.bind(lambda: async_create_something())
-)
-```
-
 ### 3. Resolving Variable Name Conflicts
 
 When the variable name `design` conflicts with the imported `design()` function:
@@ -144,8 +156,7 @@ design_obj += design(...)
 
 ## Important Notes
 
-1. Converting `instances()` → `design()` requires no additional modifications
-2. Converting `providers()` and `classes()` → `design()` always requires wrapping with `Injected.bind()`
+
 3. Be especially careful when performing search-and-replace across the entire workspace in an IDE (use pattern matching to correctly identify)
 4. Don't just rely on simple replacements; run tests after migration to verify functionality
 5. Always wrap class constructors with `Injected.bind()` when passing them directly
@@ -168,20 +179,11 @@ For errors due to name conflicts between the `design` variable and the `design()
 - Use an alias when importing: `from pinjected import design as design_fn`
 - Change the variable name to something else: e.g., `design_obj`
 
-### 3. Async Function Issues
-
-Problems when binding async functions directly:
-
-- Use the `Injected.bind(lambda: async_func())` pattern for async functions
-- Verify correct usage of `async`/`await` patterns
-
 ## Summary
 
 Basic principles for migration:
 
 1. Pass simple values directly as `design(key=value)`
-2. Wrap functions and classes as `design(key=Injected.bind(func))`
-3. Consider `Injected.pure()` for simple functions without dependencies
-4. Always run tests to verify functionality
+2. Always run tests to verify functionality
 
 Following this migration guide will enable a smooth transition from the deprecated APIs to the new unified API.
