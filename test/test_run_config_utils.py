@@ -17,7 +17,6 @@ import pytest
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Failing due to dependency changes, needs update")
 async def test_create_configurations():
     from pinjected.ide_supports.default_design import pinjected_internal_design
     # create_idea_configurationsの引数を正しく設定
@@ -37,7 +36,6 @@ test_var = Injected.by_name("x")
 
 
 
-@pytest.mark.skip(reason="Skipping due to module loading issues with Injected.bind")
 def test_run_injected():
     res = run_injected(
         "get",
@@ -48,7 +46,6 @@ def test_run_injected():
     print(res)
     assert res == "hello world"
 
-@pytest.mark.skip(reason="Skipping due to module loading issues with Injected.bind")
 def test_run_injected_with_handle():
     res = run_injected(
         "get",
@@ -60,7 +57,6 @@ def test_run_injected_with_handle():
     assert res == "hello world"
 
 
-@pytest.mark.skip(reason="Skipping due to module loading issues with Injected.bind")
 def test_run_injected_exception_with_handle():
     with pytest.raises(Exception):
         res = run_injected(
