@@ -101,15 +101,15 @@
 これらの修正には、より慎重な対応が必要です。コアライブラリと内部テストファイルでの非推奨関数（`instances()`, `providers()`, `classes()`）の使用を `design()` に置き換える作業手順です。現在は警告は出るものの動作には影響ありません。
 
 ### フェーズ1: 準備と分析
-- [ ] **1.1.** 非推奨関数の使用箇所を全て特定する
-  - [ ] `git grep -l "instances(" -- "*.py"` コマンドでファイルを確認
-  - [ ] `git grep -l "providers(" -- "*.py"` コマンドでファイルを確認
-  - [ ] `git grep -l "classes(" -- "*.py"` コマンドでファイルを確認
-- [ ] **1.2.** 依存関係を分析し、更新順序を決定する
-  - [ ] 依存するファイルが少ないものを先に更新
-  - [ ] 基盤となるユーティリティファイルは最後に
-- [ ] **1.3.** 作業ブランチを作成する (`git checkout -b update-core-libs`)
-- [ ] **1.4.** テストスイートが通ることを確認 (`poetry run pytest`)
+- [x] **1.1.** 非推奨関数の使用箇所を全て特定する
+  - [x] `git grep -l "instances(" -- "*.py"` コマンドでファイルを確認
+  - [x] `git grep -l "providers(" -- "*.py"` コマンドでファイルを確認
+  - [x] `git grep -l "classes(" -- "*.py"` コマンドでファイルを確認
+- [x] **1.2.** 依存関係を分析し、更新順序を決定する
+  - [x] 依存するファイルが少ないものを先に更新
+  - [x] 基盤となるユーティリティファイルは最後に
+- [x] **1.3.** 作業ブランチを作成する (`git checkout -b update-core-libs`)
+- [x] **1.4.** テストスイートが通ることを確認 (`poetry run pytest`)
 
 ### フェーズ2: ライブラリユーティリティファイルの更新
 - [x] **2.1. pinjected/helper_structure.py の更新**
@@ -123,58 +123,60 @@
   - [x] `instances()`/`providers()` を `design()` に置き換え
   - [x] 変更後のテスト実行
 
-- [ ] **2.3. pinjected/ide_supports/ 内のファイル更新**
-  - [ ] default_design.py の `instances()`/`providers()` を `design()` に置き換え
-  - [ ] create_configs.py の非推奨関数がある場合は置き換え
+- [x] **2.3. pinjected/ide_supports/ 内のファイル更新**
+  - [x] default_design.py の `instances()`/`providers()` を `design()` に置き換え（確認済み、変更なし）
+  - [x] create_configs.py の非推奨関数がある場合は置き換え（確認済み、変更なし）
 
-- [ ] **2.4. pinjected/run_helpers/ 内のファイル更新**
-  - [ ] config.py の `instances()`/`providers()` を `design()` に置き換え
-  - [ ] run_injected.py の非推奨関数を置き換え
+- [x] **2.4. pinjected/run_helpers/ 内のファイル更新**
+  - [x] config.py の `instances()`/`providers()` を `design()` に置き換え
+  - [x] run_injected.py の非推奨関数を置き換え（確認済み、変更なし）
 
 ### フェーズ3: コア機能・APIの更新
-- [ ] **3.1. pinjected/di/ 内のコアファイル更新**
-  - [ ] decorators.py の `providers()` を `design()` に置き換え
-  - [ ] graph.py の非推奨関数使用を置き換え
+- [x] **3.1. pinjected/di/ 内のコアファイル更新**
+  - [x] decorators.py の例示コードを `design()` に置き換え
+  - [x] graph.py の非推奨関数使用を置き換え（確認済み、変更なし）
+  - [x] tools/add_overload.py の更新
 
-- [ ] **3.2. pinjected/visualize_di.py の残りの部分を更新**
-  - [ ] 未更新の非推奨関数を特定
-  - [ ] `providers()`/`instances()` を `design()` に置き換え
-  - [ ] `Injected.bind()` の適用
+- [x] **3.2. pinjected/visualize_di.py の残りの部分を更新**
+  - [x] 未更新の非推奨関数を特定（確認済み、変更なし）
+  - [x] `providers()`/`instances()` を `design()` に置き換え（確認済み、変更なし）
+  - [x] `Injected.bind()` の適用（確認済み、変更なし）
 
-- [ ] **3.3. pinjected/main_impl.py の更新**
-  - [ ] CLIエントリポイントの非推奨関数使用を置き換え
-  - [ ] `design()` へのルーティングを確認
+- [x] **3.3. pinjected/main_impl.py の更新**
+  - [x] CLIエントリポイントの非推奨関数使用を置き換え（確認済み、変更なし）
+  - [x] `design()` へのルーティングを確認（確認済み、変更なし）
 
 ### フェーズ4: テストとエクスポート関連
-- [ ] **4.1. pinjected/exporter/llm_exporter.py の更新**
-  - [ ] LLM出力生成に使われている非推奨関数を特定
-  - [ ] 複雑な使用パターンを慎重に `design()` に変換
-  - [ ] エクスポート機能のテスト実行
+- [x] **4.1. pinjected/exporter/llm_exporter.py の更新**
+  - [x] LLM出力生成に使われている非推奨関数を特定（確認済み、変更なし）
+  - [x] 複雑な使用パターンを慎重に `design()` に変換（確認済み、変更なし）
+  - [x] エクスポート機能のテスト実行（確認済み、変更なし）
 
-- [ ] **4.2. pinjected/di/test_*.py ファイルの更新**
-  - [ ] test_graph.py の非推奨関数を置き換え
-  - [ ] test_injected.py の非推奨関数を置き換え 
-  - [ ] test_partial.py の非推奨関数を置き換え
+- [x] **4.2. pinjected/di/test_*.py ファイルの更新**
+  - [x] test_graph.py の非推奨関数を置き換え
+  - [x] test_injected.py の非推奨関数を置き換え 
+  - [x] test_partial.py の非推奨関数を置き換え
 
-- [ ] **4.3. テストパッケージの更新**
-  - [ ] pinjected/test_package/__init__.py
-  - [ ] pinjected/test_package/child/module1.py
-  - [ ] pinjected/test_package/child/module_with.py
+- [x] **4.3. テストパッケージの更新**
+  - [x] pinjected/test_package/__init__.py
+  - [x] pinjected/test_package/child/module1.py
+  - [x] pinjected/test_package/child/module_with.py
 
 ### フェーズ5: 非推奨関数自体の改良 (最後に)
-- [ ] **5.1. pinjected/di/util.py の更新**
-  - [ ] `instances()` の内部実装を `design()` を呼び出すよう変更
-  - [ ] `providers()` の内部実装を `design()` を呼び出すよう変更
-  - [ ] `classes()` の内部実装を `design()` を呼び出すよう変更
-  - [ ] 非推奨警告メッセージの確認と改善
+- [x] **5.1. pinjected/di/util.py の更新**
+  - [x] `instances()` の内部実装を `design()` を呼び出すよう変更
+  - [x] `providers()` の内部実装を `design()` を呼び出すよう変更
+  - [x] `classes()` の内部実装を `design()` を呼び出すよう変更
+  - [x] `destructors()` の内部実装も `design()` を使うよう変更
+  - [x] 非推奨警告メッセージの確認と改善
 
 ### フェーズ6: 検証と完了
-- [ ] **6.1. 完全なテストスイートを実行**
-  - [ ] `poetry run pytest` でテスト成功を確認
-  - [ ] 警告メッセージが適切に表示されることを確認
+- [x] **6.1. 完全なテストスイートを実行**
+  - [x] `poetry run pytest` でテスト成功を確認
+  - [x] 警告メッセージが適切に表示されることを確認
 
 - [ ] **6.2. コミットとマージ**
-  - [ ] 変更内容を要約したコミットメッセージを作成
+  - [x] 変更内容を要約したコミットメッセージを作成
   - [ ] プルリクエスト作成
   - [ ] コードレビュー後、mainブランチにマージ
 
