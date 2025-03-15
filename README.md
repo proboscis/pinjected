@@ -142,11 +142,12 @@ For more detailed documentation and advanced features, see:
 - [Decorators](docs_md/03_decorators.md)
 - [Injected](docs_md/04_injected.md)
 - [Running](docs_md/05_running.md)
-- [Async Support](docs_md/06_async_support.md)
+- [Async Support](docs_md/06_async.md)
 - [Resolver](docs_md/07_resolver.md)
 - [Miscellaneous](docs_md/08_misc.md)
 - [Appendix](docs_md/09_appendix.md)
 - [Updates](docs_md/10_updates.md)
+- [Migration Guides](docs_md/migration/migration_to_design.md)
 
 ## [Introduction](docs_md/01_introduction.md)
 Pinjected makes it easy to compose multiple Python objects to create a final object. It automatically creates dependencies and composes them, providing a clean and modular approach to dependency management. To learn more about the motivation behind Pinjected and its key concepts, check out the Introduction.
@@ -166,7 +167,7 @@ In the Injected section, you'll learn about the Injected class, which represents
 ## [Running](docs_md/05_running.md)
 Pinjected supports running Injected instances from the command line and integrating with IDEs like IntelliJ IDEA. The Running section provides details on how to use the CLI and set up IDE integration for a smooth development experience.
 
-## [Async Support](docs_md/06_async_support.md)
+## [Async Support](docs_md/06_async.md)
 Pinjected offers support for asynchronous programming, allowing you to use async functions as providers. The Async Support section explains how to define and use async providers, as well as how to compose async Injected instances.
 
 ## [Resolver](docs_md/07_resolver.md)
@@ -179,5 +180,9 @@ For additional information, refer to the Miscellaneous section, which covers top
 The Appendix contains supplementary information, such as a comparison with pinject and other relevant details.
 
 ## [Updates](docs_md/10_updates.md)
-Stay up to date with the latest changes and releases by checking the Updates section, which includes a changelog and migration guides.
+Stay up to date with the latest changes and releases by checking the Updates section, which includes a changelog and release information.
+
+## [Migration Guides](docs_md/migration/migration_to_design.md)
+The Migration Guides section provides step-by-step instructions for transitioning from deprecated APIs to newer ones. Currently featuring a comprehensive guide for migrating from `instances()`, `providers()`, and `classes()` to the new unified `design()` function.
+
 We hope you find Pinjected helpful in your projects! If you have any questions or feedback, please don't hesitate to reach out.
