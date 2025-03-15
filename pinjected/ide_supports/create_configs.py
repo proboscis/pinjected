@@ -11,7 +11,7 @@ from returns.maybe import Some
 
 import pinjected
 import pinjected.global_configs
-from pinjected import instances, Injected, Design, instance, injected
+from pinjected import design, Injected, Design, instance, injected
 from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
@@ -19,7 +19,7 @@ from pinjected.helper_structure import MetaContext, IdeaRunConfigurations
 from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_var_path import ModuleVarPath
 
-__meta_design__ = instances(
+__meta_design__ = design(
     # ah, this makes my code load my_design
     default_design_paths=["pinjected.ide_supports.default_design.pinjected_internal_design"]
 )
@@ -46,14 +46,15 @@ def run_with_meta_context(
     if not "__meta_design__" in Path(context_module_file_path).read_text():
         raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
     meta_context = MetaContext.gather_from_path(Path(context_module_file_path))
-    default = instances(
+    default = design(
         default_design_paths=[]
     )
-    instance_overrides = instances(
+    instance_overrides = design(
         module_path=Path(context_module_file_path),
         interpreter_path=sys.executable,
         meta_context=meta_context,
-    ) + instances(**kwargs)
+        **kwargs
+    )
     return run_injected("get", var_path, design_path, return_result=True,
                         overrides=default + meta_context.accumulated + instance_overrides,
                         notifier=logger.info

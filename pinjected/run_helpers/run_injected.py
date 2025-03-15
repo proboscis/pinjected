@@ -13,7 +13,7 @@ import cloudpickle
 from beartype import beartype
 from returns.result import safe, Result
 
-from pinjected import instances, Injected, Design, providers, Designed, EmptyDesign, injected
+from pinjected import design, Injected, Design, Designed, EmptyDesign, injected
 from pinjected.cli_visualizations import design_rich_tree
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
@@ -51,7 +51,7 @@ def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
         if "overrides" in kwargs:
             overrides = kwargs.pop("overrides")
         else:
-            overrides = instances()
+            overrides = design()
         if design_path is None:
             design_path = get_design_path_from_var_path(var_path)
         logger.info(
@@ -75,7 +75,7 @@ async def a_run_target(var_path: str, design_path: Optional[str] = None):
     design = cxt.design + cxt.meta_overrides
     try:
         async with TaskGroup() as tg:
-            dd = design + instances(__task_group__=tg)
+            dd = design + design(__task_group__=tg)
             resolver = AsyncResolver(
                 dd, callbacks=[cxt.provision_callback] if cxt.provision_callback else []
             )
@@ -138,7 +138,7 @@ def run_anything(
         cmd: str,
         var_path: str,
         design_path: Optional[str],
-        overrides=instances(),
+        overrides=design(),
         return_result=False,
         notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
@@ -177,7 +177,7 @@ def run_anything(
             res_html: Path = DIGraph(design).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
         elif cmd == "to_script":
-            d = design + providers(__root__=cxt.var)
+            d = design + design(__root__=Injected.bind(cxt.var))
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
@@ -225,7 +225,7 @@ class RunContext:
     meta_overrides: Design
     var: Injected
     provision_callback: Optional[IResolverCallback]
-    overrides: Design = field(default_factory=instances)
+    overrides: Design = field(default_factory=design)
 
     def add_design(self, design: Design):
         return replace(self, design=self.design + design)
@@ -245,7 +245,7 @@ class RunContext:
             tree_str = design_rich_tree(final_design, self.var)
             logger.info(f"Dependency Tree:\n{tree_str}")
         async with TaskGroup() as tg:
-            dd = final_design + instances(__task_group__=tg)
+            dd = final_design + design(__task_group__=tg)
             resolver = AsyncResolver(
                 dd,
                 callbacks=[self.provision_callback] if self.provision_callback else [],
@@ -267,17 +267,37 @@ class RunContext:
         return asyncio.run(self.a_run())
 
 
+async def a_resolve_design(design_path, meta_cxt: MetaContext) -> Design:
+    """Resolve design from design_path and meta_context"""
+    if design_path is None:
+        logger.info(f"using design from final_design in meta_context:{meta_cxt}")
+        return await meta_cxt.a_final_design
+    else:
+        design_obj = load_variable_by_module_path(design_path)
+        if not isinstance(design_obj, Design):
+            logger.warning(f"{design_path} is not a Design")
+        from pinjected import Injected
+        logger.debug(f"loaded {design_path}")
+        if isinstance(design_obj, Injected):
+            logger.warning(f"{design_path} is an Injected")
+            # if the design is injected, we need to resolve it.
+            r = AsyncResolver(await meta_cxt.a_final_design)
+            design_obj = await r.provide(design_obj)
+        logger.debug(f"design:{design_obj}")
+        return design_obj
+
+
 async def a_get_run_context(design_path, var_path) -> RunContext:
     with logger.contextualize(tag="get_run_context"):
         loaded_var = load_variable_by_module_path(var_path)
         meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
         if not isinstance(meta, dict):
             meta = {}
-        meta_overrides = meta.get("overrides", instances())
+        meta_overrides = meta.get("overrides", design())
         meta_cxt: MetaContext = await MetaContext.a_gather_from_path(
             ModuleVarPath(var_path).module_file_path
         )
-        design = await a_resolve_design(design_path, meta_cxt)
+        design_obj = await a_resolve_design(design_path, meta_cxt)
         # here, actually the loaded variable maybe an instance of Designed.
         # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
         # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
@@ -285,12 +305,12 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
             case Injected() | DelegatedVar():
                 var = Injected.ensure_injected(var)
             case Designed():
-                design += var.design
+                design_obj += var.design
                 var = var.internal_injected
         """
                 I need to get the design overrides from with context and add it to the overrides
                 """
-        meta_design = instances(overrides=instances()) + meta_cxt.accumulated
+        meta_design = design(overrides=design()) + meta_cxt.accumulated
         meta_resolver = AsyncResolver(meta_design)
         meta_overrides = (await meta_resolver.provide("overrides")) + meta_overrides
         # add overrides from with block
@@ -300,11 +320,11 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
             provision_callback = await meta_resolver.provide("provision_callback")
         else:
             provision_callback = None
-        design = load_user_default_design() + design
+        design_obj = load_user_default_design() + design_obj
         meta_overrides += load_user_overrides_design()
         return RunContext(
             src_meta_context=meta_cxt,
-            design=design,
+            design=design_obj,
             meta_overrides=meta_overrides,
             var=var,
             provision_callback=provision_callback
@@ -339,7 +359,7 @@ def find_dot_pinjected():
 
 @safe
 def load_design_from_paths(paths, design_name) -> Result:
-    res = instances()
+    res = design()
     for path in paths:
         if path.exists():
             logger.info(f"loading design from {path}:{design_name}.")
@@ -368,13 +388,13 @@ def load_user_default_design() -> Design:
     :return:
     """
     design_path = os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
-    design = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(
-        instances()
-    ) + _load_design(design_path).value_or(instances())
-    # logger.info(f"loaded default design:{pformat(design.bindings.keys())}")
-    for k, v in design.bindings.items():
+    design_result = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(
+        design()
+    ) + _load_design(design_path).value_or(design())
+    # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
+    for k, v in design_result.bindings.items():
         logger.info(f"User overrides :{k} -> {type(v)}")
-    return design
+    return design_result
 
 
 @safe
@@ -382,7 +402,7 @@ def _load_design(design_path):
     if design_path == "":
         return EmptyDesign
     pairs = design_path.split("|")
-    res = instances()
+    res = design()
     for pair in pairs:
         if pair == "":
             continue
@@ -406,8 +426,8 @@ def load_user_overrides_design():
     :return:
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
-    design = load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(
-        instances()
-    ) + _load_design(design_path).value_or(instances())
-    logger.info(f"loaded override design:{pformat(design.bindings.keys())}")
-    return design
+    design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(
+        design()
+    ) + _load_design(design_path).value_or(design())
+    logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
+    return design_obj
