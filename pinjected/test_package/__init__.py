@@ -4,7 +4,6 @@ from pinjected.helper_structure import IdeaRunConfiguration
 from pinjected.test_helper.test_runner import test_tree
 
 
-@injected
 def dummy_config_creator_for_test(
         runner_script_path,
         interpreter_path,
