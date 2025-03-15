@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import pytest
 
 from pinjected import design, Injected, injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverrideContext, DesignOverridesStore
