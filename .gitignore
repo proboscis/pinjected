@@ -10,3 +10,4 @@
 poetry.lock
 .vscode/
 requirements*.lock
+CLAUDE.md
