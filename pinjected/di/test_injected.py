@@ -1,8 +1,8 @@
 import inspect
 
-from pinjected import injected_function, injected
+from pinjected import injected_function, injected, design
 from pinjected.di.injected import Injected
-from pinjected.di.util import instances, EmptyDesign
+from pinjected.di.util import EmptyDesign
 
 
 def _factory(a, b, y=0, x=7):
@@ -28,7 +28,7 @@ def test_injected_function():
         assert args, "args should be non-empty"
         return _x + _y + str(args)
 
-    g = instances(
+    g = design(
         x='x',
         y='y',
     ).to_resolver().to_blocking()
@@ -111,7 +111,7 @@ def test_injected_function_with_defaults():
     def test_func2(_x, _y, a, b, z=7, s=10):
         return _x, _y, (a, b), z, s
 
-    g = instances(
+    g = design(
         x='x',
         y='y',
     ).to_graph()
