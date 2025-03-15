@@ -59,7 +59,7 @@ def test_with_design(override_store_isolation):
     assert resolve(ModuleVarPath('test.test_with_block.x'), 'group') == 'l1'
 
 
-@pytest.mark.skip(reason="Skipping due to complex imports when updating deprecated functions")
+@pytest.mark.skip(reason="Skipping due to module loading issues with Injected.bind")
 def test_run_injected():
     y = run_injected(
         cmd='get',

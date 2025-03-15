@@ -36,7 +36,7 @@ def test_get_project_root(tmp_path):
 
 import pytest
 
-@pytest.mark.skip(reason="Skipping due to complex imports when updating deprecated functions")
+@pytest.mark.skip(reason="Skipping due to module loading issues with Injected.bind")
 def test_walk_module_attr():
     test_file = Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
     items = []
@@ -45,7 +45,7 @@ def test_walk_module_attr():
     pprint(items)
 
 
-@pytest.mark.skip(reason="Skipping due to complex imports when updating deprecated functions")
+@pytest.mark.skip(reason="Skipping due to module loading issues with Injected.bind")
 def test_gather_meta_design():
     test_file = Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
     mc: MetaContext = MetaContext.gather_from_path(test_file)

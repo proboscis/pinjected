@@ -268,6 +268,7 @@ def instances(**kwargs):
         assert not isinstance(v,
                               Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
 
+    # Delegate to the newer design() function
     return design(**kwargs)
 
 
@@ -334,6 +335,7 @@ def providers(**kwargs):
         else:
             wrapped_kwargs[k] = v
     
+    # Delegate to the newer design() function
     return design(**wrapped_kwargs)
 
 
@@ -462,6 +464,7 @@ def classes(**kwargs):
     
     # Wrap all classes with Injected.bind()
     wrapped_kwargs = {k: Injected.bind(v) for k, v in kwargs.items()}
+    # Delegate to the newer design() function
     return design(**wrapped_kwargs)
 
 
@@ -498,7 +501,7 @@ def destructors(**kwargs):
     registers destructors. using DestructorKey.
     The values must be an async function that takes one argument.
     """
-    res = instances()
+    res = design()
     for k, v in kwargs.items():
         tgt = StrBindKey(k)
         key = DestructorKey(tgt)
