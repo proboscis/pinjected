@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 
-from pinjected import instances, Injected, injected
+from pinjected import design, Injected, injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverrideContext, DesignOverridesStore
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
@@ -10,9 +10,9 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 def test_ovr_context():
     global x, y
-    cxt1 = DesignOverrideContext(instances(), inspect.currentframe())
+    cxt1 = DesignOverrideContext(design(), inspect.currentframe())
     x = injected('hello')
-    cxt2 = DesignOverrideContext(instances(), inspect.currentframe())
+    cxt2 = DesignOverrideContext(design(), inspect.currentframe())
     y = injected('world')
     mvps2 = cxt2.exit(inspect.currentframe())
     mvps1 = cxt1.exit(inspect.currentframe())
@@ -23,9 +23,9 @@ def test_ovr_context():
 def test_ovr_store():
     global x, y
     store = DesignOverridesStore()
-    store.add(inspect.currentframe(), instances())
+    store.add(inspect.currentframe(), design())
     x = injected('hello')
-    store.add(inspect.currentframe(), instances())
+    store.add(inspect.currentframe(), design())
     y = injected('world')
     print(store)
     store.pop(inspect.currentframe())
@@ -42,9 +42,9 @@ def test_with_design(override_store_isolation):
     Uses override_store_isolation fixture to ensure test has a clean store state.
     """
     global x, y, DESIGN_OVERRIDES_STORE
-    with instances(bind='level1', group='l1'):
+    with design(bind='level1', group='l1'):
         x = injected('hello')
-        with instances(bind='level2'):
+        with design(bind='level2'):
             y = injected('world')
     assert len(DESIGN_OVERRIDES_STORE.bindings) == 2
 

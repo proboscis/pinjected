@@ -246,7 +246,7 @@ class DIGraph:
         yield from dfs(src, [src])
 
     def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
-        from pinjected import providers
+        from pinjected import design
         from pinjected import Design
         match tgt:
             case str():
@@ -260,7 +260,7 @@ class DIGraph:
             case _:
                 from pinjected.di.graph import providable_to_injected
                 _injected = providable_to_injected(tgt)
-                tmp_design = self.src + providers(
+                tmp_design = self.src + design(
                     __target__=_injected
                 )
                 return tmp_design.to_vis_graph().distilled("__target__")
@@ -339,8 +339,8 @@ class DIGraph:
     def create_dependency_digraph_rooted(self, root: Injected, root_name="__root__",
                                          replace_missing=True
                                          ) -> NxGraphUtil:
-        from pinjected import providers
-        tmp_design = self.src + providers(**{root_name: root})
+        from pinjected import design
+        tmp_design = self.src + design(**{root_name: root})
         return DIGraph(tmp_design) \
             .create_dependency_digraph(
             root_name,
@@ -550,8 +550,8 @@ g = d.to_graph()
 
 
 def create_dependency_graph(d: Any, roots: List[str], output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
-    from pinjected import instances
-    dig = DIGraph(d + instances(
+    from pinjected import design
+    dig = DIGraph(d + design(
         job_type="net_visualization"
     ))
     nt = dig.create_dependency_network(roots)

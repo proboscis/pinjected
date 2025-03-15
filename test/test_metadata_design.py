@@ -1,6 +1,6 @@
 import asyncio
 
-from pinjected import instances, Design
+from pinjected import design, Design
 from pinjected.di.design import AddSummary, AddTags
 from pinjected.pinjected_logging import logger
 
@@ -8,7 +8,7 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_add_metadata():
-    d = instances()
+    d = design()
     d += AddSummary("This is a test")
     d += AddTags("tag1")
 

@@ -55,7 +55,7 @@ class AsyncResolver:
         assert self.callbacks is not None
         self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design
 
-        from pinjected import providers
+        from pinjected import design
         async def dummy():
             raise RuntimeError('This should never be instantiated')
 
@@ -68,7 +68,7 @@ class AsyncResolver:
         # 2. user provision phase, where user can provide stuff. we use __pinjected_...__ to provide stuff.
         # I think we should stick to constructor injection for simplicity.
 
-        self.design = self.design + providers(
+        self.design = self.design + design(
             __resolver__=dummy,
             __design__=dummy,
             __task_group__=dummy,
@@ -316,23 +316,23 @@ class AsyncResolver:
 
     async def validate_provision(self, tgt: Providable):
         logger.debug(f"validating provision...")
-        from pinjected import providers
+        from pinjected import design
         d = self._design_from_ancestors()
         errors = []
         match tgt:
             case Injected():
-                tmp_design = d + providers(__root__=tgt)
+                tmp_design = d + design(__root__=tgt)
                 digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case str():
                 digraph: DIGraph = DIGraph(d)
                 errors = list(digraph.di_dfs_validation(tgt))
             case DelegatedVar() as dv:
-                tmp_design = d + providers(__root__=tgt)
+                tmp_design = d + design(__root__=tgt)
                 digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case f if callable(f):
-                tmp_design = d + providers(__root__=tgt)
+                tmp_design = d + design(__root__=tgt)
                 digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
         if errors:

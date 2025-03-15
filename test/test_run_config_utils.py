@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pinjected
 from pinjected import *
-from pinjected.di.util import instances
 from pinjected.helper_structure import MetaContext
 from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.run_helpers.run_injected import run_injected
@@ -31,7 +30,7 @@ async def test_create_configurations():
     print(res)
 
 
-test_design = instances(x=0)
+test_design = design(x=0)
 test_var = Injected.by_name("x")
 
 

@@ -218,7 +218,7 @@ The problem we see are as follows:
 Instead, we can use Pinjected to solve these problems as follows:
 ```python
 from dataclasses import dataclass
-from pinjected import instances,providers,injected,instance,classes
+from pinjected import design,injected,instance
 
 @instance
 def optimizer__adam(learning_rate,model):
@@ -233,17 +233,15 @@ def model__sequential():
 def loss__myloss():
     return MyLoss()
 
-conf:Design = instances(
+conf:Design = design(
     learning_rate = 0.001,
     batch_size = 128,
     image_w = 256,
-) + providers(
     optimizer = optimizer__adam,
     dataset = dataset__mydataset,
     model = model__sequential,
-    loss = loss__myloss
-) + classes(
-    io_interface = LocalIo# use local file system by default
+    loss = loss__myloss,
+    io_interface = LocalIo # use local file system by default
 )
 
 g = conf.to_graph()
@@ -284,30 +282,28 @@ but when you start playing with many configurations,
 this approach really helps like this.
 
 ```python
-conf = instances(
+conf = design(
     learning_rate = 0.001,
     batch_size = 128,
     image_w = 256,
-) + providers(
     optimizer = provide_optimizer,
     dataset = provide_dataset,
     model = provide_model,
-    loss_calculator = provide_loss_calculator
-) + classes(
-    io_interface = LocalIo# use local file system by default
+    loss_calculator = provide_loss_calculator,
+    io_interface = LocalIo # use local file system by default
 )
 
 
-conf_lr_001 = conf + instances(# lets change lr
+conf_lr_001 = conf + design(# lets change lr
     learning_rate=0.01
 )
-conf_lr_01 = conf + instances(
+conf_lr_01 = conf + design(
     learning_rate=0.1
 )
-lstm_model = providers( # lets try LSTM?
+lstm_model = design( # lets try LSTM?
     model = lambda:LSTM()
 )
-save_at_mongo = classes( # lets save at mongodb
+save_at_mongo = design( # lets save at mongodb
     io_interface = MongoDBIo
 )
 conf_lr_001_lstm = conf_lr_001 + lstm_model # you can combine two Design!
@@ -338,7 +334,7 @@ class AtariTrainer:
             loss = self.loss_calculator(self.model,batch)
             self.optimizer.step()
             # do anything
-my_new_training_strategy = classes(
+my_new_training_strategy = design(
     trainer=AtariTrainer
 )
 conf_extreme=conf_lr_01_mongo + my_new_training_strategy
