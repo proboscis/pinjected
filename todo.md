@@ -112,16 +112,16 @@
 - [ ] **1.4.** テストスイートが通ることを確認 (`poetry run pytest`)
 
 ### フェーズ2: ライブラリユーティリティファイルの更新
-- [ ] **2.1. pinjected/helper_structure.py の更新**
-  - [ ] 非推奨関数の使用箇所を特定
-  - [ ] `instances()` を `design()` に置き換え
-  - [ ] クラスまたは関数パラメータには `Injected.bind()` でラップ
-  - [ ] 変更後のテスト実行
+- [x] **2.1. pinjected/helper_structure.py の更新**
+  - [x] 非推奨関数の使用箇所を特定
+  - [x] `instances()` を `design()` に置き換え
+  - [x] クラスまたは関数パラメータには `Injected.bind()` でラップ
+  - [x] 変更後のテスト実行
 
-- [ ] **2.2. pinjected/run_config_utils.py の更新**
-  - [ ] 非推奨関数の使用箇所を特定
-  - [ ] `instances()`/`providers()` を `design()` に置き換え
-  - [ ] 変更後のテスト実行
+- [x] **2.2. pinjected/run_config_utils.py の更新**
+  - [x] 非推奨関数の使用箇所を特定
+  - [x] `instances()`/`providers()` を `design()` に置き換え
+  - [x] 変更後のテスト実行
 
 - [ ] **2.3. pinjected/ide_supports/ 内のファイル更新**
   - [ ] default_design.py の `instances()`/`providers()` を `design()` に置き換え

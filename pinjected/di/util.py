@@ -268,8 +268,7 @@ def instances(**kwargs):
         assert not isinstance(v,
                               Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
 
-    d = DesignImpl().bind_instance(**kwargs)
-    return add_code_locations(d, kwargs, inspect.currentframe())
+    return design(**kwargs)
 
 
 def providers(**kwargs):
@@ -325,8 +324,17 @@ def providers(**kwargs):
         DeprecationWarning,
         stacklevel=2
     )
-    d = DesignImpl().bind_provider(**kwargs)
-    return add_code_locations(d, kwargs, inspect.currentframe())
+    # Convert callable parameters to Injected.bind() if not already Injected
+    wrapped_kwargs = {}
+    for k, v in kwargs.items():
+        if isinstance(v, Injected) or isinstance(v, DelegatedVar):
+            wrapped_kwargs[k] = v
+        elif callable(v):
+            wrapped_kwargs[k] = Injected.bind(v)
+        else:
+            wrapped_kwargs[k] = v
+    
+    return design(**wrapped_kwargs)
 
 
 def design(**kwargs):
@@ -451,8 +459,10 @@ def classes(**kwargs):
         DeprecationWarning,
         stacklevel=2
     )
-    d = DesignImpl().bind_provider(**kwargs)
-    return add_code_locations(d, kwargs, inspect.currentframe())
+    
+    # Wrap all classes with Injected.bind()
+    wrapped_kwargs = {k: Injected.bind(v) for k, v in kwargs.items()}
+    return design(**wrapped_kwargs)
 
 
 ValidationFunc = Callable[[IBindKey, Any], Any]

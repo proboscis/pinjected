@@ -14,7 +14,6 @@ from returns.maybe import Nothing, Maybe, Some
 from returns.result import safe, Result, Failure, Success
 from rich.console import Console
 from rich.panel import Panel
-
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import Expr
 from pinjected.di.designed import Designed
@@ -368,10 +367,10 @@ class DependencyResolver:
         return set(chain(*[self._dfs(d, include_dynamic=include_dynamic) for d in first_deps]))
 
     def purified_design(self, providable: Providable):
-        from pinjected import providers
+        from pinjected import design
         deps = self.required_dependencies(providable, include_dynamic=True)
         deps = {k: self.mapping[k] for k in deps}
-        return providers(**deps)
+        return design(**{k: Injected.bind(v) if callable(v) else v for k, v in deps.items()})
 
     def _dependency_tree(self, tgt: str, trace: list[str] = None) -> Result[Dict[str, Result], Exception]:
         trace = trace or [tgt]
@@ -595,9 +594,9 @@ class DependencyResolver:
         if overrides is None:
             from pinjected import Design,EmptyDesign
             overrides = EmptyDesign()
-        from pinjected import providers
-        child_design = self.src + providers(
-            session=session_provider
+        from pinjected import design
+        child_design = self.src + design(
+            session=Injected.bind(session_provider)
         )
         child_resolver = DependencyResolver(child_design)
         return child_resolver
@@ -706,7 +705,7 @@ class MyObjectGraph(IObjectGraph):
         return OGFactoryByDesign(self.src_design)
 
     @staticmethod
-    def root(design: "Design", trace_logger=None) -> "MyObjectGraph":
+    def root(design_obj: "Design", trace_logger=None) -> "MyObjectGraph":
         distributor = EventDistributor()
 
         def _trace_logger(event):
@@ -717,12 +716,13 @@ class MyObjectGraph(IObjectGraph):
                 IScope.default_trace_logger(event)
 
         scope = MScope(_trace_logger=_trace_logger)
-        graph = MyObjectGraph(None, design, scope, distributor)
-        design = design.bind_instance(
+        graph = MyObjectGraph(None, design_obj, scope, distributor)
+        from pinjected import design
+        design_obj = design_obj + design(
             session=graph,
             __pinjected_events__=graph.event_distributor,
         )
-        resolver = DependencyResolver(design)
+        resolver = DependencyResolver(design_obj)
         graph._resolver = resolver
         return graph
 
@@ -764,10 +764,10 @@ class MyObjectGraph(IObjectGraph):
 
     def child_session(self, overrides: "Design" = None, trace_logger=None):
         if overrides is None:
-            from pinjected import Design
-            overrides = EmptyDesign
+            from pinjected import Design, EmptyDesign
+            overrides = EmptyDesign()
         child_scope = MChildScope(self.scope, set(overrides.keys()),
-                                  _trace_logger=trace_logger or self.scope.trace_logger)
+                                 _trace_logger=trace_logger or self.scope.trace_logger)
         child_graph = MyObjectGraph(None, self.design + overrides, child_scope)
         child_resolver = self.resolver.child(lambda: child_graph, overrides)
         child_graph._resolver = child_resolver
@@ -779,8 +779,9 @@ class MyObjectGraph(IObjectGraph):
 
     @property
     def design_with_implicits(self):
-        from pinjected import providers
-        return providers(**DIGraphHelper(self.design).total_mappings()).unbind('session')
+        from pinjected import design
+        mappings = DIGraphHelper(self.design).total_mappings()
+        return design(**{k: Injected.bind(v) if callable(v) else v for k, v in mappings.items()}).unbind('session')
 
     def __repr__(self):
         return f"MyObjectGraph({self.design})"
