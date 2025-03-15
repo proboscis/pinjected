@@ -96,52 +96,92 @@
 - 関数型パラメータは必ず `Injected.bind()` でラップすること
 - ドキュメント内のコード例も更新する必要がある
 
-## 残課題
-以下のファイルにはまだ非推奨関数の使用があります。これらの修正には、より慎重な対応が必要で、別途対応が必要です。現在は警告は出るものの動作には影響ありません。
+## 今後の残課題: 非推奨関数をcoreライブラリと内部テストで置き換える
 
-### 1. コアライブラリの実装部分
-- [ ] **pinjected/di/util.py** - 非推奨関数自体の定義
-  - 非推奨関数の内部呼び出しを `design()` に変更
-  - 関数自体は後方互換性のために維持し、警告メッセージ付きに
+これらの修正には、より慎重な対応が必要です。コアライブラリと内部テストファイルでの非推奨関数（`instances()`, `providers()`, `classes()`）の使用を `design()` に置き換える作業手順です。現在は警告は出るものの動作には影響ありません。
 
-- [ ] **pinjected/exporter/llm_exporter.py**
-  - `instances()`, `providers()`, `classes()` の使用を `design()` に置き換え
-  - 複雑なLLM出力生成部分のため、慎重なテストが必要
+### フェーズ1: 準備と分析
+- [ ] **1.1.** 非推奨関数の使用箇所を全て特定する
+  - [ ] `git grep -l "instances(" -- "*.py"` コマンドでファイルを確認
+  - [ ] `git grep -l "providers(" -- "*.py"` コマンドでファイルを確認
+  - [ ] `git grep -l "classes(" -- "*.py"` コマンドでファイルを確認
+- [ ] **1.2.** 依存関係を分析し、更新順序を決定する
+  - [ ] 依存するファイルが少ないものを先に更新
+  - [ ] 基盤となるユーティリティファイルは最後に
+- [ ] **1.3.** 作業ブランチを作成する (`git checkout -b update-core-libs`)
+- [ ] **1.4.** テストスイートが通ることを確認 (`poetry run pytest`)
 
-- [ ] **pinjected/helper_structure.py**
-  - 非推奨関数の使用を `design()` に置き換え
-  - ヘルパー構造体の動作に影響がないことを確認
+### フェーズ2: ライブラリユーティリティファイルの更新
+- [ ] **2.1. pinjected/helper_structure.py の更新**
+  - [ ] 非推奨関数の使用箇所を特定
+  - [ ] `instances()` を `design()` に置き換え
+  - [ ] クラスまたは関数パラメータには `Injected.bind()` でラップ
+  - [ ] 変更後のテスト実行
 
-- [ ] その他のユーティリティファイル
-  - [ ] pinjected/run_config_utils.py
-  - [ ] pinjected/run_helpers/config.py
-  - [ ] pinjected/run_helpers/run_injected.py
-  - [ ] pinjected/ide_supports/default_design.py
-  - [ ] pinjected/di/decorators.py
-  - [ ] pinjected/di/graph.py
+- [ ] **2.2. pinjected/run_config_utils.py の更新**
+  - [ ] 非推奨関数の使用箇所を特定
+  - [ ] `instances()`/`providers()` を `design()` に置き換え
+  - [ ] 変更後のテスト実行
 
-### 2. テストパッケージ
-- [ ] **pinjected/test_package/__init__.py**
-- [ ] **pinjected/test_package/child/module1.py**
-- [ ] **pinjected/test_package/child/module_with.py**
+- [ ] **2.3. pinjected/ide_supports/ 内のファイル更新**
+  - [ ] default_design.py の `instances()`/`providers()` を `design()` に置き換え
+  - [ ] create_configs.py の非推奨関数がある場合は置き換え
 
-### 3. その他の基盤ファイル
-- [ ] **pinjected/di/test_*.py** ファイル
-  - [ ] pinjected/di/test_graph.py
-  - [ ] pinjected/di/test_injected.py
-  - [ ] pinjected/di/test_partial.py
-- [ ] **pinjected/main_impl.py** (CLIエントリポイント)
-- [ ] **pinjected/visualize_di.py** (追加の部分)
+- [ ] **2.4. pinjected/run_helpers/ 内のファイル更新**
+  - [ ] config.py の `instances()`/`providers()` を `design()` に置き換え
+  - [ ] run_injected.py の非推奨関数を置き換え
 
-### 実装手順
-1. 各ファイルの非推奨関数の使用パターンを特定
-2. 単純なケースと複雑なケースを分類
-3. 単純なケースから置き換えを開始
-4. 各変更後にテストを実行して動作確認
-5. テストパッケージの更新は最後に行う
+### フェーズ3: コア機能・APIの更新
+- [ ] **3.1. pinjected/di/ 内のコアファイル更新**
+  - [ ] decorators.py の `providers()` を `design()` に置き換え
+  - [ ] graph.py の非推奨関数使用を置き換え
+
+- [ ] **3.2. pinjected/visualize_di.py の残りの部分を更新**
+  - [ ] 未更新の非推奨関数を特定
+  - [ ] `providers()`/`instances()` を `design()` に置き換え
+  - [ ] `Injected.bind()` の適用
+
+- [ ] **3.3. pinjected/main_impl.py の更新**
+  - [ ] CLIエントリポイントの非推奨関数使用を置き換え
+  - [ ] `design()` へのルーティングを確認
+
+### フェーズ4: テストとエクスポート関連
+- [ ] **4.1. pinjected/exporter/llm_exporter.py の更新**
+  - [ ] LLM出力生成に使われている非推奨関数を特定
+  - [ ] 複雑な使用パターンを慎重に `design()` に変換
+  - [ ] エクスポート機能のテスト実行
+
+- [ ] **4.2. pinjected/di/test_*.py ファイルの更新**
+  - [ ] test_graph.py の非推奨関数を置き換え
+  - [ ] test_injected.py の非推奨関数を置き換え 
+  - [ ] test_partial.py の非推奨関数を置き換え
+
+- [ ] **4.3. テストパッケージの更新**
+  - [ ] pinjected/test_package/__init__.py
+  - [ ] pinjected/test_package/child/module1.py
+  - [ ] pinjected/test_package/child/module_with.py
+
+### フェーズ5: 非推奨関数自体の改良 (最後に)
+- [ ] **5.1. pinjected/di/util.py の更新**
+  - [ ] `instances()` の内部実装を `design()` を呼び出すよう変更
+  - [ ] `providers()` の内部実装を `design()` を呼び出すよう変更
+  - [ ] `classes()` の内部実装を `design()` を呼び出すよう変更
+  - [ ] 非推奨警告メッセージの確認と改善
+
+### フェーズ6: 検証と完了
+- [ ] **6.1. 完全なテストスイートを実行**
+  - [ ] `poetry run pytest` でテスト成功を確認
+  - [ ] 警告メッセージが適切に表示されることを確認
+
+- [ ] **6.2. コミットとマージ**
+  - [ ] 変更内容を要約したコミットメッセージを作成
+  - [ ] プルリクエスト作成
+  - [ ] コードレビュー後、mainブランチにマージ
 
 ### 注意事項
 - コアライブラリ部分の変更はより広範囲に影響するため慎重に行う
-- 変更後は完全なテストスイートを実行して検証する
-- 各ファイルの特性に応じて適切な変換方法を選択する
-- 必要に応じてリファクタリングを検討する
+- 各変更後に関連するテストを実行して段階的に検証する
+- 複雑なパターンが見つかった場合はリファクタリングを検討する
+- 非推奨関数自体は後方互換性のために維持するが、内部実装を `design()` に委譲する
+- すべてのクラスと関数型パラメータは `Injected.bind()` でラップすることを忘れない
+- LLMエクスポーター等、複雑な処理を含む部分は特に注意して変更する
