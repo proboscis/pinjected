@@ -180,19 +180,26 @@
   - [ ] プルリクエスト作成
   - [ ] コードレビュー後、mainブランチにマージ
 
-### フェーズ7: 今後の改善点
+### フェーズ7: 今後の改善点（一部完了）
 - [ ] **7.1. テストパッケージのリファクタリング**
   - [ ] `dummy_config_creator_for_test` の適切な修正（現在は@injectedデコレータを削除して回避）
   - [ ] `pinjected/test_package/__init__.py` の `Injected.bind()` 関連の問題解決
 
-- [ ] **7.2. スキップしたテストの修正**
-  - [ ] `test/test_module_inspector.py` の完全な対応
-  - [ ] `test/test_with_block.py` のテスト改善
-  - [ ] `test/test_run_config_utils.py` の全テスト対応
+- [x] **7.2. スキップしたテストの修正**
+  - [x] `test/test_module_inspector.py` の完全な対応（スキップ注釈を除去し、修正）
+  - [x] `test/test_with_block.py` のテスト改善（スキップ注釈を除去し、修正）
+  - [x] `test/test_run_config_utils.py` の全テスト対応（スキップ注釈を除去し、修正）
+  - [x] pytestが非同期テストを処理できるように `pyproject.toml` に設定追加
+  - [x] `test_runner.py` の非同期パターン修正とコメント追加
 
-- [ ] **7.3. Injected.bind()の使用パターン改善**
-  - [ ] 非推奨関数からdesign()への移行ガイドラインの作成
+- [x] **7.3. Injected.bind()の使用パターン改善**
+  - [x] 非推奨関数からdesign()への移行ガイドラインの作成（`issues/migration-patterns.md`）
+  - [x] `Injected.bind()` と `Injected.pure()` の使い分けガイドライン作成
   - [ ] テスト環境におけるInjected.bindの問題調査と解決策の検討
+
+- [ ] **7.4. 残りの警告対応**
+  - [ ] PEP 585による非推奨型ヒント警告への対応（`typing` → `beartype.typing`）
+  - [ ] Pydantic V1スタイルの `@validator` を V2スタイルの `@field_validator` に更新
 
 ### 注意事項
 - コアライブラリ部分の変更はより広範囲に影響するため慎重に行う
