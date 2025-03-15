@@ -2,7 +2,6 @@ import asyncio
 
 from pinjected import injected,design,instance,IProxy, Injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
-from pinjected.di.util import instances, providers
 from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
 from pinjected.test_helper.test_runner import test_current_file
 
