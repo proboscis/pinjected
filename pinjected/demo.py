@@ -2,17 +2,17 @@ from pathlib import Path
 from telnetlib import IP
 from typing import Callable
 
-from pinjected import injected,Design,instances,IProxy
+from pinjected import injected, Design, design, Injected, IProxy
 
-__meta_design__: Design = instances(
+__meta_design__: Design = design(
     default_design_paths=["pinjected.demo.default_design"]
 )
 
-default_design: Design = instances(
+default_design: Design = design(
     openai_api_key="my secret key",
     model="text-davinci-003",
     max_tokens=1000,
-    load_openai_api_key=lambda: Path("~/openai_api_key.txt").expanduser().read_text().strip()
+    load_openai_api_key=Injected.pure(lambda: Path("~/openai_api_key.txt").expanduser().read_text().strip())
 )
 
 

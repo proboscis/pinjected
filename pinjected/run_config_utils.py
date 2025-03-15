@@ -534,13 +534,12 @@ def run_main():
     cfg = ConfigCreationArgs(
         module_path=module_path,
     )
-    # runnable: RunnablePair = (instances(
+    # runnable: RunnablePair = (design(
     #     root_frame=inspect.currentframe().f_back,
     #     logger=logger,
-    # ) + providers(
-    #     module_path=provide_module_path,
-    #     main_targets=provide_runnables,
-    #     main_design_paths=provide_design_paths
+    #     module_path=Injected.bind(provide_module_path),
+    #     main_targets=Injected.bind(provide_runnables),
+    #     main_design_paths=Injected.bind(provide_design_paths)
     # )).provide(create_runnable_pair)
     d = cfg.to_design() + design(
         logger=logger,
