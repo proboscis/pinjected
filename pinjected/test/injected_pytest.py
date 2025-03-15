@@ -27,7 +27,7 @@ def injected_pytest(override: Design = EmptyDesign):
         デコレータ関数
     
     使用例:
-        @pinjected_test()
+        @injected_pytest()
         def test_some_function(some_dependency):
             return some_dependency.do_something()
             
@@ -35,7 +35,7 @@ def injected_pytest(override: Design = EmptyDesign):
         このデコレータは、呼び出し元のファイルパスを自動的に取得します。
     """
     assert isinstance(override, Design), """override must be a Design instance. perhaps you forgot to use parentheses?
-     For example: @pinjected_test. you must use @pinjected_test() or @pinjected_test(override=<design object>)
+     For example: @injected_pytest. you must use @injected_pytest() or @injected_pytest(override=<design object>)
      """
 
     def impl(func):
@@ -64,7 +64,8 @@ def _to_pytest(p: Injected, override: Design, caller_file: str):
         mc: MetaContext = await MetaContext.a_gather_from_path(caller_file)
         design = await mc.a_final_design + override
         async with TaskGroup() as tg:
-            design += instances(
+            from pinjected import design as design_fn
+            design += design_fn(
                 __task_group__=tg
             )
             resolver = AsyncResolver(
