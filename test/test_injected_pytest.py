@@ -33,7 +33,7 @@ def test_injected_pytest_usage():
     # テスト用のデザイン
     test_design = design()
     test_design += design(
-        logger=MockLogger()
+        logger=Injected.pure(MockLogger())
     )
 
     # injected_pytestを使用してテスト関数を作成
