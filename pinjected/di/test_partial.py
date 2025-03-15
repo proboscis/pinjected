@@ -82,7 +82,7 @@ async def test_with_design():
             d3=Injected.by_name('d3')
         )
     )
-    d = instances(
+    d = design(
         d1=1,
         d2=2,
         d3=3
@@ -94,7 +94,7 @@ async def test_with_design():
 
 def test_with_injected_decorator():
     wrapped = injected(target_function)
-    d = instances(
+    d = design(
         d1=1,
         d2=2,
         d3=3

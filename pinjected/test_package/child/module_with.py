@@ -1,16 +1,16 @@
 
-from pinjected import instances, injected
+from pinjected import design, injected
 
-with instances(x=10):
+with design(x=10):
     y = injected('x')
-    with instances(y=20):
+    with design(y=20):
         z = injected('y')
-    with instances(x=100):
+    with design(x=100):
         z2 = y
 
-default_design = instances()
+default_design = design()
 
-__meta_design__ = instances(
+__meta_design__ = design(
     default_design_paths=['pinjected.test_package.child.module_with.default_design'],
-    overrides=instances()
+    overrides=design()
 )
