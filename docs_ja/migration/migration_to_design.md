@@ -22,14 +22,16 @@ Pinjectedは依存性注入をより一貫した方法で扱うために、API�
 design += instances(
     x=0,
     y="string",
-    z=[1, 2, 3]
+    z=[1, 2, 3],
+    add_one=lambda x:x+1
 )
 
 # 移行後
 design += design(
     x=0,
     y="string",
-    z=[1, 2, 3]
+    z=[1, 2, 3],
+    add_one=lambda x:x+1
 )
 ```
 
@@ -39,15 +41,38 @@ design += design(
 
 ```python
 # 移行前
+def create_something(x):
+    return x+1
+@injected
+def injected_func(dep1):
+    return dep1+'x'
+@injected
+async def a_injected_func(dep1):
+    return dep1+'a'
+@instance
+def singleton_object1(dep1):
+    return dep1 + 'this is singleton'
+@instance
+async def singleton_object2_async(dep1):
+    return dep1 + "this is singleton with async"
+
 design += providers(
     calc=lambda x, y: x + y,
-    factory=create_something
+    factory=create_something,
+    func1 = injected_func,
+    a_func1 = a_injected_func,
+    singleton1 = singleton_object1,
+    singleton2 = singleton_object2_async,
 )
 
 # 移行後
 design += design(
     calc=Injected.bind(lambda x, y: x + y),
-    factory=Injected.bind(create_something)
+    factory=Injected.bind(create_something),
+    func1 = injected_func,
+    a_func1 = a_injected_func,
+    singleton1 = singleton_object1,
+    singleton2 = singleton_object2_async,
 )
 ```
 
@@ -95,15 +120,18 @@ design = design(
 
 ## 特別なケース
 
-### 1. `Injected.pure()` の使用
-
-依存関係のない単純な関数の場合、`Injected.bind()` の代わりに `Injected.pure()` を使うことでパフォーマンスが向上します：
+### 1. 関数を提供する場合の `Injected.pure()` の使用
 
 ```python
 # 依存関係のないシンプルな関数
+# 移行前、instancesで関数を提供
+design = instances(
+    add_one = lambda x:x + 1
+)
+# 移行後、関数を提供する場合はInjected.pureでラップするとより明示的
 design += design(
+    # add_one = lambda x: x+1, # これも有効ですが、Injected.pureの方がより明示的です
     add_one=Injected.pure(lambda x: x + 1),
-    constant_provider=Injected.pure(lambda: "constant value")
 )
 ```
 
@@ -144,8 +172,6 @@ design_obj += design(...)
 
 ## 注意点
 
-1. `instances()`→`design()`の変換では追加の修正は不要
-2. `providers()`と`classes()`→`design()`の変換では常に`Injected.bind()`でラップする
 3. IDE上でワークスペース全体の検索・置換を行う場合は特に注意が必要（パターンマッチで正しく識別）
 4. 単純な置換だけでなく、移行後にテストを実行して動作確認が重要
 5. クラスコンストラクタを直接渡す際は必ず`Injected.bind()`でラップする
@@ -180,8 +206,6 @@ design_obj += design(...)
 移行の基本原則:
 
 1. 単純な値は直接 `design(key=value)` として渡す
-2. 関数やクラスは `design(key=Injected.bind(func))` としてラップする
-3. 依存関係のない単純な関数は `Injected.pure()` を検討する
-4. 常にテストを実行して動作を確認する
+2. 常にテストを実行して動作を確認する
 
 この移行ガイドに従うことで、非推奨APIから新しい統一APIへのスムーズな移行が可能になります。
