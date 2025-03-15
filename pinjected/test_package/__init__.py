@@ -1,11 +1,9 @@
 from pinjected import *
-from pinjected.di.util import instances, providers
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.helper_structure import IdeaRunConfiguration
 from pinjected.test_helper.test_runner import test_tree
 
 
-@injected
 def dummy_config_creator_for_test(
         runner_script_path,
         interpreter_path,
@@ -25,12 +23,12 @@ def dummy_config_creator_for_test(
         )
     ]
 
-run_test_module:IProxy = test_tree()
+# 非同期関数を直接呼び出すのではなく、最初から非同期を処理できる形に変更
+run_test_module:IProxy = Injected.bind(lambda: test_tree())
 
 
-__meta_design__ = instances(
+__meta_design__ = design(
     name="test_package.child.__init__",
     # custom_idea_config_creator = 'dummy'
-) + providers(
-    custom_idea_config_creator=dummy_config_creator_for_test
+    custom_idea_config_creator=Injected.bind(dummy_config_creator_for_test)
 )

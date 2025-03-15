@@ -2,7 +2,7 @@
 # AsyncIO support
 pinjected supports using async functions as a provider. For async providers, each dependencies are gathered in parallel, and the provider function is called in an async context.
 ```python
-from pinjected import instances, providers, injected, instance
+from pinjected import design, injected, instance
 import asyncio
 
 
@@ -31,7 +31,7 @@ def non_async_x():
     return 1
 
 
-d = providers(
+d = design(
     x=x,
     y=y_provider
 )
@@ -43,7 +43,7 @@ assert (await async_g['y']) == 2
 
 ## AsyncIO support for Injected AST composition
 ```python
-from pinjected import instances, providers, injected, instance
+from pinjected import design, injected, instance
 import asyncio
 
 
@@ -69,7 +69,7 @@ y = slow_add_1(x)
 # we can also combine non-async and async Injected variables 
 z = y + alpha
 
-d = providers()
+d = design()
 g = d.resolver()
 
 assert (await g[y]) == 2

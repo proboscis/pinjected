@@ -2,7 +2,7 @@ from sys import stderr, stdout
 
 from pinjected.pinjected_logging import logger
 
-from pinjected import instance, injected, instances, Injected, providers
+from pinjected import instance, injected, design, Injected
 
 
 def test_async_ast():
@@ -17,19 +17,19 @@ def test_async_ast():
     async def y(x):
         return 'y' + x
 
-    design = instances()
+    test_design = design()
     logger.info(f"x:{x}")
     logger.info(f"y(x):{y(x)}")
     logger.info(f"y(x) => {y(x).value}")
     logger.info(f"y(injected('x')) => {y(injected('x'))}")
     # why is provided x a coroutine?
-    assert design.to_graph().provide('x') == 'x'
-    assert design.to_graph().provide(x) == 'x'
+    assert test_design.to_graph().provide('x') == 'x'
+    assert test_design.to_graph().provide(x) == 'x'
 
-    assert design.to_graph().provide(y('x')) == 'yx'
-    assert design.to_graph().provide(y(x)) == 'yx'
+    assert test_design.to_graph().provide(y('x')) == 'yx'
+    assert test_design.to_graph().provide(y(x)) == 'yx'
 
-    assert design.to_graph().provide(y(injected('x'))) == 'yx'
+    assert test_design.to_graph().provide(y(injected('x'))) == 'yx'
 
 
 async def x_provider():
@@ -39,7 +39,7 @@ async def x_provider():
 def test_map():
     x = Injected.pure('x')
     y = x.map(lambda x: f"y{x}")
-    d = providers(
+    d = design(
         x=x,
         y=y
     )
@@ -52,7 +52,7 @@ def test_map():
 def test_await_op():
     proxy = Injected.pure(x_provider).proxy().await__()
 
-    d = providers(
+    d = design(
         x=proxy
     )
     g = d.to_graph()
@@ -71,7 +71,7 @@ def test_injected_dict():
         x=Injected.pure('x'),
         y=Injected.bind(y_provider),
     )
-    d = providers(
+    d = design(
         x=x,
         use_x=use_x
     )
@@ -84,7 +84,7 @@ def test_injected_bind():
         return x
 
     bound = Injected.bind(target, x=Injected.pure('z'))
-    d = providers(
+    d = design(
         x=bound
     )
     assert d.provide(bound) == 'z'
@@ -92,7 +92,7 @@ def test_injected_bind():
 
 def test_async_partial():
     partial = Injected.inject_partially(x_provider)
-    d = providers(
+    d = design(
         x=partial
     )
     g = d.to_graph()
@@ -119,8 +119,8 @@ def test_injected():
     from pinjected.pinjected_logging import logger
     logger.info(f"partial_x => :{partial_x}")
     logger.info(f"partial x provider:{partial_x.eval().get_provider()}")
-    d = providers(
-        x=provide_x,
+    d = design(
+        x=Injected.bind(provide_x),
         xx=bound_x,
         partial_x=partial_x,
     )
@@ -134,9 +134,9 @@ def test_injected():
 def test_lambda_as_provider():
     provide_x = lambda: 'x'
     provide_y = lambda x: f"y{x}"
-    d = providers(
-        x=provide_x,
-        y=provide_y
+    d = design(
+        x=Injected.bind(provide_x),
+        y=Injected.bind(provide_y)
     )
     g = d.to_graph()
     # assert Injected.bind(provide_y,x=provide_x).dependencies() == set()

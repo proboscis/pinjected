@@ -1,9 +1,7 @@
-from pinjected import instances, providers, injected, instance
+from pinjected import design, injected, instance
 
-d = instances(
+d = design(
     x=0
-) + providers(
-
 )
 
 

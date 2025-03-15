@@ -34,6 +34,8 @@ def test_get_project_root(tmp_path):
     assert root == str(project_dir)
 
 
+import pytest
+
 def test_walk_module_attr():
     test_file = Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
     items = []

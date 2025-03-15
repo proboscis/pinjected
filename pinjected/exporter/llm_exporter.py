@@ -8,7 +8,7 @@ from typing import Callable, Awaitable, List
 
 import cytoolz
 
-from pinjected import Design, Injected, injected, instances, providers, instance
+from pinjected import Design, Injected, injected, design, instance
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
 from pinjected.di.injected import InjectedPure, InjectedFromFunction, PartialInjectedFunction, ZippedInjected, \
@@ -660,7 +660,7 @@ async def _export_injected(logger, a_llm, /, tgt: str):
     fd = await mc.a_final_design
     logger.debug(f"meta context final design:{pformat(fd.bindings)}")
     # hmm, the design must contain the tgt.var_name, so we add it here
-    fd += providers(**{tgt.var_name: tgt.load()})
+    fd += design(**{tgt.var_name: Injected.bind(tgt.load())})
     exporter = PinjectedCodeExporter(fd, a_llm)
     src = await exporter.export(tgt.var_name, tgt.module_name.split('.')[0])
     logger.info(f"script:\n{src}")
@@ -794,16 +794,12 @@ def get_required_imports(module_or_source, module_name=None) -> Imports:
     )
 
 
-default_design = instances(
-) + providers(
+default_design = design(
     a_llm=injected('a_llm__gpt4_turbo')
 )
 
-__meta_design__ = instances(
+__meta_design__ = design(
     default_design_paths=["pinjected.exporter.llm_exporter.default_design"],
-    overrides=instances(
-
-    ),
-) + providers(
+    overrides=design()
     # custom_idea_config_creator=add_export_config,
 )

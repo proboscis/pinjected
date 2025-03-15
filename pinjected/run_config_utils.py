@@ -43,7 +43,7 @@ from pinjected import Injected, Design, injected_function, Designed
 from pinjected.di.expr_util import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.di.util import instances, providers
+from pinjected.di.util import design
 from pinjected.exporter.llm_exporter import add_export_config
 # from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, IdeaRunConfiguration
@@ -233,9 +233,9 @@ notification_sounds = [
 
 
 def run_with_kotlin(module_path: str, kotlin_zmq_address: str = None):
-    d = instances()
+    d = design()
     if kotlin_zmq_address is not None:
-        d += instances(
+        d += design(
             kotlin_zmq_address=kotlin_zmq_address
         )
     tgt: Injected = load_variable_by_module_path(module_path)
@@ -263,7 +263,7 @@ def find_injecteds(
 # since this is an entrypoint, we can't use @injected_function here.
 
 
-default_design = design = providers(
+default_design = design(
     # project_root=lambda module_path: Path(get_project_root(module_path)),
     # runner_script_path=lambda: self.runner_script_path or __file__,
     # interpreter_path=lambda: self.interpreter_path or sys.executable,
@@ -271,9 +271,8 @@ default_design = design = providers(
     # default_working_dir=lambda project_root: maybe(lambda: self.working_dir)() | Some(
     #    str(project_root)),
     # default_design_path=lambda default_design_paths: default_design_paths[0]
-) + instances(
     logger=logger,
-    custom_idea_config_creator=lambda x: [],  # type ConfigCreator
+    custom_idea_config_creator=Injected.bind(lambda x: []),  # type ConfigCreator
     # meta_context=meta_context,
     # module_path=self.module_path,
     #
@@ -474,21 +473,21 @@ def main_override_resolver(query) -> Design:
     import json
     from returns.pipeline import is_successful
     if isinstance(query, dict):
-        return instances(**query)
+        return design(**query)
     elif query is None:
         return EmptyDesign
     elif query.endswith('.json'):
         import json
         if not Path(query).exists():
             raise ValueError(f"cannot find {query} for configuration.")
-        return instances(**json.load(open(query)))
+        return design(**json.load(open(query)))
     elif query.endswith('.yaml'):
         import yaml
         if not Path(query).exists():
             raise ValueError(f"cannot find {query} for configuration.")
-        return instances(**yaml.load(open(query), Loader=yaml.SafeLoader))
+        return design(**yaml.load(open(query), Loader=yaml.SafeLoader))
     elif is_successful(safe(json.loads)(query)):
-        return instances(**json.loads(query))
+        return design(**json.loads(query))
     else:
         return ModuleVarPath(query).load()
 
@@ -535,18 +534,16 @@ def run_main():
     cfg = ConfigCreationArgs(
         module_path=module_path,
     )
-    # runnable: RunnablePair = (instances(
+    # runnable: RunnablePair = (design(
     #     root_frame=inspect.currentframe().f_back,
     #     logger=logger,
-    # ) + providers(
-    #     module_path=provide_module_path,
-    #     main_targets=provide_runnables,
-    #     main_design_paths=provide_design_paths
+    #     module_path=Injected.bind(provide_module_path),
+    #     main_targets=Injected.bind(provide_runnables),
+    #     main_design_paths=Injected.bind(provide_design_paths)
     # )).provide(create_runnable_pair)
-    d = cfg.to_design() + instances(
+    d = cfg.to_design() + design(
         logger=logger,
-    ) + providers(
-        main_targets=provide_runnables,
+        main_targets=Injected.bind(provide_runnables),
     )
     runnable: RunnablePair = d.provide(create_runnable_pair)
     fire.Fire(runnable)
@@ -604,8 +601,7 @@ def var_path_to_file_path(project_root: Path, /, var_path: str) -> Path:
 if __name__ == '__main__':
     main()
 
-__meta_design__ = instances(
-    default_design_paths=["pinjected.run_config_utils.__meta_design__"]
-) + providers(
+__meta_design__ = design(
+    default_design_paths=["pinjected.run_config_utils.__meta_design__"],
     internal_idea_config_creator=add_export_config
 )

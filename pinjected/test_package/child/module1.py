@@ -2,12 +2,11 @@ import asyncio
 
 from pinjected import injected,design,instance,IProxy, Injected
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
-from pinjected.di.util import instances, providers
 from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
 from pinjected.test_helper.test_runner import test_current_file
 
-design01 = instances(name='design01')
-design02 = design01 + instances(name='design02')
+design01 = design(name='design01')
+design02 = design01 + design(name='design02')
 a = Injected.pure('a')
 b = Injected.pure('b')
 
@@ -38,7 +37,7 @@ variable_x: IProxy = injected('x')
 variable_y: Injected = injected('y')
 
 
-viz_target_design = providers(
+viz_target_design = design(
     a=a,
     b=b
 )
@@ -72,7 +71,7 @@ with design(
     ):
         test_cc = injected('c')
 
-run_test:IProxy = test_current_file()
+run_test:IProxy = Injected.bind(lambda: test_current_file())
 
 
 @injected
@@ -92,7 +91,7 @@ __test_handling_design = design(
 
 design03 = design01 + __test_handling_design
 
-__meta_design__ = instances(
+__meta_design__ = design(
     overrides=design(
         a="a",
         b="b",
