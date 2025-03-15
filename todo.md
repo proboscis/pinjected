@@ -97,15 +97,51 @@
 - ドキュメント内のコード例も更新する必要がある
 
 ## 残課題
-以下のファイルにはまだ非推奨関数の使用があります：
+以下のファイルにはまだ非推奨関数の使用があります。これらの修正には、より慎重な対応が必要で、別途対応が必要です。現在は警告は出るものの動作には影響ありません。
 
-1. コアライブラリの実装部分
-   - pinjected/di/util.py - 非推奨関数自体の定義
-   - pinjected/exporter/llm_exporter.py
-   - pinjected/helper_structure.py
-   - その他のユーティリティファイル
+### 1. コアライブラリの実装部分
+- [ ] **pinjected/di/util.py** - 非推奨関数自体の定義
+  - 非推奨関数の内部呼び出しを `design()` に変更
+  - 関数自体は後方互換性のために維持し、警告メッセージ付きに
 
-2. テストパッケージ
-   - pinjected/test_package/* 内のファイル
+- [ ] **pinjected/exporter/llm_exporter.py**
+  - `instances()`, `providers()`, `classes()` の使用を `design()` に置き換え
+  - 複雑なLLM出力生成部分のため、慎重なテストが必要
 
-これらについては別途対応が必要。現在は警告は出るものの動作には影響ありません。
+- [ ] **pinjected/helper_structure.py**
+  - 非推奨関数の使用を `design()` に置き換え
+  - ヘルパー構造体の動作に影響がないことを確認
+
+- [ ] その他のユーティリティファイル
+  - [ ] pinjected/run_config_utils.py
+  - [ ] pinjected/run_helpers/config.py
+  - [ ] pinjected/run_helpers/run_injected.py
+  - [ ] pinjected/ide_supports/default_design.py
+  - [ ] pinjected/di/decorators.py
+  - [ ] pinjected/di/graph.py
+
+### 2. テストパッケージ
+- [ ] **pinjected/test_package/__init__.py**
+- [ ] **pinjected/test_package/child/module1.py**
+- [ ] **pinjected/test_package/child/module_with.py**
+
+### 3. その他の基盤ファイル
+- [ ] **pinjected/di/test_*.py** ファイル
+  - [ ] pinjected/di/test_graph.py
+  - [ ] pinjected/di/test_injected.py
+  - [ ] pinjected/di/test_partial.py
+- [ ] **pinjected/main_impl.py** (CLIエントリポイント)
+- [ ] **pinjected/visualize_di.py** (追加の部分)
+
+### 実装手順
+1. 各ファイルの非推奨関数の使用パターンを特定
+2. 単純なケースと複雑なケースを分類
+3. 単純なケースから置き換えを開始
+4. 各変更後にテストを実行して動作確認
+5. テストパッケージの更新は最後に行う
+
+### 注意事項
+- コアライブラリ部分の変更はより広範囲に影響するため慎重に行う
+- 変更後は完全なテストスイートを実行して検証する
+- 各ファイルの特性に応じて適切な変換方法を選択する
+- 必要に応じてリファクタリングを検討する
