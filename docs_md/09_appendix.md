@@ -30,19 +30,19 @@ some_class.foo
 ```
 ## Pinjected version
 ```python
-from pinjected import Design, instances, providers
+from pinjected import Design, design
 from dataclasses import dataclass
 @dataclass
 class SomeClass(object):
     foo:str
     bar:str
 
-d:Design = instances() # empty immutable bindings called Design
-d1:Design = instances( # new Design
+d:Design = design() # empty immutable bindings called Design
+d1:Design = design( # new Design
     foo="a-foo",
     bar="a-bar"
 )
-d2:Design = d1 + instances( # creates new Design on top of d1 keeping all other bindings except overriden foo
+d2:Design = d1 + design( # creates new Design on top of d1 keeping all other bindings except overriden foo
     foo="b-foo" #override foo of d1
 )
 a = d1.to_graph()[SomeClass]

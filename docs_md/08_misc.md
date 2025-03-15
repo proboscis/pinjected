@@ -25,7 +25,8 @@ Requirements:
 Write a pinjected script, for example:
 ```python
 # test_package.test.py
-from pinjected import instances, Injected, injected, instance
+from pinjected import design, Injected, injected, instance
+from returns.maybe import Some, Nothing
 
 
 @instance
@@ -36,8 +37,7 @@ async def test_variable():
   """
   return 1
 
-from returns.maybe import Some, Nothing
-__meta_design__ = instances(
+__meta_design__ = design(
     default_design_path='test_package.design',
     default_working_dir=Some("/home/user/test_repo"), # use Some() to override, and Nothing to infer from the project structure.
 )
@@ -69,7 +69,7 @@ def add_custom_run_configurations(
         working_dir="~/test_repo", # you can use default_working_dir
     )]
 
-__meta_design__ = instances(
+__meta_design__ = design(
     custom_idea_config_creator=add_custom_run_configurations
 )
 

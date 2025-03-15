@@ -33,7 +33,7 @@ from pinjected import *
 
 local_env = injected(LocalRunner)()
 
-__meta_design__ = providers(
+__meta_design__ = design(
     custom_idea_config_craetor=idea_config_craetor_from_envs(
         [
             "some_module.local_env"
