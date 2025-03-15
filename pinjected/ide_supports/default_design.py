@@ -13,7 +13,7 @@ from pinjected.run_config_utils import injected_to_idea_configs
 pinjected_internal_design:Design = design(
     logger=logger,
     runner_script_path=pinjected.run_config_utils.__file__,
-    custom_idea_config_creator=Injected.bind(lambda spec: []),  # type ConfigCreator
+    custom_idea_config_creator=Injected.pure(lambda spec: []),  # type ConfigCreator
     # this becomes recursive and overflows if we call meta_session inside a parent design...
     default_design_path=None,
     print_to_stdout=True,
