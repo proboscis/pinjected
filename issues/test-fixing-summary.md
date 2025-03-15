@@ -45,12 +45,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 ## 残る問題
 
-1. **`test_injected_pytest_usage`の失敗**
-   - `injected_pytest`モジュールの修正には、より広範な変更が必要
-   - 変数名`design`と関数名`design()`の衝突問題
-   - この問題については別の課題として対応予定（issue-injected-pytest-compatibility.md参照）
-
-2. **警告メッセージ**
+1. **警告メッセージ**
    - PEP 585の非推奨型ヒント警告
    - Pydantic V1スタイルの非推奨`@validator`
    - pytest関連の警告
