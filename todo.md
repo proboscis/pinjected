@@ -95,3 +95,17 @@
 - 重複キー問題に注意（例：test_cyclic_dependencyのケース）
 - 関数型パラメータは必ず `Injected.bind()` でラップすること
 - ドキュメント内のコード例も更新する必要がある
+
+## 残課題
+以下のファイルにはまだ非推奨関数の使用があります：
+
+1. コアライブラリの実装部分
+   - pinjected/di/util.py - 非推奨関数自体の定義
+   - pinjected/exporter/llm_exporter.py
+   - pinjected/helper_structure.py
+   - その他のユーティリティファイル
+
+2. テストパッケージ
+   - pinjected/test_package/* 内のファイル
+
+これらについては別途対応が必要。現在は警告は出るものの動作には影響ありません。
