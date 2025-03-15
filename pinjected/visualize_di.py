@@ -424,10 +424,10 @@ class DIGraph:
         if not isinstance(design_path, ModuleVarPath):
             design_path = ModuleVarPath(design_path)
         script = f"""
-from pinjected.di.util import Design,providers
+from pinjected.di.util import Design, design
 {design_path.to_import_line()} # Please correct this line as needed
 {root_path.to_import_line()} # Please correct this line as needed
-d:Design = {design_path.var_name} + providers(
+d:Design = {design_path.var_name} + design(
     __target__= {root_path.var_name}
 )
 g = d.to_graph()
