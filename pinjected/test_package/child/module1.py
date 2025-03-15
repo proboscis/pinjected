@@ -71,7 +71,7 @@ with design(
     ):
         test_cc = injected('c')
 
-run_test:IProxy = test_current_file()
+run_test:IProxy = Injected.bind(lambda: test_current_file())
 
 
 @injected
