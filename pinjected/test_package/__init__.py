@@ -1,5 +1,4 @@
 from pinjected import *
-from pinjected.di.util import instances, providers
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.helper_structure import IdeaRunConfiguration
 from pinjected.test_helper.test_runner import test_tree
