@@ -1,4 +1,4 @@
-from pinjected import injected, instance, Injected, instances, providers
+from pinjected import injected, instance, Injected, design
 from pinjected.pinjected_logging import logger
 from pinjected.di.app_injected import await_awaitables
 
@@ -27,8 +27,7 @@ def test_compilation():
 
 
 def test_eval_beta():
-    g = (instances() + providers(
-    )).to_graph()
+    g = design().to_graph()
     result = g.provide(beta)
     # 'Call' gets replaced
     print(f'alpha id:{id(alpha.eval().ast), id(alpha.eval().ast)}')
@@ -37,7 +36,7 @@ def test_eval_beta():
 
 
 def test_expr_in_design():
-    g = providers(
+    g = design(
         gamma=beta + beta
     ).to_graph()
     result = g.provide('gamma')

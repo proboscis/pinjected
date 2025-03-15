@@ -102,7 +102,7 @@ def injected_instance(f) -> Injected:
         assert type(logger) == Injected  # True for Injected[Logger]
 
         # This 'Injected' instance can be contributed to a design like so:
-        design = providers(
+        design = design(
             logger=logger
         )
 

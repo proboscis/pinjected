@@ -6,7 +6,7 @@ It has a set of dependencies that are required to be created, and a provider fun
 ```python
 from pinjected.di.util import Injected
 import asyncio
-from pinjected import instances
+from pinjected import design
 
 
 def provide_ab(a: int, b: int):
@@ -16,11 +16,11 @@ def provide_ab(a: int, b: int):
 # Injected.bind can convert a provider function to an Injected object.
 # the names of arguments are used as dependencies.
 injected: Injected[int] = Injected.bind(provide_ab)
-design = instances(
+d = design(
     a=1,
     b=2
 )
-assert design.to_graph()[injected] == 3
+assert d.to_graph()[injected] == 3
 assert injected.dependencies() == {'a', 'b'}
 assert asyncio.run(injected.get_provider()(a=1, b=2)) == 3
 # Injected's provider is automatically async for now.
@@ -33,16 +33,16 @@ assert asyncio.run(injected.get_provider()(a=1, b=2)) == 3
 You can map an Injected to create another injected instance.
 Similar to the map function in functional programming, the value of the Injected is transformed by the function.
 ```python
-from pinjected.di.util import Injected, instances
-from pinjected import Design
+from pinjected.di.util import Injected
+from pinjected import design, Design
 
-design: Design = instances(
+d: Design = design(
     a=1,
 )
 a: Injected[int] = Injected.by_name('a')
 # by_name is a helper function to create an Injected instance that depends on the given name, and returns its value on resolution.
 b: Injected[int] = a.map(lambda x: x + 1)  # must be a + 1
-g = design.to_graph()
+g = d.to_graph()
 assert g[a] == 1  # by_name just returns the value of the key.
 assert g[a] + 1 == g[b]
 ```
@@ -61,11 +61,11 @@ def provide_ab(a: int, b: int):
     return a + b
 
 
-design = instances(
+d = design(
     a=1,
     b=2
 )
-g = design.to_graph()
+g = d.to_graph()
 # you can use getitem to get the value of Injected by key
 assert g['a'] == 1
 assert g['b'] == 2
@@ -83,9 +83,10 @@ assert g[ab_zip] == (1, 2)
 since we have map and zip, we can create dict and list from pinjected.
 
 ```python
-from pinjected.di.util import Injected, instances
+from pinjected.di.util import Injected
+from pinjected import design
 
-design = instances(
+d = design(
     a=1,
     b=2
 )
@@ -104,8 +105,8 @@ The separation between the arguments meant to be injected and the arguments that
 done by a `/` in the argument list. So all the positional-only arguments become the dependencies of the Injected.
 
 ```python
-from pinjected.di.util import Injected, instances
-from pinjected import injected,IProxy
+from pinjected.di.util import Injected
+from pinjected import design, injected, IProxy
 from typing import Callable
 
 
@@ -116,13 +117,13 @@ def add(a: int, b: int, /, c: int):
     return a + b + c
 
 
-design = instances(
+d = design(
     a=1,
     b=2,
 )
 add_func: IProxy[Callable[[int], int]] = add
 total: IProxy[int] = add(c=3)  # can be add_func(c=3) or add_func(3) or add(3)
-g = design.to_graph()
+g = d.to_graph()
 assert g[total] == 6
 assert g[add(3)] == 6
 assert g[add](3) == 6
@@ -133,8 +134,8 @@ assert g[add](3) == 6
 We can also form a syntax tree of injected functions, to create another injected instance.
 
 ```python
-from pinjected.di.util import Injected, instances
-from pinjected import injected
+from pinjected.di.util import Injected
+from pinjected import design, injected
 from typing import Callable
 
 
@@ -151,11 +152,11 @@ def y(logger, database_connection, /, x: int):
 
 
 x_andthen_y: Injected[int] = y(x(0))
-design = instances(
+d = design(
     logger=print,
     database_connection="dummy_connection"
 )
-g = design.to_graph()
+g = d.to_graph()
 assert g[x_andthen_y] == 2
 assert g[y(x(0))] == 2
 ```
@@ -167,8 +168,8 @@ This means that we can chain as many injected functions as we want, and the depe
 Injected can be used as a provider function in a design.
 
 ```python
-from pinjected.di.util import Injected, instances, providers, Design
-from pinjected import injected, instance
+from pinjected.di.util import Injected
+from pinjected import design, Design, injected, instance
 
 
 @instance
@@ -188,11 +189,10 @@ def calc_d_plus_one(d: int, /, ):
 # if you don't provide non_injected arguments, it will a injected function that does not take any arguments when injected.
 # now get_d_plus_one is Injected[Callable[[],int]], so a callable will be created when it is injected by DI.
 
-d = instances(
+d = design(
     a=1,
-    b=2
-) + providers(
-    c=lambda a, b: a + b,
+    b=2,
+    c=Injected.bind(lambda a, b: a + b),
     d=Injected.by_name('a').map(lambda x: x + 1),
     e=d_plus_one,
     get_e=calc_d_plus_one,
@@ -213,11 +213,10 @@ def provide_c(a,
     return a + " " + b
 
 
-d = instances(
+d = design(
     a="my",
-    b="world"
-) + providers(
-    c=provide_c
+    b="world",
+    c=Injected.bind(provide_c)
 )
 ```
 
@@ -228,7 +227,7 @@ You can do as follows:
 from pinjected.di.util import Injected
 
 overriden: Injected = Injected.bind(provide_c, a=Injected.pure("hello"))
-d2 = d + providers(
+d2 = d + design(
     c=overriden
 )
 d.provide("c") == "my world"

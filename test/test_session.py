@@ -1,4 +1,4 @@
-from pinjected import injected, instances, instance
+from pinjected import injected, design, instance
 
 
 def test_access_session():
@@ -7,6 +7,6 @@ def test_access_session():
         print(__resolver__)
         pass
 
-    d = instances()
+    d = design()
 
     return d.provide(task)

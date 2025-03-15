@@ -4,7 +4,7 @@ import textwrap
 from typing import List, Dict, Any
 from typing import overload
 from pinjected.pinjected_logging import logger
-from pinjected import injected, instances
+from pinjected import injected, design
 
 def process_file(file_path):
     with open(file_path, 'r') as file:
@@ -118,5 +118,5 @@ def add_overload(file_path: str) -> int:
     process_file(file_path)
     return 0
 
-design = instances()
-__meta_design__ = instances(default_design_paths=['pinjected.di.tools.add_overload.design'])
+design_obj = design()
+__meta_design__ = design(default_design_paths=['pinjected.di.tools.add_overload.design_obj'])

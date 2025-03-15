@@ -2,7 +2,7 @@ import asyncio
 from inspect import isawaitable
 from pathlib import Path
 
-from pinjected import Design, instances, providers, Injected
+from pinjected import Design, design, Injected
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.helper_structure import MetaContext
@@ -48,7 +48,7 @@ def run(
     async def a_prep():
         with disable_internal_logging():
             kwargs_overrides = parse_kwargs_as_design(**kwargs)
-            ovr = instances()
+            ovr = design()
             if meta_context_path is not None:
                 mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
                 ovr += await mc.a_final_design
@@ -78,16 +78,16 @@ def parse_kwargs_as_design(**kwargs):
     """
     When a value is in '{pkg.varname}' format, we import the variable and use it as the value.
     """
-    res = instances()
+    res = design()
     for k, v in kwargs.items():
         if isinstance(v, str) and v.startswith('{') and v.endswith('}'):
             v = v[1:-1]
             loaded = load_variable_by_module_path(v)
-            res += providers(
-                **{k: loaded}
+            res += design(
+                **{k: Injected.bind(loaded)}
             )
         else:
-            res += instances(
+            res += design(
                 **{k: v}
             )
     return res
@@ -97,9 +97,9 @@ def parse_overrides(overrides) -> Design:
     match overrides:
         case str() if ':' in overrides:  # this needs to be a complete call to run_injected, at least, we need to take arguments...
             # hmm at this point, we should just run a script ,right?
-            design, var = overrides.split(':')
-            resolved = run_injected("get", var, design, return_result=True)
-            assert isinstance(resolved, Design), f"expected {design} to be a design, but got {resolved}"
+            design_path, var = overrides.split(':')
+            resolved = run_injected("get", var, design_path, return_result=True)
+            assert isinstance(resolved, Design), f"expected {design_path} to be a design, but got {resolved}"
             return resolved
         case str() as path:  # a path of a design/injected
             var = ModuleVarPath(path).load()
@@ -110,7 +110,7 @@ def parse_overrides(overrides) -> Design:
                 assert isinstance(resolved, Design), f"expected {path} to be a design, but got {resolved}"
                 return resolved
         case None:
-            return instances()
+            return design()
 
 
 def decode_b64json(text):
@@ -153,7 +153,7 @@ def call(
     # no_notification = kwargs.pop('pinjected_no_notification', False)
     async def a_prep():
         kwargs_overrides = parse_kwargs_as_design(**kwargs)
-        ovr = instances()
+        ovr = design()
         if meta_context_path is not None:
             mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
             ovr += await mc.a_final_design

@@ -1,11 +1,11 @@
 from returns.result import safe, Failure
 
-from pinjected import instances, Injected
+from pinjected import design, Injected
 from pinjected.v2.keys import StrBindKey
 
 
 def test_provide_session():
-    d = instances(
+    d = design(
         a=0
     )
     g = d.to_graph()
@@ -15,14 +15,12 @@ def test_provide_session():
 
 
 def test_child_session():
-    d = instances(
-        #a=0
-    ).bind_provider(
-        x=lambda a: a
+    d = design(
+        x=Injected.bind(lambda a: a)
     )
     g = d.to_graph()
-    child_g = g.child_session(instances(a=1))
-    grandchild_g = child_g.child_session(instances(a=2))
+    child_g = g.child_session(design(a=1))
+    grandchild_g = child_g.child_session(design(a=2))
     request_a = Injected.bind(lambda a: a + a).proxy
     a_plus_a = request_a + request_a
 

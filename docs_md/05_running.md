@@ -16,21 +16,21 @@ python -m pinjected run [path of an Injected variable] [optional path of a Desig
 python -m pinjected my.package.instance --name hello --yourconfig anystring
 ```
 
-This CLI will parse any additional keyword arguments into a call of `instances` internally to be appended to the design
+This CLI will parse any additional keyword arguments into a call of `design` internally to be appended to the design
 running this injected instance.
 Which is equivalent to running following script:
 
 ```python
 from my.package import instance
-design = instances(
+d = design(
     name='dummy',
     yourconfig='dummy'
-) + instances(
+) + design(
     name = 'hello',
     yourconfig = 'anystring'
 )
 
-design.provide(instance)
+d.provide(instance)
 ```
 
 ### Using Injected variable in CLI argument

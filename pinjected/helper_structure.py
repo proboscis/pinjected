@@ -5,7 +5,7 @@ from pinjected.pinjected_logging import logger
 from pathlib import Path
 from typing import Dict, List
 
-from pinjected import Design, Injected, instances, EmptyDesign
+from pinjected import Design, Injected, design, EmptyDesign
 from pinjected.module_helper import walk_module_attr
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
@@ -35,7 +35,7 @@ class MetaContext:
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
         with logger.contextualize(tag="gather_meta_context"):
-            from pinjected import instances
+            from pinjected import design
             if not isinstance(file_path, Path):
                 file_path = Path(file_path)
             designs = list(walk_module_attr(file_path, meta_design_name))
@@ -58,7 +58,7 @@ class MetaContext:
             for k,v in key_to_src.items():
                 logger.debug(f"Override Key {k} from {v}")
             # Apply overrides last
-            res = res + instances(overrides=overrides)
+            res = res + design(overrides=overrides)
             return MetaContext(
                 trace=designs,
                 accumulated=res
@@ -135,6 +135,6 @@ try:
 except ImportError:
     from pydantic import validator as field_validator
 
-__meta_design__ = instances(
+__meta_design__ = design(
     default_design_paths=["pinjected.helper_structure.__meta_design__"]
 )

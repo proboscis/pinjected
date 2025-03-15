@@ -29,6 +29,10 @@ beartype = "*"
 pytest-asyncio = "*"
 pytest-xdist = "*"
 
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
 [tool.poetry.scripts]
 pinjected = "pinjected.main_impl:main"
 
