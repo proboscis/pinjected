@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from pinjected import instances, providers, injected
+from pinjected import design, injected, Injected
 from pinjected.exceptions import DependencyResolutionError
 from pinjected.pinjected_logging import logger
 
@@ -10,11 +10,15 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_validation():
-    d = instances(
+    # 重複キーを避けるため、別々のdesignを作成して結合
+    d = design(
         x=0
-    ) + providers(
-        y=lambda x: x,
-        x=lambda y: y
+    )
+    d = d + design(
+        y=Injected.bind(lambda x: x)
+    )
+    d = d + design(
+        x=Injected.bind(lambda y: y)
     )
     with pytest.raises(DependencyResolutionError) as e:
         asyncio.run(AsyncResolver(d)['y'])
@@ -25,10 +29,9 @@ def test_validation():
     with pytest.raises(DependencyResolutionError) as e:
         asyncio.run(AsyncResolver(d)[injected('z') + injected('z')])
     logger.info(f"successfully detected dep error as :{e}")
-    d2 = instances(
-        x=0
-    ) + providers(
-        y=lambda x: 1
+    d2 = design(
+        x=0,
+        y=Injected.bind(lambda x: 1)
     )
 
     assert asyncio.run(AsyncResolver(d2)[injected('y') + injected('y')]) == 2

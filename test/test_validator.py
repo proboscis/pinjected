@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from pinjected import instances
+from pinjected import design
 from pinjected.di.util import validations
 from pinjected.exceptions import DependencyValidationError
 from pinjected.v2.keys import IBindKey
@@ -15,7 +15,7 @@ def test_validation_works():
         logger.warning(f"asserting {key} {value}")
         assert isinstance(value, int), f"expected int got {value} for key {key}"
 
-    d = instances(
+    d = design(
         x=1,
         y="y"
     ) + validations(

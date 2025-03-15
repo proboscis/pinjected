@@ -32,7 +32,7 @@ def test_injected_pytest_usage():
 
     # テスト用のデザイン
     test_design = design()
-    test_design += instances(
+    test_design += design(
         logger=MockLogger()
     )
 

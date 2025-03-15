@@ -87,7 +87,7 @@ base_design = design(
 mnist_design = base_design + design(
     model=model__simplecnn,
     dataset=dataset__mnist,
-    trainer=Trainer
+    trainer=Injected.bind(Trainer)  # クラスは必ずInjected.bindでラップする
 )
 ```
 

@@ -1,20 +1,18 @@
 from pprint import pprint
 
-from pinjected import Design, injected_function, Injected
+from pinjected import Design, injected_function, Injected, design
 from pinjected.di.graph import MyObjectGraph, IObjectGraph
-from pinjected.di.util import instances
 from pinjected.v2.async_resolver import AsyncResolver
 
-design = instances(
-    x=0
-).bind_provider(
-    y=lambda x: x + 1,
-    z=lambda y: y + 1,
-    zz=lambda x, y, z: (x, y, z),
-    alpha=lambda x, zz: x + zz
+test_design = design(
+    x=0,
+    y=Injected.bind(lambda x: x + 1),
+    z=Injected.bind(lambda y: y + 1),
+    zz=Injected.bind(lambda x, y, z: (x, y, z)),
+    alpha=Injected.bind(lambda x, zz: x + zz)
 )
-g = design.to_graph()
-g2 = g.child_session(instances(
+g = test_design.to_graph()
+g2 = g.child_session(design(
     y=10
 ))
 

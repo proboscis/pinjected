@@ -211,7 +211,7 @@ cfgオブジェクトは、コンストラクタだけでなく、オブジェ�
 
 代わりに、Pinjectedを使用してこれらの問題を以下のように解決できます：
 pythonCopyfrom dataclasses import dataclass
-from pinjected import instances,providers,injected,instance,classes
+from pinjected import design,injected,instance
 
 @instance
 def optimizer__adam(learning_rate,model):
@@ -226,17 +226,15 @@ return Sequential()
 def loss__myloss():
 return MyLoss()
 
-conf:Design = instances(
+conf:Design = design(
 learning_rate = 0.001,
 batch_size = 128,
 image_w = 256,
-) + providers(
 optimizer = optimizer__adam,
 dataset = dataset__mydataset,
 model = model__sequential,
-loss = loss__myloss
-) + classes(
-io_interface = LocalIo# デフォルトでローカルファイルシステムを使用
+loss = loss__myloss,
+io_interface = LocalIo # デフォルトでローカルファイルシステムを使用
 )
 
 g = conf.to_graph()

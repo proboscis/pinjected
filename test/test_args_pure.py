@@ -1,4 +1,4 @@
-from pinjected import *
+from pinjected import injected, Injected, design, instance
 
 
 @injected
@@ -9,7 +9,7 @@ async def function(dep, __resolver__, /, x: Injected, y: int, z):
 def test_args_pure():
     x = Injected.pure('x').add_dynamic_dependencies('dyn_dep')
 
-    d = instances(
+    d = design(
         dyn_dep="dyn",
         dep="hello"
     )
@@ -28,4 +28,4 @@ def run_test(dep1,dep2):
     return 0
 
 
-__meta_design__ = instances()
+__meta_design__ = design()

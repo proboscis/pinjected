@@ -22,8 +22,7 @@ Dependency injection is a design pattern where objects receive their dependencie
 
 ## Core Concepts
 - **@instance**: Decorator that marks a function as a dependency provider
-- **providers()**: Creates a design with function-based dependencies
-- **instances()**: Creates a design with value-based dependencies
+- **design()**: Creates a design with dependencies (both value-based and function-based)
 - **Design**: Configuration registry that manages dependencies
 - **to_graph()**: Creates an object graph that resolves dependencies
 
@@ -48,7 +47,7 @@ Note: The `poetry.lock` file is intentionally excluded from version control to a
 
 ## Basic Example
 ```python
-from pinjected import instances, providers, instance
+from pinjected import design, instance
 
 # Define a simple configuration
 @instance
@@ -65,13 +64,13 @@ def database_connection(database_config):
     return f"Connected to {database_config['name']} at {database_config['host']}:{database_config['port']}"
 
 # Create a design with our configurations
-design = providers(
+di = design(
     db_config=database_config,
     connection=database_connection
 )
 
 # Use the dependency injection
-graph = design.to_graph()
+graph = di.to_graph()
 connection = graph['connection']
 print(connection)  # "Connected to mydb at localhost:5432"
 ```
@@ -80,28 +79,28 @@ print(connection)  # "Connected to mydb at localhost:5432"
 
 ### 1. Configuration Management
 ```python
-from pinjected import instances, providers
+from pinjected import design
 
 # Base configuration
-base_config = instances(
+base_config = design(
     api_url="https://api.example.com",
     timeout=30
 )
 
 # Development overrides
-dev_config = base_config + instances(
+dev_config = base_config + design(
     api_url="http://localhost:8000"
 )
 
 # Production overrides
-prod_config = base_config + instances(
+prod_config = base_config + design(
     timeout=60
 )
 ```
 
 ### 2. Service Dependencies
 ```python
-from pinjected import instance, providers
+from pinjected import instance, design
 
 @instance
 def api_client(api_url, timeout):
@@ -112,23 +111,23 @@ def service(api_client):
     return f"Service using {api_client}"
 
 # Create and use the service
-design = dev_config + providers(
+di = dev_config + design(
     client=api_client,
     service=service
 )
-graph = design.to_graph()
+graph = di.to_graph()
 my_service = graph['service']
 ```
 
 ### 3. Testing with Mock Dependencies
 ```python
 # Override dependencies for testing
-test_config = instances(
+test_config = design(
     api_url="mock://test",
     timeout=1
 )
 
-test_design = test_config + providers(
+test_design = test_config + design(
     client=api_client,
     service=service
 )
