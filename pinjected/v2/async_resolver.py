@@ -380,7 +380,7 @@ class AsyncResolver:
     async def provide_or(self, tgt: Providable, default):
         try:
             return await self.provide(tgt)
-        except Exception as e:
+        except DependencyResolutionError as e:
             return default
 
     def to_blocking(self):
