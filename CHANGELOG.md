@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.245 (2025-03-19)
+
+### Fixed
+- Fixed exception handling in save_as_html method by returning the result from nx.save_as_html_at
+
+## 0.2.244 (2025-03-18)
+
+### Fixed
+- Improved exception handling in AsyncResolver provide method
+- Added comprehensive type annotations to address deprecation warnings
+
 ## 0.2.243 (2025-03-15)
 
 ### Changed
