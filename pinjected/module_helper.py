@@ -2,7 +2,7 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Iterator, Union, Tuple
+from typing import List, Optional, Iterator, Union, Tuple, Dict
 from types import ModuleType
 from dataclasses import dataclass
 
@@ -48,13 +48,13 @@ class DirectoryProcessParams:
     Attributes:
         directory: The directory to process
         root_module_path: The root module path to resolve relative paths
-        attr_name: The attribute name to look for in modules
+        attr_names: List of attribute names to look for in modules
         special_filenames: List of special filenames to look for
         exclude_path: Optional path to exclude from processing
     """
     directory: Path
     root_module_path: Path
-    attr_name: str
+    attr_names: List[str]
     special_filenames: List[str]
     exclude_path: Optional[Path] = None
 
@@ -533,18 +533,19 @@ def find_special_files(
 def process_special_file(
     special_file_path: Path,
     root_module_path: Path,
-    attr_name: str
-) -> Optional[ModuleVarSpec]:
+    attr_names: List[str]
+) -> dict[str, ModuleVarSpec]:
     """
-    Process a special file and extract the attribute if it exists.
+    Process a special file and extract the attributes if they exist.
     
     Args:
         special_file_path: The special file path to process
         root_module_path: The root module path
-        attr_name: The attribute name to look for
+        attr_names: List of attribute names to look for
         
     Returns:
-        A ModuleVarSpec if the attribute is found, None otherwise
+        A dictionary mapping attribute names to their ModuleVarSpec objects
+        (only includes attributes that were found)
         
     Raises:
         TypeError: If the inputs are not of the expected types
@@ -557,8 +558,12 @@ def process_special_file(
     if not isinstance(root_module_path, Path):
         raise TypeError(f"root_module_path must be a Path object, got {type(root_module_path)}")
     
-    if not isinstance(attr_name, str):
-        raise TypeError(f"attr_name must be a string, got {type(attr_name)}")
+    if not isinstance(attr_names, list):
+        raise TypeError(f"attr_names must be a list, got {type(attr_names)}")
+    
+    for i, attr_name in enumerate(attr_names):
+        if not isinstance(attr_name, str):
+            raise TypeError(f"attr_names[{i}] must be a string, got {type(attr_name)}")
     
     # File validation
     validate_python_file_path(special_file_path)
@@ -570,8 +575,14 @@ def process_special_file(
     logger.info(f"Importing special module: {special_module_name}")
     special_module = load_module_from_path(special_module_name, special_file_path)
     
-    # Extract the attribute
-    return extract_module_attribute(special_module, special_module_name, attr_name)
+    # Extract the attributes and return results as a dictionary (only include found attributes)
+    results = {}
+    for attr_name in attr_names:
+        attr_spec = extract_module_attribute(special_module, special_module_name, attr_name)
+        if attr_spec:
+            results[attr_name] = attr_spec
+    
+    return results
 
 
 def process_directory(
@@ -584,7 +595,8 @@ def process_directory(
         params: The directory processing parameters
         
     Returns:
-        An iterator of ModuleVarSpec objects
+        An iterator of ModuleVarSpec objects, yielding results in the order
+        of attr_names provided in params
         
     Raises:
         TypeError: If the inputs are not of the expected types
@@ -606,64 +618,79 @@ def process_directory(
         logger.debug(f"Processing special file: {special_file_path}")
         
         try:
-            attr_spec = process_special_file(
+            attr_specs = process_special_file(
                 special_file_path, 
                 params.root_module_path, 
-                params.attr_name
+                params.attr_names
             )
             
-            if attr_spec:
-                logger.debug(f"Found attribute {params.attr_name} in {special_file_path}")
-                results_found = True
-                yield attr_spec
+            # If any attributes were found
+            if attr_specs:
+                # Yield results in the original attr_names order
+                for attr_name in params.attr_names:
+                    if attr_name in attr_specs:
+                        logger.debug(f"Found attribute {attr_name} in {special_file_path}")
+                        results_found = True
+                        yield attr_specs[attr_name]
+                    else:
+                        logger.debug(f"Attribute {attr_name} not found in {special_file_path}")
             else:
-                logger.debug(f"Attribute {params.attr_name} not found in {special_file_path}")
+                logger.debug(f"No attributes found in {special_file_path}")
         except Exception as e:
             raise SpecialFileError(
                 f"Error processing special file {special_file_path} in directory {params.directory}: {e}"
             )
             
     if not results_found:
-        logger.info(f"No attributes named '{params.attr_name}' found in any special files in directory {params.directory}")
+        logger.info(f"No attributes named {params.attr_names} found in any special files in directory {params.directory}")
 
 
 def process_parent_module(
     parent_file_path: Path,
-    attr_name: str,
+    attr_names: List[str],
     root_module_path: Path
-) -> Optional[ModuleVarSpec]:
+) -> dict[str, ModuleVarSpec]:
     """
     Process a parent module to extract attributes.
     
     Args:
         parent_file_path: The parent module file path
-        attr_name: The attribute name to extract
+        attr_names: List of attribute names to extract
         root_module_path: The root module path
         
     Returns:
-        A ModuleVarSpec if the attribute is found, None otherwise
+        A dictionary mapping attribute names to their ModuleVarSpec objects
+        (only includes attributes that were found)
     """
     module_name = get_module_name(parent_file_path, root_module_path)
     module = load_module_from_path(module_name, parent_file_path)
-    return extract_module_attribute(module, module_name, attr_name)
+    
+    results = {}
+    for attr_name in attr_names:
+        attr_spec = extract_module_attribute(module, module_name, attr_name)
+        if attr_spec:
+            results[attr_name] = attr_spec
+    
+    return results
 
 
 def walk_parent_modules(
     file_path: Path, 
-    attr_name: str, 
+    attr_names: List[str], 
     root_module_path: Path
 ) -> Iterator[ModuleVarSpec]:
     """
-    Walk from current file's parent directory to root, looking for the attribute
+    Walk from current file's parent directory to root, looking for the attributes
     in each parent module's __init__.py
     
     Args:
         file_path: Path to the target file
-        attr_name: Name of the attribute to look for
+        attr_names: List of attribute names to look for
         root_module_path: Root module path
         
     Returns:
-        Iterator of ModuleVarSpec objects for found attributes
+        Iterator of ModuleVarSpec objects for found attributes, yielding in the
+        same order as attr_names
     """
     parent_dir = file_path.parent
     
@@ -675,20 +702,22 @@ def walk_parent_modules(
     parent_file_path = parent_dir / '__init__.py'
     if parent_file_path.exists() and parent_file_path != file_path:
         # Process the parent __init__.py
-        attr_spec = process_parent_module(parent_file_path, attr_name, root_module_path)
+        attr_specs = process_parent_module(parent_file_path, attr_names, root_module_path)
         
-        if attr_spec:
-            yield attr_spec
+        # Yield results in the original attr_names order
+        for attr_name in attr_names:
+            if attr_name in attr_specs:
+                yield attr_specs[attr_name]
         
         # Recursively process grandparents
-        yield from walk_parent_modules(parent_file_path, attr_name, root_module_path)
+        yield from walk_parent_modules(parent_file_path, attr_names, root_module_path)
     else:
         # If no __init__.py in current directory, try in grandparent
         grandparent_dir = parent_dir.parent
         if str(grandparent_dir).startswith(str(root_module_path)):
             grandparent_file_path = grandparent_dir / '__init__.py'
             if grandparent_file_path.exists():
-                yield from walk_parent_modules(grandparent_file_path, attr_name, root_module_path)
+                yield from walk_parent_modules(grandparent_file_path, attr_names, root_module_path)
 
 
 def prepare_module_paths(
@@ -727,27 +756,43 @@ def prepare_module_paths(
 
 def walk_module_attr(
     file_path: Path, 
-    attr_name: str, 
+    attr_names: Union[str, List[str]], 
     root_module_path: Optional[Path] = None
 ) -> Iterator[ModuleVarSpec]:
     """
-    Walk from a root module to the file_path, looking for the attr_name
-    and yielding the found variable as ModuleVarSpec
+    Walk from a root module to the file_path, looking for the attr_names
+    and yielding the found variables as ModuleVarSpec
     
     Args:
         file_path: Path to the module file to start searching from
-        attr_name: The attribute name to look for
+        attr_names: Single attribute name or list of attribute names to look for
         root_module_path: The root module path to use (if None, it will be detected)
         
     Yields:
-        ModuleVarSpec objects for found attributes
+        ModuleVarSpec objects for found attributes, in the same order as attr_names
         
     Raises:
-        TypeError: If file_path is not a Path or attr_name is not a string
+        TypeError: If file_path is not a Path or attr_names is invalid
         InvalidPythonFileError: If file_path is not a valid Python file
     """
-    # Validate parameters
-    validate_attr_params(file_path, attr_name)
+    # Normalize attr_names to list
+    attr_names_list = [attr_names] if isinstance(attr_names, str) else attr_names
+    
+    if not isinstance(attr_names_list, list):
+        raise TypeError(f"attr_names must be a string or list, got {type(attr_names)}")
+    
+    if not attr_names_list:
+        raise ValueError("attr_names cannot be empty")
+        
+    for i, attr_name in enumerate(attr_names_list):
+        if not isinstance(attr_name, str):
+            raise TypeError(f"attr_names[{i}] must be a string, got {type(attr_name)}")
+        if not attr_name:
+            raise ValueError(f"attr_names[{i}] cannot be empty")
+    
+    # Validate file_path
+    if not isinstance(file_path, Path):
+        raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
     
     # Prepare and validate paths
     file_path, root_module_path = prepare_module_paths(file_path, root_module_path)
@@ -767,15 +812,16 @@ def walk_module_attr(
     # Track seen var_paths to avoid potential duplicates
     seen_var_paths = set()
     
-    # Check for attribute in the current module
-    attr_spec = extract_module_attribute(module, module_name, attr_name)
-    if attr_spec:
-        seen_var_paths.add(attr_spec.var_path)
-        yield attr_spec
+    # Check for attributes in the current module
+    for attr_name in attr_names_list:
+        attr_spec = extract_module_attribute(module, module_name, attr_name)
+        if attr_spec and attr_spec.var_path not in seen_var_paths:
+            seen_var_paths.add(attr_spec.var_path)
+            yield attr_spec
     
     # Walk up through parent modules with duplicate filtering
     parent_results = yield_unique_results(
-        walk_parent_modules(file_path, attr_name, root_module_path),
+        walk_parent_modules(file_path, attr_names_list, root_module_path),
         seen_var_paths
     )
     yield from parent_results
@@ -783,7 +829,7 @@ def walk_module_attr(
 
 def process_module_hierarchy(
     module_hierarchy: ModuleHierarchy,
-    attr_name: str,
+    attr_names: List[str],
     special_filenames: List[str]
 ) -> Iterator[ModuleVarSpec]:
     """
@@ -791,11 +837,11 @@ def process_module_hierarchy(
     
     Args:
         module_hierarchy: The module hierarchy to process
-        attr_name: The attribute name to look for
+        attr_names: List of attribute names to look for
         special_filenames: List of special filenames to look for
         
     Returns:
-        Iterator of ModuleVarSpec objects
+        Iterator of ModuleVarSpec objects, yielding results in the same order as attr_names
         
     Raises:
         ModuleLoadError: If there's an issue loading a module
@@ -810,11 +856,12 @@ def process_module_hierarchy(
         module_name = get_module_name(module_path, module_hierarchy.root_module_path)
         module = load_module_from_path(module_name, module_path)
         
-        # Check for attribute in the current module
-        attr_spec = extract_module_attribute(module, module_name, attr_name)
-        if attr_spec:
-            logger.debug(f"Found attribute {attr_name} in module {module_name}")
-            yield attr_spec
+        # Check for attributes in the current module (in the specified order)
+        for attr_name in attr_names:
+            attr_spec = extract_module_attribute(module, module_name, attr_name)
+            if attr_spec:
+                logger.debug(f"Found attribute {attr_name} in module {module_name}")
+                yield attr_spec
         
         # Process special files in the current module's directory
         parent_dir = module_path.parent
@@ -824,7 +871,7 @@ def process_module_hierarchy(
         params = DirectoryProcessParams(
             directory=parent_dir,
             root_module_path=module_hierarchy.root_module_path,
-            attr_name=attr_name,
+            attr_names=attr_names,
             special_filenames=special_filenames,
             exclude_path=module_path  # Don't process the module file itself again
         )
@@ -833,26 +880,40 @@ def process_module_hierarchy(
         yield from process_directory(params)
 
 
-def validate_attr_params(file_path: Path, attr_name: str) -> None:
+def validate_attr_params(file_path: Path, attr_names: Union[str, List[str]]) -> List[str]:
     """
-    Validate common parameters for attribute search functions.
+    Validate common parameters for attribute search functions and normalize attr_names.
     
     Args:
         file_path: The file path to validate
-        attr_name: The attribute name to validate
+        attr_names: Single attribute name or list of attribute names to validate
+        
+    Returns:
+        Normalized list of attribute names
         
     Raises:
         TypeError: If inputs are not of the expected types
-        ValueError: If attr_name is empty
+        ValueError: If attr_names is empty or contains empty strings
     """
     if not isinstance(file_path, Path):
         raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
     
-    if not isinstance(attr_name, str):
-        raise TypeError(f"attr_name must be a string, got {type(attr_name)}")
+    # Normalize attr_names to list
+    attr_names_list = [attr_names] if isinstance(attr_names, str) else attr_names
     
-    if not attr_name:
-        raise ValueError("attr_name cannot be empty")
+    if not isinstance(attr_names_list, list):
+        raise TypeError(f"attr_names must be a string or list, got {type(attr_names)}")
+    
+    if not attr_names_list:
+        raise ValueError("attr_names cannot be empty")
+        
+    for i, attr_name in enumerate(attr_names_list):
+        if not isinstance(attr_name, str):
+            raise TypeError(f"attr_names[{i}] must be a string, got {type(attr_name)}")
+        if not attr_name:
+            raise ValueError(f"attr_names[{i}] cannot be empty")
+            
+    return attr_names_list
 
 
 def yield_unique_results(
@@ -877,13 +938,13 @@ def yield_unique_results(
 
 def walk_module_with_special_files(
     file_path: Path, 
-    attr_name: str, 
+    attr_names: Union[str, List[str]], 
     special_filenames: Optional[Union[str, List[str]]] = ["__pinjected__.py"], 
     root_module_path: Optional[Path] = None
 ) -> Iterator[ModuleVarSpec]:
     """
     Walk from the root module down to the target file_path, looking for the 
-    specified attribute in each module along the path:
+    specified attributes in each module along the path:
     
     1. Start with the top-level module
     2. Check each module along the path to the target file (including special files)
@@ -891,27 +952,26 @@ def walk_module_with_special_files(
     
     To include __init__.py in the search, add it to special_filenames.
     
-    Yields the found variables as ModuleVarSpec, from top module to target file.
+    Yields the found variables as ModuleVarSpec, from top module to target file,
+    in the same order as the attr_names.
     
     Args:
         file_path: Path to the module file to start searching from
-        attr_name: The attribute name to look for
+        attr_names: Single attribute name or list of attribute names to look for
         special_filenames: List of filenames to look for in each directory (default: ["__pinjected__.py"])
         root_module_path: The root module path to use (if None, it will be detected)
         
     Returns:
-        Iterator of ModuleVarSpec objects
+        Iterator of ModuleVarSpec objects, yielding results in the same order as attr_names
         
     Raises:
         TypeError: If the inputs are not of the expected types
-        ValueError: If attr_name is empty
+        ValueError: If attr_names is empty or contains empty strings
         InvalidPythonFileError: If the file is not a valid Python file
         ModulePathError: If the path structure is invalid
     """
-    # Input validation
-    validate_attr_params(file_path, attr_name)
-    
-    # Normalize parameters
+    # Input validation and normalization
+    attr_names_list = validate_attr_params(file_path, attr_names)
     special_filenames_list = normalize_special_filenames(special_filenames)
     
     # Get absolute paths
@@ -937,7 +997,7 @@ def walk_module_with_special_files(
     root_params = DirectoryProcessParams(
         directory=root_module_path,
         root_module_path=root_module_path,
-        attr_name=attr_name,
+        attr_names=attr_names_list,
         special_filenames=special_filenames_list
     )
     
@@ -951,7 +1011,7 @@ def walk_module_with_special_files(
     hierarchy_results = yield_unique_results(
         process_module_hierarchy(
             module_hierarchy=module_hierarchy,
-            attr_name=attr_name,
+            attr_names=attr_names_list,
             special_filenames=special_filenames_list
         ),
         seen_var_paths
@@ -961,4 +1021,4 @@ def walk_module_with_special_files(
         yield result
     
     if not has_yielded_results:
-        logger.info(f"No attributes named '{attr_name}' found in any module or special file")
+        logger.info(f"No attributes named {attr_names_list} found in any module or special file")

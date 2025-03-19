@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 from pprint import pprint
 
@@ -261,3 +262,169 @@ def test_no_duplicates():
         for path, count in duplicate_counts.items():
             if count > 1:
                 print(f"  - {path}: {count} occurrences")
+
+
+def test_multiple_attr_names_order():
+    """Test that walk_module_with_special_files yields attributes in the specified order."""
+    test_file = Path(__file__).parent / "test_package/child/module1.py"
+    root_module_path = Path(__file__).parent
+    
+    # Test with multiple attribute names
+    attr_names = ["__meta_design__", "special_config"]
+    items = list(walk_module_with_special_files(
+        test_file, 
+        attr_names, 
+        ["__pinjected__.py", "config.py", "__init__.py"],
+        root_module_path=root_module_path
+    ))
+    
+    # Print items for debugging
+    print(f"Found {len(items)} items:")
+    for i, item in enumerate(items):
+        print(f"  {i}. {item.var_path}")
+    
+    # Group items by their attribute name
+    meta_design_items = [item for item in items if "__meta_design__" in item.var_path]
+    special_config_items = [item for item in items if "special_config" in item.var_path]
+    
+    # Check that we found both attribute types
+    assert len(meta_design_items) > 0, "Should find __meta_design__ attributes"
+    assert len(special_config_items) > 0, "Should find special_config attributes"
+    
+    # Check ordering by attribute name
+    # In each directory, __meta_design__ items should come before special_config items
+    for i, item in enumerate(items):
+        # Find first special_config in same directory
+        if "__meta_design__" in item.var_path:
+            module_path = item.var_path.split(".__meta_design__")[0]
+            for j in range(i + 1, len(items)):
+                compare_item = items[j]
+                compare_module = compare_item.var_path.split(".")[0]
+                # If in same module and it's a special_config, we're following the right order
+                if module_path == compare_module and "special_config" in compare_item.var_path:
+                    # This is correct ordering (meta_design then special_config)
+                    break
+            # If we found a special_config before __meta_design__ in the same module, that's wrong
+            for j in range(0, i):
+                compare_item = items[j]
+                compare_module = compare_item.var_path.split(".")[0]
+                if module_path == compare_module and "special_config" in compare_item.var_path:
+                    assert False, f"Incorrect order: {compare_item.var_path} came before {item.var_path}"
+
+
+def test_multiple_attr_names_complex_order():
+    """Test that walk_module_with_special_files yields attributes with more than 2 attr names in the correct order."""
+    test_file = Path(__file__).parent / "test_package/child/module1.py"
+    root_module_path = Path(__file__).parent
+    
+    # Define a non-standard order to verify ordering is respected
+    # This order is different from the typical order they would be found in files
+    attr_names = ["special_config", "test_test_object", "__meta_design__"]
+    
+    items = list(walk_module_with_special_files(
+        test_file, 
+        attr_names, 
+        ["__pinjected__.py", "config.py", "__init__.py"],
+        root_module_path=root_module_path
+    ))
+    
+    # Print items for debugging
+    print(f"Found {len(items)} items:")
+    for i, item in enumerate(items):
+        print(f"  {i}. {item.var_path}")
+    
+    # Extract each item's attribute type for global ordering check
+    attr_types = []
+    for item in items:
+        if "special_config" in item.var_path:
+            attr_types.append("special_config")
+        elif "test_test_object" in item.var_path:
+            attr_types.append("test_test_object")
+        elif "__meta_design__" in item.var_path:
+            attr_types.append("__meta_design__")
+    
+    # Group items by module
+    modules = {}
+    for item in items:
+        if "special_config" in item.var_path:
+            module_path = item.var_path.split(".special_config")[0]
+            attr_type = "special_config"
+        elif "test_test_object" in item.var_path:
+            module_path = item.var_path.split(".test_test_object")[0]
+            attr_type = "test_test_object"
+        elif "__meta_design__" in item.var_path:
+            module_path = item.var_path.split(".__meta_design__")[0]
+            attr_type = "__meta_design__"
+        else:
+            continue
+            
+        if module_path not in modules:
+            modules[module_path] = []
+        modules[module_path].append((attr_type, item))
+    
+    # Check ordering within each module
+    found_multiple_attrs = False
+    for module_path, attrs in modules.items():
+        if len(attrs) > 1:
+            found_multiple_attrs = True
+            
+            # Check that attributes appear in the same order as attr_names
+            module_attr_order = [attr[0] for attr in attrs]
+            print(f"Module {module_path} attributes in order: {module_attr_order}")
+            
+            # Get expected order of attributes actually found in this module
+            expected_order = [attr for attr in attr_names if attr in module_attr_order]
+            assert module_attr_order == expected_order, \
+                f"Attributes for module {module_path} not in correct order. Expected {expected_order}, got {module_attr_order}"
+    
+    # Make sure we found at least one module with multiple attributes
+    assert found_multiple_attrs, "No modules with multiple attributes found to test ordering"
+    
+    # Check strict global ordering across modules too
+    # For all "special_config" attributes, they should all come before any "test_test_object" attributes,
+    # which should all come before any "__meta_design__" attributes
+    last_attr_index = {}
+    for i, attr_type in enumerate(attr_types):
+        if attr_type not in last_attr_index:
+            last_attr_index[attr_type] = i
+        else:
+            last_attr_index[attr_type] = i
+    
+    # Verify attribute ordering consistency across all modules
+    for i, attr in enumerate(attr_names):
+        if attr in last_attr_index:
+            for j, earlier_attr in enumerate(attr_names[:i]):
+                if earlier_attr in last_attr_index:
+                    assert last_attr_index[earlier_attr] < last_attr_index[attr], \
+                        f"Global attribute ordering violation: last {earlier_attr} (position {last_attr_index[earlier_attr]}) " \
+                        f"came after first {attr} (position {last_attr_index[attr]})"
+    
+    # Try a different ordering to ensure it's respected
+    reverse_attr_names = list(reversed(attr_names))
+    reverse_items = list(walk_module_with_special_files(
+        test_file, 
+        reverse_attr_names, 
+        ["__pinjected__.py", "config.py", "__init__.py"],
+        root_module_path=root_module_path
+    ))
+    
+    # Extract types for the reverse order
+    reverse_attr_types = []
+    for item in reverse_items:
+        if "special_config" in item.var_path:
+            reverse_attr_types.append("special_config")
+        elif "test_test_object" in item.var_path:
+            reverse_attr_types.append("test_test_object")
+        elif "__meta_design__" in item.var_path:
+            reverse_attr_types.append("__meta_design__")
+    
+    # Verify we got a different order with the reversed input
+    if "special_config" in reverse_attr_types and "__meta_design__" in reverse_attr_types:
+        # Find index of first occurrence of each
+        first_special_config = reverse_attr_types.index("special_config") if "special_config" in reverse_attr_types else -1
+        first_meta_design = reverse_attr_types.index("__meta_design__") if "__meta_design__" in reverse_attr_types else -1
+        
+        if first_special_config != -1 and first_meta_design != -1:
+            # In the reversed order, __meta_design__ should come before special_config
+            assert first_meta_design < first_special_config, \
+                "Reversed order not respected. __meta_design__ should come before special_config"
