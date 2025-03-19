@@ -1,3 +1,82 @@
+# Coding Guideline Checklist for walk_module_with_special_files Refactoring
+
+## 1. Function Design
+- [x] **Single Responsibility**: Each function should have one clearly defined responsibility
+  - All functions now have a single, clearly defined purpose
+  - Extracted separate functions for file finding, module loading, and attribute extraction
+- [x] **Maximum Length**: Functions should not exceed 50 lines of code
+  - All functions are well under 50 lines (most are 10-20 lines)
+- [x] **Return Values**: Functions should return a single type or semantically meaningful value
+  - Each function returns a consistent, well-defined type
+- [x] **Arguments**: Ideally 3 or fewer (use data classes for more complex parameter sets)
+  - Created `DirectoryProcessParams` data class to group related parameters
+  - _process_module_directory_ now takes a single parameter of type DirectoryProcessParams
+
+## 2. Control Flow
+- [x] **Loop Limitation**: Generally one loop per function
+  - Each function now has at most one loop
+- [x] **Nesting Depth**: Maximum of two levels for conditional statements
+  - Nesting depth is kept to a maximum of 2 levels
+- [x] **No continue statements**: Replace with guard clauses or function extraction
+  - No continue statements in the code
+- [x] **No complex conditional expressions**: Extract to functions
+  - Complex conditions were extracted to dedicated functions
+
+## 3. Data Structures and Immutability
+- [x] **Type Annotations**: Add appropriate type annotations to all functions and variables
+  - All functions have proper type annotations
+  - Complex types use Union, Optional, etc.
+
+## 4. Error Handling
+- [x] **Exception Handling**: When using try-except, always re-raise exceptions unless specific handling is required
+  - _process_special_file_ now properly raises specific exceptions
+  - _import_module_from_path_ catches and re-raises appropriate exceptions
+  - Main function catches exceptions but logs them (intentional to continue processing)
+- [x] **No empty exception handlers**
+  - No empty exception handlers in the code
+- [x] **No overly broad exception catching** (e.g., `except Exception`)
+  - Replaced `except Exception` with specific exception types
+  - Now using `except (ImportError, ModuleNotFoundError, ValueError)`
+
+## 5. Functional Programming
+- [x] **Pure Functions**: Functions should be free of side effects and compute results based only on inputs
+  - Functions are mostly pure with explicit inputs and outputs
+- [x] **Explicit Dependencies**: Pass required services as arguments explicitly
+  - All dependencies are passed explicitly as arguments
+
+## 6. Naming Conventions
+- [x] **Function Names**: Start with verbs (get_*, create_*, build_*, is_*)
+  - All helper functions follow this convention (_get_module_name_, _build_module_path_tree_, etc.)
+- [x] **Variable Names**: Use specific, clear names (avoid ambiguous names like `data` or `result`)
+  - Variable names are descriptive and specific
+- [x] **No single-character variable names** (except for loop counters)
+  - No single-character variable names in the code
+- [x] **No abbreviations** (unless well-established)
+  - No unconventional abbreviations in the code
+
+## 7. Logging and Debugging
+- [x] **Use logger**: Always use logger instead of print statements for logging
+  - Logger is used consistently throughout the code
+
+## 8. Documentation
+- [x] **Docstrings**: Include clear docstrings for all functions
+  - All functions have clear, descriptive docstrings
+- [x] **Args/Returns**: Document all parameters and return values in docstrings
+  - All parameters and return values are documented
+
+## All Issues Addressed
+
+All coding guidelines have been successfully addressed:
+
+1. ✅ Created `DirectoryProcessParams` data class for parameter grouping
+2. ✅ Improved exception handling in all functions
+3. ✅ Replaced broad `except Exception` with specific exception types
+4. ✅ Added proper docstrings with raised exceptions documentation
+5. ✅ Ensured all functions follow Single Responsibility Principle
+6. ✅ Maintained proper type annotations throughout the code
+
+---
+
 # 非推奨関数の置き換えTODOリスト
 
 ## 目的

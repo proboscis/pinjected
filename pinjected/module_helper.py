@@ -64,7 +64,27 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
                 yield from walk_module_attr(grandparent_file_path, attr_name, root_module_path)
 
 
+from dataclasses import dataclass
 from typing import List, Optional, Iterator, Union, Any
+
+
+@dataclass(frozen=True)
+class DirectoryProcessParams:
+    """
+    Parameters for processing a directory looking for special files.
+    
+    Attributes:
+        directory: The directory to process
+        root_module_path: The root module path to resolve relative paths
+        attr_name: The attribute name to look for in modules
+        special_filenames: List of special filenames to look for
+        exclude_path: Optional path to exclude from processing
+    """
+    directory: Path
+    root_module_path: Path
+    attr_name: str
+    special_filenames: List[str]
+    exclude_path: Optional[Path] = None
 
 
 def _normalize_special_filenames(
@@ -115,7 +135,12 @@ def _import_module_from_path(module_name: str, file_path: Path) -> Optional[Any]
         file_path: The file path to import from
         
     Returns:
-        The imported module or None if import failed
+        The imported module or None if spec is not found
+        
+    Raises:
+        ImportError: If the module cannot be imported properly
+        ModuleNotFoundError: If the module cannot be found
+        ValueError: If the module cannot be executed
     """
     from pinjected.pinjected_logging import logger
     
@@ -137,7 +162,10 @@ def _import_module_from_path(module_name: str, file_path: Path) -> Optional[Any]
         return module
     except ValueError as e:
         logger.error(f"cannot exec module {module_name} at {file_path} due to {e}, \n source=\n{file_path.read_text()}")
-        raise e
+        raise
+    except (ImportError, ModuleNotFoundError) as e:
+        logger.error(f"cannot import module {module_name} at {file_path}: {e}")
+        raise
 
 
 def _extract_attribute(module: Any, module_name: str, attr_name: str) -> Optional[ModuleVarSpec]:
@@ -250,22 +278,12 @@ def _find_special_files_in_dir(
     return special_files
 
 
-def _process_module_directory(
-    directory: Path,
-    root_module_path: Path,
-    attr_name: str,
-    special_filenames: List[str],
-    exclude_path: Optional[Path] = None
-) -> Iterator[ModuleVarSpec]:
+def _process_module_directory(params: DirectoryProcessParams) -> Iterator[ModuleVarSpec]:
     """
     Process a directory for special files and extract attributes.
     
     Args:
-        directory: The directory to process
-        root_module_path: The root module path
-        attr_name: The attribute name to look for
-        special_filenames: List of special filenames to look for
-        exclude_path: Optional path to exclude
+        params: Parameters for directory processing
         
     Returns:
         Iterator of ModuleVarSpec objects
@@ -273,12 +291,24 @@ def _process_module_directory(
     from pinjected.pinjected_logging import logger
     
     # Find and process all special files in this directory
-    special_files = _find_special_files_in_dir(directory, special_filenames, exclude_path)
+    special_files = _find_special_files_in_dir(
+        params.directory, 
+        params.special_filenames, 
+        params.exclude_path
+    )
     
     for special_file_path in special_files:
-        attr_spec = _process_special_file(special_file_path, root_module_path, attr_name)
-        if attr_spec:
-            yield attr_spec
+        try:
+            attr_spec = _process_special_file(
+                special_file_path, 
+                params.root_module_path, 
+                params.attr_name
+            )
+            if attr_spec:
+                yield attr_spec
+        except (ImportError, ModuleNotFoundError) as e:
+            # Log but continue processing other files
+            logger.error(f"Could not import module from {special_file_path}: {e}")
 
 
 def _process_special_file(
@@ -296,23 +326,27 @@ def _process_special_file(
         
     Returns:
         A ModuleVarSpec if the attribute is found, None otherwise
+        
+    Raises:
+        ImportError: If the module cannot be imported properly
+        ModuleNotFoundError: If the module cannot be found
+        ValueError: If the module cannot be executed
     """
     from pinjected.pinjected_logging import logger
     
     special_module_name = _get_module_name(special_file_path, root_module_path)
     
-    try:
-        logger.info(f"importing special module: {special_module_name}")
-        special_module = _import_module_from_path(special_module_name, special_file_path)
-        
-        if special_module and hasattr(special_module, attr_name):
-            logger.debug(f"Found {attr_name} in {special_module_name}")
-            return ModuleVarSpec(
-                var=getattr(special_module, attr_name),
-                var_path=f"{special_module_name}.{attr_name}",
-            )
-    except Exception as e:
-        logger.error(f"Error processing special file {special_file_path}: {e}")
+    # Import the module - will raise appropriate exceptions if it fails
+    logger.info(f"importing special module: {special_module_name}")
+    special_module = _import_module_from_path(special_module_name, special_file_path)
+    
+    # If module was loaded and has the attribute, return it
+    if special_module and hasattr(special_module, attr_name):
+        logger.debug(f"Found {attr_name} in {special_module_name}")
+        return ModuleVarSpec(
+            var=getattr(special_module, attr_name),
+            var_path=f"{special_module_name}.{attr_name}",
+        )
     
     return None
 
@@ -365,33 +399,40 @@ def walk_module_with_special_files(
     module_path_tree = _build_module_path_tree(file_path, root_module_path)
     
     # Check for special files at the root level first
-    yield from _process_module_directory(
-        root_module_path, 
-        root_module_path, 
-        attr_name, 
-        special_filenames_list
+    root_params = DirectoryProcessParams(
+        directory=root_module_path,
+        root_module_path=root_module_path,
+        attr_name=attr_name,
+        special_filenames=special_filenames_list
     )
+    yield from _process_module_directory(root_params)
     
     # Process each module in the path, from root to target
     for module_path in module_path_tree:
         # Process the current module
         module_name = _get_module_name(module_path, root_module_path)
-        module = _import_module_from_path(module_name, module_path)
-        
-        if module is None:
-            continue
+        try:
+            module = _import_module_from_path(module_name, module_path)
             
-        # Check for attribute in the current module
-        attr_spec = _extract_attribute(module, module_name, attr_name)
-        if attr_spec:
-            yield attr_spec
-        
-        # Process special files in the current directory
-        parent_dir = module_path.parent
-        yield from _process_module_directory(
-            parent_dir, 
-            root_module_path, 
-            attr_name, 
-            special_filenames_list, 
-            module_path
-        )
+            if module is None:
+                continue
+                
+            # Check for attribute in the current module
+            attr_spec = _extract_attribute(module, module_name, attr_name)
+            if attr_spec:
+                yield attr_spec
+            
+            # Process special files in the current directory
+            parent_dir = module_path.parent
+            dir_params = DirectoryProcessParams(
+                directory=parent_dir,
+                root_module_path=root_module_path,
+                attr_name=attr_name,
+                special_filenames=special_filenames_list,
+                exclude_path=module_path
+            )
+            yield from _process_module_directory(dir_params)
+        except (ImportError, ModuleNotFoundError, ValueError) as e:
+            # Log but continue processing other modules
+            from pinjected.pinjected_logging import logger
+            logger.error(f"Error processing module {module_name}: {e}")
