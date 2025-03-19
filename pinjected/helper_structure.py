@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 
 from beartype import beartype
+
+from pinjected.di.design_spec.protocols import DesignSpec
 from pinjected.pinjected_logging import logger
 from pathlib import Path
 from typing import Dict, List
 
 from pinjected import Design, Injected, design, EmptyDesign
-from pinjected.module_helper import walk_module_attr
+from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.v2.keys import StrBindKey
@@ -27,6 +29,24 @@ class IdeaRunConfigurations:
     configs: Dict[str, List[IdeaRunConfiguration]]
 
 
+def gather_design_spec(file_path) -> DesignSpec:
+    acc = DesignSpec.empty()
+    for var in walk_module_with_special_files(file_path, attr_name="__spec__",
+                                              special_filenames=["__init__.py", "__pinjected__.py"]):
+        spec: DesignSpec = var.var
+        acc += spec
+    return acc
+
+
+def gather_design(file_path) -> Design:
+    acc = EmptyDesign
+    for var in walk_module_with_special_files(file_path, attr_name="__design__",
+                                              special_filenames=["__init__.py", "__pinjected__.py"]):
+        design: Design = var.var
+        acc += design
+    return acc
+
+
 @dataclass
 class MetaContext:
     trace: List[ModuleVarSpec[Design]]
@@ -34,6 +54,13 @@ class MetaContext:
 
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
+        """
+        iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__.
+        but now we should look for
+        __spec__ for DesignSpec,
+        __design__ for Design,
+        The order is __init__.py -> __pinjected__.py -> target_file.py
+        """
         with logger.contextualize(tag="gather_meta_context"):
             from pinjected import design
             if not isinstance(file_path, Path):
@@ -45,17 +72,19 @@ class MetaContext:
             key_to_src = dict()
             for item in designs:
                 logger.info(f"Added {meta_design_name} at :{item.var_path}")
-                for k,v in item.var.bindings.items():
+                for k, v in item.var.bindings.items():
                     logger.info(f"Binding {k} from {item.var_path}")
-                logger.trace(f"Current design bindings before: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+                logger.trace(
+                    f"Current design bindings before: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
                 # First collect any overrides
-                overrides += (new_d:=await AsyncResolver(item.var).provide_or("overrides", EmptyDesign))
-                for k,v in new_d.bindings.items():
+                overrides += (new_d := await AsyncResolver(item.var).provide_or("overrides", EmptyDesign))
+                for k, v in new_d.bindings.items():
                     key_to_src[k] = item.var_path
                 # Then apply the design itself to ensure its bindings (like 'name') take precedence
                 res = res + item.var
-                logger.trace(f"Current design bindings after: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
-            for k,v in key_to_src.items():
+                logger.trace(
+                    f"Current design bindings after: {res.bindings if hasattr(res, 'bindings') else 'EmptyDesign'}")
+            for k, v in key_to_src.items():
                 logger.debug(f"Override Key {k} from {v}")
             # Apply overrides last
             res = res + design(overrides=overrides)
