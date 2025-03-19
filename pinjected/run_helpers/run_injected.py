@@ -27,9 +27,9 @@ from pinjected.pinjected_logging import logger
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.run_helpers.mp_util import run_in_process
 from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
+from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import StrBindKey
-from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.visualize_di import DIGraph
 
 
@@ -149,8 +149,8 @@ def run_anything(
     logger.info(f"loaded design:{design}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
     logger.info(f"running target:{var_path} with design {design_path}")
-    tree_str = design_rich_tree(design, cxt.var)
-    logger.info(f"Dependency Tree:\n{tree_str}")
+    #tree_str = design_rich_tree(design, cxt.var)
+    #logger.info(f"Dependency Tree:\n{tree_str}")
 
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")

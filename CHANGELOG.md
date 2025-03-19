@@ -4,7 +4,8 @@
 
 ### Fixed
 - Fixed save_as_html in visualize_di.py
-- Fixed run_injected.py for improved handling
+- Improved performance in run_injected.py by commenting out tree visualization output
+- Fixed import ordering in run_injected.py
 
 ## 0.2.245 (2025-03-19)
 
