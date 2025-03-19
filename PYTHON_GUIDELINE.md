@@ -5,7 +5,7 @@
 * **Maximum Length**: Functions should not exceed 50 lines of code
 * **Return Values**: Functions should return a single type or semantically meaningful value
 * **Complex Return Values**: For complex return values (tuples, dictionaries), define a dataclass and document its contents in docstring
-* **Arguments**: Ideally 3 or fewer (use data classes for more complex parameter sets)
+* **Arguments**: Ideally 5 or fewer (use data classes for more complex parameter sets)
 
 ### Prohibited Practices
 * ✘ Returning tuples with multiple semantic values
