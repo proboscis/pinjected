@@ -2,7 +2,7 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Iterator, Union
+from typing import List, Optional, Iterator, Union, Tuple
 from types import ModuleType
 from dataclasses import dataclass
 
@@ -172,24 +172,19 @@ def normalize_special_filenames(
         raise TypeError(f"special_filenames must be a string, list of strings, or None, got {type(special_filenames)}")
 
 
-def get_module_name(file_path: Path, root_module_path: Path) -> str:
+def validate_module_paths(file_path: Path, root_module_path: Path) -> None:
     """
-    Determine the module name from a file path relative to the root module path.
+    Validates the module paths are valid.
     
     Args:
-        file_path: The file path to get the module name for
-        root_module_path: The root module path
-        
-    Returns:
-        The fully qualified module name
+        file_path: The file path to validate
+        root_module_path: The root module path to validate
         
     Raises:
-        TypeError: If the input parameters are not Path objects
-        InvalidPythonFileError: If the file path is not a valid Python file
-        ModulePathError: If the file path is not under the root module path 
-                         or root path doesn't exist
+        TypeError: If inputs are not Path objects
+        ModulePathError: If root module path is not valid
+        InvalidPythonFileError: If file path is not valid
     """
-    # Type validation
     if not isinstance(file_path, Path):
         raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
     
@@ -209,12 +204,51 @@ def get_module_name(file_path: Path, root_module_path: Path) -> str:
     # Check if file is a Python file
     if not str(file_path).endswith('.py'):
         raise InvalidPythonFileError(f"File is not a Python file: {file_path}")
+
+
+def get_relative_path(file_path: Path, root_module_path: Path) -> Path:
+    """
+    Gets the relative path from root_module_path to file_path.
     
-    # Check if the file is under the root path
+    Args:
+        file_path: The file path
+        root_module_path: The root module path
+        
+    Returns:
+        The relative path
+        
+    Raises:
+        ModulePathError: If file_path is not under root_module_path
+    """
     try:
         relative_path = file_path.relative_to(root_module_path)
+        return relative_path
     except ValueError:
         raise ModulePathError(f"File path {file_path} is not under root module path {root_module_path}")
+
+
+def get_module_name(file_path: Path, root_module_path: Path) -> str:
+    """
+    Determine the module name from a file path relative to the root module path.
+    
+    Args:
+        file_path: The file path to get the module name for
+        root_module_path: The root module path
+        
+    Returns:
+        The fully qualified module name
+        
+    Raises:
+        TypeError: If the input parameters are not Path objects
+        InvalidPythonFileError: If the file path is not a valid Python file
+        ModulePathError: If the file path is not under the root module path 
+                         or root path doesn't exist
+    """
+    # Validate module paths
+    validate_module_paths(file_path, root_module_path)
+    
+    # Get relative path
+    relative_path = get_relative_path(file_path, root_module_path)
     
     # Handle src/ pattern common in Python projects
     if str(relative_path).startswith('src/'):
@@ -226,6 +260,32 @@ def get_module_name(file_path: Path, root_module_path: Path) -> str:
     logger.trace(f"Created module name: {module_name} from path: {file_path}")
     
     return module_name
+
+
+def create_module_spec(module_name: str, file_path: Path) -> Tuple[ModuleType, importlib.machinery.ModuleSpec]:
+    """
+    Creates a module spec from a file path.
+    
+    Args:
+        module_name: The module name to use
+        file_path: The file path to import from
+        
+    Returns:
+        A tuple of (module, spec)
+        
+    Raises:
+        ModuleLoadError: If the module specification cannot be created
+    """
+    # Create spec
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ModuleLoadError(f"Cannot find spec for {module_name} at {file_path}")
+        
+    # Create module from spec and add to sys.modules
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    
+    return module, spec
 
 
 def load_module_from_path(module_name: str, file_path: Path) -> ModuleType:
@@ -261,14 +321,8 @@ def load_module_from_path(module_name: str, file_path: Path) -> ModuleType:
     
     logger.info(f"Importing module: {module_name}")
     
-    # Create spec
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None:
-        raise ModuleLoadError(f"Cannot find spec for {module_name} at {file_path}")
-        
-    # Create module from spec and add to sys.modules
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
+    # Create module and spec
+    module, spec = create_module_spec(module_name, file_path)
     
     try:
         # Execute the module
@@ -389,13 +443,6 @@ def build_module_hierarchy(
         ModulePathError: If the file path is not under the root module path
                          or if root_module_path is not valid
     """
-    # Input validation
-    if not isinstance(file_path, Path):
-        raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
-    
-    if not isinstance(root_module_path, Path):
-        raise TypeError(f"root_module_path must be a Path object, got {type(root_module_path)}")
-    
     # File path validation
     validate_python_file_path(file_path)
     
@@ -450,26 +497,21 @@ def find_special_files(
         
     Raises:
         TypeError: If the inputs are not of the expected types
-        SpecialFileError: If the directory does not exist or is not a directory,
-                          or if there's an issue finding the special files
+        SpecialFileError: If the directory does not exist or is not a directory
     """
-    # Type validation
-    if not isinstance(directory, Path):
-        raise TypeError(f"directory must be a Path object, got {type(directory)}")
+    # Validate directory
+    validate_directory_path(directory)
     
+    # Validate special_filenames types
     if not isinstance(special_filenames, list):
         raise TypeError(f"special_filenames must be a list, got {type(special_filenames)}")
     
-    # Validate all filenames are strings
     for i, filename in enumerate(special_filenames):
         if not isinstance(filename, str):
             raise TypeError(f"special_filenames[{i}] must be a string, got {type(filename)}")
     
     if exclude_path is not None and not isinstance(exclude_path, Path):
         raise TypeError(f"exclude_path must be a Path object, got {type(exclude_path)}")
-    
-    # Directory validation
-    validate_directory_path(directory)
     
     # Find special files
     special_files = []
@@ -533,21 +575,13 @@ def process_special_file(
 
 
 def process_directory(
-    directory: Path,
-    root_module_path: Path,
-    attr_name: str,
-    special_filenames: List[str],
-    exclude_path: Optional[Path] = None
+    params: DirectoryProcessParams
 ) -> Iterator[ModuleVarSpec]:
     """
     Process a directory for special files and extract attributes.
     
     Args:
-        directory: The directory to process
-        root_module_path: The root module path
-        attr_name: The attribute name to look for
-        special_filenames: List of special filenames to look for
-        exclude_path: An optional path to exclude from the results
+        params: The directory processing parameters
         
     Returns:
         An iterator of ModuleVarSpec objects
@@ -556,24 +590,16 @@ def process_directory(
         TypeError: If the inputs are not of the expected types
         SpecialFileError: If there's an issue with the directory or special files
     """
-    # Type validation
-    if not isinstance(directory, Path):
-        raise TypeError(f"directory must be a Path object, got {type(directory)}")
-    
-    if not isinstance(root_module_path, Path):
-        raise TypeError(f"root_module_path must be a Path object, got {type(root_module_path)}")
-    
-    if not isinstance(attr_name, str):
-        raise TypeError(f"attr_name must be a string, got {type(attr_name)}")
-    
-    if not isinstance(special_filenames, list):
-        raise TypeError(f"special_filenames must be a list, got {type(special_filenames)}")
-    
     # Find special files
-    special_files = find_special_files(directory, special_filenames, exclude_path)
-    logger.debug(f"Processing {len(special_files)} special files in {directory}")
+    special_files = find_special_files(
+        params.directory, 
+        params.special_filenames, 
+        params.exclude_path
+    )
     
-    # Process each special file and collect results
+    logger.debug(f"Processing {len(special_files)} special files in {params.directory}")
+    
+    # Process each special file
     results_found = False
     
     for special_file_path in special_files:
@@ -582,21 +608,44 @@ def process_directory(
         try:
             attr_spec = process_special_file(
                 special_file_path, 
-                root_module_path, 
-                attr_name
+                params.root_module_path, 
+                params.attr_name
             )
             
             if attr_spec:
-                logger.debug(f"Found attribute {attr_name} in {special_file_path}")
+                logger.debug(f"Found attribute {params.attr_name} in {special_file_path}")
                 results_found = True
                 yield attr_spec
             else:
-                logger.debug(f"Attribute {attr_name} not found in {special_file_path}")
+                logger.debug(f"Attribute {params.attr_name} not found in {special_file_path}")
         except Exception as e:
-            raise SpecialFileError(f"Error processing special file {special_file_path} in directory {directory}: {e}")
+            raise SpecialFileError(
+                f"Error processing special file {special_file_path} in directory {params.directory}: {e}"
+            )
             
     if not results_found:
-        logger.info(f"No attributes named '{attr_name}' found in any special files in directory {directory}")
+        logger.info(f"No attributes named '{params.attr_name}' found in any special files in directory {params.directory}")
+
+
+def process_parent_module(
+    parent_file_path: Path,
+    attr_name: str,
+    root_module_path: Path
+) -> Optional[ModuleVarSpec]:
+    """
+    Process a parent module to extract attributes.
+    
+    Args:
+        parent_file_path: The parent module file path
+        attr_name: The attribute name to extract
+        root_module_path: The root module path
+        
+    Returns:
+        A ModuleVarSpec if the attribute is found, None otherwise
+    """
+    module_name = get_module_name(parent_file_path, root_module_path)
+    module = load_module_from_path(module_name, parent_file_path)
+    return extract_module_attribute(module, module_name, attr_name)
 
 
 def walk_parent_modules(
@@ -626,9 +675,7 @@ def walk_parent_modules(
     parent_file_path = parent_dir / '__init__.py'
     if parent_file_path.exists() and parent_file_path != file_path:
         # Process the parent __init__.py
-        module_name = get_module_name(parent_file_path, root_module_path)
-        module = load_module_from_path(module_name, parent_file_path)
-        attr_spec = extract_module_attribute(module, module_name, attr_name)
+        attr_spec = process_parent_module(parent_file_path, attr_name, root_module_path)
         
         if attr_spec:
             yield attr_spec
@@ -642,6 +689,40 @@ def walk_parent_modules(
             grandparent_file_path = grandparent_dir / '__init__.py'
             if grandparent_file_path.exists():
                 yield from walk_parent_modules(grandparent_file_path, attr_name, root_module_path)
+
+
+def prepare_module_paths(
+    file_path: Path,
+    root_module_path: Optional[Path]
+) -> Tuple[Path, Path]:
+    """
+    Prepare and validate the module paths.
+    
+    Args:
+        file_path: The file path to prepare
+        root_module_path: The root module path to prepare
+        
+    Returns:
+        A tuple of (file_path, root_module_path) as absolute paths
+        
+    Raises:
+        ModulePathError: If project root cannot be determined
+    """
+    # Get absolute file path
+    file_path = file_path.absolute()
+    
+    # Determine root module path if not provided
+    if root_module_path is None:
+        root_path_str = get_project_root(str(file_path))
+        if not root_path_str:
+            raise ModulePathError(f"Could not determine project root for {file_path}")
+        root_module_path = Path(root_path_str)
+    
+    # Ensure root_module_path is a Path object
+    if not isinstance(root_module_path, Path):
+        root_module_path = Path(root_module_path)
+    
+    return file_path, root_module_path.absolute()
 
 
 def walk_module_attr(
@@ -666,23 +747,10 @@ def walk_module_attr(
         InvalidPythonFileError: If file_path is not a valid Python file
     """
     # Validate parameters
-    if not isinstance(file_path, Path):
-        raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
+    validate_attr_params(file_path, attr_name)
     
-    if not isinstance(attr_name, str):
-        raise TypeError(f"attr_name must be a string, got {type(attr_name)}")
-    
-    # Get absolute file path
-    file_path = file_path.absolute()
-    
-    # Determine root module path if not provided
-    if root_module_path is None:
-        root_module_path = Path(get_project_root(str(file_path)))
-    
-    # Ensure root_module_path is a Path object
-    if not isinstance(root_module_path, Path):
-        root_module_path = Path(root_module_path)
-    root_module_path = root_module_path.absolute()
+    # Prepare and validate paths
+    file_path, root_module_path = prepare_module_paths(file_path, root_module_path)
     
     # Validate file path
     validate_python_file_path(file_path)
@@ -696,13 +764,21 @@ def walk_module_attr(
     module_name = get_module_name(file_path, root_module_path)
     module = load_module_from_path(module_name, file_path)
     
+    # Track seen var_paths to avoid potential duplicates
+    seen_var_paths = set()
+    
     # Check for attribute in the current module
     attr_spec = extract_module_attribute(module, module_name, attr_name)
     if attr_spec:
+        seen_var_paths.add(attr_spec.var_path)
         yield attr_spec
     
-    # Walk up through parent modules
-    yield from walk_parent_modules(file_path, attr_name, root_module_path)
+    # Walk up through parent modules with duplicate filtering
+    parent_results = yield_unique_results(
+        walk_parent_modules(file_path, attr_name, root_module_path),
+        seen_var_paths
+    )
+    yield from parent_results
 
 
 def process_module_hierarchy(
@@ -744,13 +820,58 @@ def process_module_hierarchy(
         parent_dir = module_path.parent
         logger.debug(f"Processing directory: {parent_dir}")
         
-        for result in process_directory(
+        # Create parameters for directory processing
+        params = DirectoryProcessParams(
             directory=parent_dir,
             root_module_path=module_hierarchy.root_module_path,
             attr_name=attr_name,
             special_filenames=special_filenames,
             exclude_path=module_path  # Don't process the module file itself again
-        ):
+        )
+        
+        # Process the directory
+        yield from process_directory(params)
+
+
+def validate_attr_params(file_path: Path, attr_name: str) -> None:
+    """
+    Validate common parameters for attribute search functions.
+    
+    Args:
+        file_path: The file path to validate
+        attr_name: The attribute name to validate
+        
+    Raises:
+        TypeError: If inputs are not of the expected types
+        ValueError: If attr_name is empty
+    """
+    if not isinstance(file_path, Path):
+        raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
+    
+    if not isinstance(attr_name, str):
+        raise TypeError(f"attr_name must be a string, got {type(attr_name)}")
+    
+    if not attr_name:
+        raise ValueError("attr_name cannot be empty")
+
+
+def yield_unique_results(
+    results_iterator: Iterator[ModuleVarSpec],
+    seen_var_paths: set,
+) -> Iterator[ModuleVarSpec]:
+    """
+    Yield only unique results from an iterator, tracking them in seen_var_paths.
+    
+    Args:
+        results_iterator: Iterator of ModuleVarSpec objects
+        seen_var_paths: Set of already seen var_paths
+        
+    Returns:
+        Iterator yielding only previously unseen results
+    """
+    for result in results_iterator:
+        if result.var_path not in seen_var_paths:
+            seen_var_paths.add(result.var_path)
             yield result
 
 
@@ -787,65 +908,55 @@ def walk_module_with_special_files(
         InvalidPythonFileError: If the file is not a valid Python file
         ModulePathError: If the path structure is invalid
     """
-    # Type validation
-    if not isinstance(file_path, Path):
-        raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
-    
-    if not isinstance(attr_name, str):
-        raise TypeError(f"attr_name must be a string, got {type(attr_name)}")
-    
-    if not attr_name:
-        raise ValueError("attr_name cannot be empty")
+    # Input validation
+    validate_attr_params(file_path, attr_name)
     
     # Normalize parameters
     special_filenames_list = normalize_special_filenames(special_filenames)
     
-    # Handle root_module_path detection
-    if root_module_path is None:
-        root_path_str = get_project_root(str(file_path))
-        if not root_path_str:
-            raise ModulePathError(f"Could not determine project root for {file_path}")
-        root_module_path = Path(root_path_str)
+    # Get absolute paths
+    file_path, root_module_path = prepare_module_paths(file_path, root_module_path)
     
-    # Ensure we have absolute paths
-    file_path = file_path.absolute()
-    root_module_path = root_module_path.absolute()
-    
-    # Validate file path is a Python file
+    # Validate file path and check if under root
     validate_python_file_path(file_path)
-    
     logger.trace(f"Project root path: {root_module_path}")
-    
-    # Validate file path is under root module path
     validate_path_under_root(file_path, root_module_path)
     
-    # Build module hierarchy from root to target
+    # Build module hierarchy
     module_hierarchy = build_module_hierarchy(file_path, root_module_path)
     logger.debug(f"Built module hierarchy with {len(module_hierarchy.module_paths)} paths")
     
-    # Track if we've yielded any results
+    # Track yielded var_paths to avoid duplicates
+    seen_var_paths = set()
     has_yielded_results = False
     
-    # Check for special files at the root level first
+    # Process root directory first
     logger.debug(f"Processing root directory: {root_module_path}")
-    root_results = list(process_directory(
+    
+    # Create parameters for root directory processing
+    root_params = DirectoryProcessParams(
         directory=root_module_path,
         root_module_path=root_module_path,
         attr_name=attr_name,
         special_filenames=special_filenames_list
-    ))
+    )
     
-    if root_results:
+    # Process the root directory with duplicate filtering
+    root_results = yield_unique_results(process_directory(root_params), seen_var_paths)
+    for result in root_results:
         has_yielded_results = True
-        for result in root_results:
-            yield result
+        yield result
     
-    # Process the module hierarchy
-    for result in process_module_hierarchy(
-        module_hierarchy=module_hierarchy,
-        attr_name=attr_name,
-        special_filenames=special_filenames_list
-    ):
+    # Process the module hierarchy with duplicate filtering
+    hierarchy_results = yield_unique_results(
+        process_module_hierarchy(
+            module_hierarchy=module_hierarchy,
+            attr_name=attr_name,
+            special_filenames=special_filenames_list
+        ),
+        seen_var_paths
+    )
+    for result in hierarchy_results:
         has_yielded_results = True
         yield result
     

@@ -218,3 +218,46 @@ def test_yielding_order():
     assert top_level_found, "Missing items from top level"
     assert mid_level_found, "Missing items from middle level" 
     assert target_file_found, "Missing items from target file"
+
+
+def test_no_duplicates():
+    """Test that walk_module_with_special_files doesn't yield duplicate attributes."""
+    test_file = Path(__file__).parent / "test_package/child/module1.py"
+    root_module_path = Path(__file__).parent
+    
+    # Include all special files
+    items = list(walk_module_with_special_files(
+        test_file, 
+        "__meta_design__", 
+        ["__pinjected__.py", "config.py", "__init__.py"],
+        root_module_path=root_module_path
+    ))
+    
+    # Print items for debugging
+    print(f"Found {len(items)} items:")
+    for i, item in enumerate(items):
+        print(f"  {i}. {item.var_path}")
+    
+    # Extract the paths
+    paths = [item.var_path for item in items]
+    
+    # Check for duplicates
+    unique_paths = set(paths)
+    
+    # If there are duplicates, paths and unique_paths will have different lengths
+    assert len(paths) == len(unique_paths), f"Found duplicate attributes: {len(paths) - len(unique_paths)} duplicates"
+    
+    # More detailed error message if duplicates are found
+    if len(paths) != len(unique_paths):
+        duplicate_counts = {}
+        for path in paths:
+            if path in duplicate_counts:
+                duplicate_counts[path] += 1
+            else:
+                duplicate_counts[path] = 1
+        
+        # Print duplicates
+        print("Duplicate attributes found:")
+        for path, count in duplicate_counts.items():
+            if count > 1:
+                print(f"  - {path}: {count} occurrences")
