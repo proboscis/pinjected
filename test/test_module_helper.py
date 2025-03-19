@@ -35,14 +35,14 @@ def test_walk_module_with_special_files_single_file():
             
     assert module_found, "Should find __meta_design__ from module1.py"
     
-    # Check if we find the __pinjected__'s __meta_design__
+    # Check if we find the child __pinjected__'s __meta_design__
     pinjected_found = False
     for item in items:
-        if "__pinjected__.__meta_design__" in item.var_path:
+        if "test_package.child.__pinjected__.__meta_design__" in item.var_path:
             pinjected_found = True
             assert item.var.provide('special_var') == "from_pinjected_file"
             
-    assert pinjected_found, "Should find __meta_design__ from __pinjected__.py"
+    assert pinjected_found, "Should find __meta_design__ from child/__pinjected__.py"
 
 
 def test_walk_module_with_special_files_multiple_files():
@@ -69,7 +69,7 @@ def test_walk_module_with_special_files_multiple_files():
     config_found = False
     
     for item in items:
-        if "__pinjected__.__meta_design__" in item.var_path:
+        if "test_package.child.__pinjected__.__meta_design__" in item.var_path:
             pinjected_found = True
             assert item.var.provide('special_var') == "from_pinjected_file"
         elif "config.__meta_design__" in item.var_path:
@@ -163,3 +163,58 @@ def test_without_init_file():
             init_found = True
             
     assert not init_found, "Should not find __meta_design__ from __init__.py files"
+
+
+def test_yielding_order():
+    """Test the yielding order from top module to target file."""
+    test_file = Path(__file__).parent / "test_package/child/module1.py"
+    root_module_path = Path(__file__).parent
+    
+    # Include all special files to check ordering
+    items = list(walk_module_with_special_files(
+        test_file, 
+        "__meta_design__", 
+        ["__pinjected__.py", "config.py", "__init__.py"],
+        root_module_path=root_module_path
+    ))
+    
+    # Print items for debugging
+    print(f"Found {len(items)} items:")
+    for i, item in enumerate(items):
+        print(f"  {i}. {item.var_path}")
+    
+    # Extract the paths for easier ordering assertion
+    paths = [item.var_path for item in items]
+    
+    # Define the expected progression - from top to bottom
+    # We expect modules to be processed from root to target
+    
+    # Check ordering by module depth - root modules should come before deeper modules
+    for i in range(len(paths) - 1):
+        for j in range(i + 1, len(paths)):
+            current_depth = paths[i].count('.')
+            next_depth = paths[j].count('.')
+            
+            # Skip comparison if they're from the same directory level
+            if '.'.join(paths[i].split('.')[:2]) != '.'.join(paths[j].split('.')[:2]):
+                # Higher module should come before deeper module
+                if current_depth > next_depth:
+                    assert False, f"Order incorrect: {paths[i]} (depth {current_depth}) came before {paths[j]} (depth {next_depth})"
+    
+    # Ensure at least one item exists from each expected level
+    top_level_found = False
+    mid_level_found = False
+    target_file_found = False
+    
+    for path in paths:
+        if "test_package.__pinjected__" in path:
+            top_level_found = True
+        elif "test_package.child.__" in path:
+            mid_level_found = True
+        elif "test_package.child.module1" in path:
+            target_file_found = True
+    
+    # We should have items from all levels
+    assert top_level_found, "Missing items from top level"
+    assert mid_level_found, "Missing items from middle level" 
+    assert target_file_found, "Missing items from target file"

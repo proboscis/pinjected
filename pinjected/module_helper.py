@@ -64,120 +64,309 @@ def walk_module_attr(file_path: Path, attr_name, root_module_path=None):
                 yield from walk_module_attr(grandparent_file_path, attr_name, root_module_path)
 
 
-def walk_module_with_special_files(file_path: Path, attr_name, special_filenames=None, root_module_path=None):
+from typing import List, Optional, Iterator, Union, Any
+
+
+def _normalize_special_filenames(
+    special_filenames: Optional[Union[str, List[str]]]
+) -> List[str]:
     """
-    Walk up from a file_path to the root module, looking for the specified attribute in:
-    1. The current file
-    2. Any special files in each directory (configurable via special_filenames)
+    Normalize the special_filenames parameter to ensure it's a list.
     
-    To include __init__.py in the search, add it to special_filenames.
+    Args:
+        special_filenames: Either a string or list of strings, or None
+        
+    Returns:
+        A list of special filenames, or empty list if None
+    """
+    if special_filenames is None:
+        return []
+    elif isinstance(special_filenames, str):
+        return [special_filenames]
+    return special_filenames
+
+
+def _get_module_name(file_path: Path, root_module_path: Path) -> str:
+    """
+    Determine the module name from a file path relative to the root module path.
     
-    Yields the found variables as ModuleVarSpec.
+    Args:
+        file_path: The file path to get the module name for
+        root_module_path: The root module path
+        
+    Returns:
+        The module name
+    """
+    relative_path = file_path.relative_to(root_module_path)
     
-    :param file_path: Path to the module file to start searching from
-    :param attr_name: The attribute name to look for
-    :param special_filenames: List of filenames to look for in each directory (default: ["__pinjected__.py"])
-    :param root_module_path: The root module path to use (if None, it will be detected)
-    :return: Generator of ModuleVarSpec objects
+    # Handle src/ pattern common in Python projects
+    if str(relative_path).startswith('src/'):
+        relative_path = Path(str(relative_path).replace('src/', '', 1))
+        
+    return os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
+
+
+def _import_module_from_path(module_name: str, file_path: Path) -> Optional[Any]:
+    """
+    Import a module from a file path.
+    
+    Args:
+        module_name: The module name to use
+        file_path: The file path to import from
+        
+    Returns:
+        The imported module or None if import failed
     """
     from pinjected.pinjected_logging import logger
     
-    # Default to __pinjected__.py if no filenames provided
-    if special_filenames is None:
-        special_filenames = ["__pinjected__.py"]
-    # Convert single string to list
-    elif isinstance(special_filenames, str):
-        special_filenames = [special_filenames]
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    
+    logger.info(f"importing module: {module_name}")
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    
+    if spec is None:
+        logger.error(f"cannot find spec for {module_name} at {file_path}")
+        return None
+        
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    
+    try:
+        spec.loader.exec_module(module)
+        return module
+    except ValueError as e:
+        logger.error(f"cannot exec module {module_name} at {file_path} due to {e}, \n source=\n{file_path.read_text()}")
+        raise e
+
+
+def _extract_attribute(module: Any, module_name: str, attr_name: str) -> Optional[ModuleVarSpec]:
+    """
+    Extract an attribute from a module if it exists.
+    
+    Args:
+        module: The module to extract from
+        module_name: The module name
+        attr_name: The attribute name to extract
+        
+    Returns:
+        A ModuleVarSpec if the attribute exists, None otherwise
+    """
+    if hasattr(module, attr_name):
+        return ModuleVarSpec(
+            var=getattr(module, attr_name),
+            var_path=f"{module_name}.{attr_name}",
+        )
+    return None
+
+
+def _find_first_special_file_in_parent(
+    parent_dir: Path, 
+    special_filenames: List[str],
+    root_module_path: Path
+) -> Optional[Path]:
+    """
+    Find the first special file that exists in the parent directory.
+    
+    Args:
+        parent_dir: The parent directory
+        special_filenames: List of special filenames to look for
+        root_module_path: The root module path
+        
+    Returns:
+        The path to the first special file found, or None
+    """
+    for special_filename in special_filenames:
+        possible_parent_file = parent_dir.parent / special_filename
+        if possible_parent_file.exists():
+            return possible_parent_file
+    return None
+
+
+def _build_module_path_tree(
+    file_path: Path,
+    root_module_path: Path
+) -> List[Path]:
+    """
+    Build a list of module paths from the root module to the target file path.
+    
+    Args:
+        file_path: The target file path
+        root_module_path: The root module path
+        
+    Returns:
+        A list of paths from the root (first) to the target (last)
+    """
+    from pinjected.pinjected_logging import logger
+    
+    if not str(file_path).startswith(str(root_module_path)):
+        return []
+        
+    # Start with the target file
+    path_tree = [file_path]
+    
+    # Build the path from root to target
+    current_path = file_path.parent
+    while str(current_path) != str(root_module_path):
+        init_file = current_path / "__init__.py"
+        if init_file.exists():
+            path_tree.insert(0, init_file)
+        current_path = current_path.parent
+        
+    # Add the root module if it has an __init__.py
+    root_init = root_module_path / "__init__.py" 
+    if root_init.exists():
+        path_tree.insert(0, root_init)
+    
+    # Ensure the correct ordering by fully traversing all levels    
+    logger.debug(f"Built module path tree: {[str(p) for p in path_tree]}")
+    
+    return path_tree
+
+
+def _find_special_files_in_dir(
+    directory: Path,
+    special_filenames: List[str],
+    exclude_path: Optional[Path] = None
+) -> List[Path]:
+    """
+    Find all special files in a directory.
+    
+    Args:
+        directory: The directory to search in
+        special_filenames: The special filenames to look for
+        exclude_path: An optional path to exclude from the results
+        
+    Returns:
+        A list of paths to the special files
+    """
+    special_files = []
+    
+    for filename in special_filenames:
+        file_path = directory / filename
+        if file_path.exists() and (exclude_path is None or file_path != exclude_path):
+            special_files.append(file_path)
+            
+    return special_files
+
+
+def _process_module_directory(
+    directory: Path,
+    root_module_path: Path,
+    attr_name: str,
+    special_filenames: List[str],
+    exclude_path: Optional[Path] = None
+) -> Iterator[ModuleVarSpec]:
+    """
+    Process a directory for special files and extract attributes.
+    
+    Args:
+        directory: The directory to process
+        root_module_path: The root module path
+        attr_name: The attribute name to look for
+        special_filenames: List of special filenames to look for
+        exclude_path: Optional path to exclude
+        
+    Returns:
+        Iterator of ModuleVarSpec objects
+    """
+    from pinjected.pinjected_logging import logger
+    
+    # Find and process all special files in this directory
+    special_files = _find_special_files_in_dir(directory, special_filenames, exclude_path)
+    
+    for special_file_path in special_files:
+        special_module_name = _get_module_name(special_file_path, root_module_path)
+        
+        try:
+            logger.info(f"importing special module: {special_module_name}")
+            special_module = _import_module_from_path(special_module_name, special_file_path)
+            
+            if special_module and hasattr(special_module, attr_name):
+                logger.debug(f"Found {attr_name} in {special_module_name}")
+                yield ModuleVarSpec(
+                    var=getattr(special_module, attr_name),
+                    var_path=f"{special_module_name}.{attr_name}",
+                )
+        except Exception as e:
+            logger.error(f"Error processing special file {special_file_path}: {e}")
+
+
+def walk_module_with_special_files(
+    file_path: Path, 
+    attr_name: str, 
+    special_filenames: Optional[Union[str, List[str]]] = ["__pinjected__.py"], 
+    root_module_path: Optional[Path] = None
+) -> Iterator[ModuleVarSpec]:
+    """
+    Walk from the root module down to the target file_path, looking for the 
+    specified attribute in each module along the path:
+    
+    1. Start with the top-level module
+    2. Check each module along the path to the target file (including special files)
+    3. End with the target file
+    
+    To include __init__.py in the search, add it to special_filenames.
+    
+    Yields the found variables as ModuleVarSpec, from top module to target file.
+    
+    Args:
+        file_path: Path to the module file to start searching from
+        attr_name: The attribute name to look for
+        special_filenames: List of filenames to look for in each directory (default: ["__pinjected__.py"])
+        root_module_path: The root module path to use (if None, it will be detected)
+        
+    Returns:
+        Generator of ModuleVarSpec objects
+    """
+    from pinjected.pinjected_logging import logger
+    
+    # Normalize parameters
+    special_filenames_list = _normalize_special_filenames(special_filenames)
     
     if root_module_path is None:
         root_module_path = Path(get_project_root(str(file_path)))
+        
     file_path = file_path.absolute()
     assert str(file_path).endswith(".py"), f"a python file path must be provided, got:{file_path}"
+    
     logger.trace(f"project root path:{root_module_path}")
+    
+    # Validate file path
     if not str(file_path).startswith(str(root_module_path)):
         return
 
-    # Process the current file
-    relative_path = file_path.relative_to(root_module_path)
-    if str(relative_path).startswith('src/'):
-        logger.trace(f"file_path starts with src/")
-        relative_path = Path(str(relative_path).replace('src/', '', 1))
-    logger.trace(f"relative path:{relative_path}")
-    module_name = os.path.splitext(str(relative_path).replace(os.sep, '.'))[0]
+    # Build path tree from root to target
+    module_path_tree = _build_module_path_tree(file_path, root_module_path)
     
-    # Import and process the current module
-    if module_name not in sys.modules:
-        logger.info(f"importing module: {module_name}")
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if spec is None:
-            logger.error(f"cannot find spec for {module_name} at {file_path}")
-            return
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        try:
-            spec.loader.exec_module(module)
-        except ValueError as e:
-            logger.error(f"cannot exec module {module_name} at {file_path} due to {e}, \n source=\n{file_path.read_text()}")
-            raise e
-    module = sys.modules[module_name]
+    # Check for special files at the root level first
+    yield from _process_module_directory(
+        root_module_path, 
+        root_module_path, 
+        attr_name, 
+        special_filenames_list
+    )
     
-    # If the attribute exists in this module, yield it
-    if hasattr(module, attr_name):
-        yield ModuleVarSpec(
-            var=getattr(module, attr_name),
-            var_path=module_name + '.' + attr_name,
-        )
-
-    # Check for special files in the current directory
-    parent_dir = file_path.parent
-    
-    for special_filename in special_filenames:
-        special_file_path = parent_dir / special_filename
-        if special_file_path.exists() and special_file_path != file_path:
-            # Determine module name for the special file
-            special_rel_path = special_file_path.relative_to(root_module_path)
-            if str(special_rel_path).startswith('src/'):
-                special_rel_path = Path(str(special_rel_path).replace('src/', '', 1))
-            special_module_name = os.path.splitext(str(special_rel_path).replace(os.sep, '.'))[0]
+    # Process each module in the path, from root to target
+    for module_path in module_path_tree:
+        # Process the current module
+        module_name = _get_module_name(module_path, root_module_path)
+        module = _import_module_from_path(module_name, module_path)
+        
+        if module is None:
+            continue
             
-            # Import the special module
-            try:
-                logger.info(f"importing special module: {special_module_name}")
-                spec = importlib.util.spec_from_file_location(special_module_name, special_file_path)
-                if spec is not None:
-                    if special_module_name in sys.modules:
-                        special_module = sys.modules[special_module_name]
-                    else:
-                        special_module = importlib.util.module_from_spec(spec)
-                        sys.modules[special_module_name] = special_module
-                        try:
-                            spec.loader.exec_module(special_module)
-                        except ValueError as e:
-                            logger.error(f"cannot exec special module {special_module_name} at {special_file_path} due to {e}")
-                            continue
-                    
-                    # If the attribute exists in the special module, yield it
-                    if hasattr(special_module, attr_name):
-                        logger.debug(f"Found {attr_name} in {special_module_name}")
-                        yield ModuleVarSpec(
-                            var=getattr(special_module, attr_name),
-                            var_path=special_module_name + '.' + attr_name,
-                        )
-            except Exception as e:
-                logger.error(f"Error processing special file {special_file_path}: {e}")
-    
-    # Continue walking up the directory structure
-    if parent_dir != root_module_path:
-        # Find a file in the parent directory to continue the walk
-        parent_init_path = None
+        # Check for attribute in the current module
+        attr_spec = _extract_attribute(module, module_name, attr_name)
+        if attr_spec:
+            yield attr_spec
         
-        # Use the first matching file in special_filenames in the parent directory for upward recursion
-        for special_filename in special_filenames:
-            possible_parent_file = parent_dir.parent / special_filename
-            if possible_parent_file.exists():
-                parent_init_path = possible_parent_file
-                break
-        
-        # If we found a file to continue with, recurse upward
-        if parent_init_path is not None:
-            yield from walk_module_with_special_files(parent_init_path, attr_name, special_filenames, root_module_path)
+        # Process special files in the current directory
+        parent_dir = module_path.parent
+        yield from _process_module_directory(
+            parent_dir, 
+            root_module_path, 
+            attr_name, 
+            special_filenames_list, 
+            module_path
+        )
