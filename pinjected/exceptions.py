@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Any
 
+from returns.io import IOResultE
+
 from pinjected.di.validation import ValFailure
 
 
@@ -27,20 +29,22 @@ class DependencyResolutionError(RuntimeError):
             causes = []
         self.causes = causes.copy()
 
+
 class DependencyValidationError(RuntimeError):
-    def __init__(self, msg: str, cause:ValFailure):
+    def __init__(self, msg: str, cause: IOResultE):
         super().__init__(msg)
-        self.cause=cause
+        self.cause = cause
+
 
 @dataclass
 class CyclicDependency:
-    key:str
-    trace:List[str]
+    key: str
+    trace: List[str]
+
     def __repr__(self):
         trace = self.trace + [self.key]
         trace_str = " -> ".join(trace)
         return f"Cyclic Dependency: {trace_str}"
-
 
 
 class _MissingDepsError(RuntimeError):

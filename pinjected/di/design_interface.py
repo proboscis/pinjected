@@ -28,8 +28,6 @@ from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey, StrBindKey
 
-ProvisionValidator = Callable[[IBindKey, Any], Awaitable[ValResult]]
-
 
 class Design(ABC):
     def __add__(self, other: "Design") -> "Design":
@@ -67,11 +65,6 @@ class Design(ABC):
     def bindings(self) -> Dict[IBindKey, IBind]:
         pass
 
-    @property
-    @abstractmethod
-    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
-        pass
-
     @staticmethod
     def from_bindings(bindings: Dict[IBindKey, IBind]):
         from pinjected.di.design import DesignImpl
@@ -95,8 +88,8 @@ class Design(ABC):
     def keys(self):
         return self.bindings.keys()
 
-    def provide(self,tgt:str|IBindKey,default:Maybe=Nothing):
-        tgt = StrBindKey(tgt) if isinstance(tgt,str) else tgt
+    def provide(self, tgt: str | IBindKey, default: Maybe = Nothing):
+        tgt = StrBindKey(tgt) if isinstance(tgt, str) else tgt
         if tgt not in self and default is not Nothing:
             return default.unwrap()
         from pinjected.pinjected_logging import logger
@@ -120,8 +113,6 @@ class Design(ABC):
         from pinjected.pinjected_logging import logger
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
-
-
 
 
 @dataclass
@@ -158,14 +149,14 @@ class DesignOverrideContext:
         parent_globals = self.init_frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
         # logger.debug(f"enter->\n"+pformat(global_ids))
-        #print("enter->\n"+pformat(global_ids))
+        # print("enter->\n"+pformat(global_ids))
         self.last_global_ids = global_ids
 
     def exit(self, frame: inspect.FrameInfo) -> list[ModuleVarPath]:
         # get parent global variables
         parent_globals = frame.f_globals
         global_ids = {k: id(v) for k, v in parent_globals.items()}
-        #print("exit->\n"+pformat(global_ids))
+        # print("exit->\n"+pformat(global_ids))
         changed_keys = []
         for k in global_ids:
             if k in self.last_global_ids:
@@ -185,6 +176,6 @@ class DesignOverrideContext:
                 target_vars[k] = v
 
         mod_name = frame.f_globals["__name__"]
-        #mod_name = inspect.getmodule(frame).__name__
+        # mod_name = inspect.getmodule(frame).__name__
         # logger.info(f"found targets:\n{pformat(target_vars)}")
         return [ModuleVarPath(mod_name + "." + v) for v in target_vars.keys()]

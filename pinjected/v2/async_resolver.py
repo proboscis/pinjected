@@ -3,18 +3,26 @@ import inspect
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pprint import pformat
-from typing import Optional, Dict, Any
+from traceback import FrameSummary
+from typing import Optional, Dict, Any, Callable, Union, ParamSpec, TypeVar
+
+from returns.future import FutureResultE, FutureResult
+from returns.io import IOSuccess, IOResultE, IOFailure
+from returns.maybe import Nothing, Maybe
+from returns.pipeline import is_successful
+from returns.primitives.tracing import collect_traces
+from returns.unsafe import unsafe_perform_io
 
 from pinjected import Injected
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.app_injected import walk_replace, EvaledInjected
-from pinjected.di.design_interface import ProvisionValidator
+from pinjected.di.design_spec.protocols import DesignSpec, BindSpec
 from pinjected.di.expr_util import Expr, Object, Cache, Call, BiOp, UnaryOp, Attr, GetItem, show_expr
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.di.validation import ValFailure, ValSuccess
-from pinjected.exceptions import DependencyValidationError, DependencyResolutionError
+from pinjected.exceptions import DependencyResolutionError, CyclicDependency, DependencyResolutionFailure, \
+    DependencyValidationError
 from pinjected.pinjected_logging import logger
 from pinjected.v2.binds import BindInjected, IBind
 from pinjected.v2.callback import IResolverCallback
@@ -25,19 +33,53 @@ from pinjected.v2.provide_context import ProvideContext
 from pinjected.v2.resolver import AsyncLockMap, OPERATORS, UNARY_OPS, Providable, EvaluationError
 from pinjected.visualize_di import DIGraph
 
+StaticProvisionError = Union[CyclicDependency, DependencyResolutionFailure]
+
+P = ParamSpec('P')
+T = TypeVar('T')
+
+
+def maybe_fre_to_fre(
+        f: Maybe[Callable[P, FutureResultE[str]]],
+        default: FutureResultE = FutureResult.from_failure(None)
+) -> Callable[P, FutureResultE[str]]:
+    def impl(*args: P.args, **kwargs: P.kwargs) -> FutureResultE[str]:
+        if f is Nothing:  # Changed == to is for singleton comparison
+            return default
+        else:
+            res = f.unwrap()(*args, **kwargs)
+            assert isinstance(res, FutureResult), f"expected FutureResultE got {res}"
+            return res  # Added missing return statement
+
+    return impl
+
+
+def create_tb(failure: IOFailure) -> str:
+    traces: list[inspect.FrameInfo] = failure.trace
+    frame_summaries = []
+    for frame in traces:
+        # Create a FrameSummary for each frame
+        summary = FrameSummary(
+            filename=frame.filename,
+            lineno=frame.lineno,
+            name=frame.function,
+            line=frame.line if hasattr(frame, 'line') else None,
+        )
+        frame_summaries.append(summary)
+    import traceback
+    tb = traceback.format_list(frame_summaries)
+    return "".join(tb)
+
 
 @dataclass
 class AsyncResolver:
+    # design provides actual bindings for the resolver.
     design: "Design"
     parent: Optional["AsyncResolver"] = None
     objects: Dict[IBindKey, Any] = field(default_factory=dict)
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
     callbacks: list[IResolverCallback] = field(default=None)
-    """
-    if parent exists, we need to check if the injection targets
-    needs to be re-created due overrides, or not.
-    
-    """
+    spec: DesignSpec = field(default=DesignSpec.empty())
 
     def add_callback(self, callback: IResolverCallback):
         self.callbacks.append(callback)
@@ -98,6 +140,14 @@ class AsyncResolver:
         replaced = walk_replace(expr, solve_evaled_injected)
         replaced = walk_replace(replaced, lambda x: Cache(x))
         return replaced
+
+    def _a_validate(self, key: IBindKey, value) -> FutureResultE[str]:
+        # hmm, we get Maybe[Maybe[Callable[[T],FutureResultE[str]]]
+        # and we want to convert it to T->FutureResultE[str]
+        # oh wait we can postpone awaiting
+        maybe_spec: Maybe[BindSpec] = self.spec.get_spec(key)
+        maybe_validator: Maybe[Callable] = maybe_spec.bind(lambda x: x.validator)
+        return maybe_fre_to_fre(maybe_validator, default=FutureResult.from_value("No validation provided"))(key, value)
 
     async def eval_expr(self, expr: Expr, cxt: ProvideContext):
         assert isinstance(expr, Expr), f"expr must be Expr, got {expr} of type {type(expr)}"
@@ -214,10 +264,6 @@ class AsyncResolver:
             dep_keys = set(bind.complete_dependencies)
 
             if dep_keys & overridden_keys or key in overridden_keys:
-                # Create instance, when the deps or the key is overriden
-                # we are responsible for providing this
-                # bind: IBind = self.design.bindings[key]
-                # dep_keys = list(bind.dependencies)
                 tasks = []
                 for dep_key in dep_keys:
                     n_cxt = ProvideContext(self, key=dep_key, parent=cxt)
@@ -229,6 +275,12 @@ class AsyncResolver:
                 self.objects[key] = data
                 # show_data = str(data)[:100]
                 # logger.info(f"{cxt.trace_str} := {show_data}")
+                validation: IOResultE[str] = await self._a_validate(key, data)
+                if not is_successful(validation):
+                    import traceback
+                    tb = create_tb(validation)
+                    raise DependencyValidationError(f"Validation failed for {key} {validation.failure()}: {tb}",
+                                                    cause=validation)
                 self._callback(ProvideEvent(cxt, key, data))
                 return data
             else:
@@ -244,21 +296,6 @@ class AsyncResolver:
         tasks = [self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys]
         return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
 
-    async def validate(self, key: IBindKey, value: Any):
-        validator: Optional[ProvisionValidator] = self.design.validations.get(key, None)
-        if validator is not None:
-            res = await validator(key, value)
-            match res:
-                case ValFailure(e) as vf:
-                    raise DependencyValidationError(f"Validation failed for {key}", cause=vf)
-                case ValSuccess() as vs:
-                    logger.success(f"validation passed for {key}")
-                case _:
-                    raise TypeError(f"validator must return ValFailure or ValSuccess, got {res}")
-        else:
-            pass
-            #logger.debug(f"no validator found for {str(key)[:100]} from {self.design}")
-
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)
 
@@ -266,11 +303,9 @@ class AsyncResolver:
             case str():
                 key = StrBindKey(tgt)
                 res = await self._provide(key, ProvideContext(self, key=key, parent=root_cxt))
-                await self.validate(key, res)
                 return res
             case IBindKey():
                 res = await self._provide(tgt, ProvideContext(self, key=tgt, parent=root_cxt))
-                await self.validate(tgt, res)
                 return res
             case DelegatedVar(value, cxt) as dv:
                 # return await self._provide_providable(tgt.eval())
@@ -278,14 +313,12 @@ class AsyncResolver:
                 key = StrBindKey(f"{show_expr(value)}")
                 new_cxt = ProvideContext(self, key=StrBindKey(f"{show_expr(value)}"), parent=root_cxt)
                 res = await self.eval_expr(expr, new_cxt)
-                await self.validate(key, res)
                 return res
             case EvaledInjected(val, ast):
                 expr = await self._optimize(ast)
                 key = StrBindKey(f"{show_expr(ast)}")
                 new_cxt = ProvideContext(self, key=key, parent=root_cxt)
                 res = await self.eval_expr(expr, new_cxt)
-                await self.validate(key, res)
                 return res
             case Injected() as i_tgt:
                 return await self._provide_providable(BindInjected(i_tgt))
@@ -314,8 +347,7 @@ class AsyncResolver:
             p_design = self.parent._design_from_ancestors()
         return p_design + self.design
 
-    async def validate_provision(self, tgt: Providable):
-        logger.debug(f"validating provision...")
+    async def a_find_provision_errors(self, tgt: Providable) -> list[StaticProvisionError]:
         from pinjected import design
         d = self._design_from_ancestors()
         errors = []
@@ -335,47 +367,83 @@ class AsyncResolver:
                 tmp_design = d + design(__root__=tgt)
                 digraph: DIGraph = DIGraph(tmp_design)
                 errors = list(digraph.di_dfs_validation("__root__"))
-        if errors:
-            raise DependencyResolutionError(f"Errors in dependency resolution:\n{pformat(errors)}\n", causes=errors)
+        return errors
+
+    async def validate_provision(self, tgt: Providable):
+        if errors := await self.a_find_provision_errors(tgt):
+            # here we can use spec to provide more helpful error messages.
+            drfs = [drf for drf in errors if isinstance(drf, DependencyResolutionFailure)]
+            cyclics = [c for c in errors if isinstance(c, CyclicDependency)]
+            message = ""
+            if drfs:
+                header = f"========== Missing Dependencies for {tgt} ==========\n"
+                len_header = len(header)
+                missing_keys = {drf.key for drf in drfs}
+                message += header
+                message += f"Missing Dependencies: {missing_keys}\n"
+                message += "-" * len_header + "\n"
+                for e in drfs:
+                    key, trace, cause = e.key, e.trace, e.cause
+                    message += f"Trace {e.trace_str()}: {e.cause}\n"
+                    key = StrBindKey(key)
+                    spec: Maybe[BindSpec] = self.spec.get_spec(key)
+                    maybe_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = spec.bind(
+                        lambda x: x.spec_doc_provider
+                    )
+                    fut_msg: IOResultE[str] = await maybe_fre_to_fre(maybe_provider)(key)
+                    doc_msg = unsafe_perform_io(fut_msg.value_or("No documentation provided"))
+                    message += f"Documentation:\n"
+                    message += f"  {doc_msg}\n"
+                    message += "-" * len_header + "\n"
+                message += "=" * len_header + "\n"
+            if cyclics:
+                header = f"========== Cyclic Dependencies for {tgt} ==========\n"
+                len_header = len(header)
+                message += header
+                for c in cyclics:
+                    message += f"{c}\n"
+                message += "=" * len_header + "\n"
+            raise DependencyResolutionError(f"Errors in dependency resolution:\n{message}", causes=errors)
         logger.debug(f"provision validated.")
 
     async def provide(self, tgt: Providable):
-        self.provision_depth += 1
-        try:
-            if self.provision_depth == 1:
-                async with TaskGroup() as tg:
-                    await self.validate_provision(tgt)
-                    match tgt:
-                        case EvaledInjected(val, ast):
-                            repr = show_expr(ast)
-                        case DelegatedVar(value, cxt) as dv:
-                            repr = show_expr(dv.eval().ast)
-                        case _:
-                            repr = str(tgt)
-                    if len(repr) > 100:
-                        repr = repr[:50] + "..." + repr[-50:] + f"({len(repr) - 100} more)"
-                    logger.info(f"providing {repr}")
-                    tg_key = StrBindKey('__task_group__')
-                    self.objects[tg_key] = tg
-                    res = await self._provide_providable(tgt)
-                    del self.objects[tg_key]
-                return res
-            else:
-                return await self._provide_providable(tgt)
-        except Exception as e:
-            import pinjected.compatibility.task_group
-            if hasattr(pinjected.compatibility.task_group, 'ExceptionGroup'):
-                logger.debug(f"using compatibility.task_group.ExceptionGroup")
-                EG = pinjected.compatibility.task_group.ExceptionGroup
-            else:
-                logger.debug(f"using ExceptionGroup")
-                EG = ExceptionGroup
-            if isinstance(e, EG):
-                if len(e.exceptions) == 1:
-                    raise e.exceptions[0]
-            raise e
-        finally:
-            self.provision_depth -= 1
+        with collect_traces():
+            self.provision_depth += 1
+            try:
+                if self.provision_depth == 1:
+                    async with TaskGroup() as tg:
+                        await self.validate_provision(tgt)
+                        match tgt:
+                            case EvaledInjected(val, ast):
+                                repr = show_expr(ast)
+                            case DelegatedVar(value, cxt) as dv:
+                                repr = show_expr(dv.eval().ast)
+                            case _:
+                                repr = str(tgt)
+                        if len(repr) > 100:
+                            repr = repr[:50] + "..." + repr[-50:] + f"({len(repr) - 100} more)"
+                        logger.info(f"providing {repr}")
+                        tg_key = StrBindKey('__task_group__')
+                        self.objects[tg_key] = tg
+                        res = await self._provide_providable(tgt)
+                        del self.objects[tg_key]
+                    return res
+                else:
+                    return await self._provide_providable(tgt)
+            except Exception as e:
+                import pinjected.compatibility.task_group
+                if hasattr(pinjected.compatibility.task_group, 'ExceptionGroup'):
+                    logger.debug(f"using compatibility.task_group.ExceptionGroup")
+                    EG = pinjected.compatibility.task_group.ExceptionGroup
+                else:
+                    logger.debug(f"using ExceptionGroup")
+                    EG = ExceptionGroup
+                if isinstance(e, EG):
+                    if len(e.exceptions) == 1:
+                        raise e.exceptions[0]
+                raise e
+            finally:
+                self.provision_depth -= 1
 
     async def provide_or(self, tgt: Providable, default):
         try:

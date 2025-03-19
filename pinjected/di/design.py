@@ -6,7 +6,7 @@ from typing import TypeVar, List, Dict, Union, Callable, Type, Optional
 from cytoolz import merge
 from makefun import create_function
 
-from pinjected.di.design_interface import ProvisionValidator, Design
+from pinjected.di.design_interface import Design
 from pinjected.v2.callback import IResolverCallback
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
@@ -62,39 +62,12 @@ class MergedDesign(Design):
     def bindings(self) -> Dict[IBindKey, IBind]:
         return merge(*[src.bindings for src in self.srcs])
 
-    @property
-    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
-        return merge(*[src.validations for src in self.srcs])
 
     def __repr__(self):
         return f"MergedDesign(srcs={len(self.srcs)})"
 
     def __add__(self, other):
         return MergedDesign(self.srcs + [other])
-
-
-@dataclass
-class AddValidation(Design):
-    src: Design
-    _validations: Dict[IBindKey, ProvisionValidator]
-
-    def __contains__(self, item: IBindKey):
-        return item in self.src
-
-    def __getitem__(self, item: IBindKey | str):
-        return self.src[item]
-
-    @property
-    def bindings(self) -> Dict[IBindKey, IBind]:
-        return self.src.bindings
-
-    @property
-    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
-        return self._validations | self.src.validations
-
-    @property
-    def children(self):
-        return [self.src]
 
 
 """
@@ -120,10 +93,6 @@ class MetaDataDesign(Design):
         return dict()
 
     @property
-    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
-        return dict()
-
-    @property
     def children(self):
         return []
 
@@ -136,6 +105,7 @@ class AddSummary(MetaDataDesign):
 @dataclass
 class AddTags(MetaDataDesign):
     tags: List[str]
+
 
 
 @dataclass
@@ -227,11 +197,7 @@ class DesignImpl(Design):
         return []
 
     @property
-    def validations(self) -> Dict[IBindKey, ProvisionValidator]:
-        return dict()
-
-    @property
-    def bindings(self):
+    def bindings(self) -> Dict[IBindKey, IBind]:
         return self._bindings
 
     def __getstate__(self):
@@ -251,7 +217,7 @@ class DesignImpl(Design):
         :param __binding_metadata__: a dict of [str,BindMetadata]
         :return:
         """
-        bindings = self._bindings.copy()
+        bindings = self.bindings.copy()
         for k, v in kwargs.items():
             if isinstance(v, type):
                 from pinjected.pinjected_logging import logger
@@ -337,7 +303,7 @@ class DesignImpl(Design):
         :return: Design
         """
         mapped_binding = self.bindings[src_key].map(f)
-        return self + DesignImpl({src_key: mapped_binding})
+        return self + DesignImpl(_bindings={src_key: mapped_binding})
 
     def keys(self):
         return self.bindings.keys()

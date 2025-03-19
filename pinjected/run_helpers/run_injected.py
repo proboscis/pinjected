@@ -17,6 +17,7 @@ from pinjected import design, Injected, Design, Designed, EmptyDesign, injected
 from pinjected.cli_visualizations import design_rich_tree
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
+from pinjected.di.design_spec.protocols import DesignSpec
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import MetaContext
 from pinjected.helpers import get_design_path_from_var_path
@@ -149,8 +150,8 @@ def run_anything(
     logger.info(f"loaded design:{design}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
     logger.info(f"running target:{var_path} with design {design_path}")
-    #tree_str = design_rich_tree(design, cxt.var)
-    #logger.info(f"Dependency Tree:\n{tree_str}")
+    # tree_str = design_rich_tree(design, cxt.var)
+    # logger.info(f"Dependency Tree:\n{tree_str}")
 
     # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
     # logger.info(f"metadata obtained from pinjected: {meta}")
@@ -182,11 +183,12 @@ def run_anything(
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
             if PinjectedHandleMainException.key in design:
-                logger.warning(f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
+                logger.warning(
+                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
                 from pinjected import IProxy
-                handler:IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
+                handler: IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
                 handling = handler(e)
-                handled:Optional[str] = asyncio.run(cxt.a_provide(handling,show_debug=False))
+                handled: Optional[str] = asyncio.run(cxt.a_provide(handling, show_debug=False))
                 if handled:
                     logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
                 raise e
@@ -198,7 +200,7 @@ def run_anything(
         logger.success(f"pinjected run result:\n{pformat(res)}")
         if PinjectedHandleMainResult.key in design:
             from pinjected import IProxy
-            handler:IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
+            handler: IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
             handling = handler(res)
             asyncio.run(cxt.a_provide(handling, show_debug=False))
         else:
@@ -235,6 +237,7 @@ class RunContext:
 
     def get_final_design(self):
         return self.design + self.meta_overrides + self.overrides
+
 
     async def a_provide(self, tgt, show_debug=True):
         final_design = self.get_final_design()
