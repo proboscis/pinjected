@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.246 (2025-03-19)
+
+### Fixed
+- Fixed save_as_html in visualize_di.py
+- Fixed run_injected.py for improved handling
+
 ## 0.2.245 (2025-03-19)
 
 ### Fixed
