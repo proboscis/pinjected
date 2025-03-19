@@ -276,20 +276,45 @@ def _process_module_directory(
     special_files = _find_special_files_in_dir(directory, special_filenames, exclude_path)
     
     for special_file_path in special_files:
-        special_module_name = _get_module_name(special_file_path, root_module_path)
+        attr_spec = _process_special_file(special_file_path, root_module_path, attr_name)
+        if attr_spec:
+            yield attr_spec
+
+
+def _process_special_file(
+    special_file_path: Path,
+    root_module_path: Path,
+    attr_name: str
+) -> Optional[ModuleVarSpec]:
+    """
+    Process a special file and extract the attribute if it exists.
+    
+    Args:
+        special_file_path: The special file path to process
+        root_module_path: The root module path
+        attr_name: The attribute name to look for
         
-        try:
-            logger.info(f"importing special module: {special_module_name}")
-            special_module = _import_module_from_path(special_module_name, special_file_path)
-            
-            if special_module and hasattr(special_module, attr_name):
-                logger.debug(f"Found {attr_name} in {special_module_name}")
-                yield ModuleVarSpec(
-                    var=getattr(special_module, attr_name),
-                    var_path=f"{special_module_name}.{attr_name}",
-                )
-        except Exception as e:
-            logger.error(f"Error processing special file {special_file_path}: {e}")
+    Returns:
+        A ModuleVarSpec if the attribute is found, None otherwise
+    """
+    from pinjected.pinjected_logging import logger
+    
+    special_module_name = _get_module_name(special_file_path, root_module_path)
+    
+    try:
+        logger.info(f"importing special module: {special_module_name}")
+        special_module = _import_module_from_path(special_module_name, special_file_path)
+        
+        if special_module and hasattr(special_module, attr_name):
+            logger.debug(f"Found {attr_name} in {special_module_name}")
+            return ModuleVarSpec(
+                var=getattr(special_module, attr_name),
+                var_path=f"{special_module_name}.{attr_name}",
+            )
+    except Exception as e:
+        logger.error(f"Error processing special file {special_file_path}: {e}")
+    
+    return None
 
 
 def walk_module_with_special_files(
