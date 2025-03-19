@@ -1,9 +1,11 @@
 import pytest
+import sys
 from pathlib import Path
-from pinjected import Design, EmptyDesign
-from pinjected.helper_structure import MetaContext
+from pinjected import Design, EmptyDesign, design
+from pinjected.helper_structure import MetaContext, IdeaRunConfigurations
 from pinjected.v2.keys import StrBindKey
 from pinjected.v2.async_resolver import AsyncResolver
+from pinjected.ide_supports.create_configs import create_idea_configurations
 
 
 @pytest.mark.asyncio
@@ -98,3 +100,108 @@ async def test_a_gather_bindings_legacy_overrides():
     print("All var paths:")
     for path in design_paths:
         print(f"  {path}")
+
+
+@pytest.mark.asyncio
+async def test_create_configurations_with_legacy():
+    """Test that configuration creation works with both __meta_design__ and __design__ attributes."""
+    # Path to test files
+    p_root = Path(__file__).parent.parent
+    test_file = Path(__file__).parent / "test_package/child/module1.py"
+    
+    # Create configurations using the a_gather_bindings_with_legacy method
+    from pinjected.ide_supports.default_design import pinjected_internal_design
+    
+    # First gather designs using the new method
+    mc = await MetaContext.a_gather_bindings_with_legacy(p_root/"pinjected/ide_supports/create_configs.py")
+    
+    # Create a design with our test requirements
+    test_design = design(
+        module_path=test_file,
+        interpreter_path=sys.executable
+    )
+    
+    # Create the full design
+    full_design = mc.accumulated + test_design + pinjected_internal_design
+    
+    # Create a resolver with the combined design
+    resolver = AsyncResolver(full_design)
+    
+    # First we need to add print_to_stdout=True to the design
+    stdout_design = design(print_to_stdout=True)
+    full_design = full_design + stdout_design
+    resolver = AsyncResolver(full_design)
+    
+    # Get the configurations injected object
+    configs_injected = create_idea_configurations(wrap_output_with_tag=False)
+    
+    # When resolved, this will print JSON to stdout instead of returning an object
+    configs_result = await resolver[configs_injected]
+    
+    # Verify that it printed configurations to stdout (None is returned)
+    assert configs_result is None, "Should print JSON and return None"
+    
+    # Verify that the correct design values were used
+    meta_config_value = await resolver.provide("meta_config_value")
+    additional_config_value = await resolver.provide("additional_config_value")
+    
+    # Values should come from __design__, which overrides __meta_design__
+    assert meta_config_value == "from_design", "meta_config_value should be from __design__"
+    assert additional_config_value == "only_in_design", "additional_config_value should be present from __design__"
+    
+    # Verify that we can access the default_design_paths if it exists
+    # In stdout mode, the default_design_paths might be empty because of how the injection works
+    # The key point is that we're testing that __design__ values override __meta_design__ values
+    default_design_paths = await resolver.provide("default_design_paths")
+    print(f"default_design_paths: {default_design_paths}")
+    
+    # The important thing to verify is that we can access the meta_config_value and additional_config_value
+    # and that they are coming from the right places
+
+
+@pytest.mark.asyncio
+async def test_compare_legacy_and_new_method():
+    """Test to compare the legacy a_gather_from_path with the new a_gather_bindings_with_legacy method."""
+    # Path to test file
+    p_root = Path(__file__).parent.parent
+    config_path = p_root/"pinjected/ide_supports/create_configs.py"
+    
+    # Gather designs using both methods
+    legacy_context = await MetaContext.a_gather_from_path(config_path)
+    new_context = await MetaContext.a_gather_bindings_with_legacy(config_path)
+    
+    # Create resolvers for both designs
+    legacy_resolver = AsyncResolver(legacy_context.accumulated)
+    new_resolver = AsyncResolver(new_context.accumulated)
+    
+    # Check that both resolvers have access to default_design_paths
+    legacy_paths = await legacy_resolver.provide("default_design_paths")
+    new_paths = await new_resolver.provide("default_design_paths")
+    assert legacy_paths == new_paths, "Both methods should have access to default_design_paths"
+    
+    # Check the meta_config_value - this should be different between the two methods
+    legacy_meta_value = await legacy_resolver.provide("meta_config_value")
+    new_meta_value = await new_resolver.provide("meta_config_value")
+    assert legacy_meta_value == "from_meta_design", "Legacy method should use __meta_design__ value"
+    assert new_meta_value == "from_design", "New method should use __design__ value (overriding __meta_design__)"
+    
+    # Check additional_config_value - this should only be in the new method
+    # Legacy method should not have this value
+    with pytest.raises(Exception):
+        await legacy_resolver.provide("additional_config_value")
+    
+    # New method should have the additional value
+    additional_value = await new_resolver.provide("additional_config_value")
+    assert additional_value == "only_in_design", "New method should have access to values only in __design__"
+    
+    # Compare the trace counts for each method
+    legacy_meta_design_count = sum(1 for var in legacy_context.trace if var.var_path.endswith("__meta_design__"))
+    new_meta_design_count = sum(1 for var in new_context.trace if var.var_path.endswith("__meta_design__"))
+    new_design_count = sum(1 for var in new_context.trace if var.var_path.endswith("__design__"))
+    
+    print(f"Legacy method found {legacy_meta_design_count} __meta_design__ attributes")
+    print(f"New method found {new_meta_design_count} __meta_design__ attributes and {new_design_count} __design__ attributes")
+    
+    # Verify that the new method finds more attributes
+    assert new_meta_design_count + new_design_count > legacy_meta_design_count, \
+        "New method should find more attributes than legacy method"
