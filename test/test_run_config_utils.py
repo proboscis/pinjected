@@ -1,14 +1,10 @@
 import sys
 from pathlib import Path
 
-import pinjected
 from pinjected import *
 from pinjected.helper_structure import MetaContext
 from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.run_helpers.run_injected import run_injected
-from pinjected.pinjected_logging import logger
-from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
-
 from pinjected.v2.async_resolver import AsyncResolver
 
 p_root = Path(__file__).parent.parent
