@@ -61,12 +61,13 @@ class MissingKeyError(RuntimeError):
 @dataclass
 class DIGraph:
     src: "Design"  # Was "Design", removed to avoid circular import
+    use_implicit_bindings: bool = True
 
     def new_name(self, base: str):
         return f"{base}_{str(uuid.uuid4())[:6]}"
 
     def __post_init__(self):
-        self.helper = DIGraphHelper(self.src)
+        self.helper = DIGraphHelper(self.src, use_implicit_bindings=self.use_implicit_bindings)
         self.explicit_mappings: dict[str, Injected] = self.helper.total_mappings()
 
         self.direct_injected = dict()
