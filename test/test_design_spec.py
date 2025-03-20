@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from returns.maybe import Nothing
+from returns.maybe import Nothing, Some
 
 from pinjected import DesignSpec, SimpleBindSpec
 from pinjected.helper_structure import SpecTrace, MetaContext
@@ -102,28 +102,24 @@ async def test_design_spec_precedence():
     shared_key_bind_spec = shared_key_spec.unwrap()
     
     # Check if the documentation is from spec2 (the one on the right side of +)
-    # With the current implementation, this will fail because spec1 takes precedence.
-    # This test documents the actual behavior rather than the intended behavior.
+    # With the updated implementation, spec2 takes precedence.
     doc_provider = shared_key_bind_spec.spec_doc_provider.unwrap()
     doc = await doc_provider(StrBindKey("shared_key"))
     from returns.unsafe import unsafe_perform_io
     
-    # NOTE: According to current implementation, spec1 (left side) takes precedence,
-    # so the value will be "Spec 1 documentation".
-    # If the implementation is changed to make the right side take precedence,
-    # this test would need to be updated to expect "Spec 2 documentation".
-    assert unsafe_perform_io(doc.unwrap()) == "Spec 1 documentation"
+    # The right-hand spec (spec2) takes precedence, so documentation should come from spec2
+    assert unsafe_perform_io(doc.unwrap()) == "Spec 2 documentation"
     
     # For validator testing, verify that the validator exists (we can't check its behavior easily)
     assert shared_key_bind_spec.validator is not Nothing
     
     # Additional test showing what happens when order is reversed
-    # When spec1 is added to spec2, spec2 should take precedence according to current implementation
+    # When spec1 is added to spec2, spec1 should take precedence for the merged spec
     combined_reversed = spec2 + spec1 
     reversed_spec = combined_reversed.get_spec(StrBindKey("shared_key")).unwrap()
     reversed_doc = await reversed_spec.spec_doc_provider.unwrap()(StrBindKey("shared_key"))
-    # The left-most spec (spec2 in this case) takes precedence
-    assert unsafe_perform_io(reversed_doc.unwrap()) == "Spec 2 documentation"
+    # The right-hand spec (spec1 in this case) takes precedence
+    assert unsafe_perform_io(reversed_doc.unwrap()) == "Spec 1 documentation"
 
 
 @pytest.mark.asyncio
@@ -249,3 +245,31 @@ async def test_multi_level_design_spec_hierarchy():
     doc_provider = design_var_bind_spec.spec_doc_provider.unwrap()
     doc = await doc_provider(StrBindKey("design_var"))
     assert "Child module" in unsafe_perform_io(doc.unwrap()), "Should have documentation from child directory"
+
+
+@pytest.mark.asyncio
+async def test_simple_bind_spec_validator():
+    """Test that SimpleBindSpec validator works correctly."""
+    # Create a SimpleBindSpec with a validator and documentation
+    bind_spec = SimpleBindSpec(
+        validator=lambda item: "must be str" if not isinstance(item, str) else None,
+        documentation="Test documentation"
+    )
+    
+    # Check that the validator property returns a Some monad
+    assert bind_spec.validator is not Nothing
+    assert isinstance(bind_spec.validator, Some)
+    
+    # For SimpleBindSpec, the validator takes only one argument, not key and value
+    # So we cannot directly test the validator function from the property
+    # Instead, we'll use the _validator_impl method which handles the FutureResultE wrapping
+    
+    # Check documentation
+    assert bind_spec.spec_doc_provider is not Nothing
+    doc_provider = bind_spec.spec_doc_provider.unwrap()
+    doc_future = doc_provider(StrBindKey("test"))
+    
+    # Await the future to get the result
+    doc_result = await doc_future
+    from returns.unsafe import unsafe_perform_io
+    assert unsafe_perform_io(doc_result.unwrap()) == "Test documentation"

@@ -37,11 +37,11 @@ class MergedDesignSpec(DesignSpec):
     def get_spec(self, key: IBindKey) -> Maybe[BindSpec]:
         """
         Search for a key in all source specs in order.
-        Returns the first matching spec found, or Nothing if no spec is found.
+        Returns the first matching spec found from reverse order, or Nothing if no spec is found.
         
-        This means that earlier specs in the srcs list take precedence over later ones.
+        This means that last specs in the srcs list take precedence over first ones.
         """
-        for src in self.srcs:
+        for src in reversed(self.srcs):
             spec = src.get_spec(key)
             if spec is not Nothing:
                 return spec
@@ -106,11 +106,11 @@ class SimpleBindSpec(BindSpec[T]):
             return Nothing
         return Some(lambda key: FutureResult.from_value(self._documentation))
 
+
 """
 Now, we need a way to accumulate specs from repo, so that RunContext can use it to provide better guidance.
 
 """
-
 
 if __name__ == '__main__':
     from loguru import logger
