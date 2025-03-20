@@ -3,6 +3,7 @@
 
 # Pinjected
 [![codecov](https://codecov.io/gh/proboscis/pinjected/branch/main/graph/badge.svg)](https://codecov.io/gh/proboscis/pinjected)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/CyberAgentAILab/pinjected/actions/workflows/pytest.yml)
 
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
 ## Prerequisites
