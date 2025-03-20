@@ -11,7 +11,7 @@ from pinjected import Design, Injected, design, EmptyDesign
 from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
-from pinjected.v2.keys import StrBindKey
+from pinjected.v2.keys import StrBindKey, IBindKey
 from pinjected.v2.async_resolver import AsyncResolver
 
 
@@ -31,19 +31,10 @@ class IdeaRunConfigurations:
 
 def gather_design_spec(file_path) -> DesignSpec:
     acc = DesignSpec.empty()
-    for var in walk_module_with_special_files(file_path, attr_name="__spec__",
+    for var in walk_module_with_special_files(file_path, attr_names=["__spec__"],
                                               special_filenames=["__init__.py", "__pinjected__.py"]):
         spec: DesignSpec = var.var
         acc += spec
-    return acc
-
-
-def gather_design(file_path) -> Design:
-    acc = EmptyDesign
-    for var in walk_module_with_special_files(file_path, attr_name="__design__",
-                                              special_filenames=["__init__.py", "__pinjected__.py"]):
-        design: Design = var.var
-        acc += design
     return acc
 
 
@@ -55,12 +46,22 @@ class MetaContext:
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
         """
+        .. deprecated:: 0.3.0
+           Use ``a_gather_bindings_with_legacy`` instead. This function will be removed in a future version.
+           
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__.
         but now we should look for
         __spec__ for DesignSpec,
         __design__ for Design,
         The order is __init__.py -> __pinjected__.py -> target_file.py
         """
+        import warnings
+        warnings.warn(
+            "MetaContext.a_gather_from_path is deprecated and will be removed in a future version. "
+            "Use MetaContext.a_gather_bindings_with_legacy instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         with logger.contextualize(tag="gather_meta_context"):
             from pinjected import design
             if not isinstance(file_path, Path):
@@ -94,6 +95,40 @@ class MetaContext:
             )
 
     @staticmethod
+    async def a_gather_bindings_with_legacy(file_path):
+        """
+        iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__ and __design__.
+        __pinjected__.py and __design__ will override the deprecated __meta_design__ and __init__.py
+        __init__.py is not recommended to avoid circular imports.
+        """
+        acc = EmptyDesign
+        key_to_path: dict[IBindKey, str] = dict()
+        trace = []
+        for var in walk_module_with_special_files(file_path, attr_names=["__meta_design__", "__design__"],
+                                                  special_filenames=["__init__.py", "__pinjected__.py"]):
+            trace.append(var)
+            ovr = EmptyDesign
+            if var.var_path.endswith("__meta_design__"):
+                ovr = var.var
+                if StrBindKey("overrides") in var.var:
+                    logger.debug(
+                        f"Now `overrides` are merged with `__meta_design__`. __meta_design__ and `overrides` is deprecated. use __design__ instead.")
+                    ovr += await AsyncResolver(var.var).provide("overrides")
+            elif var.var_path.endswith("__design__"):
+                ovr = var.var
+            for k, bind in ovr.bindings.items():
+                key_to_path[k] = var.var_path
+            acc += ovr
+
+        for k, v in key_to_path.items():
+            logger.debug(f"Override Key {k} from {v}")
+
+        return MetaContext(
+            trace=trace,
+            accumulated=acc
+        )
+
+    @staticmethod
     @beartype
     def gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
         import asyncio
@@ -125,19 +160,39 @@ class MetaContext:
             return load_user_default_design() + design + acc + overrides + load_user_overrides_design()
 
     @staticmethod
-    def load_default_design_for_variable(var: ModuleVarPath | str):
+    async def a_load_default_design_for_variable(var: ModuleVarPath | str):
         from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         if isinstance(var, str):
             var = ModuleVarPath(var)
-        design = MetaContext.gather_from_path(var.module_file_path).final_design
+        meta_context = await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)
+        design = await meta_context.a_final_design
         return design
+        
+    @staticmethod
+    def load_default_design_for_variable(var: ModuleVarPath | str):
+        """
+        .. deprecated:: 0.3.0
+           Use ``a_load_default_design_for_variable`` instead. This synchronous method will be removed in a future version.
+        """
+        import warnings
+        warnings.warn(
+            "MetaContext.load_default_design_for_variable is deprecated and will be removed in a future version. "
+            "Use the async version MetaContext.a_load_default_design_for_variable instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        import asyncio
+        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+        if isinstance(var, str):
+            var = ModuleVarPath(var)
+        return asyncio.run(MetaContext.a_load_default_design_for_variable(var))
 
     @staticmethod
     async def a_design_for_variable(var: ModuleVarPath | str):
         from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         if isinstance(var, str):
             var = ModuleVarPath(var)
-        design = await (await MetaContext.a_gather_from_path(var.module_file_path)).a_final_design
+        design = await (await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)).a_final_design
         return design
 
 

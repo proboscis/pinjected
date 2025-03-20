@@ -20,8 +20,17 @@ from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_var_path import ModuleVarPath
 
 __meta_design__ = design(
-    # ah, this makes my code load my_design
-    default_design_paths=["pinjected.ide_supports.default_design.pinjected_internal_design"]
+    # Legacy design attribute - used with a_gather_from_path
+    default_design_paths=["pinjected.ide_supports.default_design.pinjected_internal_design"],
+    meta_config_value="from_meta_design"
+)
+
+# New design attribute - takes precedence when using a_gather_bindings_with_legacy
+__design__ = design(
+    # This value should override the one in __meta_design__
+    meta_config_value="from_design",
+    # Additional configurations
+    additional_config_value="only_in_design"
 )
 
 from pinjected.run_helpers.run_injected import run_injected

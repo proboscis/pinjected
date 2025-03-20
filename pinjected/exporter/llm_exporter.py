@@ -654,7 +654,7 @@ def class_defs_to_blocks(class_defs: dict[str, ast.ClassDef]):
 async def _export_injected(logger, a_llm, /, tgt: str):
     tgt = ModuleVarPath(tgt)
     from pinjected.pinjected_logging import logger
-    mc: MetaContext = await MetaContext.a_gather_from_path(tgt.module_file_path)
+    mc: MetaContext = await MetaContext.a_gather_bindings_with_legacy(tgt.module_file_path)
     logger.debug(f"loaded meta context for {tgt.module_file_path}")
     logger.debug(f"using meta context:{mc}")
     fd = await mc.a_final_design

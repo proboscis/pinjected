@@ -297,7 +297,7 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
         if not isinstance(meta, dict):
             meta = {}
         meta_overrides = meta.get("overrides", design())
-        meta_cxt: MetaContext = await MetaContext.a_gather_from_path(
+        meta_cxt: MetaContext = await MetaContext.a_gather_bindings_with_legacy(
             ModuleVarPath(var_path).module_file_path
         )
         design_obj = await a_resolve_design(design_path, meta_cxt)

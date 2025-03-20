@@ -50,7 +50,7 @@ def run(
             kwargs_overrides = parse_kwargs_as_design(**kwargs)
             ovr = design()
             if meta_context_path is not None:
-                mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
+                mc = await MetaContext.a_gather_bindings_with_legacy(Path(meta_context_path))
                 ovr += await mc.a_final_design
             ovr += parse_overrides(overrides)
             ovr += kwargs_overrides
@@ -155,7 +155,7 @@ def call(
         kwargs_overrides = parse_kwargs_as_design(**kwargs)
         ovr = design()
         if meta_context_path is not None:
-            mc = await MetaContext.a_gather_from_path(Path(meta_context_path))
+            mc = await MetaContext.a_gather_bindings_with_legacy(Path(meta_context_path))
             ovr += await mc.a_final_design
         ovr += parse_overrides(overrides)
         ovr += kwargs_overrides
