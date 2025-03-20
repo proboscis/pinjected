@@ -15,17 +15,25 @@ The Pinjected framework is introducing `__design__` in `__pinjected__.py` files 
 
 ## Migration Steps
 
-### 1. Identify Directories Using `__meta_design__`
+### 1. Identify Files Using `__meta_design__`
 
-First, identify all directories in your application that contain files with `__meta_design__` variables:
+First, identify all files in your application that contain `__meta_design__` variables:
 
 ```bash
 find . -type f -name "*.py" -exec grep -l "__meta_design__" {} \;
 ```
 
-### 2. Create `__pinjected__.py` Files
+### 2. Migration Approach
 
-For each directory identified, create a new `__pinjected__.py` file with both `__meta_design__` and `__design__` variables:
+#### For `__meta_design__` in `__init__.py` Files
+
+Create a new `__pinjected__.py` file in the same directory with both `__meta_design__` and `__design__` variables.
+
+#### For `__meta_design__` in Other Files
+
+Rename `__meta_design__` to `__design__` in the same file and expand the configurations directly (without using `overrides`).
+
+### 3. Creating `__pinjected__.py` Files
 
 ```python
 from pinjected import design
@@ -60,13 +68,13 @@ __meta_design__ = design(
 # New __pinjected__.py
 from pinjected import design
 
+# Keep existing meta_design for backward compatibility
 __meta_design__ = design(
     overrides=design()
 )
 
-__design__ = design(
-    overrides=design()
-)
+# New design doesn't require overrides - expand configurations directly
+__design__ = design()
 ```
 
 #### With Default Design Paths
@@ -81,14 +89,15 @@ __meta_design__ = design(
 # New __pinjected__.py
 from pinjected import design
 
+# Keep existing meta_design for backward compatibility
 __meta_design__ = design(
     default_design_paths=["your_app.module.path.to.design"],
     overrides=design()
 )
 
+# New design doesn't require overrides - expand configurations directly
 __design__ = design(
-    default_design_paths=["your_app.module.path.to.design"],
-    overrides=design()
+    default_design_paths=["your_app.module.path.to.design"]
 )
 ```
 
@@ -105,10 +114,12 @@ from pinjected import design
 from pinjected import Injected
 from your_app.module.path import your_config_creator_function
 
+# Keep existing meta_design for backward compatibility
 __meta_design__ = design(
     custom_idea_config_creator=Injected.bind(your_config_creator_function)
 )
 
+# New design doesn't require overrides - expand configurations directly
 __design__ = design(
     custom_idea_config_creator=Injected.bind(your_config_creator_function)
 )
@@ -141,7 +152,9 @@ pytest your_tests/
 
 ## Example Migration
 
-### Before: Your Module with `__meta_design__`
+### Example 1: `__meta_design__` in `__init__.py`
+
+#### Before: Your Module with `__meta_design__` in `__init__.py`
 
 ```python
 # your_app/services/__init__.py
@@ -157,7 +170,7 @@ __meta_design__ = design(
 )
 ```
 
-### After: New `__pinjected__.py` File
+#### After: New `__pinjected__.py` File
 
 ```python
 # your_app/services/__pinjected__.py
@@ -173,13 +186,44 @@ __meta_design__ = design(
     )
 )
 
-# Add new design with same configuration
+# New design doesn't require overrides - expand configurations directly
 __design__ = design(
+    api_client=Injected.bind(create_api_client),
+    cache_ttl=3600,
+    debug_mode=False
+)
+```
+
+### Example 2: `__meta_design__` in Other Files
+
+#### Before: Your Module with `__meta_design__` in a Regular File
+
+```python
+# your_app/services/config.py
+from pinjected import design, Injected
+from your_app.services.api import create_api_client
+
+__meta_design__ = design(
     overrides=design(
         api_client=Injected.bind(create_api_client),
         cache_ttl=3600,
         debug_mode=False
     )
+)
+```
+
+#### After: Rename to `__design__` in the Same File
+
+```python
+# your_app/services/config.py
+from pinjected import design, Injected
+from your_app.services.api import create_api_client
+
+# Rename __meta_design__ to __design__ and expand configurations directly
+__design__ = design(
+    api_client=Injected.bind(create_api_client),
+    cache_ttl=3600,
+    debug_mode=False
 )
 ```
 
