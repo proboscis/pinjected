@@ -5,9 +5,9 @@ from beartype import beartype
 from pinjected.di.design_spec.protocols import DesignSpec
 from pinjected.pinjected_logging import logger
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union, Any
 
-from pinjected import Design, Injected, design, EmptyDesign
+from pinjected import Design, Injected, design, EmptyDesign, DelegatedVar
 from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
@@ -29,19 +29,40 @@ class IdeaRunConfigurations:
     configs: Dict[str, List[IdeaRunConfiguration]]
 
 
-def gather_design_spec(file_path) -> DesignSpec:
-    acc = DesignSpec.empty()
-    for var in walk_module_with_special_files(file_path, attr_names=["__spec__"],
-                                              special_filenames=["__init__.py", "__pinjected__.py"]):
-        spec: DesignSpec = var.var
-        acc += spec
-    return acc
+async def _a_resolve(tgt: Union[Any, DelegatedVar, Injected]):
+    if isinstance(tgt, (DelegatedVar, Injected)):
+        resolver = AsyncResolver(EmptyDesign)
+        return await resolver.provide(tgt)
+    return tgt
+
+
+@dataclass
+class SpecTrace:
+    trace: List[ModuleVarSpec[DesignSpec]]
+    accumulated: DesignSpec
+
+    @staticmethod
+    async def a_gather_from_path(file_path: Path):
+        trace = []
+        acc = DesignSpec.empty()
+        for var in walk_module_with_special_files(file_path, attr_names=["__design_spec__"],
+                                                  special_filenames=["__pinjected__.py"]):
+            trace.append(var)
+            assert var.var is not None
+            spec: DesignSpec = await _a_resolve(var.var)
+            assert isinstance(spec, DesignSpec),f"Expected DesignSpec, got {type(spec)}"
+            acc += spec
+        return SpecTrace(
+            trace=trace,
+            accumulated=acc
+        )
 
 
 @dataclass
 class MetaContext:
     trace: List[ModuleVarSpec[Design]]
     accumulated: Design
+    spec_trace: SpecTrace
 
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
@@ -91,7 +112,11 @@ class MetaContext:
             res = res + design(overrides=overrides)
             return MetaContext(
                 trace=designs,
-                accumulated=res
+                accumulated=res,
+                spec_trace=SpecTrace(
+                    trace=[],
+                    accumulated=DesignSpec.empty()
+                )
             )
 
     @staticmethod
@@ -109,13 +134,13 @@ class MetaContext:
             trace.append(var)
             ovr = EmptyDesign
             if var.var_path.endswith("__meta_design__"):
-                ovr = var.var
+                ovr = await _a_resolve(var.var)
                 if StrBindKey("overrides") in var.var:
                     logger.debug(
                         f"Now `overrides` are merged with `__meta_design__`. __meta_design__ and `overrides` is deprecated. use __design__ instead.")
                     ovr += await AsyncResolver(var.var).provide("overrides")
             elif var.var_path.endswith("__design__"):
-                ovr = var.var
+                ovr = await _a_resolve(var.var)
             for k, bind in ovr.bindings.items():
                 key_to_path[k] = var.var_path
             acc += ovr
@@ -123,9 +148,12 @@ class MetaContext:
         for k, v in key_to_path.items():
             logger.debug(f"Override Key {k} from {v}")
 
+        spec = await SpecTrace.a_gather_from_path(file_path)
+
         return MetaContext(
             trace=trace,
-            accumulated=acc
+            accumulated=acc,
+            spec_trace=spec
         )
 
     @staticmethod
@@ -167,7 +195,7 @@ class MetaContext:
         meta_context = await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)
         design = await meta_context.a_final_design
         return design
-        
+
     @staticmethod
     def load_default_design_for_variable(var: ModuleVarPath | str):
         """

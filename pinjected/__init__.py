@@ -1,3 +1,5 @@
+from pinjected.di.design_spec.impl import SimpleBindSpec
+from pinjected.di.design_spec.protocols import DesignSpec
 from pinjected.di.injected import Injected
 from pinjected.di.decorators import injected_function, injected_instance, injected, instance, reload, register
 from pinjected.di.util import EmptyDesign, instances, providers, classes, destructors, design
@@ -22,6 +24,8 @@ __all__ = [
     "IProxy",
     "design",
     "register",
-    "AsyncResolver"
+    "AsyncResolver",
+    "DesignSpec",
+    "SimpleBindSpec"
 ]
 
