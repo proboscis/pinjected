@@ -80,6 +80,7 @@ class AsyncResolver:
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
     callbacks: list[IResolverCallback] = field(default=None)
     spec: DesignSpec = field(default=DesignSpec.empty())
+    use_implicit_bindings:bool = field(default=True)
 
     def add_callback(self, callback: IResolverCallback):
         self.callbacks.append(callback)
@@ -95,7 +96,8 @@ class AsyncResolver:
                 # BaseResolverCallback()
             ]
         assert self.callbacks is not None
-        self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design
+        if self.use_implicit_bindings:
+            self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design
 
         from pinjected import design
         async def dummy():
@@ -354,22 +356,22 @@ class AsyncResolver:
         match tgt:
             case Injected():
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design)
+                digraph: DIGraph = DIGraph(tmp_design,use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case str():
-                digraph: DIGraph = DIGraph(d)
+                digraph: DIGraph = DIGraph(d,use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation(tgt))
             case DelegatedVar() as dv:
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design)
+                digraph: DIGraph = DIGraph(tmp_design,use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case f if callable(f):
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design)
+                digraph: DIGraph = DIGraph(tmp_design,use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation("__root__"))
         return errors
 
-    async def validate_provision(self, tgt: Providable):
+    async def a_check_resolution(self, tgt: Providable):
         if errors := await self.a_find_provision_errors(tgt):
             # here we can use spec to provide more helpful error messages.
             drfs = [drf for drf in errors if isinstance(drf, DependencyResolutionFailure)]
@@ -403,8 +405,8 @@ class AsyncResolver:
                 for c in cyclics:
                     message += f"{c}\n"
                 message += "=" * len_header + "\n"
+
             raise DependencyResolutionError(f"Errors in dependency resolution:\n{message}", causes=errors)
-        logger.debug(f"provision validated.")
 
     async def provide(self, tgt: Providable):
         with collect_traces():
@@ -412,7 +414,7 @@ class AsyncResolver:
             try:
                 if self.provision_depth == 1:
                     async with TaskGroup() as tg:
-                        await self.validate_provision(tgt)
+                        await self.a_check_resolution(tgt)
                         match tgt:
                             case EvaledInjected(val, ast):
                                 repr = show_expr(ast)
@@ -436,10 +438,11 @@ class AsyncResolver:
                     logger.debug(f"using compatibility.task_group.ExceptionGroup")
                     EG = pinjected.compatibility.task_group.ExceptionGroup
                 else:
-                    logger.debug(f"using ExceptionGroup")
+                    logger.debug(f"using builtin ExceptionGroup")
                     EG = ExceptionGroup
                 if isinstance(e, EG):
                     if len(e.exceptions) == 1:
+                        logger.debug(f"raising first exception from {[type(e) for e in e.exceptions]}")
                         raise e.exceptions[0]
                 raise e
             finally:
