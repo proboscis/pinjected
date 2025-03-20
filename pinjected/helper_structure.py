@@ -46,13 +46,22 @@ class MetaContext:
     @staticmethod
     async def a_gather_from_path(file_path: Path, meta_design_name: str = "__meta_design__"):
         """
-        deprecated: This function is deprecated. Use a_gather_bindings_with_legacy instead.
+        .. deprecated:: 0.3.0
+           Use ``a_gather_bindings_with_legacy`` instead. This function will be removed in a future version.
+           
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__.
         but now we should look for
         __spec__ for DesignSpec,
         __design__ for Design,
         The order is __init__.py -> __pinjected__.py -> target_file.py
         """
+        import warnings
+        warnings.warn(
+            "MetaContext.a_gather_from_path is deprecated and will be removed in a future version. "
+            "Use MetaContext.a_gather_bindings_with_legacy instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         with logger.contextualize(tag="gather_meta_context"):
             from pinjected import design
             if not isinstance(file_path, Path):
@@ -151,19 +160,39 @@ class MetaContext:
             return load_user_default_design() + design + acc + overrides + load_user_overrides_design()
 
     @staticmethod
-    def load_default_design_for_variable(var: ModuleVarPath | str):
+    async def a_load_default_design_for_variable(var: ModuleVarPath | str):
         from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         if isinstance(var, str):
             var = ModuleVarPath(var)
-        design = MetaContext.gather_from_path(var.module_file_path).final_design
+        meta_context = await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)
+        design = await meta_context.a_final_design
         return design
+        
+    @staticmethod
+    def load_default_design_for_variable(var: ModuleVarPath | str):
+        """
+        .. deprecated:: 0.3.0
+           Use ``a_load_default_design_for_variable`` instead. This synchronous method will be removed in a future version.
+        """
+        import warnings
+        warnings.warn(
+            "MetaContext.load_default_design_for_variable is deprecated and will be removed in a future version. "
+            "Use the async version MetaContext.a_load_default_design_for_variable instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        import asyncio
+        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+        if isinstance(var, str):
+            var = ModuleVarPath(var)
+        return asyncio.run(MetaContext.a_load_default_design_for_variable(var))
 
     @staticmethod
     async def a_design_for_variable(var: ModuleVarPath | str):
         from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         if isinstance(var, str):
             var = ModuleVarPath(var)
-        design = await (await MetaContext.a_gather_from_path(var.module_file_path)).a_final_design
+        design = await (await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)).a_final_design
         return design
 
 

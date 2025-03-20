@@ -5,6 +5,7 @@ pinjected用のテスト関数モジュール
 """
 import asyncio
 import inspect
+from pathlib import Path
 from typing import Awaitable
 
 from pinjected import Injected, Design, EmptyDesign, instance
@@ -61,8 +62,10 @@ def _to_pytest(p: Injected, override: Design, caller_file: str):
     var_path: str
 
     async def impl():
-        mc: MetaContext = await MetaContext.a_gather_from_path(caller_file)
-        design = await mc.a_final_design + override
+        caller_path = Path(caller_file)
+        mc: MetaContext = await MetaContext.a_gather_bindings_with_legacy(caller_path)
+        final_design = await mc.a_final_design
+        design = final_design + override
         async with TaskGroup() as tg:
             from pinjected import design as design_fn
             design += design_fn(
