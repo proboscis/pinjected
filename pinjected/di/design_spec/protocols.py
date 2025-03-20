@@ -1,4 +1,4 @@
-from typing import Protocol, TypeVar, Callable
+from typing import Protocol, TypeVar, Callable, runtime_checkable
 
 from returns.future import FutureResultE
 from returns.maybe import Maybe
@@ -27,7 +27,7 @@ class BindSpec(Protocol[T]):
     """
     spec_doc_provider: Maybe[SpecDocProviderType]
 
-
+@runtime_checkable
 class DesignSpec(Protocol):
     def __add__(self, other: "DesignSpec") -> "DesignSpec":
         pass
