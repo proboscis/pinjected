@@ -164,18 +164,45 @@ async def test_create_configurations_legacy_comparison():
     assert isinstance(legacy_res, IdeaRunConfigurations) and isinstance(new_res, IdeaRunConfigurations), \
         "Both methods should return IdeaRunConfigurations objects"
     
-    # Both should generate similar configurations
-    legacy_keys = set(legacy_res.configs.keys())
-    new_keys = set(new_res.configs.keys())
+    # Both should generate identical configurations
+    legacy_configs = legacy_res.configs
+    new_configs = new_res.configs
     
-    print(f"Legacy method configuration keys: {list(legacy_keys)}")
-    print(f"New method configuration keys: {list(new_keys)}")
+    # Compare the keys first
+    legacy_keys = set(legacy_configs.keys())
+    new_keys = set(new_configs.keys())
+    
+    print(f"Legacy method configuration keys: {sorted(list(legacy_keys))}")
+    print(f"New method configuration keys: {sorted(list(new_keys))}")
     
     # The key sets should be identical since they use the same module
     assert legacy_keys == new_keys, "Both methods should generate the same configuration keys"
     
+    # Now do a deep comparison of the actual configuration contents
+    print("Comparing individual configurations for each key...")
+    for key in legacy_keys:
+        legacy_items = legacy_configs[key]
+        new_items = new_configs[key]
+        
+        # Check if the number of configurations for each key is the same
+        assert len(legacy_items) == len(new_items), f"Key '{key}' has different number of configurations"
+        
+        # Compare each configuration item
+        for i, (legacy_item, new_item) in enumerate(zip(legacy_items, new_items)):
+            # Compare each field
+            assert legacy_item.name == new_item.name, f"Configuration {i} for '{key}' has different name"
+            assert legacy_item.script_path == new_item.script_path, f"Configuration {i} for '{key}' has different script_path"
+            assert legacy_item.interpreter_path == new_item.interpreter_path, f"Configuration {i} for '{key}' has different interpreter_path"
+            assert legacy_item.working_dir == new_item.working_dir, f"Configuration {i} for '{key}' has different working_dir"
+            
+            # For arguments, we need to compare the lists
+            assert legacy_item.arguments == new_item.arguments, f"Configuration {i} for '{key}' has different arguments"
+    
+    print("All configurations identical between legacy and new method!")
+            
     # The important difference is that the new method gets access to both __meta_design__ 
-    # and __design__ attributes, with __design__ taking precedence
+    # and __design__ attributes, with __design__ taking precedence, while maintaining
+    # identical configuration generation
 
 
 test_design = design(x=0)
