@@ -66,6 +66,7 @@ def _find_classes_in_module(module):
 @dataclass
 class DIGraphHelper:
     src: "Design"
+    use_implicit_bindings: bool = True
 
     def get_explicit_mapping(self) -> dict[str, IBind]:
         return {k: b for k, b in self.src.bindings.items()}
@@ -86,11 +87,14 @@ class DIGraphHelper:
         return mappings
 
     def total_bindings(self) -> dict[IBindKey, IBind]:
-        from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
-        global_implicit_mappings = IMPLICIT_BINDINGS
-        # TODO add the qualified name for the global_implicit_mappings. but how?
+        if self.use_implicit_bindings:
+            from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
+            implicit_bindings = IMPLICIT_BINDINGS
+            # TODO add the qualified name for the global_implicit_mappings. but how?
+            # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
+            logger.debug(f"using {len(implicit_bindings)} global implicit mappings")
+        else:
+            implicit_bindings = dict()
 
-        # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")
-        logger.debug(f"using {len(global_implicit_mappings)} global implicit mappings")
         explicit_mappings = self.get_explicit_mapping()
-        return {**global_implicit_mappings, **explicit_mappings}
+        return {**implicit_bindings, **explicit_mappings}
