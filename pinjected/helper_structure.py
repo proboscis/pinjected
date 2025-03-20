@@ -94,6 +94,13 @@ class MetaContext:
             key_to_src = dict()
             for item in designs:
                 logger.info(f"Added {meta_design_name} at :{item.var_path}")
+                # Add migration warning for __meta_design__
+                if meta_design_name == "__meta_design__":
+                    logger.warning(
+                        f"Use of __meta_design__ in {item.var_path} is deprecated. "
+                        f"Please migrate to using __design__ in __pinjected__.py instead. "
+                        f"Create a __pinjected__.py file in the same directory with a __design__ variable."
+                    )
                 for k, v in item.var.bindings.items():
                     logger.info(f"Binding {k} from {item.var_path}")
                 logger.trace(
@@ -134,6 +141,12 @@ class MetaContext:
             trace.append(var)
             ovr = EmptyDesign
             if var.var_path.endswith("__meta_design__"):
+                # Add migration warning for __meta_design__
+                logger.warning(
+                    f"Use of __meta_design__ in {var.var_path} is deprecated. "
+                    f"Please migrate to using __design__ in __pinjected__.py file instead. "
+                    f"Create a __pinjected__.py file in the same directory with a __design__ variable."
+                )
                 ovr = await _a_resolve(var.var)
                 if StrBindKey("overrides") in var.var:
                     logger.debug(
