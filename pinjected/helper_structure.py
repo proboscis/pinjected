@@ -43,36 +43,15 @@ class SpecTrace:
 
     @staticmethod
     async def a_gather_from_path(file_path: Path):
-        """
-        Gather DesignSpec instances from a module path hierarchy.
-        This method should NOT look in __init__.py files, only in __pinjected__.py files.
-        """
         trace = []
-        # Initialize with empty implementation
-        from pinjected.di.design_spec.impl import DesignSpecImpl
-        acc = DesignSpecImpl({})  # Start with an empty spec
-        logger.debug(f"Gathering DesignSpec from path: {file_path}")
-        
-        # Collect specs from the specified path, using only __pinjected__.py files
-        special_files = list(walk_module_with_special_files(file_path, 
-                                                         attr_names=["__design_spec__"],
-                                                         special_filenames=["__pinjected__.py"]))
-        
-        # Process in reverse order to ensure child directories take precedence
-        special_files.reverse()
-        
-        # Load and merge all specs
-        for var in special_files:
+        acc = DesignSpec.empty()
+        for var in walk_module_with_special_files(file_path, attr_names=["__design_spec__"],
+                                                  special_filenames=["__pinjected__.py"]):
             trace.append(var)
-            logger.debug(f"Found __design_spec__ in {var.var_path}")
             assert var.var is not None
             spec: DesignSpec = await _a_resolve(var.var)
-            assert isinstance(spec, DesignSpec), f"Expected DesignSpec, got {type(spec)}"
-            
-            # Add to the accumulation
-            acc = spec + acc  # Ensure new spec takes precedence over accumulated specs
-        
-        # Return the trace and accumulated design spec
+            assert isinstance(spec, DesignSpec),f"Expected DesignSpec, got {type(spec)}"
+            acc += spec
         return SpecTrace(
             trace=trace,
             accumulated=acc
@@ -93,7 +72,7 @@ class MetaContext:
            
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__.
         but now we should look for
-        __design_spec__ for DesignSpec,
+        __spec__ for DesignSpec,
         __design__ for Design,
         The order is __init__.py -> __pinjected__.py -> target_file.py
         """
