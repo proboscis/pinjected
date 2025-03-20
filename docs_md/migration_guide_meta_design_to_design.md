@@ -77,7 +77,7 @@ __meta_design__ = design(
 __design__ = design()
 ```
 
-#### With Default Design Paths
+#### With Default Design Paths (Legacy Approach)
 
 ```python
 # Original __meta_design__ in your_module.py
@@ -95,11 +95,17 @@ __meta_design__ = design(
     overrides=design()
 )
 
-# New design doesn't require overrides - expand configurations directly
+# New design doesn't use default_design_paths - import and use dependencies directly
+from your_app.module.path.to import design as imported_design
+
 __design__ = design(
-    default_design_paths=["your_app.module.path.to.design"]
+    # Import and use dependencies directly instead of using default_design_paths
+    # Include any configurations from the imported design
+    **imported_design.__dict__
 )
 ```
+
+> **Note**: The new `__design__` approach doesn't use `default_design_paths`. Instead, import dependencies directly from their modules.
 
 #### With Custom Configuration Creators
 
