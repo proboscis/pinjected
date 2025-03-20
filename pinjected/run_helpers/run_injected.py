@@ -252,6 +252,7 @@ class RunContext:
             resolver = AsyncResolver(
                 dd,
                 callbacks=[self.provision_callback] if self.provision_callback else [],
+                spec=self.src_meta_context.spec_trace.accumulated
             )
             _res = await resolver.provide(tgt)
 

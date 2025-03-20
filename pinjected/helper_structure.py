@@ -46,7 +46,7 @@ class SpecTrace:
         trace = []
         acc = DesignSpec.empty()
         for var in walk_module_with_special_files(file_path, attr_names=["__design_spec__"],
-                                                  special_filenames=["__init__.py", "__pinjected__.py"]):
+                                                  special_filenames=["__pinjected__.py"]):
             trace.append(var)
             assert var.var is not None
             spec: DesignSpec = await _a_resolve(var.var)
@@ -72,7 +72,7 @@ class MetaContext:
            
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__.
         but now we should look for
-        __design_spec__ for DesignSpec,
+        __spec__ for DesignSpec,
         __design__ for Design,
         The order is __init__.py -> __pinjected__.py -> target_file.py
         """
