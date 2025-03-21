@@ -21,10 +21,27 @@ class BindSpecImpl(BindSpec[T]):
 
 @dataclass(frozen=True)
 class MergedDesignSpec(DesignSpec):
+    """
+    A design spec created by merging multiple specs together.
+    
+    In the current implementation, when looking up a key, the specs are searched
+    in the order they appear in the srcs list. The first spec that contains the key
+    will be used. This means that the first spec in the list takes precedence.
+    
+    When using the + operator with DesignSpecImpl, the srcs list is created in the order
+    [self, other], so the left-hand spec (self) takes precedence over the right-hand
+    spec (other) for duplicate keys.
+    """
     srcs: list[DesignSpec]
 
     def get_spec(self, key: IBindKey) -> Maybe[BindSpec]:
-        for src in self.srcs:
+        """
+        Search for a key in all source specs in order.
+        Returns the first matching spec found from reverse order, or Nothing if no spec is found.
+        
+        This means that last specs in the srcs list take precedence over first ones.
+        """
+        for src in reversed(self.srcs):
             spec = src.get_spec(key)
             if spec is not Nothing:
                 return spec
@@ -33,12 +50,28 @@ class MergedDesignSpec(DesignSpec):
 
 @dataclass(frozen=True)
 class DesignSpecImpl(DesignSpec):
+    """
+    Implementation of DesignSpec that stores bindings in a dictionary.
+    
+    When adding this spec to another spec with the + operator, the result is a MergedDesignSpec
+    where this spec takes precedence over the other spec for duplicate keys.
+    """
     specs: dict[IBindKey, BindSpec]
 
     def __add__(self, other: DesignSpec) -> DesignSpec:
+        """
+        Create a merged spec where this spec takes precedence over the other spec.
+        
+        The resulting MergedDesignSpec will check this spec first for each key,
+        and only if the key is not found will it check the other spec.
+        """
         return MergedDesignSpec(srcs=[self, other])
 
     def get_spec(self, key: IBindKey) -> Maybe[BindSpec]:
+        """
+        Look up a key in this spec's bindings.
+        Returns Just(spec) if found, Nothing otherwise.
+        """
         return Maybe.from_optional(self.specs.get(key))
 
 
@@ -73,11 +106,11 @@ class SimpleBindSpec(BindSpec[T]):
             return Nothing
         return Some(lambda key: FutureResult.from_value(self._documentation))
 
+
 """
 Now, we need a way to accumulate specs from repo, so that RunContext can use it to provide better guidance.
 
 """
-
 
 if __name__ == '__main__':
     from loguru import logger
