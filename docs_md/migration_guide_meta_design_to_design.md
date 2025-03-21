@@ -68,13 +68,16 @@ __meta_design__ = design(
 # New __pinjected__.py
 from pinjected import design
 
-# Keep existing meta_design for backward compatibility
+# Create a design object for your configurations
+overrides = design()
+
+# Keep existing meta_design for backward compatibility (to be deprecated)
 __meta_design__ = design(
-    overrides=design()
+    overrides=overrides
 )
 
-# New design doesn't require overrides - expand configurations directly
-__design__ = design()
+# New style - directly use the design object
+__design__ = overrides
 ```
 
 #### With Default Design Paths (Legacy Approach)
@@ -88,21 +91,20 @@ __meta_design__ = design(
 
 # New __pinjected__.py
 from pinjected import design
-
-# Keep existing meta_design for backward compatibility
-__meta_design__ = design(
-    default_design_paths=["your_app.module.path.to.design"],
-    overrides=design()
-)
-
-# New design doesn't use default_design_paths - import and use dependencies directly
 from your_app.module.path.to import design as imported_design
 
-__design__ = design(
-    # Import and use dependencies directly instead of using default_design_paths
-    # Include any configurations from the imported design
-    **imported_design.__dict__
+# Create a design object for your configurations
+overrides = design()
+
+# Keep existing meta_design for backward compatibility (to be deprecated)
+__meta_design__ = design(
+    default_design_paths=["your_app.module.path.to.design"],
+    overrides=overrides
 )
+
+# New style - directly use the design object
+# Import and use dependencies directly instead of using default_design_paths
+__design__ = imported_design
 ```
 
 > **Note**: The new `__design__` approach doesn't use `default_design_paths`. Instead, import dependencies directly from their modules.
@@ -120,15 +122,18 @@ from pinjected import design
 from pinjected import Injected
 from your_app.module.path import your_config_creator_function
 
-# Keep existing meta_design for backward compatibility
+# Create a design object for your configurations
+config = design(
+    custom_idea_config_creator=Injected.bind(your_config_creator_function)
+)
+
+# Keep existing meta_design for backward compatibility (to be deprecated)
 __meta_design__ = design(
     custom_idea_config_creator=Injected.bind(your_config_creator_function)
 )
 
-# New design doesn't require overrides - expand configurations directly
-__design__ = design(
-    custom_idea_config_creator=Injected.bind(your_config_creator_function)
-)
+# New style - directly use the design object
+__design__ = config
 ```
 
 ### 4. Update References (Future Phase)
