@@ -18,14 +18,16 @@ A plugin exists for IntelliJ Idea to run Injected variables directly from the ID
 
 Requirements:
 - IntelliJ Idea
-- __meta_design__ variable declaration in a python file.
+- Dependency configuration using either:
+  - `__design__` variable in a `__pinjected__.py` file (recommended)
+  - `__meta_design__` variable in a python file (legacy, being deprecated)
 
 ### 1. Install the plugin to IntelliJ Idea/PyCharm
 ### 2. open a python file.
 Write a pinjected script, for example:
 ```python
-# test_package.test.py
-from pinjected import design, Injected, injected, instance
+# test_package/test.py
+from pinjected import Injected, injected, instance
 from returns.maybe import Some, Nothing
 
 
@@ -36,20 +38,47 @@ async def test_variable():
   a green triangle will appear on the left side of the function definition.
   """
   return 1
+```
+
+Then create a `__pinjected__.py` file in the same directory:
+```python
+# test_package/__pinjected__.py
+from pinjected import design
+from returns.maybe import Some, Nothing
+
+__design__ = design(
+    default_design_path='test_package.design',
+    default_working_dir=Some("/home/user/test_repo"), # use Some() to override, and Nothing to infer from the project structure.
+)
+```
+
+The legacy approach using `__meta_design__` in module files is being deprecated:
+```python
+# test_package/test.py (legacy approach - not recommended)
+from pinjected import design, Injected, injected, instance
+from returns.maybe import Some, Nothing
+
+
+@instance
+async def test_variable():
+  return 1
 
 __meta_design__ = design(
     default_design_path='test_package.design',
-    default_working_dir=Some("/home/user/test_repo"), # use Some() to override, and Nothing to infer from the project structure.
+    default_working_dir=Some("/home/user/test_repo"),
 )
 ```
 
 Now, you can run the `test_variable` by clicking the green triangle on the left side of the function definition.
 
 ## Customizing the Injected variable run
-To add additional run configurations to appear on the Run button, you can add a bindings to __meta_design__.
-The plugin picks up a 'custom_idea_config_creator' binding and use it for menu item creation.
+To add additional run configurations to appear on the Run button, you can add bindings to your dependency configuration.
+
+The recommended approach is to use `__design__` in a `__pinjected__.py` file:
 
 ```python
+# __pinjected__.py
+from pinjected import design
 from typing import List, Callable
 
 CustomIdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
@@ -69,10 +98,38 @@ def add_custom_run_configurations(
         working_dir="~/test_repo", # you can use default_working_dir
     )]
 
+__design__ = design(
+    custom_idea_config_creator=add_custom_run_configurations
+)
+```
+
+The legacy approach using `__meta_design__` in module files is being deprecated:
+
+```python
+# module.py (legacy approach - not recommended)
+from pinjected import design
+from typing import List, Callable
+
+CustomIdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
+
+
+@injected
+def add_custom_run_configurations(
+        interpreter_path:str,
+        default_working_dir,
+        /,
+        cxt: ModuleVarSpec) -> List[IdeaRunConfiguration]:
+    return [IdeaRunConfiguration(
+        name="HelloWorld",
+        script_path="~/test_repo/test_script.py",
+        interpreter_path=interpreter_path,
+        arguments=["--hello", "world"],
+        working_dir="~/test_repo",
+    )]
+
 __meta_design__ = design(
     custom_idea_config_creator=add_custom_run_configurations
 )
-
 ```
 
 You can use interpreter_path and default_working_dir  as dependencies, which are automatically injected by the plugin.
