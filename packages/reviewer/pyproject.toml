@@ -22,6 +22,7 @@ dependencies = [
     "pytest",
     "loguru",
     "returns",
+    "cloudpickle",
 ]
 
 [tool.hatch.metadata]

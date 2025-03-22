@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "loguru",
     "returns",
+    "cloudpickle",
 ]
 
 [tool.hatch.metadata]

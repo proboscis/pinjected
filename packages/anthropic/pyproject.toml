@@ -23,6 +23,7 @@ dependencies = [
     "injected-utils>=0.1.32",
     "loguru",
     "returns",
+    "cloudpickle",
 ]
 
 [tool.hatch.metadata]
