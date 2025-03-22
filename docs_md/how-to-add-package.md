@@ -166,7 +166,7 @@ test-cov:
 # Add publish target for your package
 publish-your-package:
 	cd packages/your_package_name && uv build
-	cd packages/your_package_name && uv pip publish dist/*.whl dist/*.tar.gz
+	cd packages/your_package_name && uv publish
 
 # Add tag-version target for your package
 tag-version-your-package:
