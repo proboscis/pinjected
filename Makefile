@@ -23,7 +23,7 @@ publish:
 
 publish-openai:
 	cd packages/openai_support && uv build
-	cd packages/openai_support && uv publish
+	uv publish dist/pinjected_openai-*.whl dist/pinjected_openai-*.tar.gz
 
 tag-version:
 	git tag v$(shell grep -m 1 version pyproject.toml | cut -d'"' -f2)
