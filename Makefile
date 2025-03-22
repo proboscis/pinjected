@@ -15,6 +15,7 @@ setup-all:
 	cd packages/rate_limit && uv sync --group dev
 
 test:
+	uv sync --all-packages
 	cd test && uv run pytest
 	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
 	cd packages/anthropic && uv sync --group dev && uv run -m pytest tests
