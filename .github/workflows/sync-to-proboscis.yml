@@ -16,17 +16,18 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Set up SSH key
-        uses: webfactory/ssh-agent@v0.8.0
-        with:
-          ssh-private-key: ${{ secrets.PROBOSCIS_SSH_KEY }}
-          
-      - name: Configure Git
+      - name: Setup GitHub CLI
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          gh auth login --with-token <<< "${{ secrets.PROBOSCIS_REPO_TOKEN }}"
           
-      - name: Add remote and push
+      - name: Clone and push to proboscis repository
         run: |
-          git remote add proboscis git@github.com:proboscis/pinjected.git
-          git push -f proboscis main:main
+          # Clone the current repository to a temporary directory
+          TEMP_DIR=$(mktemp -d)
+          cp -r . $TEMP_DIR
+          
+          # Navigate to the temporary directory
+          cd $TEMP_DIR
+          
+          # Push to proboscis repository using GitHub CLI
+          gh repo sync proboscis/pinjected --source CyberAgentAILab/pinjected --branch main --force
