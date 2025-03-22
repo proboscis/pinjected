@@ -46,6 +46,7 @@ jobs:
     - name: Install dependencies
       run: |
         make sync
+        make setup-all
         uv pip install pytest-cov
         
     - name: Run tests with coverage
