@@ -1,44 +1,48 @@
 [build-system]
-requires = [ "poetry-core>=1.0.0",]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry]
+[project]
 name = "pinjected"
 version = "0.2.246"
 description = "Immutable Dependency Injection for Python."
-authors = [ "proboscis <nameissoap@gmail.com>",]
-license = "MIT"
+authors = [
+    {name = "proboscis", email = "nameissoap@gmail.com"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "returns",
+    "expression",
+    "cloudpickle",
+    "tabulate",
+    "cytoolz",
+    "frozendict",
+    "fire",
+    "pyyaml",
+    "pyvis",
+    "makefun",
+    "loguru",
+    "rich",
+    "pydantic",
+    "pytest",
+    "beartype",
+    "pytest-asyncio",
+    "pytest-xdist",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-returns = "*"
-expression = "*"
-cloudpickle = "*"
-tabulate = "*"
-cytoolz = "*"
-frozendict = "*"
-fire = "*"
-pyyaml = "*"
-pyvis = "*"
-makefun = "*"
-loguru = "*"
-rich = "*"
-pydantic = "*"
-pytest = "*"
-beartype = "*"
-pytest-asyncio = "*"
-pytest-xdist = "*"
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "tqdm>=4.66.5",
+    "click>=8.1.7",
+    "wandb>=0.17.8",
+    "pytest-xdist>=3.6.1",
+]
+
+[project.scripts]
+pinjected = "pinjected.main_impl:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-
-[tool.poetry.scripts]
-pinjected = "pinjected.main_impl:main"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "*"
-tqdm = "^4.66.5"
-click = "^8.1.7"
-wandb = "^0.17.8"
-pytest-xdist = "^3.6.1"
