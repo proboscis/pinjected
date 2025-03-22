@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pinjected-openai"
-version = "1.0.2-beta.2"
+version = "1.0.2-beta.3"
 description = "openai bindings for pinjected library"
 readme = "README.md"
 requires-python = ">=3.10"
