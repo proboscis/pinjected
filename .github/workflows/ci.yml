@@ -35,6 +35,7 @@ jobs:
       - name: Install dependencies
         run: |
           make sync
+          make setup-all
 
       - name: Configure test environment
         env:
