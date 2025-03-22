@@ -19,11 +19,35 @@ test-cov:
 
 publish:
 	uv build
-	uv publish
+	@echo "Checking if packages are already published..."
+	@for pkg in dist/*.whl; do \
+		PKG_NAME=$$(echo $$pkg | sed -E 's/.*\/([^\/]*)-[0-9].*/\1/'); \
+		PKG_VERSION=$$(echo $$pkg | sed -E 's/.*-([0-9][^-]*)(\.tar\.gz|\.whl)/\1/'); \
+		echo "Checking $$PKG_NAME version $$PKG_VERSION"; \
+		HTTP_CODE=$$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/$$PKG_NAME/$$PKG_VERSION/json); \
+		if [ "$$HTTP_CODE" = "404" ]; then \
+			echo "Publishing $$pkg..."; \
+			uv publish $$pkg; \
+		else \
+			echo "Package $$PKG_NAME version $$PKG_VERSION already published, skipping."; \
+		fi; \
+	done
 
 publish-openai:
 	cd packages/openai_support && uv build
-	uv publish dist/pinjected_openai-*.whl dist/pinjected_openai-*.tar.gz
+	@echo "Checking if openai packages are already published..."
+	@for pkg in dist/pinjected_openai-*.whl; do \
+		PKG_NAME="pinjected-openai"; \
+		PKG_VERSION=$$(echo $$pkg | sed -E 's/.*-([0-9][^-]*)(\.tar\.gz|\.whl)/\1/'); \
+		echo "Checking $$PKG_NAME version $$PKG_VERSION"; \
+		HTTP_CODE=$$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/$$PKG_NAME/$$PKG_VERSION/json); \
+		if [ "$$HTTP_CODE" = "404" ]; then \
+			echo "Publishing $$pkg..."; \
+			uv publish $$pkg; \
+		else \
+			echo "Package $$PKG_NAME version $$PKG_VERSION already published, skipping."; \
+		fi; \
+	done
 
 tag-version:
 	git tag v$(shell grep -m 1 version pyproject.toml | cut -d'"' -f2)
