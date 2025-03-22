@@ -1,5 +1,10 @@
 
-.PHONY: test publish tag-version release
+.PHONY: test publish tag-version release sync
+
+sync:
+	uv venv
+	uv pip install -e .
+	uv pip install tqdm
 
 test:
 	cd test; uv run pytest
