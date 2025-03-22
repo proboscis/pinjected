@@ -19,6 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "pinjected",
     "anthropic>=0.37.1",
     "injected-utils>=0.1.32",
     "loguru",
