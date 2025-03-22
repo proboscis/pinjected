@@ -28,6 +28,7 @@ dependencies = [
     "makefun",
     "cytoolz",
     "beartype",
+    "rich",
 ]
 
 [tool.hatch.metadata]
