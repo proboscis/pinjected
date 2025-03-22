@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "pytest",
     "loguru",
+    "returns",
 ]
 
 [tool.hatch.metadata]

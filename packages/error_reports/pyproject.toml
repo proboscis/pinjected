@@ -20,6 +20,7 @@ classifiers = [
 
 dependencies = [
     "loguru",
+    "returns",
 ]
 
 [tool.hatch.metadata]

@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "wandb",
     "loguru",
+    "returns",
 ]
 
 [tool.hatch.metadata]
