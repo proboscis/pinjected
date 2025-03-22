@@ -247,9 +247,17 @@ cifar_design = base_design + design(
 def run_train(trainer: Trainer):
     trainer.train()
 
-__meta_design__ = design(
-    overrides=mnist_design #CLIで指定しなかったときに利用されるデザイン
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    mnist_design #CLIで指定しなかったときに利用されるデザイン
 )
+
+# 以下のレガシーな方法は非推奨です
+# __meta_design__ = design(
+#     overrides=mnist_design #CLIで指定しなかったときに利用されるデザイン
+# )
 ```
 
 ### コードのポイント
@@ -313,7 +321,7 @@ pinjectedは、`python -m pinjected run <path.to.target>`という形式で実�
 `python -m pinjected run example.run_train`
 ```
 
-デフォルトでは`__meta_design__`や`default_design`が読み込まれ、それらが組み合わされた最終的なDesignから`run_train`の依存関係が解決されます。  
+デフォルトでは`__pinjected__.py`ファイル内の`__design__`や`default_design`が読み込まれ、それらが組み合わされた最終的なDesignから`run_train`の依存関係が解決されます。レガシーな`__meta_design__`も現在はサポートされていますが、非推奨となっています。  
 前節の例では、`trainer`が自動的に注入され、`trainer.train()`が実行されます。
 
 ### パラメータ上書き（--オプション）
@@ -367,9 +375,9 @@ python -m pinjected run example.run_eval
 
 ### 複雑なDesign構成・.pinjected.pyの活用
 
-後の章で詳しく説明しますが、pinjectedは`~/.pinjected.py`ファイルや`__meta_design__`と呼ばれる仕組みを使って、プロジェクト全体・ユーザーローカルなデフォルトDesignを構成できます。
+後の章で詳しく説明しますが、pinjectedは`~/.pinjected.py`ファイルや`__pinjected__.py`ファイル内の`__design__`変数を使って、プロジェクト全体・ユーザーローカルなデフォルトDesignを構成できます。
 
-- プロジェクト共通の基本設定を`__meta_design__`にまとめる
+- プロジェクト共通の基本設定を`__pinjected__.py`ファイル内の`__design__`変数にまとめる
 - ユーザーごとに異なるAPIキーやパス設定は`~/.pinjected.py`で管理する
 - CLIで一時的なオーバーライドを行うことで、その場で実験条件変更
 
@@ -553,7 +561,13 @@ cifar_design = base_design + design(
 def run_train(trainer: Trainer):
     trainer.train()
 
-__meta_design__ = design()
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design()
+
+# 以下のレガシーな方法は非推奨です
+# __meta_design__ = design()
 
 ```
 
@@ -741,12 +755,21 @@ pinjectedはdesign()を+演算子で合成するだけでなく、withステー�
 ```python
 from pinjected import providers, instances, `IProxy`, design
 
-__meta_design__ = design( # python -m pinjected runが自動的に収集する変数
-    overrides = design( # デフォルトで利用されるデザインの指定
-        batch_size=128,
-        learning_rate=0.001
-    )
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design( # python -m pinjected runが自動的に収集する変数
+    batch_size=128,
+    learning_rate=0.001
 )
+
+# 以下のレガシーな方法は非推奨です
+# __meta_design__ = design( # python -m pinjected runが自動的に収集する変数
+#     overrides = design( # デフォルトで利用されるデザインの指定
+#         batch_size=128,
+#         learning_rate=0.001
+#     )
+# )
 
 train_with_bs_128:IProxy = train() # __meta_design__.overridesが自動で適用される
 
@@ -852,7 +875,13 @@ def run_gen_text(generate_text):
     # デフォルトのprompt指定（なければ、実行時にユーザーが指定する想定）
     return generate_text("Hello, who are you?")
 
-__meta_design__ = design() # Pinjected対応を示すマーカー
+# __pinjected__.py ファイルを作成し、以下のように書きます
+from pinjected import design
+
+__design__ = design()  # Pinjected対応を示すマーカー
+
+# 以下のレガシーな方法は非推奨です
+# __meta_design__ = design() # Pinjected対応を示すマーカー
 ```
 
 上記ではllm_clientが一度注入され、generate_text関数ではllm_clientを再利用しつつ、promptは呼び出し時に好きな値を渡せます。
@@ -1413,14 +1442,14 @@ train_sample_0: `IProxy` = injected("dataset")["train"][0]
 
 ## 7.4 複雑なユースケース例の再構築：LLM応答をキャッシュに保存する計算パイプライン
 
-これまで、`Injected`/`IProxy`や`@injected`、`@instance`、`design()`、`__meta_design__`などを使ったDIとDSL的記法を紹介してきました。ここでは、これらを総合的に組み合わせたやや複雑なユースケースとして、「LLMモデルへの問い合わせ結果を指定パスに保存する」パイプラインを示します。
+これまで、`Injected`/`IProxy`や`@injected`、`@instance`、`design()`などを使ったDIとDSL的記法を紹介してきました。ここでは、これらを総合的に組み合わせたやや複雑なユースケースとして、「LLMモデルへの問い合わせ結果を指定パスに保存する」パイプラインを示します。
 
 ### シナリオ
 
 - LLMモデルに対して`prompt`と`temperature`を指定して問い合わせ（`run_llm_query`）し、その応答をファイルに保存（`save_response_to_cache`）します。
 - `cache_dir`はユーザーローカルな`~/.pinjected.py`で変更可能。
-- `prompt`や`temperature`は`__meta_design__`で指定し、CLIオプションで上書き可能。
-- `response_cache_path`は`cache_dir`とファイル名の合成で決まるため、``IProxy``を用いて`__meta_design__`で定義します。
+- `prompt`や`temperature`は`__pinjected__.py`の`__design__`で指定し、CLIオプションで上書き可能。
+- `response_cache_path`は`cache_dir`とファイル名の合成で決まるため、``IProxy``を用いて`__design__`で定義します。
 ### コード例
 
 ```python
@@ -1458,16 +1487,27 @@ def save_response_to_cache(run_llm_query,response_cache_path):
         f.write(response)
     return response_cache_path
 
-# __meta_design__で、response_cache_path, prompt, temperatureをdesignに組み込む
+# __pinjected__.py ファイルを作成し、__design__でresponse_cache_path, prompt, temperatureを組み込む
 # Injected.by_name('cache_dir').proxy / "llm_response.pkl" とすることで
 # cache_dirが変われば自動的にキャッシュファイルパスが変わる
-__meta_design__ = design(
-    overrides=design(
-        response_cache_path=Injected.by_name('cache_dir').proxy / "llm_response.pkl",
-        prompt="Hello world",
-        temperature=0.9
-    )
+
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    response_cache_path=Injected.by_name('cache_dir').proxy / "llm_response.pkl",
+    prompt="Hello world",
+    temperature=0.9
 )
+
+# 以下のレガシーな方法は非推奨です
+# __meta_design__ = design(
+#     overrides=design(
+#         response_cache_path=Injected.by_name('cache_dir').proxy / "llm_response.pkl",
+#         prompt="Hello world",
+#         temperature=0.9
+#     )
+# )
 
 ```
 
