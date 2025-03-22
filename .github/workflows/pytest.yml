@@ -50,8 +50,7 @@ jobs:
         
     - name: Run tests with coverage
       run: |
-        cd test
-        uv run pytest -v --cov=pinjected --cov-report=xml
+        make test-cov
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
