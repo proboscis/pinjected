@@ -16,18 +16,27 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Configure Git
+      - name: Setup SSH deploy key
+        env:
+          PROBOSCIS_SSH_KEY: ${{ secrets.PROBOSCIS_SSH_KEY }}
         run: |
+          # Save the SSH key to a file
+          echo "$PROBOSCIS_SSH_KEY" > ~/deploy_key.pem
+          chmod 600 ~/deploy_key.pem
+          
+          # Configure Git
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
       
       - name: Push to proboscis repository
+        env:
+          GIT_SSH_COMMAND: ssh -i ~/deploy_key.pem -o StrictHostKeyChecking=no -F /dev/null
         run: |
           # Clone the current repository to a temporary directory
           TEMP_DIR=$(mktemp -d)
           cp -r . $TEMP_DIR
           cd $TEMP_DIR
           
-          # Set up remote with token and push
-          git remote add proboscis https://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@github.com/proboscis/pinjected.git
+          # Set up remote with SSH and push
+          git remote add proboscis git@github.com:proboscis/pinjected.git
           git push -f proboscis main:main
