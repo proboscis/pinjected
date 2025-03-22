@@ -46,6 +46,7 @@ pinjected = "pinjected.main_impl:main"
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+pythonpath = [".", "packages/openai_support/src"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
