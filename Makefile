@@ -11,11 +11,11 @@ setup-all:
 
 test:
 	cd test && uv run pytest
-	cd packages/openai_support && PYTHONPATH=$(PYTHONPATH):$(PWD)/src uv run pytest tests
+	cd packages/openai_support && PYTHONPATH=$(PWD)/src uv run pytest tests
 
 test-cov:
 	cd test && uv run pytest -v --cov=pinjected --cov-report=xml
-	cd packages/openai_support && PYTHONPATH=$(PYTHONPATH):$(PWD)/src uv run pytest tests
+	cd packages/openai_support && PYTHONPATH=$(PWD)/src uv run pytest tests
 
 publish:
 	uv build
