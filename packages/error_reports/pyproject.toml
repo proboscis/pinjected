@@ -24,6 +24,7 @@ dependencies = [
     "cloudpickle",
     "frozendict",
     "makefun",
+    "cytoolz",
 ]
 
 [tool.hatch.metadata]
