@@ -15,7 +15,7 @@ test:
 
 test-cov:
 	cd test && uv run pytest -v --cov=pinjected --cov-report=xml
-	cd packages/openai_support && uv sync && uv run -m pytest tests -v --cov=pinjected_openai --cov-report=xml
+	cd packages/openai_support && uv sync && uv run -m pytest tests
 
 publish:
 	uv build
