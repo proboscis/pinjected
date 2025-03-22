@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling==1.26.3"]
+build-backend = "hatchling.build"
+
+[project]
+name = "injected-utils"
+version = "0.1.32"
+description = "Utility functions for pinjected library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "proboscis", email = "nameissoap@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pinjected",
+    "sqlitedict",
+    "loguru",
+    "filelock>=3.16.1",
+    "tqdm",
+    "returns",
+    "pandas>=2.2.3",
+    "aiosqlite>=0.21.0",
+    "cloudpickle",
+    "frozendict",
+    "makefun",
+    "cytoolz",
+    "beartype",
+    "rich",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1,<9"
+]
+
+[tool.ruff]
+ignore = ["F403", "F405", "F401"]

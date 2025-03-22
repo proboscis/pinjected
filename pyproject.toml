@@ -52,7 +52,9 @@ pythonpath = [
     "packages/wandb/src",
     "packages/error_reports/src",
     "packages/reviewer/src",
-    "packages/rate_limit/src"
+    "packages/rate_limit/src",
+    "packages/niji_voice/src",
+    "packages/injected_utils/src"
 ]
 
 [tool.uv.workspace]
@@ -64,3 +66,5 @@ pinjected-wandb = { workspace = true }
 pinjected-error-reports = { workspace = true }
 pinjected-reviewer = { workspace = true }
 pinjected-rate-limit = { workspace = true }
+pinjected-niji-voice = { workspace = true }
+injected-utils = { workspace = true }
