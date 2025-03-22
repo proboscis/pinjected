@@ -10,7 +10,7 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 IProxy = DelegatedVar
 
-__version__ = "0.2.246"
+__version__ = "0.2.246-beta.3"
 
 __all__ = [
     "Injected",
