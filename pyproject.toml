@@ -49,3 +49,10 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.workspace]
 members = ["packages/*"]
+
+[tool.uv.sources]
+pinjected-anthropic = { workspace = true }
+pinjected-wandb = { workspace = true }
+pinjected-error-reports = { workspace = true }
+pinjected-reviewer = { workspace = true }
+pinjected-rate-limit = { workspace = true }
