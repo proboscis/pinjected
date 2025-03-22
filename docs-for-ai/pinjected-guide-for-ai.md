@@ -91,11 +91,29 @@ mnist_design = base_design + design(
 )
 ```
 
-### 2.4 __meta_design__
+### 2.4 依存関係の設定
 
-`__meta_design__`は、Pinjectedが自動的に収集する特別なグローバル変数です。CLIから実行する際のデフォルトのデザインを指定できます。
+Pinjectedでは依存関係を設定するための2つの方法を提供しています：
+
+#### 2.4.1 推奨: `__pinjected__.py`ファイル内の`__design__`
+
+推奨される方法は、`__pinjected__.py`ファイル内で`__design__`変数を定義することです：
 
 ```python
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    overrides=mnist_design  # CLIで指定しなかったときに利用されるデザイン
+)
+```
+
+#### 2.4.2 レガシー: `__meta_design__`
+
+`__meta_design__`は、非推奨となっている特別なグローバル変数です。以前はCLIから実行する際のデフォルトのデザインを指定するために使用されていました：
+
+```python
+# この方法は非推奨です
 __meta_design__ = design(
     overrides=mnist_design  # CLIで指定しなかったときに利用されるデザイン
 )
@@ -620,32 +638,59 @@ def test_data():
 
 - グローバル変数として定義しただけでは、pinjectedの依存解決の対象にならない
 - `@injected`や`@instance`でデコレートされた関数は関数名で注入されるが、グローバル変数は異なる
-- グローバル変数を注入するには、`__meta_design__`を使って明示的に注入する必要がある
+- グローバル変数を注入するには、`__pinjected__.py`ファイル内の`__design__`を使って明示的に注入する必要がある
 
 ```python
 # 以下のように単にグローバル変数として定義しても注入されない
 my_global_var = some_function(arg1="value")  # IProxyオブジェクト
 
-# 正しい方法: __meta_design__を使って明示的に注入する
-__meta_design__ = design(
-    overrides=design(
-        my_global_var=some_function(arg1="value")
+# 推奨される方法: __pinjected__.pyファイル内の__design__を使用
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    my_global_var=some_function(arg1="value")
+)
+
+# レガシーな方法（非推奨）: __meta_design__を使用
+# __meta_design__ = design(
+#     overrides=design(
+#         my_global_var=some_function(arg1="value")
         # テストは@injected_pytestを使用することを推奨
     )
 )
 ```
 
-### 8.5 __meta_design__の正しい使用方法
+### 8.5 依存関係設定の正しい使用方法
 
-`__meta_design__`を更新する際は、以下の形式を使用する必要があります：
+#### 8.5.1 推奨: `__pinjected__.py`ファイル内の`__design__`
+
+`__pinjected__.py`ファイル内で`__design__`変数を定義する場合は、以下の形式を使用します：
 
 ```python
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    key1=value1, 
+    key2=value2
+)
+```
+
+#### 8.5.2 レガシー: `__meta_design__`の使用方法
+
+`__meta_design__`（非推奨）を更新する際は、以下の形式を使用する必要があります：
+
+```python
+# この方法は非推奨です
 __meta_design__ = design(
     overrides=design(key1=value1, key2=value2)
 )
 ```
 
 この形式を守らないと、依存解決が正しく行われない場合があります。特に、`overrides`キーを使用せずに直接`__meta_design__ = design(key=value)`とすると、既存の設定が上書きされてしまう可能性があります。
+
+推奨される方法は`__pinjected__.py`ファイル内で`__design__`変数を使用することです。
 
 ### 8.6 @instanceと@injectedの型と使い分け
 
@@ -734,13 +779,23 @@ result = my_instance(arg1, arg2)  # エラー！
 
 # 推奨される書き方
 # @instanceはIProxy[T]を返すため、直接呼び出せない
-# 依存関係を設定する場合は__meta_design__のoverrideを使用
-__meta_design__ = design(
-    overrides=design(
-        # 依存関係の設定（test_で始まらない変数）
-        my_dependency=my_instance
-    )
+# 依存関係を設定する場合は__pinjected__.py内の__design__を使用
+
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    # 依存関係の設定
+    my_dependency=my_instance
 )
+
+# レガシーな方法（非推奨）:
+# __meta_design__ = design(
+#     overrides=design(
+#         # 依存関係の設定（test_で始まらない変数）
+#         my_dependency=my_instance
+#     )
+# )
 ```
 
 #### 2. `@injected`関数の不完全な使用

@@ -174,5 +174,10 @@ After this migration:
 
 1. Monitor usage and address any issues that arise
 2. Eventually remove the deprecated method in a future version
-3. Update documentation to reflect the new recommended pattern
+3. Update documentation to reflect the new recommended pattern:
+   - Document the migration from `__meta_design__` to `__design__` in `__pinjected__.py` files
+   - Provide clear guidance for users to identify `__meta_design__` usage in their code
+   - Explain how to create `__pinjected__.py` files in project directories
+   - Show examples of moving dependency configurations from `__meta_design__` to `__design__` variables
+   - Include examples from a user's perspective
 4. Consider further improvements to the design gathering process

@@ -97,9 +97,42 @@ python -m pinjected run some.llm.module.chat --llm="{some.llm.module.llm_openai}
 
 Now we can switch llm with llm_openai, llm_azure, llm_llama... by specifying a importable variable path.
 
-## __meta_design__
+## Dependency Configuration
 
-`pinjected run` reads `__meta_design__` variables in every parent package of the target variable:
+`pinjected run` reads dependency configurations from two sources:
+
+1. `__design__` variables in `__pinjected__.py` files (recommended)
+2. `__meta_design__` variables in module files (legacy, being deprecated)
+
+### Using `__pinjected__.py` Files (Recommended)
+
+The recommended approach is to place `__pinjected__.py` files in your package directories:
+
+```
+- some_package
+  | __init__.py
+  | __pinjected__.py   [-- contains __design__
+  | module1
+  | | __init__.py
+  | | __pinjected__.py [-- contains __design__
+  | | util.py
+```
+
+When running "python -m pinjected run some_package.module1.util.run", all `__design__` variables from `__pinjected__.py` files in parent packages will be loaded and concatenated.
+
+```python
+# Example __pinjected__.py file
+from pinjected import design
+
+__design__ = design(
+    config_key="config_value",
+    another_key="another_value"
+)
+```
+
+### Legacy `__meta_design__` Approach (Deprecated)
+
+The older approach using `__meta_design__` variables in module files is being deprecated:
 
 ```
 - some_package
@@ -109,8 +142,7 @@ Now we can switch llm with llm_openai, llm_azure, llm_llama... by specifying a i
   | | util.py     [-- can contain __meta_design__
 ```
 
-When running "python -m pinjected run some_package.module1.util.run", all "__meta_design__" in parent packages will be loaded and concatenated. 
-Which in this case results in equivalent to running the following script:
+When running with this approach, all `__meta_design__` variables in parent packages will be loaded and concatenated:
 
 ```python
 meta_design = some_package.__meta_design__ + some_package.module1.__meta_design + some_package.module1.util.__meta_design__
@@ -119,6 +151,8 @@ default_design = import_if_exist(meta_design['default_design_path'])
 g = (default_design + overrides).to_graph()
 g[some_package.module1.util.run]
 ```
+
+It's recommended to migrate to the new `__design__` in `__pinjected__.py` files approach.
 
 
 ## .pinjected.py

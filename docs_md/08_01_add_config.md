@@ -25,10 +25,25 @@ environment.
 
 This means that we can run any `injected` object on chosen environment.
 
-To do so, we need to add a config creator to `__meta_design__` with `idea_config_craetor_from_envs` function.
+To do so, we need to add a config creator to your dependency configuration. The recommended approach is to use `__design__` in a `__pinjected__.py` file:
 
 ```python
-# assume this is some_module.py
+# __pinjected__.py
+from pinjected import design, idea_config_craetor_from_envs
+
+__design__ = design(
+    custom_idea_config_craetor=idea_config_craetor_from_envs(
+        [
+            "some_module.local_env"
+        ]
+    )
+)
+```
+
+The legacy approach using `__meta_design__` in module files is being deprecated:
+
+```python
+# some_module.py (legacy approach - not recommended)
 from pinjected import *
 
 local_env = injected(LocalRunner)()
