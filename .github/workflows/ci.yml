@@ -37,6 +37,7 @@ jobs:
           uv venv
           source .venv/bin/activate
           uv pip install -e .
+          uv pip install tqdm
 
       - name: Configure test environment
         env:
