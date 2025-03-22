@@ -29,6 +29,7 @@ dependencies = [
     "beartype",
     "pytest-asyncio",
     "pytest-xdist",
+    "tqdm",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,20 @@ pinjected = "pinjected.main_impl:main"
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+pythonpath = [
+    "packages/anthropic/src",
+    "packages/wandb/src",
+    "packages/error_reports/src",
+    "packages/reviewer/src",
+    "packages/rate_limit/src"
+]
 
 [tool.uv.workspace]
 members = ["packages/*"]
+
+[tool.uv.sources]
+pinjected-anthropic = { workspace = true }
+pinjected-wandb = { workspace = true }
+pinjected-error-reports = { workspace = true }
+pinjected-reviewer = { workspace = true }
+pinjected-rate-limit = { workspace = true }
