@@ -29,32 +29,28 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         
-    - name: Install Poetry
+    - name: Install uv
       run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        uv --version
         
-    - name: Configure Poetry
-      run: |
-        poetry config virtualenvs.create true
-        poetry config virtualenvs.in-project true
-        
-    - name: Cache Poetry dependencies
+    - name: Cache uv dependencies
       uses: actions/cache@v4
       with:
         path: .venv
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/pyproject.toml') }}
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-uv-
           
     - name: Install dependencies
       run: |
-        poetry install
-        poetry add pytest-cov
+        uv pip sync
+        uv pip install pytest-cov
         
     - name: Run tests with coverage
       run: |
-        poetry run pytest -v --cov=pinjected --cov-report=xml
+        uv run pytest -v --cov=pinjected --cov-report=xml
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
