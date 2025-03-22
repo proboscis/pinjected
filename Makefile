@@ -1,5 +1,5 @@
 
-.PHONY: test test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit sync setup-all
+.PHONY: test test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils sync setup-all
 
 sync:
 	uv venv
@@ -13,6 +13,8 @@ setup-all:
 	cd packages/error_reports && uv sync --group dev
 	cd packages/reviewer && uv sync --group dev
 	cd packages/rate_limit && uv sync --group dev
+	cd packages/niji_voice && uv sync --group dev
+	cd packages/injected_utils && uv sync --group dev
 
 test:
 	uv sync --all-packages
@@ -23,6 +25,8 @@ test:
 	cd packages/error_reports && uv sync --group dev && uv run -m pytest tests
 	cd packages/reviewer && uv sync --group dev && uv run -m pytest tests
 	cd packages/rate_limit && uv sync --group dev && uv run -m pytest tests
+	cd packages/niji_voice && uv sync --group dev && uv run -m pytest tests
+	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
 
 test-cov:
 	cd test && uv run pytest -v --cov=pinjected --cov-report=xml
@@ -115,3 +119,22 @@ release-wandb: tag-version-wandb publish-wandb
 release-error-reports: tag-version-error-reports publish-error-reports
 release-reviewer: tag-version-reviewer publish-reviewer
 release-rate-limit: tag-version-rate-limit publish-rate-limit
+
+publish-niji-voice:
+	cd packages/niji_voice && uv build
+	cd packages/niji_voice && uv pip publish dist/*.whl dist/*.tar.gz
+
+publish-injected-utils:
+	cd packages/injected_utils && uv build
+	cd packages/injected_utils && uv pip publish dist/*.whl dist/*.tar.gz
+
+tag-version-niji-voice:
+	git tag pinjected-niji-voice-v$(shell grep -m 1 version packages/niji_voice/pyproject.toml | cut -d'"' -f2)
+	git push --tags
+
+tag-version-injected-utils:
+	git tag injected-utils-v$(shell grep -m 1 version packages/injected_utils/pyproject.toml | cut -d'"' -f2)
+	git push --tags
+
+release-niji-voice: tag-version-niji-voice publish-niji-voice
+release-injected-utils: tag-version-injected-utils publish-injected-utils
