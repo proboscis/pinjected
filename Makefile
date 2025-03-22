@@ -1,8 +1,16 @@
 
-.PHONY: test publish tag-version release
+.PHONY: test test-cov publish tag-version release sync
+
+sync:
+	uv venv
+	uv sync
+	uv pip install tqdm
 
 test:
 	cd test; uv run pytest
+
+test-cov:
+	cd test; uv run pytest -v --cov=pinjected --cov-report=xml
 
 publish:
 	uv build
