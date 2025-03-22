@@ -30,17 +30,18 @@ Dependency injection is a design pattern where objects receive their dependencie
 ## Development
 Please refer to [Coding Guidelines](CODING_GUIDELINES.md) for development standards and best practices.
 
-This project uses Poetry for dependency management. Due to cross-platform development between Mac and Ubuntu environments, we do not commit the `poetry.lock` file. This allows each developer to generate a lock file appropriate for their platform.
+This project uses uv for dependency management. 
 
 ```bash
-# Install poetry if you haven't already
-pip install poetry
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies (this will generate a poetry.lock file for your platform)
-poetry install
+# Or install with pip
+pip install uv
+
+# Install dependencies
+uv pip sync
 ```
-
-Note: The `poetry.lock` file is intentionally excluded from version control to avoid cross-platform compatibility issues.
 
 [日本語記事](https://zenn.dev/proboscis/articles/4a10d26b13a940)
 
