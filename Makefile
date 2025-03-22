@@ -3,7 +3,7 @@
 
 sync:
 	uv venv
-	uv pip install -e .
+	uv sync
 	uv pip install tqdm
 
 test:
