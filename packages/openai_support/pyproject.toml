@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling==1.26.3"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinjected-openai"
+version = "1.0.2-beta.3"
+description = "openai bindings for pinjected library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "proboscis", email = "nameissoap@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pinjected",
+    "openai>=1.61.0",
+    "tiktoken",
+    "injected-utils>=0.1.32",
+    "pydub",
+    "pillow",
+    "loguru",
+    "pandas",
+    "filelock",
+    "reactivex>=4.0.4",
+    "moviepy>=1.0.3",
+    "pinjected-rate-limit>=0.1.0",
+    "tenacity>=9.0.0",
+    "json-repair>=0.35.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1,<9"
+]

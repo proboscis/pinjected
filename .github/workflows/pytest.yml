@@ -2,9 +2,9 @@ name: Python Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev, feature/design-spec ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev, feature/design-spec ]
 
 permissions:
   contents: read
@@ -45,14 +45,13 @@ jobs:
           
     - name: Install dependencies
       run: |
-        uv venv
-        source .venv/bin/activate
-        uv pip install -e .
-        uv pip install pytest-cov tqdm
+        make sync
+        make setup-all
+        uv pip install pytest-cov
         
     - name: Run tests with coverage
       run: |
-        uv run pytest -v --cov=pinjected --cov-report=xml
+        make test-cov
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
