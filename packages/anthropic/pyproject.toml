@@ -24,6 +24,7 @@ dependencies = [
     "loguru",
     "returns",
     "cloudpickle",
+    "frozendict",
 ]
 
 [tool.hatch.metadata]
