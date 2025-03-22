@@ -19,11 +19,11 @@ test-cov:
 
 publish:
 	uv build
-	uv publish dist/*.whl dist/*.tar.gz
+	uv publish
 
 publish-openai:
 	cd packages/openai_support && uv build
-	cd packages/openai_support && uv publish dist/*.whl dist/*.tar.gz
+	cd packages/openai_support && uv publish
 
 tag-version:
 	git tag v$(shell grep -m 1 version pyproject.toml | cut -d'"' -f2)

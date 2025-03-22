@@ -128,7 +128,7 @@ The target structure was:
 
    publish-openai:
        cd packages/openai_support && uv build
-       cd packages/openai_support && uv pip publish dist/*.whl dist/*.tar.gz
+       cd packages/openai_support && uv publish
 
    tag-version-openai:
        git tag pinjected-openai-v$(shell grep -m 1 version packages/openai_support/pyproject.toml | cut -d'"' -f2)
