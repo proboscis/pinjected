@@ -1,9 +1,48 @@
 
 
 
-# Pinjected
+# Pinjected Monorepo
 [![codecov](https://codecov.io/gh/proboscis/pinjected/branch/main/graph/badge.svg)](https://codecov.io/gh/proboscis/pinjected)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/CyberAgentAILab/pinjected/actions/workflows/pytest.yml)
+
+This repository is organized as a monorepo with the following packages:
+
+- **pinjected**: Core dependency injection framework
+- **pinjected-openai**: OpenAI API bindings for pinjected (in packages/openai_support)
+
+## Working with the Monorepo
+
+### Installation
+
+To install all packages for development:
+
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Set up the workspace
+make sync
+make setup-all
+```
+
+### Running Tests
+
+Run tests for all packages:
+
+```bash
+make test
+```
+
+### Building Packages
+
+Build individual packages:
+
+```bash
+make publish          # Build and publish pinjected
+make publish-openai   # Build and publish pinjected-openai
+```
+
+## Core Pinjected Framework
 
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
 ## Prerequisites
