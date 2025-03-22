@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.246-beta.1 (2025-03-22)
+
+### Changed
+- Added beta prefix to version for PyPI publishing preparation
+
 ## 0.2.246 (2025-03-19)
 
 ### Fixed
