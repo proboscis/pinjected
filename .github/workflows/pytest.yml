@@ -2,9 +2,9 @@ name: Python Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/design-spec ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feature/design-spec ]
 
 permissions:
   contents: read
