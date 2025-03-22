@@ -29,6 +29,7 @@ dependencies = [
     "beartype",
     "pytest-asyncio",
     "pytest-xdist",
+    "tqdm",
 ]
 
 [project.optional-dependencies]
