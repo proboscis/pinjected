@@ -27,6 +27,7 @@ dependencies = [
     "frozendict",
     "makefun",
     "cytoolz",
+    "beartype",
 ]
 
 [tool.hatch.metadata]
