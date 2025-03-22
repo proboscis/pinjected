@@ -94,7 +94,7 @@ d = design(
 g = d.to_graph()
 assert g['b'] == 2
 ```
-Please read more about Injected in the [Injected section](docs_md/04_injected.md).
+Please read more about Injected in the [Injected section](docs/04_injected.md).
 
 ## `IProxy`
 An IProxy can be used as a provider. 
@@ -120,7 +120,7 @@ assert g['b'] == 2
 When `@injected` or `@instance` is used, the decorated function becomes an instance of IProxy.
 IProxy can be composed with other IProxy or Injected to create a new IProxy easily.
 
-Please refer to the [IProxy section](docs_md/04_injected_proxy) for more information.
+Please refer to the [IProxy section](docs/04_injected_proxy) for more information.
 
 # Classes as providers
 When a class is provided to the design() function, it should be wrapped with Injected.bind().

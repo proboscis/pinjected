@@ -3,9 +3,9 @@ requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pinjected-openai"
-version = "1.0.2-beta.3"
-description = "openai bindings for pinjected library"
+name = "pinjected-reviewer"
+version = "0.1.0"
+description = "code review utilities for pinjected library"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -20,19 +20,15 @@ classifiers = [
 
 dependencies = [
     "pinjected",
-    "openai>=1.61.0",
-    "tiktoken",
-    "injected-utils>=0.1.32",
-    "pydub",
-    "pillow",
+    "pytest",
     "loguru",
-    "pandas",
-    "filelock",
-    "reactivex>=4.0.4",
-    "moviepy>=1.0.3",
-    "pinjected-rate-limit>=0.1.0",
-    "tenacity>=9.0.0",
-    "json-repair>=0.35.0",
+    "returns",
+    "cloudpickle",
+    "frozendict",
+    "makefun",
+    "cytoolz",
+    "beartype",
+    "rich",
 ]
 
 [tool.hatch.metadata]

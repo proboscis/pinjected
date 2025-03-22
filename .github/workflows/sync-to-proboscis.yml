@@ -1,0 +1,37 @@
+name: Sync to Proboscis Repository
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-repo:
+    runs-on: ubuntu-latest
+    name: Sync main branch to proboscis/pinjected
+    
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+      
+      - name: Push to proboscis repository
+        env:
+          PROBOSCIS_TOKEN: ${{ secrets.PROBOSCIS_REPO_TOKEN }}
+        run: |
+          # Remove the existing origin remote
+          git remote remove origin
+          
+          # Add the proboscis repository as the new origin
+          git remote add origin https://x-access-token:${PROBOSCIS_TOKEN}@github.com/proboscis/pinjected.git
+          
+          # Push the main branch to proboscis repository
+          git push -f origin main:main
+          
+          echo "Successfully synced main branch to proboscis/pinjected repository"
