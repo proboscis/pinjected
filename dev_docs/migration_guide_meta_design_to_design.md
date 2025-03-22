@@ -254,4 +254,4 @@ This migration is a gradual process designed to maintain backward compatibility 
 ## Additional Resources
 
 - [Pinjected Documentation](https://github.com/CyberAgentAILab/pinjected)
-- [Dependency Injection Best Practices](https://github.com/CyberAgentAILab/pinjected/blob/main/docs_md/best_practices.md)
+- [Dependency Injection Best Practices](https://github.com/CyberAgentAILab/pinjected/blob/main/../docs/best_practices.md)
