@@ -19,7 +19,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "pinjected",
     "pytest",
     "loguru",
 ]
