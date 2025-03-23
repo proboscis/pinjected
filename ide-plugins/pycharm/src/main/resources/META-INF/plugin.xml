@@ -1,5 +1,5 @@
 <idea-plugin>
-    <id>com.cyberagent.ailab.pinjectdesign</id>
+    <id>com.proboscis.pinjectdesign</id>
     <name>PInject Design</name>
     <vendor>Proboscis</vendor>
 
@@ -12,36 +12,36 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService 
-            serviceImplementation="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettings"/>
+            serviceImplementation="com.proboscis.pinjectdesign.settings.PInjectDesignSettings"/>
         <applicationConfigurable 
             parentId="tools"
-            instance="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
-            id="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
+            instance="com.proboscis.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
+            id="com.proboscis.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
             displayName="PInject Design"/>
             
         <!-- Injected Function Parameter Info Handler -->
         <lang.parameterInfoHandler 
             language="Python" 
-            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedFunctionParameterInfoHandler"/>
+            implementationClass="com.proboscis.pinjectdesign.kotlin.handlers.InjectedFunctionParameterInfoHandler"/>
             
         <!-- Injected Function Completion Contributor -->
         <completion.contributor 
             language="Python" 
-            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.completion.InjectedFunctionCompletionContributor"/>
+            implementationClass="com.proboscis.pinjectdesign.kotlin.completion.InjectedFunctionCompletionContributor"/>
             
         <!-- Injected Function Goto Declaration Handler -->
         <gotoDeclarationHandler 
-            implementation="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
+            implementation="com.proboscis.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
             
         <!-- Injected Function Gutter Icon Provider -->
         <codeInsight.lineMarkerProvider 
             language="Python" 
-            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
+            implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
     </extensions>
 
     <actions>
         <action id="PInjectDesign.AnalyzeCode" 
-                class="com.cyberagent.ailab.pinjectdesign.actions.AnalyzePythonCodeAction"
+                class="com.proboscis.pinjectdesign.actions.AnalyzePythonCodeAction"
                 text="Analyze Python Code"
                 description="Analyze Python code structure">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
@@ -50,7 +50,7 @@
         
         <!-- Injected Function Actions -->
         <action id="PInjectDesign.RunSelectedInjected" 
-                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.RunSelectedInjectedAction"
+                class="com.proboscis.pinjectdesign.kotlin.actions.RunSelectedInjectedAction"
                 text="Run Selected Injected Function"
                 description="Run the selected injected function">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
@@ -58,7 +58,7 @@
         </action>
         
         <action id="PInjectDesign.TestExecuteScript" 
-                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.TestExecuteScriptAction"
+                class="com.proboscis.pinjectdesign.kotlin.actions.TestExecuteScriptAction"
                 text="Execute Test Script"
                 description="Execute a test script in the console">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
@@ -66,7 +66,7 @@
         
         <!-- Find Injected Runnables Action -->
         <action id="PInjectDesign.FindInjectedRunnables" 
-                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.FindInjectedRunnablesAction"
+                class="com.proboscis.pinjectdesign.kotlin.actions.FindInjectedRunnablesAction"
                 text="Find Injected Runnables"
                 description="Find all injected runnables in current file">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
