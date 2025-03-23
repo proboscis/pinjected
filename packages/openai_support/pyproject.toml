@@ -39,13 +39,15 @@ dependencies = [
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/pinjected_openai"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/pinjected_openai"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }
+injected-utils = { workspace = true }
+pinjected-rate-limit = { workspace = true }
 
 [dependency-groups]
 dev = [
