@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.cyberagent.ailab.pinjectdesign</id>
     <name>PInject Design</name>
-    <vendor email="nameissoap@gmail.com">Proboscis</vendor>
+    <vendor>Proboscis</vendor>
 
     <description><![CDATA[
     A plugin for Python dependency injection design.
