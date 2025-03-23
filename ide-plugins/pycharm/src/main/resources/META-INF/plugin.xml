@@ -32,6 +32,11 @@
         <!-- Injected Function Goto Declaration Handler -->
         <gotoDeclarationHandler 
             implementation="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
+            
+        <!-- Injected Function Gutter Icon Provider -->
+        <codeInsight.lineMarkerProvider 
+            language="Python" 
+            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
     </extensions>
 
     <actions>

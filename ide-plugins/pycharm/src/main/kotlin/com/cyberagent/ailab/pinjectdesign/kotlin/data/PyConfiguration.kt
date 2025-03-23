@@ -38,4 +38,4 @@ data class DesignMetadata(
     val location: BindingLocation
 )
 
-data class ActionItem(val name: String, val action: () -> Unit)
+// ActionItem moved to its own file
