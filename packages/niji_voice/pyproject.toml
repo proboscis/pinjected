@@ -36,7 +36,7 @@ dependencies = [
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/pinjected_niji_voice"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -34,7 +34,7 @@ dependencies = [
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/pinjected_rate_limit"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
