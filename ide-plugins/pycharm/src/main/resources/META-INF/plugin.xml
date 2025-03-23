@@ -63,5 +63,13 @@
                 description="Execute a test script in the console">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
+        
+        <!-- Find Injected Runnables Action -->
+        <action id="PInjectDesign.FindInjectedRunnables" 
+                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.FindInjectedRunnablesAction"
+                text="Find Injected Runnables"
+                description="Find all injected runnables in current file">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>

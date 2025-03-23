@@ -54,22 +54,3 @@ class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
         }
     }
 }
-
-class TestExecuteScriptAction : AnAction("Execute Test Script") {
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val helper = InjectedFunctionActionHelper(project)
-        val pinjectedUtil = PinjectedConsoleUtil(helper)
-        val editor = e.getData(CommonDataKeys.EDITOR) ?: return
-        
-        // Get the current file path
-        val file = e.getData(CommonDataKeys.PSI_FILE) ?: return
-        val filePath = file.virtualFile.path
-        
-        pinjectedUtil.runInjected(
-                filePath,
-                "run_test",
-                editor
-        )
-    }
-}
