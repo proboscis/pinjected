@@ -18,6 +18,20 @@
             instance="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
             id="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
             displayName="PInject Design"/>
+            
+        <!-- Injected Function Parameter Info Handler -->
+        <lang.parameterInfoHandler 
+            language="Python" 
+            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedFunctionParameterInfoHandler"/>
+            
+        <!-- Injected Function Completion Contributor -->
+        <completion.contributor 
+            language="Python" 
+            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.completion.InjectedFunctionCompletionContributor"/>
+            
+        <!-- Injected Function Goto Declaration Handler -->
+        <gotoDeclarationHandler 
+            implementation="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
     </extensions>
 
     <actions>
@@ -27,6 +41,22 @@
                 description="Analyze Python code structure">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
+        </action>
+        
+        <!-- Injected Function Actions -->
+        <action id="PInjectDesign.RunSelectedInjected" 
+                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.RunSelectedInjectedAction"
+                text="Run Selected Injected Function"
+                description="Run the selected injected function">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
+        </action>
+        
+        <action id="PInjectDesign.TestExecuteScript" 
+                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.TestExecuteScriptAction"
+                text="Execute Test Script"
+                description="Execute a test script in the console">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>
