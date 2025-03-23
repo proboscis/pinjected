@@ -42,7 +42,7 @@ allow-direct-references = true
 packages = ["src/injected_utils"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/injected_utils"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }

@@ -37,7 +37,7 @@ allow-direct-references = true
 packages = ["src/pinjected_rate_limit"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/pinjected_rate_limit"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }

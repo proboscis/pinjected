@@ -39,7 +39,7 @@ allow-direct-references = true
 packages = ["src/pinjected_niji_voice"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/pinjected_niji_voice"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }
