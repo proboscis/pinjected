@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.248 (2025-03-23)
+
+### Changed
+- Bumped version for PyPI publishing
+- Added PyCharm plugin integration with gutter actions for injected functions
+
 ## 0.2.247 (2025-03-23)
 
 ### Changed
