@@ -39,10 +39,10 @@ dependencies = [
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/injected_utils"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/injected_utils"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }
