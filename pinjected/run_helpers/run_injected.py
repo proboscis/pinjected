@@ -317,6 +317,8 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
         meta_design = design(overrides=design()) + meta_cxt.accumulated
         meta_resolver = AsyncResolver(meta_design)
         meta_overrides = (await meta_resolver.provide("overrides")) + meta_overrides
+        # here we add __design__ directly to overrides.
+        meta_overrides += meta_cxt.accumulated
         # add overrides from with block
         contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
         meta_overrides += contextual_overrides  # obtain internal hooks from the meta_design
