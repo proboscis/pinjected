@@ -378,7 +378,8 @@ class AsyncResolver:
             cyclics = [c for c in errors if isinstance(c, CyclicDependency)]
             message = ""
             if drfs:
-                header = f"========== Missing Dependencies for {tgt} ==========\n"
+                tgt_str = str(tgt)[:80]
+                header = f"========== Missing Dependencies for {tgt_str} ==========\n"
                 len_header = len(header)
                 missing_keys = {drf.key for drf in drfs}
                 message += header
