@@ -1,0 +1,20 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/cjjjnew text
+.classpath
+.factorypath
+.project
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+.vscode/
+.DS_Store/nbdist/
+/.nb-gradle/
+.vscode/

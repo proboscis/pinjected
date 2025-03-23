@@ -1,0 +1,75 @@
+<idea-plugin>
+    <id>com.cyberagent.ailab.pinjectdesign</id>
+    <name>PInject Design</name>
+    <vendor email="support@cyberagent.ai" url="https://www.cyberagent.ai">CyberAgent AI Lab</vendor>
+
+    <description><![CDATA[
+    A plugin for Python dependency injection design.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.python</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService 
+            serviceImplementation="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettings"/>
+        <applicationConfigurable 
+            parentId="tools"
+            instance="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
+            id="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
+            displayName="PInject Design"/>
+            
+        <!-- Injected Function Parameter Info Handler -->
+        <lang.parameterInfoHandler 
+            language="Python" 
+            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedFunctionParameterInfoHandler"/>
+            
+        <!-- Injected Function Completion Contributor -->
+        <completion.contributor 
+            language="Python" 
+            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.completion.InjectedFunctionCompletionContributor"/>
+            
+        <!-- Injected Function Goto Declaration Handler -->
+        <gotoDeclarationHandler 
+            implementation="com.cyberagent.ailab.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
+            
+        <!-- Injected Function Gutter Icon Provider -->
+        <codeInsight.lineMarkerProvider 
+            language="Python" 
+            implementationClass="com.cyberagent.ailab.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
+    </extensions>
+
+    <actions>
+        <action id="PInjectDesign.AnalyzeCode" 
+                class="com.cyberagent.ailab.pinjectdesign.actions.AnalyzePythonCodeAction"
+                text="Analyze Python Code"
+                description="Analyze Python code structure">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
+        </action>
+        
+        <!-- Injected Function Actions -->
+        <action id="PInjectDesign.RunSelectedInjected" 
+                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.RunSelectedInjectedAction"
+                text="Run Selected Injected Function"
+                description="Run the selected injected function">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
+        </action>
+        
+        <action id="PInjectDesign.TestExecuteScript" 
+                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.TestExecuteScriptAction"
+                text="Execute Test Script"
+                description="Execute a test script in the console">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        
+        <!-- Find Injected Runnables Action -->
+        <action id="PInjectDesign.FindInjectedRunnables" 
+                class="com.cyberagent.ailab.pinjectdesign.kotlin.actions.FindInjectedRunnablesAction"
+                text="Find Injected Runnables"
+                description="Find all injected runnables in current file">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
