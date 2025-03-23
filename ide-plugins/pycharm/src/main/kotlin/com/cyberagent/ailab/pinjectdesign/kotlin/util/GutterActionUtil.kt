@@ -59,9 +59,36 @@ object GutterActionUtil {
         val helper = InjectedFunctionActionHelper(project)
         val pinjectedUtil = PinjectedConsoleUtil(helper)
         
-        // Basic run action
+        // Basic run action - uses 'run' environment (default)
         val runAction = ActionItem("Run $name") {
             helper.runInBackground("Running $name") { indicator ->
+                try {
+                    indicator.fraction = 0.1
+                    val filePath = helper.getFilePath() ?: return@runInBackground
+                    val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: return@runInBackground
+                    val runConfig = configs.firstOrNull { !it.name.contains("interpreter") }
+                    
+                    indicator.fraction = 0.5
+                    if (runConfig != null) {
+                        helper.runConfig(runConfig)
+                    } else {
+                        // Fallback to console if no run config found
+                        pinjectedUtil.runInjected(filePath, name, null)
+                    }
+                    indicator.fraction = 1.0
+                } catch (e: Exception) {
+                    helper.showNotification(
+                        "Error Running $name",
+                        "Error: ${e.message}",
+                        com.intellij.notification.NotificationType.ERROR
+                    )
+                }
+            }
+        }
+        
+        // Run in interpreter environment (optional)
+        val runInterpreterAction = ActionItem("Run $name in Interpreter") {
+            helper.runInBackground("Running $name in interpreter") { indicator ->
                 val filePath = helper.getFilePath() ?: return@runInBackground
                 pinjectedUtil.runInjected(filePath, name, null)
             }
@@ -170,6 +197,6 @@ object GutterActionUtil {
             }
         }
         
-        return listOf(runAction, showAction, makeSandboxAction, selectConfigAction, updateConfigAction)
+        return listOf(runAction, showAction, makeSandboxAction, runInterpreterAction, selectConfigAction, updateConfigAction)
     }
 }
