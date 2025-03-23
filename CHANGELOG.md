@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.247 (2025-03-23)
+
+### Changed
+- Removed beta designation for stable release
+- Updated GitHub Action workflows for repository synchronization
+
 ## 0.2.246-beta.3 (2025-03-22)
 
 ### Changed
