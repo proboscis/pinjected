@@ -1,0 +1,1 @@
+rootProject.name = "pinject-design-pycharm-plugin"

@@ -1,0 +1,32 @@
+<idea-plugin>
+    <id>com.cyberagent.ailab.pinjectdesign</id>
+    <name>PInject Design</name>
+    <vendor email="support@cyberagent.ai" url="https://www.cyberagent.ai">CyberAgent AI Lab</vendor>
+
+    <description><![CDATA[
+    A plugin for Python dependency injection design.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.python</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService 
+            serviceImplementation="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettings"/>
+        <applicationConfigurable 
+            parentId="tools"
+            instance="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
+            id="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
+            displayName="PInject Design"/>
+    </extensions>
+
+    <actions>
+        <action id="PInjectDesign.AnalyzeCode" 
+                class="com.cyberagent.ailab.pinjectdesign.actions.AnalyzePythonCodeAction"
+                text="Analyze Python Code"
+                description="Analyze Python code structure">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
+        </action>
+    </actions>
+</idea-plugin>
