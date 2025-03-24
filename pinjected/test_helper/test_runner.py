@@ -438,12 +438,12 @@ def test_tagged(*tags: str):
     raise NotImplementedError()
 
 # This is not a test for pytet, but a user interface
-async def test_tree():
+def test_tree():
     import inspect
     frame = inspect.currentframe().f_back
     file = frame.f_globals["__file__"]
 
-    return await a_visualize_test_results(
+    return a_visualize_test_results(
         a_run_tests(
             injected('pinjected_test_aggregator').gather(Path(file)),
         )

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.251 (2025-03-25)
+
+### Fixed
+- Fixed test_tree() function in test_runner.py to be non-async for easier use
+
 ## 0.2.250 (2025-03-25)
 
 ### Fixed
