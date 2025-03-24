@@ -29,7 +29,11 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
+    "argparse",
 ]
+
+[project.scripts]
+pinjected-reviewer = "pinjected_reviewer.__main__:main"
 
 [tool.hatch.metadata]
 allow-direct-references = true

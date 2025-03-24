@@ -5,7 +5,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.22"
 }
 
-group = "com.cyberagent.ailab.pinjectdesign"
+group = "com.proboscis.pinjectdesign"
 version = "0.1.0"
 
 repositories {
