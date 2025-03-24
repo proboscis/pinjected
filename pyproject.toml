@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pinjected"
-version = "0.2.249"
+version = "0.2.250"
 description = "Immutable Dependency Injection for Python."
 authors = [
     {name = "proboscis", email = "nameissoap@gmail.com"}
