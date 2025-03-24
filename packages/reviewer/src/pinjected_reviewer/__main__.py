@@ -1,5 +1,9 @@
-from pinjected import design, Injected
-from pathlib import Path
+"""
+Main CLI module for pinjected-reviewer.
+
+This module provides command-line functionality for the pinjected-reviewer package.
+"""
+
 import fire
 import loguru
 
@@ -17,5 +21,5 @@ def main():
     ))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

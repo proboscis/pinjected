@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pinjected-reviewer = "pinjected_reviewer.main_impl:main"
+pinjected-reviewer = "pinjected_reviewer.__main__:main"
 
 [tool.hatch.metadata]
 allow-direct-references = true
