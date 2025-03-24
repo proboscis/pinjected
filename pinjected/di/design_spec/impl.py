@@ -94,7 +94,7 @@ class SimpleBindSpec(BindSpec[T]):
     def validator(self) -> Maybe[ValidatorType]:
         if self._validator is None:
             return Nothing
-        return Some(self._validator)
+        return Some(self._validator_impl)
 
     @future_safe
     async def _doc_impl(self, key: IBindKey) -> str:
