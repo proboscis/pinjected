@@ -29,7 +29,7 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
-    "fire",
+    "argparse",
 ]
 
 [project.scripts]
