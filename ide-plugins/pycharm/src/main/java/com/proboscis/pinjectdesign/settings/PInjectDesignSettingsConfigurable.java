@@ -32,15 +32,15 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         settingsPanel.setBorder(BorderFactory.createTitledBorder("Settings"));
         
         enableDetailedAnalysisCheckBox = new JCheckBox("Enable detailed analysis");
-        JLabel detailedAnalysisDescription = new JLabel("    Enables more comprehensive analysis of Python code structure");
+        JLabel detailedAnalysisDescription = new JLabel("    Analyzes classes with multiple constructor parameters using PythonUtils.analyzePythonFileForDI()");
         detailedAnalysisDescription.setFont(detailedAnalysisDescription.getFont().deriveFont(Font.ITALIC));
         
         checkForDependenciesCheckBox = new JCheckBox("Check for dependencies");
-        JLabel dependenciesDescription = new JLabel("    Verifies dependencies when analyzing injected functions");
+        JLabel dependenciesDescription = new JLabel("    Checks if DI libraries (injector, dependency-injector, pinject) are installed via PythonUtils.isPackageInstalled()");
         dependenciesDescription.setFont(dependenciesDescription.getFont().deriveFont(Font.ITALIC));
         
         enableCodeCompletionCheckBox = new JCheckBox("Enable code completion");
-        JLabel codeCompletionDescription = new JLabel("    Shows code completion suggestions for injected functions");
+        JLabel codeCompletionDescription = new JLabel("    Controls whether InjectedCompletionProvider shows code completion suggestions for injected functions");
         codeCompletionDescription.setFont(codeCompletionDescription.getFont().deriveFont(Font.ITALIC));
         
         settingsPanel.add(enableDetailedAnalysisCheckBox);
