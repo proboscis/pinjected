@@ -95,6 +95,12 @@ class InjectedCompletionProvider : CompletionProvider<CompletionParameters>() {
         context: ProcessingContext,
         result: CompletionResultSet
     ) {
+        val settings = com.intellij.openapi.application.ApplicationManager.getApplication()
+            .getService(com.proboscis.pinjectdesign.settings.PInjectDesignSettings::class.java)
+        if (!settings.enableCodeCompletion) {
+            return
+        }
+        
         val editor: Editor = parameters.editor
         editor.project?.let { project ->
             val fileEditorManager = FileEditorManager.getInstance(project)
