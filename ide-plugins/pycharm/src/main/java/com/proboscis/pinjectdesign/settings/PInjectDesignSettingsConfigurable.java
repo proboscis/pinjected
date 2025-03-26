@@ -7,6 +7,8 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import javax.swing.border.BorderFactory;
+import java.awt.Font;
 
 public class PInjectDesignSettingsConfigurable implements Configurable {
     private JPanel mainPanel;
@@ -25,13 +27,34 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
         
-        enableDetailedAnalysisCheckBox = new JCheckBox("Enable detailed analysis");
-        checkForDependenciesCheckBox = new JCheckBox("Check for dependencies");
-        enableCodeCompletionCheckBox = new JCheckBox("Enable code completion");
+        JPanel settingsPanel = new JPanel();
+        settingsPanel.setLayout(new BoxLayout(settingsPanel, BoxLayout.Y_AXIS));
+        settingsPanel.setBorder(BorderFactory.createTitledBorder("Settings"));
         
-        mainPanel.add(enableDetailedAnalysisCheckBox);
-        mainPanel.add(checkForDependenciesCheckBox);
-        mainPanel.add(enableCodeCompletionCheckBox);
+        enableDetailedAnalysisCheckBox = new JCheckBox("Enable detailed analysis");
+        JLabel detailedAnalysisDescription = new JLabel("    Enables more comprehensive analysis of Python code structure");
+        detailedAnalysisDescription.setFont(detailedAnalysisDescription.getFont().deriveFont(Font.ITALIC));
+        
+        checkForDependenciesCheckBox = new JCheckBox("Check for dependencies");
+        JLabel dependenciesDescription = new JLabel("    Verifies dependencies when analyzing injected functions");
+        dependenciesDescription.setFont(dependenciesDescription.getFont().deriveFont(Font.ITALIC));
+        
+        enableCodeCompletionCheckBox = new JCheckBox("Enable code completion");
+        JLabel codeCompletionDescription = new JLabel("    Shows code completion suggestions for injected functions");
+        codeCompletionDescription.setFont(codeCompletionDescription.getFont().deriveFont(Font.ITALIC));
+        
+        settingsPanel.add(enableDetailedAnalysisCheckBox);
+        settingsPanel.add(detailedAnalysisDescription);
+        settingsPanel.add(Box.createVerticalStrut(5));
+        
+        settingsPanel.add(checkForDependenciesCheckBox);
+        settingsPanel.add(dependenciesDescription);
+        settingsPanel.add(Box.createVerticalStrut(5));
+        
+        settingsPanel.add(enableCodeCompletionCheckBox);
+        settingsPanel.add(codeCompletionDescription);
+        
+        mainPanel.add(settingsPanel);
         
         // Initialize values from settings
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
