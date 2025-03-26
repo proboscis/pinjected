@@ -12,6 +12,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
     private JPanel mainPanel;
     private JCheckBox enableDetailedAnalysisCheckBox;
     private JCheckBox checkForDependenciesCheckBox;
+    private JCheckBox enableCodeCompletionCheckBox;
     
     @Nls(capitalization = Nls.Capitalization.Title)
     @Override
@@ -26,14 +27,17 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         
         enableDetailedAnalysisCheckBox = new JCheckBox("Enable detailed analysis");
         checkForDependenciesCheckBox = new JCheckBox("Check for dependencies");
+        enableCodeCompletionCheckBox = new JCheckBox("Enable code completion");
         
         mainPanel.add(enableDetailedAnalysisCheckBox);
         mainPanel.add(checkForDependenciesCheckBox);
+        mainPanel.add(enableCodeCompletionCheckBox);
         
         // Initialize values from settings
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         enableDetailedAnalysisCheckBox.setSelected(settings.enableDetailedAnalysis);
         checkForDependenciesCheckBox.setSelected(settings.checkForDependencies);
+        enableCodeCompletionCheckBox.setSelected(settings.enableCodeCompletion);
         
         return mainPanel;
     }
@@ -42,7 +46,8 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
     public boolean isModified() {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         return enableDetailedAnalysisCheckBox.isSelected() != settings.enableDetailedAnalysis ||
-               checkForDependenciesCheckBox.isSelected() != settings.checkForDependencies;
+               checkForDependenciesCheckBox.isSelected() != settings.checkForDependencies ||
+               enableCodeCompletionCheckBox.isSelected() != settings.enableCodeCompletion;
     }
     
     @Override
@@ -50,6 +55,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         settings.enableDetailedAnalysis = enableDetailedAnalysisCheckBox.isSelected();
         settings.checkForDependencies = checkForDependenciesCheckBox.isSelected();
+        settings.enableCodeCompletion = enableCodeCompletionCheckBox.isSelected();
     }
     
     @Override
@@ -57,6 +63,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         enableDetailedAnalysisCheckBox.setSelected(settings.enableDetailedAnalysis);
         checkForDependenciesCheckBox.setSelected(settings.checkForDependencies);
+        enableCodeCompletionCheckBox.setSelected(settings.enableCodeCompletion);
     }
     
     @Override
@@ -64,5 +71,6 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         mainPanel = null;
         enableDetailedAnalysisCheckBox = null;
         checkForDependenciesCheckBox = null;
+        enableCodeCompletionCheckBox = null;
     }
 }
