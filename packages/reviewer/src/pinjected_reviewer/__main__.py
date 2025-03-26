@@ -197,6 +197,8 @@ def main():
     # Uninstall command
     subparsers.add_parser("uninstall", help="Uninstall git pre-commit hook")
     
+    subparsers.add_parser("list-reviewers", help="List all reviewer definitions")
+    
     args = parser.parse_args()
     
     if args.command == "review" or args.command is None:
@@ -212,6 +214,9 @@ def main():
         success = uninstall_hook()
         if not success:
             sys.exit(1)
+    elif args.command == "list-reviewers":
+        from pinjected_reviewer.commands.list_reviewers import main as list_reviewers_main
+        list_reviewers_main()
 
 
 if __name__ == '__main__':
