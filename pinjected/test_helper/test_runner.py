@@ -422,11 +422,11 @@ Public interfaces:
 """
 
 # This is not a test for pytest, but a user interface
-async def test_current_file():
+def test_current_file():
     import inspect
     frame = inspect.currentframe().f_back
     file = frame.f_globals["__file__"]
-    return await a_visualize_test_results(
+    return a_visualize_test_results(
         a_run_tests(
             injected('pinjected_test_aggregator').gather_from_file(Path(file)),
         )
