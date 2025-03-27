@@ -440,11 +440,8 @@ def load_user_overrides_design():
     :return:
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
-    try:
-        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
-            design()
-        )
-        logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
-        return design_obj
-    except PinjectedConfigurationLoadFailure:
-        raise
+    design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
+        design()
+    )
+    logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
+    return design_obj
