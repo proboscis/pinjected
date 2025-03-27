@@ -54,7 +54,7 @@ async def run_review():
     logger.remove()  # Remove all handlers
 
     # Run the review process
-    mc = await MetaContext.a_gather_from_path(Path(entrypoint.__file__))
+    mc = await MetaContext.a_gather_bindings_with_legacy(Path(entrypoint.__file__))
     d = await mc.a_final_design
     resolver = AsyncResolver(d)
     review: Review = await resolver.provide(review_diff__pinjected_code_style)
