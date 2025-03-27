@@ -60,6 +60,11 @@ pythonpath = [
 [tool.uv.workspace]
 members = ["packages/*"]
 
+[dependency-groups]
+dev = [
+    "pinjected-reviewer"
+]
+
 [tool.uv.sources]
 pinjected-anthropic = { workspace = true }
 pinjected-wandb = { workspace = true }
