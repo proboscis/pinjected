@@ -68,3 +68,4 @@ pinjected-reviewer = { workspace = true }
 pinjected-rate-limit = { workspace = true }
 pinjected-niji-voice = { workspace = true }
 injected-utils = { workspace = true }
+pinjected-openai = { workspace = true }

@@ -30,6 +30,7 @@ dependencies = [
     "beartype",
     "rich",
     "argparse",
+    "pinjected-openai",
 ]
 
 [project.scripts]

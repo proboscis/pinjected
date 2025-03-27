@@ -2,6 +2,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, Literal
 
+from pydantic import BaseModel, Field
+
+class ReviewerAttributes(BaseModel):
+    """Represents attributes extracted from a reviewer markdown file."""
+    Name: str = Field(..., description="The name of the reviewer")
+    When_to_trigger: str = Field(..., description="When this reviewer should be triggered (e.g., on commit)")
+    Return_Type: str = Field(..., description="The return type of this reviewer")
+
 @dataclass
 class ReviewerDefinition:
     """Represents a reviewer definition loaded from a markdown file."""
@@ -12,23 +20,23 @@ class ReviewerDefinition:
     raw_content: str  # Original markdown content
     
     @classmethod
-    def from_markdown(cls, file_path: Path, content: str, llm_extractor) -> "ReviewerDefinition":
+    async def from_markdown(cls, file_path: Path, content: str, a_sllm_for_markdown_extraction) -> "ReviewerDefinition":
         """
         Create a ReviewerDefinition from markdown content using an LLM extractor.
         
         Args:
             file_path: Path to the markdown file
             content: Content of the markdown file
-            llm_extractor: Function that extracts attributes from markdown
+            a_sllm_for_markdown_extraction: Function that extracts attributes from markdown
             
         Returns:
             A ReviewerDefinition instance
         """
-        attributes = llm_extractor(content)
+        attributes = await a_sllm_for_markdown_extraction(content, response_format=ReviewerAttributes)
         return cls(
-            name=attributes.get("Name", "Unnamed Reviewer"),
-            trigger_condition=attributes.get("When to trigger", "manual"),
-            return_type=attributes.get("Return Type", "None"),
+            name=attributes.Name,
+            trigger_condition=attributes.When_to_trigger,
+            return_type=attributes.Return_Type,
             file_path=file_path,
             raw_content=content
         )
