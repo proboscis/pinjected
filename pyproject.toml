@@ -62,7 +62,8 @@ members = ["packages/*"]
 
 [dependency-groups]
 dev = [
-    "pinjected-reviewer"
+    "pinjected-reviewer",
+    "pinjected-error-reports"
 ]
 
 [tool.uv.sources]
