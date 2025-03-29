@@ -15,7 +15,7 @@ from pinjected.helper_structure import MetaContext
 from pinjected import AsyncResolver
 
 
-def injected_pytest(override: Design = EmptyDesign):
+def injected_pytest(override=EmptyDesign):
     """
     pinjectedを使用したテスト関数を作成するデコレータ
     
@@ -32,21 +32,33 @@ def injected_pytest(override: Design = EmptyDesign):
         def test_some_function(some_dependency):
             return some_dependency.do_something()
             
+        @injected_pytest
+        def test_without_parentheses(some_dependency):
+            return some_dependency.do_something()
+            
     Note:
         このデコレータは、呼び出し元のファイルパスを自動的に取得します。
     """
+    # If the decorator is used without parentheses, override will be the function to decorate
+    if callable(override) and not isinstance(override, Design):
+        func = override
+        caller_file = inspect.getmodule(func).__file__ if inspect.getmodule(func) else ""
+        return _to_pytest(instance(func), EmptyDesign, caller_file)
+
+    # Otherwise, override should be a Design instance
     assert isinstance(override, Design), """override must be a Design instance. perhaps you forgot to use parentheses?
      For example: @injected_pytest. you must use @injected_pytest() or @injected_pytest(override=<design object>)
      """
 
     def impl(func):
-        return _to_pytest(instance(func), override, inspect.getmodule(func).__file__)
+        caller_file = inspect.getmodule(func).__file__ if inspect.getmodule(func) else ""
+        return _to_pytest(instance(func), override, caller_file)
 
 
     return impl
 
 
-def _to_pytest(p: Injected, override: Design, caller_file: str):
+def _to_pytest(p: Injected, override: Design, caller_file: str = ""):
     """
     pinjectedのインスタンスをpytestで実行可能なテスト関数に変換する内部関数
     
@@ -62,7 +74,7 @@ def _to_pytest(p: Injected, override: Design, caller_file: str):
     var_path: str
 
     async def impl():
-        caller_path = Path(caller_file)
+        caller_path = Path(caller_file) if caller_file else Path(".")
         mc: MetaContext = await MetaContext.a_gather_bindings_with_legacy(caller_path)
         final_design = await mc.a_final_design
         design = final_design + override
@@ -104,3 +116,15 @@ def test_example(logger):
     """
     logger.info("pinjected_testの使用例")
     return "テスト成功"
+
+# テスト例（括弧なし）
+@injected_pytest
+def test_example_no_parens(logger):
+    """
+    pinjected_testの使用例（括弧なし）
+    
+    Args:
+        logger: 注入されるロガー
+    """
+    logger.info("pinjected_testの使用例（括弧なし）")
+    return "テスト成功（括弧なし）"
