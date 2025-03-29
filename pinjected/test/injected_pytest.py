@@ -6,7 +6,7 @@ pinjected用のテスト関数モジュール
 import asyncio
 import inspect
 from pathlib import Path
-from typing import Awaitable
+from typing import Awaitable, Union, Callable
 
 from pinjected import Injected, Design, EmptyDesign, instance
 from pinjected import instances
@@ -15,7 +15,7 @@ from pinjected.helper_structure import MetaContext
 from pinjected import AsyncResolver
 
 
-def injected_pytest(override=EmptyDesign):
+def injected_pytest(override: Union[Callable, Design] = EmptyDesign):
     """
     pinjectedを使用したテスト関数を作成するデコレータ
     
