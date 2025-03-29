@@ -42,8 +42,10 @@ def injected_pytest(override=EmptyDesign):
     # If the decorator is used without parentheses, override will be the function to decorate
     if callable(override) and not isinstance(override, Design):
         func = override
-        caller_file = inspect.getmodule(func).__file__ if inspect.getmodule(func) else ""
-        return _to_pytest(instance(func), EmptyDesign, caller_file)
+        module = inspect.getmodule(func)
+        if module is None or not hasattr(module, '__file__'):
+            raise ValueError("Could not determine caller module for function")
+        return _to_pytest(instance(func), EmptyDesign, module.__file__)
 
     # Otherwise, override should be a Design instance
     assert isinstance(override, Design), """override must be a Design instance. perhaps you forgot to use parentheses?
@@ -51,14 +53,16 @@ def injected_pytest(override=EmptyDesign):
      """
 
     def impl(func):
-        caller_file = inspect.getmodule(func).__file__ if inspect.getmodule(func) else ""
-        return _to_pytest(instance(func), override, caller_file)
+        module = inspect.getmodule(func)
+        if module is None or not hasattr(module, '__file__'):
+            raise ValueError("Could not determine caller module for function")
+        return _to_pytest(instance(func), override, module.__file__)
 
 
     return impl
 
 
-def _to_pytest(p: Injected, override: Design, caller_file: str = ""):
+def _to_pytest(p: Injected, override: Design, caller_file: str):
     """
     pinjectedのインスタンスをpytestで実行可能なテスト関数に変換する内部関数
     
@@ -74,7 +78,7 @@ def _to_pytest(p: Injected, override: Design, caller_file: str = ""):
     var_path: str
 
     async def impl():
-        caller_path = Path(caller_file) if caller_file else Path(".")
+        caller_path = Path(caller_file)
         mc: MetaContext = await MetaContext.a_gather_bindings_with_legacy(caller_path)
         final_design = await mc.a_final_design
         design = final_design + override
