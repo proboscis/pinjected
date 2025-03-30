@@ -486,6 +486,14 @@ g = d.to_graph()
         nx = self.create_dependency_digraph_rooted(tgt, replace_missing=visualize_missing)
         return nx.save_as_html_at(dst_root)
 
+    def to_json_with_root_name(self,root_name,deps:list[str]):
+        data = self.to_json(roots=deps)
+        data['edges'].append({
+            "key": root_name,
+            "dependencies": deps
+        })
+        return data
+
     def to_json(self, roots: Union[str, List[str]], replace_missing=True):
         """
         Export the dependency graph as JSON with edges and dependencies.

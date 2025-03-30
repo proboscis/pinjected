@@ -13,9 +13,13 @@ import cloudpickle
 from beartype import beartype
 from returns.result import safe, Result
 
+from pinjected.module_inspector import ModuleVarSpec
+
+
 class PinjectedConfigurationLoadFailure(Exception):
     """Raised when a pinjected configuration file (.pinjected.py) fails to load."""
     pass
+
 
 from pinjected import design, Injected, Design, Designed, EmptyDesign, injected
 from pinjected.cli_visualizations import design_rich_tree
@@ -189,7 +193,7 @@ def run_anything(
             logger.info(f"generating JSON graph for {var_path} with design {design_path}")
             if hasattr(cxt.var, 'dependencies'):
                 logger.info(f"deps:{cxt.var.dependencies()}")
-            json_graph = DIGraph(design).to_json(var_path)
+            json_graph = DIGraph(design).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[0],list(cxt.var.dependencies()))
             print(json.dumps(json_graph, indent=2))
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
@@ -237,6 +241,7 @@ class RunContext:
     design: Design
     meta_overrides: Design
     var: Injected
+    src_var_spec: ModuleVarSpec
     provision_callback: Optional[IResolverCallback]
     overrides: Design = field(default_factory=design)
 
@@ -248,7 +253,6 @@ class RunContext:
 
     def get_final_design(self):
         return self.design + self.meta_overrides + self.overrides
-
 
     async def a_provide(self, tgt, show_debug=True):
         final_design = self.get_final_design()
@@ -304,8 +308,8 @@ async def a_resolve_design(design_path, meta_cxt: MetaContext) -> Design:
 
 async def a_get_run_context(design_path, var_path) -> RunContext:
     with logger.contextualize(tag="get_run_context"):
-        loaded_var = load_variable_by_module_path(var_path)
-        meta = safe(getattr)(loaded_var, "__runnable_metadata__").value_or({})
+        var_spec = ModuleVarPath(var_path).to_spec()
+        meta = safe(getattr)(var_spec.var, "__runnable_metadata__").value_or({})
         if not isinstance(meta, dict):
             meta = {}
         meta_overrides = meta.get("overrides", design())
@@ -316,15 +320,15 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
         # here, actually the loaded variable maybe an instance of Designed.
         # but it can also be a DelegatedVar[Designed] or a DelegatedVar[Injected] hmm,
         # what would be the operation between Designed + Designed? run them on separate process, or in the same session?
-        match (var := load_variable_by_module_path(var_path)):
+        match var_spec.var:
             case Injected() | DelegatedVar():
-                var = Injected.ensure_injected(var)
+                var = Injected.ensure_injected(var_spec.var)
             case Designed():
-                design_obj += var.design
-                var = var.internal_injected
-        """
-                I need to get the design overrides from with context and add it to the overrides
-                """
+                design_obj += var_spec.var.design
+                var = var_spec.var.internal_injected
+            case _:
+                var = var_spec.var
+
         meta_design = design(overrides=design()) + meta_cxt.accumulated
         meta_resolver = AsyncResolver(meta_design)
         meta_overrides = (await meta_resolver.provide("overrides")) + meta_overrides
@@ -344,7 +348,8 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
             design=design_obj,
             meta_overrides=meta_overrides,
             var=var,
-            provision_callback=provision_callback
+            src_var_spec=var_spec,
+            provision_callback=provision_callback,
         )
 
 
@@ -383,7 +388,8 @@ def load_design_from_paths(paths, design_name):
                 res += load_variable_from_script(path, design_name)
             except AttributeError as ae:
                 logger.warning(f"{design_name} is not defined in {path}.")
-                raise PinjectedConfigurationLoadFailure(f"Failed to load '{design_name}' from {path}: {design_name} is not defined in the file.")
+                raise PinjectedConfigurationLoadFailure(
+                    f"Failed to load '{design_name}' from {path}: {design_name} is not defined in the file.")
             except Exception as e:
                 import traceback
 
@@ -407,7 +413,8 @@ def load_user_default_design() -> Design:
     """
     design_path = os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
     try:
-        design_result = load_design_from_paths(find_dot_pinjected(), "default_design") + _load_design(design_path).value_or(
+        design_result = load_design_from_paths(find_dot_pinjected(), "default_design") + _load_design(
+            design_path).value_or(
             design()
         )
         # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
