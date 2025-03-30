@@ -172,7 +172,7 @@ python -m pinjected run example.run_train --overrides={example.mnist_design}
 from pinjected import design
 
 default_design = design(
-    openai_api_key = "sk-xxxxxx_your_secret_key_here",
+    api_key = "your_api_key_here",
     cache_dir = "/home/user/.cache/myproject"
 )
 ```
