@@ -180,6 +180,13 @@ def run_anything(
         elif cmd == "to_script":
             d = design + design(__root__=Injected.bind(cxt.var))
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
+        elif cmd == "json-graph":
+            import json
+            logger.info(f"generating JSON graph for {var_path} with design {design_path}")
+            if hasattr(cxt.var, 'dependencies'):
+                logger.info(f"deps:{cxt.var.dependencies()}")
+            json_graph = DIGraph(design).to_json(var_path)
+            print(json.dumps(json_graph, indent=2))
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
             if PinjectedHandleMainException.key in design:

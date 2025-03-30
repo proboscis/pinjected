@@ -185,6 +185,17 @@ def call(
     return asyncio.run(a_prep())
 
 
+def json_graph(var_path: str = None, design_path: str = None, **kwargs):
+    """
+    Generate a JSON representation of the dependency graph for a variable.
+    
+    :param var_path: the path to the variable to visualize: e.g. "my_module.my_var"
+    :param design_path: the path to the design to be used: e.g. "my_module.my_design"
+    :param kwargs: additional parameters to pass to run_injected
+    """
+    return run_injected("json-graph", var_path, design_path, **kwargs)
+
+
 def main():
     import fire
 
@@ -192,5 +203,6 @@ def main():
         run=run,
         call=call,
         check_config=check_config,
-        create_overloads=process_file
+        create_overloads=process_file,
+        json_graph=json_graph  # Use the dedicated json_graph function
     ))
