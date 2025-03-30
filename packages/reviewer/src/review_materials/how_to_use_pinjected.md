@@ -107,18 +107,38 @@ mnist_design = base_design + design(
 )
 ```
 
-### 2.4 __meta_design__
+### 2.4 依存性設定ファイル
 
-`__meta_design__`は、Pinjectedが自動的に収集する特別なグローバル変数です。CLIから実行する際のデフォルトのデザインを指定できます。
+Pinjectedでは、以下の2つの方法で依存性を設定できます:
+
+#### 2.4.1 推奨: `__pinjected__.py`ファイル内の`__design__`
+
+`__design__`は`__pinjected__.py`ファイル内で定義する特別なグローバル変数です。これはCLIから実行する際のデフォルトのデザインを指定するために使用されます。
 
 ```python
+# __pinjected__.py
+from pinjected import design
+
+__design__ = design(
+    # CLIで指定しなかったときに利用されるデザイン
+    learning_rate=0.001,
+    batch_size=128
+)
+```
+
+#### 2.4.2 レガシー: `__meta_design__`
+
+`__meta_design__`は、非推奨となっている特別なグローバル変数です。以前はCLIから実行する際のデフォルトのデザインを指定するために使用されていました。
+
+```python
+# __init__.py や他のモジュールファイル内 (非推奨)
 __meta_design__ = design(
     overrides=mnist_design  # CLIで指定しなかったときに利用されるデザイン
 )
 ```
 
 ```python
-# 何もoverrideしない場合
+# 何もoverrideしない場合 (非推奨)
 __meta_design__ = design()
 ```
 
@@ -172,7 +192,7 @@ python -m pinjected run example.run_train --overrides={example.mnist_design}
 from pinjected import design
 
 default_design = design(
-    openai_api_key = "sk-xxxxxx_your_secret_key_here",
+    api_key = "your_api_key_here",
     cache_dir = "/home/user/.cache/myproject"
 )
 ```
