@@ -8,9 +8,16 @@ from typing import Callable, List, Union, Any
 
 import networkx as nx
 from cytoolz import memoize
+from returns.converters import result_to_maybe
+from returns.maybe import Maybe, Nothing
+from returns.pointfree import bind
+
+from pinjected import DesignSpec
+from pinjected.di.design_spec.protocols import BindSpec
+from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
-from returns.result import safe, Failure
+from returns.result import safe, Failure, Result
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
@@ -24,6 +31,7 @@ from pinjected.module_var_path import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
 from pinjected.providable import Providable
 from pinjected.v2.binds import BindInjected
+from pinjected.v2.keys import StrBindKey
 
 
 def dfs(neighbors: Callable, node: str, trace=[]):
@@ -58,9 +66,27 @@ def get_color(n_edges):
 class MissingKeyError(RuntimeError):
     pass
 
+
+@dataclass
+class EdgeInfo:
+    key: str
+    dependencies: list[str]
+    metadata: Maybe[BindMetadata]
+    spec: Maybe[BindSpec]
+
+    def to_json_repr(self):
+        return {
+            "key": self.key,
+            "dependencies": self.dependencies,
+            "metadata": str(self.metadata),
+            "spec": str(self.spec)
+        }
+
+
 @dataclass
 class DIGraph:
     src: "Design"  # Was "Design", removed to avoid circular import
+    spec: Maybe[DesignSpec] = Nothing
     use_implicit_bindings: bool = True
 
     def new_name(self, base: str):
@@ -87,6 +113,16 @@ class DIGraph:
                 raise MissingKeyError(f"DI key not found!:{src}")
 
         self.deps_impl = deps_impl
+
+    def get_metadata(self, key: str) -> Maybe[BindMetadata]:
+        from returns.pipeline import flow
+        data = flow(
+            getitem(self.helper.total_bindings(), key),
+            bind(lambda x: x.metadata)
+        )
+        data = result_to_maybe(data)
+        assert isinstance(data, Maybe), f"metadata must be a Maybe, got {data}"
+        return data
 
     def resolve_injected(self, i: Injected) -> List[str]:
         "give new name to unknown manual injected values and return dependencies"
@@ -486,13 +522,40 @@ g = d.to_graph()
         nx = self.create_dependency_digraph_rooted(tgt, replace_missing=visualize_missing)
         return nx.save_as_html_at(dst_root)
 
-    def to_json_with_root_name(self,root_name,deps:list[str]):
-        data = self.to_json(roots=deps)
-        data['edges'].append({
-            "key": root_name,
-            "dependencies": deps
-        })
-        return data
+    def to_json_with_root_name(self, root_name, deps: list[str]):
+        edges = self.to_edges(root_name, deps)
+        return {
+            "edges": [edge.to_json_repr() for edge in edges],
+        }
+
+    def to_edges(self, root_name, deps: list[str]) -> list[EdgeInfo]:
+        from collections import defaultdict
+
+        edges = [
+            EdgeInfo(
+                key=root_name,
+                dependencies=deps,
+                metadata=Nothing,
+                spec=Nothing
+            )
+        ]
+
+        for root in deps:
+            deps_map = defaultdict(list)
+
+            for a, b, _ in self.di_dfs(root, replace_missing=True):
+                deps_map[a].append(b)
+
+            for key, dependencies in deps_map.items():
+                edges.append(
+                    EdgeInfo(
+                        key=key,
+                        dependencies=list(sorted(set(dependencies))),
+                        metadata=self.get_metadata(key),
+                        spec=self.get_spec(key),
+                    )
+                )
+        return edges
 
     def to_json(self, roots: Union[str, List[str]], replace_missing=True):
         """
@@ -505,23 +568,19 @@ g = d.to_graph()
         Returns:
             dict: A dictionary with edges represented as {"edges": [{"key": "node", "dependencies": ["dep1", "dep2"]}]}
         """
-        from collections import defaultdict
-        
-        edges = []
-        
         if isinstance(roots, str):
             roots = [roots]
-            
-        for root in roots:
-            deps_map = defaultdict(list)
-            
-            for a, b, _ in self.di_dfs(root, replace_missing=replace_missing):
-                deps_map[a].append(b)
-            
-            for key, dependencies in deps_map.items():
-                edges.append({"key": key, "dependencies": dependencies})
-        
-        return {"edges": edges}
+        edges = self.to_edges("__root__", deps=roots)
+        return {
+            "edges": [edge.to_json_repr() for edge in edges if edge.key != "__root__"],
+        }
+
+    def get_spec(self, tgt: str) -> Maybe[BindSpec]:
+        from returns.pipeline import flow
+        return flow(
+            self.spec,
+            bind(lambda x: x.get_spec(StrBindKey(tgt)))
+        )
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():
@@ -546,7 +605,8 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-def create_dependency_graph(d: Any, roots: List[str], output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
+def create_dependency_graph(d: Any, roots: List[str],
+                            output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
     from pinjected import design
     dig = DIGraph(d + design(
         job_type="net_visualization"
