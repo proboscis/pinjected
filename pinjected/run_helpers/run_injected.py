@@ -11,6 +11,7 @@ from typing import Awaitable, Optional
 
 import cloudpickle
 from beartype import beartype
+from returns.maybe import Some
 from returns.result import safe, Result
 
 from pinjected.module_inspector import ModuleVarSpec
@@ -193,7 +194,10 @@ def run_anything(
             logger.info(f"generating JSON graph for {var_path} with design {design_path}")
             if hasattr(cxt.var, 'dependencies'):
                 logger.info(f"deps:{cxt.var.dependencies()}")
-            json_graph = DIGraph(design).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1],list(cxt.var.dependencies()))
+            json_graph = DIGraph(
+                design,
+                spec = Some(cxt.src_meta_context.spec_trace.accumulated)
+            ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1],list(cxt.var.dependencies()))
             print(json.dumps(json_graph, indent=2))
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
