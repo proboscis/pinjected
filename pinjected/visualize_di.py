@@ -75,11 +75,43 @@ class EdgeInfo:
     spec: Maybe[BindSpec]
 
     def to_json_repr(self):
+        """Convert edge information to a JSON-serializable representation with enhanced metadata and spec details."""
+        metadata_info = None
+        if self.metadata != Nothing:
+            metadata = self.metadata.unwrap()
+            if hasattr(metadata, "location"):
+                location_info = {
+                    "file_path": metadata.location.file_path if hasattr(metadata.location, "file_path") else None,
+                    "line_no": metadata.location.line_no if hasattr(metadata.location, "line_no") else None,
+                }
+            else:
+                location_info = None
+                
+            metadata_info = {
+                "location": location_info,
+                "docstring": metadata.docstring if hasattr(metadata, "docstring") else None,
+                "source": str(metadata.source) if hasattr(metadata, "source") else None
+            }
+        
+        # The spec should now have a better string representation from our __str__ implementation
+        spec_info = None
+        if self.spec != Nothing:
+            spec_str = str(self.spec.unwrap())
+            # Try to convert string representation of dict to actual dict for better JSON
+            if spec_str.startswith("{") and spec_str.endswith("}"):
+                try:
+                    import ast
+                    spec_info = ast.literal_eval(spec_str)
+                except (SyntaxError, ValueError):
+                    spec_info = spec_str
+            else:
+                spec_info = spec_str
+                
         return {
             "key": self.key,
             "dependencies": self.dependencies,
-            "metadata": str(self.metadata),
-            "spec": str(self.spec)
+            "metadata": metadata_info,
+            "spec": spec_info
         }
 
 
