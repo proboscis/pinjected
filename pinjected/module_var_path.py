@@ -6,6 +6,8 @@ from pathlib import Path
 
 from beartype import beartype
 
+from pinjected.module_inspector import ModuleVarSpec
+
 
 @dataclass(frozen=True)
 class ModuleVarPath:
@@ -60,6 +62,16 @@ class ModuleVarPath:
 
     def depending_import_lines(self):
         return find_import_statements_in_module(self.module_name)
+
+    def to_spec(self)->ModuleVarSpec:
+        """
+        returns a ModuleVarSpec object
+        :return:
+        """
+        return ModuleVarSpec(
+            var=self.load(),
+            var_path=self.path
+        )
 
 @beartype
 def load_variable_by_module_path(full_module_path:str):
