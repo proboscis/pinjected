@@ -8,9 +8,14 @@ from typing import Callable, List, Union, Any
 
 import networkx as nx
 from cytoolz import memoize
+from returns.converters import result_to_maybe
+from returns.maybe import Maybe
+from returns.pointfree import bind
+
+from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
-from returns.result import safe, Failure
+from returns.result import safe, Failure, Result
 
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
@@ -58,6 +63,7 @@ def get_color(n_edges):
 class MissingKeyError(RuntimeError):
     pass
 
+
 @dataclass
 class DIGraph:
     src: "Design"  # Was "Design", removed to avoid circular import
@@ -87,6 +93,16 @@ class DIGraph:
                 raise MissingKeyError(f"DI key not found!:{src}")
 
         self.deps_impl = deps_impl
+
+    def get_metadata(self, key: str) -> Maybe[BindMetadata]:
+        from returns.pipeline import flow
+        data = flow(
+            getitem(self.helper.total_bindings(), key),
+            bind(lambda x: x.metadata)
+        )
+        data = result_to_maybe(data)
+        assert isinstance(data, Maybe), f"metadata must be a Maybe, got {data}"
+        return data
 
     def resolve_injected(self, i: Injected) -> List[str]:
         "give new name to unknown manual injected values and return dependencies"
@@ -486,7 +502,7 @@ g = d.to_graph()
         nx = self.create_dependency_digraph_rooted(tgt, replace_missing=visualize_missing)
         return nx.save_as_html_at(dst_root)
 
-    def to_json_with_root_name(self,root_name,deps:list[str]):
+    def to_json_with_root_name(self, root_name, deps: list[str]):
         data = self.to_json(roots=deps)
         data['edges'].append({
             "key": root_name,
@@ -506,21 +522,22 @@ g = d.to_graph()
             dict: A dictionary with edges represented as {"edges": [{"key": "node", "dependencies": ["dep1", "dep2"]}]}
         """
         from collections import defaultdict
-        
+
         edges = []
-        
+
         if isinstance(roots, str):
             roots = [roots]
-            
+
         for root in roots:
             deps_map = defaultdict(list)
-            
+
             for a, b, _ in self.di_dfs(root, replace_missing=replace_missing):
                 deps_map[a].append(b)
-            
+
             for key, dependencies in deps_map.items():
-                edges.append({"key": key, "dependencies": dependencies})
-        
+                edges.append(
+                    {"key": key, "dependencies": dependencies, "metadata": self.get_metadata(key).value_or(None)})
+
         return {"edges": edges}
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
@@ -546,7 +563,8 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-def create_dependency_graph(d: Any, roots: List[str], output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
+def create_dependency_graph(d: Any, roots: List[str],
+                            output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
     from pinjected import design
     dig = DIGraph(d + design(
         job_type="net_visualization"
