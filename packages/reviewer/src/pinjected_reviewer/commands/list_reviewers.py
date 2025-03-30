@@ -36,17 +36,3 @@ async def list_reviewers(repo_path: Path):
         print(f"   File: {definition.file_path.name}")
         print(f"   Trigger: {definition.trigger_condition}")
         print(f"   Return Type: {definition.return_type}")
-
-def main():
-    """
-    Main entry point for the list-reviewers command.
-    """
-    parser = argparse.ArgumentParser(description="List all reviewer definitions")
-    parser.add_argument("--repo", "-r", type=Path, default=Path.cwd(),
-                      help="Path to the repository root (default: current directory)")
-    
-    args = parser.parse_args()
-    asyncio.run(list_reviewers(args.repo))
-
-if __name__ == "__main__":
-    main()

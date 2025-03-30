@@ -27,106 +27,42 @@ async def a_reviewer_definition_from_path(
     Returns:
         A ReviewerDefinition instance
     """
-    try:
-        content = path.read_text()
-        
-        prompt = f"""
-        Extract the following attributes from this markdown reviewer definition:
-        - Name: The name of the reviewer
-        - When_to_trigger: When this reviewer should be triggered (e.g., on commit)
-        - Return_Type: The return type of this reviewer
-        
-        Markdown content:
-        {content}
-        """
-        
-        attributes = await a_structured_llm_for_markdown_extraction(
-            text=prompt,
-            response_format=ReviewerAttributes
-        )
-        
-        return ReviewerDefinition(
-            name=attributes.Name,
-            trigger_condition=attributes.When_to_trigger,
-            return_type=attributes.Return_Type,
-            file_path=path,
-            raw_content=content
-        )
-    except Exception as e:
-        logger.error(f"Error extracting attributes from {path}: {e}")
-        return simple_extract_reviewer_attributes_fallback(path, content)
-
-def simple_extract_reviewer_attributes_fallback(file_path: Path, content: str) -> ReviewerDefinition:
+    content = path.read_text()
+    
+    prompt = f"""
+    Extract the following attributes from this markdown reviewer definition:
+    - Name: The name of the reviewer
+    - When_to_trigger: When this reviewer should be triggered (e.g., on commit)
+    - Return_Type: The return type of this reviewer
+    
+    Markdown content:
+    {content}
     """
-    Simple fallback extraction when LLM extraction fails.
     
-    Args:
-        file_path: Path to the markdown file
-        content: Content of the markdown file
-        
-    Returns:
-        A ReviewerDefinition instance
-    """
-    import re
-    
-    name_match = re.search(r"# ([^\n]+)", content)
-    name = name_match.group(1).strip() if name_match else "Unnamed Reviewer"
-    
-    trigger_match = re.search(r"(?i)when to trigger:?\s*([^\n]+)", content)
-    if not trigger_match:
-        trigger_match = re.search(r"(?i)^\s*(on\s+\w+)\s*$", content, re.MULTILINE)
-    trigger = trigger_match.group(1).strip() if trigger_match else "manual"
-    
-    return_match = re.search(r"(?i)return type:?\s*([^\n]+)", content)
-    if not return_match:
-        return_match = re.search(r"(?i)^\s*(\w+)\s*$", content, re.MULTILINE)
-    return_type = return_match.group(1).strip() if return_match else "None"
+    attributes = await a_structured_llm_for_markdown_extraction(
+        text=prompt,
+        response_format=ReviewerAttributes
+    )
     
     return ReviewerDefinition(
-        name=name,
-        trigger_condition=trigger,
-        return_type=return_type,
-        file_path=file_path,
+        name=attributes.Name,
+        trigger_condition=attributes.When_to_trigger,
+        return_type=attributes.Return_Type,
+        file_path=path,
         raw_content=content
     )
 
-def simple_extract_reviewer_attributes(content: str, model_class: Type[BaseModel]) -> BaseModel:
-    """
-    Simple fallback extraction when no LLM is available.
-    
-    Args:
-        content: Markdown content to extract attributes from
-        model_class: Pydantic model class for the response
-        
-    Returns:
-        Instance of the model_class with extracted attributes
-    """
-    import re
-    
-    name_match = re.search(r"# ([^\n]+)", content)
-    name = name_match.group(1).strip() if name_match else "Unnamed Reviewer"
-    
-    trigger_match = re.search(r"(?i)when to trigger:?\s*([^\n]+)", content)
-    if not trigger_match:
-        trigger_match = re.search(r"(?i)^\s*(on\s+\w+)\s*$", content, re.MULTILINE)
-    trigger = trigger_match.group(1).strip() if trigger_match else "manual"
-    
-    return_match = re.search(r"(?i)return type:?\s*([^\n]+)", content)
-    if not return_match:
-        return_match = re.search(r"(?i)^\s*(\w+)\s*$", content, re.MULTILINE)
-    return_type = return_match.group(1).strip() if return_match else "None"
-    
-    return model_class(
-        Name=name,
-        When_to_trigger=trigger,
-        Return_Type=return_type
-    )
-
-def find_reviewer_markdown_files(repo_root: Path) -> List[Path]:
+@injected
+def find_reviewer_markdown_files(
+    logger,
+    /,
+    repo_root: Path
+) -> List[Path]:
     """
     Find all markdown files in the .reviewers directory.
     
     Args:
+        logger: Logger instance
         repo_root: The root directory of the repository
         
     Returns:
