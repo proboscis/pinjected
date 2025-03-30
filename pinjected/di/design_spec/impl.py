@@ -58,6 +58,19 @@ class MergedDesignSpec(DesignSpec):
                 return spec
         return Nothing
 
+    def __add__(self, other):
+        """
+        Combine two design specs, with the right-hand side (other) taking precedence.
+        If both specs define bindings for the same key, the binding from 'other' will be used.
+
+        Args:
+            other: The spec to add, which will override this spec for duplicate keys
+
+        Returns:
+            A new DesignSpec combining both specs with the right-hand side having precedence
+        """
+        return MergedDesignSpec(srcs=[self, other])
+
 
 @dataclass(frozen=True)
 class DesignSpecImpl(DesignSpec):
