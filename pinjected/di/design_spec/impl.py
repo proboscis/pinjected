@@ -17,6 +17,17 @@ T = TypeVar('T')
 class BindSpecImpl(BindSpec[T]):
     validator: Maybe[Callable[[IBindKey, T], FutureResultE[str]]] = Nothing
     spec_doc_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = Nothing
+    
+    def __str__(self) -> str:
+        """
+        Improved string representation for BindSpecImpl to provide useful information for JSON graphs.
+        """
+        info = {
+            "type": self.__class__.__name__,
+            "has_validator": self.validator != Nothing,
+            "has_documentation": self.spec_doc_provider != Nothing
+        }
+        return str(info)
 
 
 @dataclass(frozen=True)
@@ -105,6 +116,17 @@ class SimpleBindSpec(BindSpec[T]):
         if self._documentation is None:
             return Nothing
         return Some(lambda key: FutureResult.from_value(self._documentation))
+    
+    def __str__(self) -> str:
+        """
+        Improved string representation for SimpleBindSpec to provide useful information for JSON graphs.
+        """
+        info = {
+            "type": self.__class__.__name__,
+            "has_validator": self._validator is not None,
+            "documentation": self._documentation
+        }
+        return str(info)
 
 
 """
