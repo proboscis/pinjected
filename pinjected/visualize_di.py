@@ -9,9 +9,11 @@ from typing import Callable, List, Union, Any
 import networkx as nx
 from cytoolz import memoize
 from returns.converters import result_to_maybe
-from returns.maybe import Maybe
+from returns.maybe import Maybe, Nothing
 from returns.pointfree import bind
 
+from pinjected import DesignSpec
+from pinjected.di.design_spec.protocols import BindSpec
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.pinjected_logging import logger
 from returns.pipeline import is_successful
@@ -29,6 +31,7 @@ from pinjected.module_var_path import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
 from pinjected.providable import Providable
 from pinjected.v2.binds import BindInjected
+from pinjected.v2.keys import StrBindKey
 
 
 def dfs(neighbors: Callable, node: str, trace=[]):
@@ -67,6 +70,7 @@ class MissingKeyError(RuntimeError):
 @dataclass
 class DIGraph:
     src: "Design"  # Was "Design", removed to avoid circular import
+    spec:Maybe[DesignSpec] = Nothing
     use_implicit_bindings: bool = True
 
     def new_name(self, base: str):
@@ -536,9 +540,21 @@ g = d.to_graph()
 
             for key, dependencies in deps_map.items():
                 edges.append(
-                    {"key": key, "dependencies": list(sorted(set(dependencies))), "metadata": self.get_metadata(key).value_or(None)})
+                    {"key": key,
+                     "dependencies": list(sorted(set(dependencies))),
+                     "metadata": str(self.get_metadata(key)),
+                     "spec":str(self.get_spec(key)),
+                     }
+                )
 
         return {"edges": edges}
+
+    def get_spec(self,tgt:str)->Maybe[BindSpec]:
+        from returns.pipeline import flow
+        return flow(
+            self.spec,
+            bind(lambda x:x.get_spec(StrBindKey(tgt)))
+        )
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():
