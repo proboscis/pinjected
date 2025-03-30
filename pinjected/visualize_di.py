@@ -536,7 +536,7 @@ g = d.to_graph()
 
             for key, dependencies in deps_map.items():
                 edges.append(
-                    {"key": key, "dependencies": dependencies, "metadata": self.get_metadata(key).value_or(None)})
+                    {"key": key, "dependencies": set(dependencies), "metadata": self.get_metadata(key).value_or(None)})
 
         return {"edges": edges}
 
