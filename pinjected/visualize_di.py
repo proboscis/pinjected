@@ -86,13 +86,13 @@ class EdgeInfo:
                 }
             else:
                 location_info = None
-                
+
             metadata_info = {
                 "location": location_info,
                 "docstring": metadata.docstring if hasattr(metadata, "docstring") else None,
                 "source": str(metadata.source) if hasattr(metadata, "source") else None
             }
-        
+
         # The spec should now have a better string representation from our __str__ implementation
         spec_info = None
         if self.spec != Nothing:
@@ -106,7 +106,7 @@ class EdgeInfo:
                     spec_info = spec_str
             else:
                 spec_info = spec_str
-                
+
         return {
             "key": self.key,
             "dependencies": self.dependencies,
@@ -127,7 +127,7 @@ class DIGraph:
     def __post_init__(self):
         self.helper = DIGraphHelper(self.src, use_implicit_bindings=self.use_implicit_bindings)
         self.explicit_mappings: dict[str, Injected] = self.helper.total_mappings()
-
+        self.total_bindings = self.helper.total_bindings()
         self.direct_injected = dict()
         self.injected_to_id = dict()
 
@@ -149,7 +149,7 @@ class DIGraph:
     def get_metadata(self, key: str) -> Maybe[BindMetadata]:
         from returns.pipeline import flow
         data = flow(
-            getitem(self.helper.total_bindings(), key),
+            getitem(self.total_bindings, key),
             bind(lambda x: x.metadata)
         )
         data = result_to_maybe(data)
