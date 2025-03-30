@@ -199,6 +199,86 @@ def run_anything(
                 spec = Some(cxt.src_meta_context.spec_trace.accumulated)
             ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1],list(cxt.var.dependencies()))
             print(json.dumps(json_graph, indent=2))
+        elif cmd == "describe":
+            from rich.console import Console
+            from rich.tree import Tree
+            from rich.panel import Panel
+            from rich.text import Text
+            
+            logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
+            if hasattr(cxt.var, 'dependencies'):
+                logger.info(f"deps:{cxt.var.dependencies()}")
+            
+            digraph = DIGraph(
+                design,
+                spec = Some(cxt.src_meta_context.spec_trace.accumulated)
+            )
+            root_name = cxt.src_var_spec.var_path.split(".")[-1]
+            edges = digraph.to_edges(root_name, list(cxt.var.dependencies()))
+            
+            console = Console()
+            root_tree = Tree(f"[bold blue]{root_name}[/bold blue]")
+            
+            processed_nodes = set()
+            
+            def add_node_to_tree(parent_tree, edge):
+                if edge.key in processed_nodes:
+                    return
+                
+                processed_nodes.add(edge.key)
+                
+                metadata_text = ""
+                if edge.metadata:
+                    metadata_text = f"\n[dim]Metadata:[/dim] {edge.metadata}"
+                
+                spec_text = ""
+                if edge.spec:
+                    spec_text = f"\n[dim]Spec:[/dim] {edge.spec}"
+                
+                node_text = f"[bold green]{edge.key}[/bold green]{metadata_text}{spec_text}"
+                
+                node_tree = parent_tree.add(node_text)
+                
+                for dep in edge.dependencies:
+                    node_tree.add(f"[yellow]→ {dep}[/yellow]")
+                    
+                    for child_edge in edges:
+                        if child_edge.key == dep:
+                            add_node_to_tree(node_tree, child_edge)
+            
+            for edge in edges:
+                if edge.key == root_name:
+                    for dep in edge.dependencies:
+                        root_tree.add(f"[yellow]→ {dep}[/yellow]")
+                        
+                        for child_edge in edges:
+                            if child_edge.key == dep:
+                                add_node_to_tree(root_tree, child_edge)
+            
+            console.print("\n[bold]Dependency Graph Description:[/bold]")
+            console.print(root_tree)
+            console.print("\n[bold]Edge Details:[/bold]")
+            
+            for edge in edges:
+                if edge.key != root_name:  # Skip root as it's already shown
+                    title = Text(edge.key, style="bold green")
+                    content = Text()
+                    
+                    content.append("\nDependencies: ")
+                    if edge.dependencies:
+                        content.append(", ".join(edge.dependencies), style="yellow")
+                    else:
+                        content.append("None", style="dim")
+                    
+                    if edge.metadata:
+                        content.append("\nMetadata: ")
+                        content.append(str(edge.metadata))
+                    
+                    if edge.spec:
+                        content.append("\nSpec: ")
+                        content.append(str(edge.spec))
+                    
+                    console.print(Panel(content, title=title))
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
             if PinjectedHandleMainException.key in design:
