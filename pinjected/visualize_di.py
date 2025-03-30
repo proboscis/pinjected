@@ -564,13 +564,9 @@ g = d.to_graph()
         from collections import defaultdict
 
         edges = [
-            EdgeInfo(
-                key=root_name,
-                dependencies=deps,
-                metadata=Nothing,
-                spec=Nothing
-            )
+
         ]
+        keys = set()
 
         for root in deps:
             deps_map = defaultdict(list)
@@ -587,6 +583,16 @@ g = d.to_graph()
                         spec=self.get_spec(key),
                     )
                 )
+                keys.add(key)
+        if root_name not in keys:
+            edges.append(
+                EdgeInfo(
+                    key=root_name,
+                    dependencies=list(sorted(set(deps))),
+                    metadata=Nothing,
+                    spec=Nothing,
+                )
+            )
         return edges
 
     def to_json(self, roots: Union[str, List[str]], replace_missing=True):
