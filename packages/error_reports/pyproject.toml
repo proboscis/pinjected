@@ -29,6 +29,8 @@ dependencies = [
     "beartype",
     "rich",
     "pinjected-niji-voice",
+    "injected-utils",
+    "pinjected-openai"
 ]
 
 [tool.hatch.metadata]
@@ -43,6 +45,8 @@ pythonpath = ["src/pinjected_error_reports"]
 [tool.uv.sources]
 pinjected = { workspace = true }
 pinjected-niji-voice={ workspace = true }
+injected-utils={ workspace = true }
+pinjected-openai={ workspace = true }
 
 [dependency-groups]
 dev = [

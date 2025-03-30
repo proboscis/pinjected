@@ -486,7 +486,34 @@ g = d.to_graph()
         nx = self.create_dependency_digraph_rooted(tgt, replace_missing=visualize_missing)
         return nx.save_as_html_at(dst_root)
 
-
+    def to_json(self, roots: Union[str, List[str]], replace_missing=True):
+        """
+        Export the dependency graph as JSON with edges and dependencies.
+        
+        Args:
+            roots: The root node(s) of the dependency graph
+            replace_missing: Whether to replace missing dependencies with empty nodes
+            
+        Returns:
+            dict: A dictionary with edges represented as {"edges": [{"key": "node", "dependencies": ["dep1", "dep2"]}]}
+        """
+        from collections import defaultdict
+        
+        edges = []
+        
+        if isinstance(roots, str):
+            roots = [roots]
+            
+        for root in roots:
+            deps_map = defaultdict(list)
+            
+            for a, b, _ in self.di_dfs(root, replace_missing=replace_missing):
+                deps_map[a].append(b)
+            
+            for key, dependencies in deps_map.items():
+                edges.append({"key": key, "dependencies": dependencies})
+        
+        return {"edges": edges}
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():

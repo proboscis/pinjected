@@ -13,6 +13,10 @@ import cloudpickle
 from beartype import beartype
 from returns.result import safe, Result
 
+class PinjectedConfigurationLoadFailure(Exception):
+    """Raised when a pinjected configuration file (.pinjected.py) fails to load."""
+    pass
+
 from pinjected import design, Injected, Design, Designed, EmptyDesign, injected
 from pinjected.cli_visualizations import design_rich_tree
 from pinjected.compatibility.task_group import TaskGroup
@@ -180,6 +184,13 @@ def run_anything(
         elif cmd == "to_script":
             d = design + design(__root__=Injected.bind(cxt.var))
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
+        elif cmd == "json-graph":
+            import json
+            logger.info(f"generating JSON graph for {var_path} with design {design_path}")
+            if hasattr(cxt.var, 'dependencies'):
+                logger.info(f"deps:{cxt.var.dependencies()}")
+            json_graph = DIGraph(design).to_json(var_path)
+            print(json.dumps(json_graph, indent=2))
     except Exception as e:
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
             if PinjectedHandleMainException.key in design:
@@ -363,8 +374,7 @@ def find_dot_pinjected():
     return home_dot_pinjected, current_dot_pinjected
 
 
-@safe
-def load_design_from_paths(paths, design_name) -> Result:
+def load_design_from_paths(paths, design_name):
     res = design()
     for path in paths:
         if path.exists():
@@ -373,12 +383,14 @@ def load_design_from_paths(paths, design_name) -> Result:
                 res += load_variable_from_script(path, design_name)
             except AttributeError as ae:
                 logger.warning(f"{design_name} is not defined in {path}.")
+                raise PinjectedConfigurationLoadFailure(f"Failed to load '{design_name}' from {path}: {design_name} is not defined in the file.")
             except Exception as e:
                 import traceback
 
                 logger.warning(f"failed to load design from {path}:{design_name}.")
                 logger.warning(e)
                 logger.warning(traceback.format_exc())
+                raise PinjectedConfigurationLoadFailure(f"Failed to load '{design_name}' from {path}: {str(e)}")
         else:
             logger.debug(f"design file {path} does not exist.")
     return res
@@ -394,13 +406,16 @@ def load_user_default_design() -> Design:
     :return:
     """
     design_path = os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
-    design_result = load_design_from_paths(find_dot_pinjected(), "default_design").value_or(
-        design()
-    ) + _load_design(design_path).value_or(design())
-    # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
-    for k, v in design_result.bindings.items():
-        logger.info(f"User overrides :{k} -> {type(v)}")
-    return design_result
+    try:
+        design_result = load_design_from_paths(find_dot_pinjected(), "default_design") + _load_design(design_path).value_or(
+            design()
+        )
+        # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
+        for k, v in design_result.bindings.items():
+            logger.info(f"User overrides :{k} -> {type(v)}")
+        return design_result
+    except PinjectedConfigurationLoadFailure:
+        raise
 
 
 @safe
@@ -432,8 +447,8 @@ def load_user_overrides_design():
     :return:
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
-    design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design").value_or(
+    design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
         design()
-    ) + _load_design(design_path).value_or(design())
+    )
     logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
     return design_obj

@@ -36,7 +36,6 @@ def test_injected_pytest_usage():
         logger=Injected.pure(MockLogger())
     )
 
-    # injected_pytestを使用してテスト関数を作成
     @injected_pytest(test_design)
     def test_func(logger):
         logger.info("テストメッセージ")
