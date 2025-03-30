@@ -18,25 +18,3 @@ class ReviewerDefinition:
     return_type: str
     file_path: Path  # Original markdown file path
     raw_content: str  # Original markdown content
-    
-    @classmethod
-    async def from_markdown(cls, file_path: Path, content: str, a_sllm_for_markdown_extraction) -> "ReviewerDefinition":
-        """
-        Create a ReviewerDefinition from markdown content using an LLM extractor.
-        
-        Args:
-            file_path: Path to the markdown file
-            content: Content of the markdown file
-            a_sllm_for_markdown_extraction: Function that extracts attributes from markdown
-            
-        Returns:
-            A ReviewerDefinition instance
-        """
-        attributes = await a_sllm_for_markdown_extraction(content, response_format=ReviewerAttributes)
-        return cls(
-            name=attributes.Name,
-            trigger_condition=attributes.When_to_trigger,
-            return_type=attributes.Return_Type,
-            file_path=file_path,
-            raw_content=content
-        )

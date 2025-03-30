@@ -8,7 +8,7 @@ import asyncio
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from pinjected_reviewer.reviewer_def import ReviewerDefinition, ReviewerAttributes
-from pinjected_reviewer.loader import find_reviewer_markdown_files, a_sllm_for_markdown_extraction, simple_extract_reviewer_attributes
+from pinjected_reviewer.loader import find_reviewer_markdown_files, simple_extract_reviewer_attributes_fallback
 
 def test_find_reviewer_markdown_files():
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -25,7 +25,7 @@ def test_find_reviewer_markdown_files():
         assert set(f.name for f in md_files) == {"test1.md", "test2.md"}
 
 @pytest.mark.asyncio
-async def test_reviewer_definition_from_markdown():
+async def test_a_reviewer_definition_from_path():
     content = """# Test Reviewer
     
     This is a test reviewer definition.
@@ -42,17 +42,18 @@ async def test_reviewer_definition_from_markdown():
         file_path = tmp_path / "test.md"
         file_path.write_text(content)
         
-        async def mock_extractor(content, response_format=None):
+        async def mock_structured_llm(text, response_format=None, **kwargs):
             return ReviewerAttributes(
                 Name="Test Reviewer",
                 When_to_trigger="on commit",
                 Return_Type="bool"
             )
         
-        definition = await ReviewerDefinition.from_markdown(
+        from pinjected_reviewer.loader import a_reviewer_definition_from_path
+        
+        definition = simple_extract_reviewer_attributes_fallback(
             file_path=file_path,
-            content=content,
-            a_sllm_for_markdown_extraction=mock_extractor
+            content=content
         )
         
         assert definition.name == "Test Reviewer"
@@ -61,8 +62,7 @@ async def test_reviewer_definition_from_markdown():
         assert definition.file_path == file_path
         assert definition.raw_content == content
 
-@pytest.mark.asyncio
-async def test_simple_extract_reviewer_attributes():
+def test_simple_extract_reviewer_attributes_fallback():
     content = """# Test Simple Extractor
     
     
@@ -72,8 +72,15 @@ async def test_simple_extract_reviewer_attributes():
     string
     """
     
-    attributes = simple_extract_reviewer_attributes(content, ReviewerAttributes)
-    
-    assert attributes.Name == "Test Simple Extractor"
-    assert attributes.When_to_trigger == "on push"
-    assert attributes.Return_Type == "string"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        file_path = tmp_path / "test.md"
+        file_path.write_text(content)
+        
+        definition = simple_extract_reviewer_attributes_fallback(file_path, content)
+        
+        assert definition.name == "Test Simple Extractor"
+        assert definition.trigger_condition == "on push"
+        assert definition.return_type == "string"
+        assert definition.file_path == file_path
+        assert definition.raw_content == content
