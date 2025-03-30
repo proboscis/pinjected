@@ -68,9 +68,25 @@ class MissingKeyError(RuntimeError):
 
 
 @dataclass
+class EdgeInfo:
+    key: str
+    dependencies: list[str]
+    metadata: Maybe[BindMetadata]
+    spec: Maybe[BindSpec]
+
+    def to_json_repr(self):
+        return {
+            "key": self.key,
+            "dependencies": self.dependencies,
+            "metadata": str(self.metadata),
+            "spec": str(self.spec)
+        }
+
+
+@dataclass
 class DIGraph:
     src: "Design"  # Was "Design", removed to avoid circular import
-    spec:Maybe[DesignSpec] = Nothing
+    spec: Maybe[DesignSpec] = Nothing
     use_implicit_bindings: bool = True
 
     def new_name(self, base: str):
@@ -507,12 +523,39 @@ g = d.to_graph()
         return nx.save_as_html_at(dst_root)
 
     def to_json_with_root_name(self, root_name, deps: list[str]):
-        data = self.to_json(roots=deps)
-        data['edges'].append({
-            "key": root_name,
-            "dependencies": deps
-        })
-        return data
+        edges = self.to_edges(root_name, deps)
+        return {
+            "edges": [edge.to_json_repr() for edge in edges],
+        }
+
+    def to_edges(self, root_name, deps: list[str]) -> list[EdgeInfo]:
+        from collections import defaultdict
+
+        edges = [
+            EdgeInfo(
+                key=root_name,
+                dependencies=deps,
+                metadata=Nothing,
+                spec=Nothing
+            )
+        ]
+
+        for root in deps:
+            deps_map = defaultdict(list)
+
+            for a, b, _ in self.di_dfs(root, replace_missing=True):
+                deps_map[a].append(b)
+
+            for key, dependencies in deps_map.items():
+                edges.append(
+                    EdgeInfo(
+                        key=key,
+                        dependencies=list(sorted(set(dependencies))),
+                        metadata=self.get_metadata(key),
+                        spec=self.get_spec(key),
+                    )
+                )
+        return edges
 
     def to_json(self, roots: Union[str, List[str]], replace_missing=True):
         """
@@ -525,35 +568,18 @@ g = d.to_graph()
         Returns:
             dict: A dictionary with edges represented as {"edges": [{"key": "node", "dependencies": ["dep1", "dep2"]}]}
         """
-        from collections import defaultdict
-
-        edges = []
-
         if isinstance(roots, str):
             roots = [roots]
+        edges = self.to_edges("__root__", deps=roots)
+        return {
+            "edges": [edge.to_json_repr() for edge in edges if edge.key != "__root__"],
+        }
 
-        for root in roots:
-            deps_map = defaultdict(list)
-
-            for a, b, _ in self.di_dfs(root, replace_missing=replace_missing):
-                deps_map[a].append(b)
-
-            for key, dependencies in deps_map.items():
-                edges.append(
-                    {"key": key,
-                     "dependencies": list(sorted(set(dependencies))),
-                     "metadata": str(self.get_metadata(key)),
-                     "spec":str(self.get_spec(key)),
-                     }
-                )
-
-        return {"edges": edges}
-
-    def get_spec(self,tgt:str)->Maybe[BindSpec]:
+    def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
         return flow(
             self.spec,
-            bind(lambda x:x.get_spec(StrBindKey(tgt)))
+            bind(lambda x: x.get_spec(StrBindKey(tgt)))
         )
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
