@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import List, Dict, Optional, Callable, Protocol, Type, Awaitable
+from typing import List, Dict, Optional, Type
 
-from pinjected import instance, injected, Injected
+from pinjected import instance, injected
 from loguru import logger
 from pydantic import BaseModel
 
@@ -94,74 +94,6 @@ def find_reviewer_markdown_files(repo_root: Path) -> List[Path]:
     logger.info(f"Found {len(markdown_files)} reviewer definition files in {reviewers_dir}")
     return markdown_files
 
-@instance
-def llm_markdown_extractor(openai_client = None, anthropic_client = None) -> Callable[[str], Dict[str, str]]:
-    """
-    Creates a function that extracts attributes from markdown using an LLM.
-    
-    Args:
-        openai_client: Optional OpenAI client
-        anthropic_client: Optional Anthropic client
-        
-    Returns:
-        Function that extracts attributes from markdown
-    """
-    if openai_client is not None:
-        from pinjected_openai.clients import AsyncOpenAI
-        
-        async def extract_with_openai(content: str) -> Dict[str, str]:
-            prompt = f"""
-            Extract the following attributes from this markdown reviewer definition:
-            - Name: The name of the reviewer
-            - When to trigger: When this reviewer should be triggered (e.g., on commit)
-            - Return Type: The return type of this reviewer
-            
-            Format your response as a JSON object with these keys.
-            
-            Markdown content:
-            {content}
-            """
-            
-            response = await openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            
-            import json
-            result = json.loads(response.choices[0].message.content)
-            return result
-        
-        def extract(content: str) -> Dict[str, str]:
-            import asyncio
-            return asyncio.run(extract_with_openai(content))
-            
-        return extract
-    
-    elif anthropic_client is not None:
-        pass
-    
-    logger.warning("No LLM client available, using simple parsing fallback")
-    
-    def simple_extract(content: str) -> Dict[str, str]:
-        import re
-        result = {}
-        
-        name_match = re.search(r"# ([^\n]+)", content)
-        if name_match:
-            result["Name"] = name_match.group(1).strip()
-        
-        trigger_match = re.search(r"(?i)when to trigger:?\s*([^\n]+)", content)
-        if trigger_match:
-            result["When to trigger"] = trigger_match.group(1).strip()
-        
-        return_match = re.search(r"(?i)return type:?\s*([^\n]+)", content)
-        if return_match:
-            result["Return Type"] = return_match.group(1).strip()
-            
-        return result
-    
-    return simple_extract
 
 @instance
 async def reviewer_definitions(
