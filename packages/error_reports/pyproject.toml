@@ -28,6 +28,7 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
+    "pinjected-niji-voice",
 ]
 
 [tool.hatch.metadata]
@@ -41,6 +42,7 @@ pythonpath = ["src/pinjected_error_reports"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }
+pinjected-niji-voice={ workspace = true }
 
 [dependency-groups]
 dev = [

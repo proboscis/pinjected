@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +13,9 @@ class CompressedPklSqliteDict:
     src: SqliteDict
     compress: Callable[[bytes], bytes]
     decompress: Callable[[bytes], bytes]
+    loads: Callable[[str], object] = field(default=cloudpickle.loads)
+    dumps: Callable[[object], str] = field(default=cloudpickle.dumps)
+
 
     def __reduce__(self):
         return CompressedPklSqliteDict.from_path, (self.compress, self.decompress, self.src.filename)
@@ -29,11 +32,11 @@ class CompressedPklSqliteDict:
         key = jsonpickle.dumps(item)
         raw_data = self.src[key]
         uncompressed = self.decompress(raw_data)
-        return cloudpickle.loads(uncompressed)
+        return self.loads(uncompressed)
 
     def __setitem__(self, key, value):
         key = jsonpickle.dumps(key)
-        raw_data = cloudpickle.dumps(value)
+        raw_data = self.dumps(value)
         compressed = self.compress(raw_data)
         self.src[key] = compressed
 
@@ -46,7 +49,7 @@ class CompressedPklSqliteDict:
         del self.src[key]
 
     def values(self):
-        return [cloudpickle.loads(self.decompress(v)) for v in self.src.values()]
+        return [self.loads(self.decompress(v)) for v in self.src.values()]
 
     def keys(self):
         return [jsonpickle.loads(k) for k in self.src.keys()]

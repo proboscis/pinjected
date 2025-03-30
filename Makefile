@@ -3,8 +3,9 @@
 
 sync:
 	uv venv
-	uv sync
+	uv sync --group dev
 	uv pip install tqdm
+	uv run --package pinjected-reviewer -- pinjected-reviewer install
 
 setup-all:
 	cd packages/openai_support && uv sync --group dev
