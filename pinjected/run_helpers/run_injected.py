@@ -246,6 +246,8 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     from rich.tree import Tree
     from rich.panel import Panel
     from rich.text import Text
+    from returns.maybe import Nothing, Some
+    import re
     
     logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
     if hasattr(cxt.var, 'dependencies'):
@@ -263,6 +265,29 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     
     processed_nodes = set()
     
+    def format_maybe(value):
+        """Format Maybe objects (Some/Nothing) to clean representation."""
+        if value == Nothing:
+            return "None"
+        elif hasattr(value, 'unwrap'):  # Check if it's a Some instance
+            return format_value(value.unwrap())
+        return format_value(value)
+    
+    def format_value(value):
+        """Format values to clean representation."""
+        if value is None:
+            return "None"
+        
+        value_str = str(value)
+        
+        if isinstance(value, dict) and 'documentation' in value:
+            if value['documentation']:
+                value['documentation'] = re.sub(r'\\n', ' ', value['documentation'])
+                value['documentation'] = re.sub(r'\s+', ' ', value['documentation'])
+                value_str = str(value)
+        
+        return value_str
+    
     def add_node_to_tree(parent_tree, edge):
         if edge.key in processed_nodes:
             return
@@ -271,11 +296,11 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         
         metadata_text = ""
         if edge.metadata:
-            metadata_text = f"\n[dim]Metadata:[/dim] {edge.metadata}"
+            metadata_text = f"\n[dim]Metadata:[/dim] {format_maybe(edge.metadata)}"
         
         spec_text = ""
         if edge.spec:
-            spec_text = f"\n[dim]Spec:[/dim] {edge.spec}"
+            spec_text = f"\n[dim]Spec:[/dim] {format_maybe(edge.spec)}"
         
         node_text = f"[bold green]{edge.key}[/bold green]{metadata_text}{spec_text}"
         
@@ -314,11 +339,11 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
             
             if edge.metadata:
                 content.append("\nMetadata: ")
-                content.append(str(edge.metadata))
+                content.append(format_maybe(edge.metadata))
             
             if edge.spec:
                 content.append("\nSpec: ")
-                content.append(str(edge.spec))
+                content.append(format_maybe(edge.spec))
             
             console.print(Panel(content, title=title))
 
