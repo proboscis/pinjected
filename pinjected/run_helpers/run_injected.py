@@ -572,8 +572,13 @@ def load_user_default_design() -> Design:
         for k, v in design_result.bindings.items():
             logger.info(f"User overrides :{k} -> {type(v)}")
         return design_result
-    except PinjectedConfigurationLoadFailure:
+    except PinjectedConfigurationLoadFailure as e:
+        if 'default_design is not defined' in str(e):
+            logger.debug(f"default_design is not defined in {design_path}")
+            return design()
         raise
+
+
 
 
 @safe
@@ -605,8 +610,14 @@ def load_user_overrides_design():
     :return:
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
-    design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
-        design()
-    )
-    logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
-    return design_obj
+    try:
+        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
+            design()
+        )
+        logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
+        return design_obj
+    except PinjectedConfigurationLoadFailure as e:
+        if 'overrides_design is not defined' in str(e):
+            logger.debug(f"overrides_design is not defined in {design_path}")
+            return design()
+        raise e
