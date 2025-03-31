@@ -196,13 +196,40 @@ def json_graph(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("json-graph", var_path, design_path, **kwargs)
 
 
+def display_help():
+    """
+    Display help information for pinjected CLI commands.
+    """
+    print("Pinjected: Python Dependency Injection Framework")
+    print("\nAvailable commands:")
+    print("  run            - Run an injected variable with a specified design")
+    print("  call           - Call a function with injected dependencies")
+    print("  check_config   - Display the current configuration")
+    print("  create_overloads - Create type hint overloads for injected functions")
+    print("  json_graph     - Generate a JSON representation of the dependency graph")
+    print("\nFor more information on a specific command, run:")
+    print("  pinjected COMMAND --help")
+    print("\nExample:")
+    print("  pinjected run --var_path=my_module.my_var")
+
+
+class PinjectedCLI:
+    """Pinjected CLI interface"""
+    
+    def __init__(self):
+        self.run = run
+        self.call = call
+        self.check_config = check_config
+        self.create_overloads = process_file
+        self.json_graph = json_graph
+    
+    def __call__(self):
+        """Default method when no command is specified"""
+        display_help()
+
+
 def main():
     import fire
-
-    fire.Fire(dict(
-        run=run,
-        call=call,
-        check_config=check_config,
-        create_overloads=process_file,
-        json_graph=json_graph  # Use the dedicated json_graph function
-    ))
+    
+    cli = PinjectedCLI()
+    fire.Fire(cli)
