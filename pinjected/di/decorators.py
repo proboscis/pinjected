@@ -18,6 +18,8 @@ from pinjected.v2.keys import StrBindKey
 
 def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     """
+    .. deprecated:: Use ``@injected`` instead with positional-only parameters (parameters before ``/``) for dependencies.
+    
     Wraps a function, injecting dependencies for parameters that start with an underscore or are positional-only.
     This enhanced version supports class methods, recognizing and bypassing the 'self' parameter automatically.
     The function also registers the newly created function in the ``IMPLICIT_BINDINGS`` global dictionary.
@@ -44,6 +46,12 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     .. note::
         The function or a class will be automatically registered with its name, in the global ``IMPLICIT_BINDINGS`` dictionary, making it recognizable by the system's dependency injection mechanisms.
     """
+    import warnings
+    warnings.warn(
+        "injected_function is deprecated. Use @injected with positional-only parameters (parameters before '/') for dependencies.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     # How can we make this work on a class method?
     sig: inspect.Signature = inspect.signature(f)
     tgts = dict()

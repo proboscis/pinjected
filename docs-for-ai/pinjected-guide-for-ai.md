@@ -128,6 +128,9 @@ Pinjectedは、`python -m pinjected run <path.to.target>`の形式で実行し�
 ```bash
 # run_trainを実行する例
 python -m pinjected run example.run_train
+
+# 依存関係グラフを可視化する例
+python -m pinjected describe example.run_train
 ```
 
 ### 3.2 パラメータ上書き
@@ -156,6 +159,22 @@ python -m pinjected run example.run_train --model='{example.model__another}' --d
 # mnist_designを使って実行する例
 python -m pinjected run example.run_train --overrides={example.mnist_design}
 ```
+
+### 3.5 依存関係グラフの可視化
+
+`describe`コマンドを使用して、変数の依存関係グラフの人間が読みやすい説明を生成できます。
+
+```bash
+# 依存関係グラフを可視化する例
+python -m pinjected describe example.run_train
+```
+
+このコマンドは以下を表示します：
+- 依存関係のツリー構造
+- 各依存関係のドキュメント
+- 依存関係間の関係
+
+これは複雑な依存関係と目的を理解するのに役立ちます。
 
 ## 4. 高度な機能
 

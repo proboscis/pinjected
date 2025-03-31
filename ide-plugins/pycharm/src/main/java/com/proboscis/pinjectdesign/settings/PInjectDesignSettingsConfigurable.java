@@ -7,7 +7,6 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import javax.swing.border.BorderFactory;
 import java.awt.Font;
 
 public class PInjectDesignSettingsConfigurable implements Configurable {
@@ -29,7 +28,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         
         JPanel settingsPanel = new JPanel();
         settingsPanel.setLayout(new BoxLayout(settingsPanel, BoxLayout.Y_AXIS));
-        settingsPanel.setBorder(BorderFactory.createTitledBorder("Settings"));
+        settingsPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Settings"));
         
         enableDetailedAnalysisCheckBox = new JCheckBox("Enable detailed analysis");
         JLabel detailedAnalysisDescription = new JLabel("    Analyzes classes with multiple constructor parameters using PythonUtils.analyzePythonFileForDI()");

@@ -52,8 +52,8 @@ def run_with_meta_context(
     :param kwargs:
     :return:
     """
-    if not "__meta_design__" in Path(context_module_file_path).read_text():
-        raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
+    # if not "__meta_design__" in Path(context_module_file_path).read_text():
+    #     raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
     meta_context = MetaContext.gather_from_path(Path(context_module_file_path))
     default = design(
         default_design_paths=[]

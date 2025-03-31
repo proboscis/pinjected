@@ -21,7 +21,7 @@ from sqlitedict import SqliteDict
 
 from injected_utils.cached_function import AsyncCachedFunction, CachedFunction, KeyEncoder, IStringKeyProtocol, \
     IKeyEncoder
-from pinjected import Injected, injected_function, injected, instance
+from pinjected import Injected, injected, instance
 from pinjected.decoration import update_if_registered
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import get_code_location
@@ -93,7 +93,7 @@ class AsyncRunTracker:
         fut.add_done_callback(done)
 
 
-@injected_function
+@injected
 async def async_run(thread_pool, AsyncRunTracker, /, fn, *args, **kwargs):
     # Ah, there are 391 tasks submitted
     # logger.info(f"submitting to thread pool {fn} from {threading.current_thread()}")
@@ -109,8 +109,8 @@ async def async_run(thread_pool, AsyncRunTracker, /, fn, *args, **kwargs):
     return res
 
 
-@injected_function
-async def run_in_new_thread(fn, *args, **kwargs):
+@injected
+async def run_in_new_thread(fn, /, *args, **kwargs):
     res = Future()
     import threading
 
@@ -208,10 +208,10 @@ def provide_cached_async(cache,
     return interface
 
 
-@injected_function
-def to_async(_async_run, func):
+@injected
+def to_async(async_run, /, func):
     async def task(*args, **kwargs):
-        return await _async_run(func, *args, **kwargs)
+        return await async_run(func, *args, **kwargs)
 
     return task
 

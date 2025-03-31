@@ -240,8 +240,6 @@ class PinjectedCLI:
     def __call__(self):
         """Default method when no command is specified"""
         display_help()
-
-
 def main():
     import fire
     

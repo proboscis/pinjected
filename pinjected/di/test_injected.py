@@ -1,6 +1,6 @@
 import inspect
 
-from pinjected import injected_function, injected, design
+from pinjected import injected, design
 from pinjected.di.injected import Injected
 from pinjected.di.util import EmptyDesign
 
@@ -23,10 +23,10 @@ def test_partial():
 
 
 def test_injected_function():
-    @injected_function
-    def test_func(_x, _y, /, *args, **mykwargs):
+    @injected
+    def test_func(x, y, /, *args, **mykwargs):
         assert args, "args should be non-empty"
-        return _x + _y + str(args)
+        return x + y + str(args)
 
     g = design(
         x='x',
