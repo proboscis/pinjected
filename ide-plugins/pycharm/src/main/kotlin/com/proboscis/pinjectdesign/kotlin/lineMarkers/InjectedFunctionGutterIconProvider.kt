@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.GutterIconNavigationHandler
 import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProvider
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.psi.PsiElement
@@ -16,11 +17,14 @@ import javax.swing.Icon
  * Line marker provider that adds gutter icons for injected functions and variables.
  */
 class InjectedFunctionGutterIconProvider : LineMarkerProvider {
+    private val log = Logger.getInstance("com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider")
     
     override fun getLineMarkerInfo(element: PsiElement): LineMarkerInfo<*>? {
         val icon = AllIcons.Actions.Execute
         
         return PinjectedDetectionUtil.getInjectedTargetName(element)?.let { targetName ->
+            log.debug("Found injected target: $targetName for element: ${element.text}")
+            
             createMarker(
                 element,
                 icon,
@@ -60,15 +64,22 @@ class InjectedFunctionGutterIconProvider : LineMarkerProvider {
         private val project: com.intellij.openapi.project.Project,
         private val targetName: String
     ) : GutterIconNavigationHandler<PsiElement> {
+        private val log = Logger.getInstance("com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionNavigationHandler")
         
         override fun navigate(e: MouseEvent?, element: PsiElement?) {
-            if (element == null) return
+            if (element == null) {
+                log.warn("Element is null, cannot navigate")
+                return
+            }
+            
+            log.debug("Navigating to injected target: $targetName")
             
             // Save all modified documents
             FileDocumentManager.getInstance().saveAllDocuments()
             
             // Show popup with actions
             val actions = GutterActionUtil.createActions(project, targetName)
+            log.debug("Created ${actions.size} actions for $targetName")
             GutterActionUtil.showPopupChooser(e, actions)
         }
     }

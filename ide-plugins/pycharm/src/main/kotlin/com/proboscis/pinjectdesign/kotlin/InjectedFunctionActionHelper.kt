@@ -109,12 +109,12 @@ class InjectedFunctionActionHelper(val project: Project) {
         try {
             var json = stdout.trim()
             if (json.contains("<pinjected>")) {
-                val pattern = Regex("<pinjected>(.*)</pinjected>", RegexOption.DOT_MATCHES_ALL)
-                val match = pattern.find(stdout.trim())
-                println("looking for pattern: $pattern in ${stdout.trim()} and got $match")
-                json = match?.groupValues?.get(1) ?: throw IllegalStateException("Failed to parse json")
+                val pattern = Regex("<pinjected>(.*?)</pinjected>", RegexOption.DOT_MATCHES_ALL)
+                val match = pattern.find(json)
+                log.info("Looking for pattern: $pattern in $json and got $match")
+                json = match?.groupValues?.get(1)?.trim() ?: throw IllegalStateException("Failed to parse JSON from <pinjected> tags")
             }
-            println("decoding json: ${stdout.trim()}")
+            log.info("Decoding JSON: $json")
             return Json.decodeFromString(json)
         } catch (e: Exception) {
             val command = "$interpreterPath ${pythonArgs.joinToString(" ")}"
