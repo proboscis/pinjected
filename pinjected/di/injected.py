@@ -6,6 +6,7 @@ import inspect
 import sys
 from copy import copy
 from dataclasses import dataclass, field
+from inspect import Traceback
 from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional
 
 import cloudpickle
@@ -45,7 +46,7 @@ So the use needs to be careful to add context at the very end, for running purpo
 @dataclass
 class FrameInfo:
     original_frame: object
-    trc: "Traceback"
+    trc: Traceback
     filename: str
     line_number: int
     function_name: str
@@ -56,7 +57,7 @@ class FrameInfo:
 def get_frame_info(stack_idx) -> Union[None, FrameInfo]:
     try:
         original_trc = inspect.stack(0)[stack_idx][0]
-        trc: "Traceback" = inspect.getframeinfo(original_trc)
+        trc: Traceback = inspect.getframeinfo(original_trc)
         return FrameInfo(original_trc, trc, *trc)
     except Exception as e:
         return None

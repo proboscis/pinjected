@@ -17,6 +17,17 @@ T = TypeVar('T')
 class BindSpecImpl(BindSpec[T]):
     validator: Maybe[Callable[[IBindKey, T], FutureResultE[str]]] = Nothing
     spec_doc_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = Nothing
+    
+    def __str__(self) -> str:
+        """
+        Improved string representation for BindSpecImpl to provide useful information for JSON graphs.
+        """
+        info = {
+            "type": self.__class__.__name__,
+            "has_validator": self.validator != Nothing,
+            "has_documentation": self.spec_doc_provider != Nothing
+        }
+        return str(info)
 
 
 @dataclass(frozen=True)
@@ -46,6 +57,19 @@ class MergedDesignSpec(DesignSpec):
             if spec is not Nothing:
                 return spec
         return Nothing
+
+    def __add__(self, other):
+        """
+        Combine two design specs, with the right-hand side (other) taking precedence.
+        If both specs define bindings for the same key, the binding from 'other' will be used.
+
+        Args:
+            other: The spec to add, which will override this spec for duplicate keys
+
+        Returns:
+            A new DesignSpec combining both specs with the right-hand side having precedence
+        """
+        return MergedDesignSpec(srcs=[self, other])
 
 
 @dataclass(frozen=True)
@@ -94,7 +118,7 @@ class SimpleBindSpec(BindSpec[T]):
     def validator(self) -> Maybe[ValidatorType]:
         if self._validator is None:
             return Nothing
-        return Some(self._validator)
+        return Some(self._validator_impl)
 
     @future_safe
     async def _doc_impl(self, key: IBindKey) -> str:
@@ -105,6 +129,17 @@ class SimpleBindSpec(BindSpec[T]):
         if self._documentation is None:
             return Nothing
         return Some(lambda key: FutureResult.from_value(self._documentation))
+    
+    def __str__(self) -> str:
+        """
+        Improved string representation for SimpleBindSpec to provide useful information for JSON graphs.
+        """
+        info = {
+            "type": self.__class__.__name__,
+            "has_validator": self._validator is not None,
+            "documentation": self._documentation
+        }
+        return str(info)
 
 
 """

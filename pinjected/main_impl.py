@@ -185,12 +185,60 @@ def call(
     return asyncio.run(a_prep())
 
 
+def json_graph(var_path: str = None, design_path: str = None, **kwargs):
+    """
+    Generate a JSON representation of the dependency graph for a variable.
+    
+    :param var_path: the path to the variable to visualize: e.g. "my_module.my_var"
+    :param design_path: the path to the design to be used: e.g. "my_module.my_design"
+    :param kwargs: additional parameters to pass to run_injected
+    """
+    return run_injected("json-graph", var_path, design_path, **kwargs)
+
+
+def describe(var_path: str = None, design_path: str = None, **kwargs):
+    """
+    Generate a human-readable description of the dependency graph for a variable.
+    Uses to_edges() of DIGraph to show dependencies with their documentation.
+    
+    :param var_path: the path to the variable to describe: e.g. "my_module.my_var"
+    :param design_path: the path to the design to be used: e.g. "my_module.my_design"
+    :param kwargs: additional parameters to pass to run_injected
+    """
+    return run_injected("describe", var_path, design_path, **kwargs)
+
+
+
+
+class PinjectedCLI:
+    """Pinjected: Python Dependency Injection Framework
+    
+    Available commands:
+      run            - Run an injected variable with a specified design
+      call           - Call a function with injected dependencies
+      check_config   - Display the current configuration
+      create_overloads - Create type hint overloads for injected functions
+      json_graph     - Generate a JSON representation of the dependency graph
+      describe       - Generate a human-readable description of a dependency graph
+    
+    For more information on a specific command, run:
+      pinjected COMMAND --help
+    
+    Example:
+      pinjected run --var_path=my_module.my_var
+    """
+    
+    def __init__(self):
+        self.run = run
+        self.call = call
+        self.check_config = check_config
+        self.create_overloads = process_file
+        self.json_graph = json_graph
+        self.describe = describe
+
+
 def main():
     import fire
-
-    fire.Fire(dict(
-        run=run,
-        call=call,
-        check_config=check_config,
-        create_overloads=process_file
-    ))
+    
+    cli = PinjectedCLI()
+    fire.Fire(cli)

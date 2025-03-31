@@ -34,9 +34,38 @@ T = TypeVar("T")
 class MissingDependencyException(Exception):
     @staticmethod
     def create_message(deps: List[DependencyResolutionFailure]):
-        msgs = [item.explanation_str() for item in deps]
-        lines = '\n'.join(msgs)
-        return f"Missing dependency. failures:\n {lines}."
+        """
+        Create a detailed error message for missing dependencies.
+        
+        Args:
+            deps: List of dependency resolution failures
+            
+        Returns:
+            A formatted error message with detailed information about missing dependencies
+        """
+        if not deps:
+            return "Missing dependency, but no specific failures were reported."
+            
+        message = "========== Missing Dependencies ==========\n"
+        
+        missing_keys = {drf.key for drf in deps}
+        message += f"Missing Dependencies: {missing_keys}\n"
+        message += "-" * 45 + "\n"
+        
+        for i, failure in enumerate(deps):
+            message += f"Failure #{i+1}:\n"
+            message += f"  Missing Key: {failure.key}\n"
+            message += f"  Dependency Chain: {failure.trace_str()}\n"
+            if hasattr(failure.cause, 'key'):
+                message += f"  Root Cause: Failed to find dependency for {failure.cause.key}\n"
+            else:
+                message += f"  Root Cause: {failure.cause}\n"
+            message += "-" * 45 + "\n"
+            
+        message += "=" * 45 + "\n"
+        message += "Use the 'describe' command for more detailed dependency information\n"
+        
+        return message
 
     @staticmethod
     def create(deps: List[DependencyResolutionFailure]):

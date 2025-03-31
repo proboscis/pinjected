@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.251 (2025-03-25)
+
+### Fixed
+- Fixed test_tree() function in test_runner.py to be non-async for easier use
+
+## 0.2.250 (2025-03-25)
+
+### Fixed
+- Improved error message formatting in async_resolver.py
+- Group dependency documentation by keys to make error messages clearer
+- Truncated cyclic dependency target strings for better readability
+
+## 0.2.249 (2025-03-24)
+
+### Fixed
+- Fixed validator property in SimpleBindSpec to use _validator_impl
+- Fixed truncation of target string in async_resolver error message
+- Added meta_cxt.accumulated to meta_overrides in a_get_run_context
+
 ## 0.2.248 (2025-03-23)
 
 ### Changed

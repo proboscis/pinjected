@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pinjected"
-version = "0.2.249"
+version = "0.2.251"
 description = "Immutable Dependency Injection for Python."
 authors = [
     {name = "proboscis", email = "nameissoap@gmail.com"}
@@ -59,6 +59,12 @@ pythonpath = [
 
 [tool.uv.workspace]
 members = ["packages/*"]
+
+[dependency-groups]
+dev = [
+    "pinjected-reviewer",
+    "pinjected-error-reports"
+]
 
 [tool.uv.sources]
 pinjected-anthropic = { workspace = true }

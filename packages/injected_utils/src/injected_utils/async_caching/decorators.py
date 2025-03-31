@@ -3,16 +3,16 @@ import inspect
 from typing import Callable, Awaitable, Any
 
 import jsonpickle
-from pinjected import Injected, injected, design, IProxy
-from pinjected.decoration import update_if_registered
-from pinjected.di.injected import PartialInjectedFunction
-from pinjected.di.metadata.bind_metadata import BindMetadata
-from pinjected.di.util import get_code_location
 from returns.maybe import Some
 
 from injected_utils.async_caching.async_cache import async_lzma_sqlite
 from injected_utils.async_caching.async_cached_function import AsyncCacheProtocol, Key, U, P, AsyncCachedFunctionV2, \
     ParamToKey, IsErrorToRetry, InvalidateValue, ThreadPooledDictAsyncCache, ValueMappedAsyncCache
+from pinjected import Injected, injected, design, IProxy
+from pinjected.decoration import update_if_registered
+from pinjected.di.injected import PartialInjectedFunction
+from pinjected.di.metadata.bind_metadata import BindMetadata
+from pinjected.di.util import get_code_location
 
 Cache = AsyncCacheProtocol[Key, U]
 Func = Callable[[P], Awaitable[U]]
@@ -33,8 +33,6 @@ def async_injected_decorator(decorator: PartialInjectedFunction):
         def impl(func: Func):
             proxy = deco_proxy(func)
             proxy.__is_async_function__ = True
-            from loguru import logger
-            logger.info(f"proxy:{proxy}")
             updated = Injected.ensure_injected(proxy)
             updated.__is_async_function__ = True
             updated = update_if_registered(

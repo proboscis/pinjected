@@ -39,7 +39,7 @@ from pinjected.pinjected_logging import logger
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
-from pinjected import Injected, Design, injected_function, Designed
+from pinjected import Injected, Design, injected, Designed
 from pinjected.di.expr_util import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.proxiable import DelegatedVar
@@ -60,7 +60,7 @@ safe_getattr = safe(getattr)
 patch_maybe()
 
 
-@injected_function
+@injected
 def extract_runnables(
         default_design_path,
         logger,
@@ -95,7 +95,7 @@ def extract_runnables(
     return [r.unwrap() for r in results if isinstance(r, Success)]
 
 
-@injected_function
+@injected
 def extract_args_for_runnable(
         logger,
         /,
@@ -135,7 +135,7 @@ def extract_args_for_runnable(
 IdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
 
 
-@injected_function
+@injected
 def injected_to_idea_configs(
         runner_script_path: str,
         interpreter_path: str,
@@ -260,7 +260,6 @@ def find_injecteds(
     return print(json.dumps([i.var_path for i in injecteds]))
 
 
-# since this is an entrypoint, we can't use @injected_function here.
 
 
 default_design = design(
@@ -318,8 +317,8 @@ def extract_extra_codes(ast: Expr) -> ModuleVarPath:
             return None
 
 
-@injected_function
-def make_sandbox_extra(tgt: ModuleVarSpec):
+@injected
+def make_sandbox_extra(tgt: ModuleVarSpec, /):
     match tgt.var:
         case DelegatedVar():
             impl_mvp = extract_extra_codes(tgt.var.eval().ast)
@@ -346,7 +345,7 @@ def make_sandbox_extra(tgt: ModuleVarSpec):
             return ""
 
 
-@injected_function
+@injected
 def _make_sandbox_impl(
         default_design_path: str,
         make_sandbox_extra: Callable[[Any], str],
@@ -413,7 +412,7 @@ def create_main_command(
     return main
 
 
-@injected_function
+@injected
 def create_runnable_pair(
         main_targets: OrderedDict[str, Injected],
         default_design_paths: List[str],
@@ -463,8 +462,8 @@ def provide_design_paths(logger, module_path) -> OrderedDict[str, str]:
     return design_paths
 
 
-@injected_function
-def main_override_resolver(query) -> Design:
+@injected
+def main_override_resolver(query, /) -> Design:
     """
     :param query: can be filename with .json, .yaml.
     we can also try parsing it as json.
@@ -583,7 +582,7 @@ def get_designs_from_module(module_path: Path):
     return inspect_module_for_type(module_path, accept)
 
 
-@injected_function
+@injected
 def get_designs_from_meta_var(
         var_path_to_file_path,
         /,
@@ -592,7 +591,7 @@ def get_designs_from_meta_var(
     return get_designs_from_module(var_path_to_file_path(meta.var_path))
 
 
-@injected_function
+@injected
 def var_path_to_file_path(project_root: Path, /, var_path: str) -> Path:
     module_path = '.'.join(var_path.split(".")[:-1])
     return Path(str(project_root / module_path.replace(".", os.path.sep)) + ".py")

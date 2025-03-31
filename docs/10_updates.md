@@ -1,6 +1,7 @@
 
 # Update Logs
 - 0.2.115: Updated documentation structures.
+- 0.2.XX: Added `describe` command to visualize dependency graphs with documentation.
 - 0.2.40: Added support for overriding default design with 'with' statement:
 ```python
 

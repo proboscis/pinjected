@@ -217,9 +217,15 @@ class AsyncResolver:
                         f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
             self._callback(EvalResultEvent(cxt, expr, res))
         except EvaluationError as e:
-            raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
+            from pinjected.v2.resolver import SHOW_DETAILED_EVALUATION_CONTEXTS
+            error = EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src, parent_error=e)
+            error.show_details = SHOW_DETAILED_EVALUATION_CONTEXTS
+            raise error
         except Exception as e:
-            raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
+            from pinjected.v2.resolver import SHOW_DETAILED_EVALUATION_CONTEXTS
+            error = EvaluationError(cxt, expr, cause_expr=expr, src=e)
+            error.show_details = SHOW_DETAILED_EVALUATION_CONTEXTS
+            raise error
 
         return res
 
@@ -376,7 +382,9 @@ class AsyncResolver:
             # here we can use spec to provide more helpful error messages.
             drfs = [drf for drf in errors if isinstance(drf, DependencyResolutionFailure)]
             cyclics = [c for c in errors if isinstance(c, CyclicDependency)]
+            key_to_docs = {}
             message = ""
+            len_header = 0
             if drfs:
                 tgt_str = str(tgt)[:80]
                 header = f"========== Missing Dependencies for {tgt_str} ==========\n"
@@ -394,13 +402,20 @@ class AsyncResolver:
                         lambda x: x.spec_doc_provider
                     )
                     fut_msg: IOResultE[str] = await maybe_fre_to_fre(maybe_provider)(key)
+                    key_doc = ""
                     doc_msg = unsafe_perform_io(fut_msg.value_or("No documentation provided"))
-                    message += f"Documentation:\n"
-                    message += f"  {doc_msg}\n"
-                    message += "-" * len_header + "\n"
+                    key_doc += f"Documentation:\n"
+                    key_doc += f"  {doc_msg}\n"
+                    key_to_docs[key] = key_doc
                 message += "=" * len_header + "\n"
+            if key_to_docs:
+                message += f"========== Key Documentations ==========\n"
+            for key, doc in key_to_docs.items():
+                message += "-" * len_header + "\n"
+                message += f"Injection Key = {key}:\n{doc}\n"
             if cyclics:
-                header = f"========== Cyclic Dependencies for {tgt} ==========\n"
+                tgt_str = str(tgt)[:80]
+                header = f"========== Cyclic Dependencies for {tgt_str} ==========\n"
                 len_header = len(header)
                 message += header
                 for c in cyclics:
