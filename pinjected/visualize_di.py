@@ -563,10 +563,19 @@ g = d.to_graph()
     def to_edges(self, root_name, deps: list[str]) -> list[EdgeInfo]:
         from collections import defaultdict
 
-        edges = [
-
-        ]
+        edges = []
         keys = set()
+
+        for dep in deps:
+            edges.append(
+                EdgeInfo(
+                    key=dep,
+                    dependencies=[],  # Direct dependencies don't have their own dependencies in this view
+                    metadata=self.get_metadata(dep),
+                    spec=self.get_spec(dep),
+                )
+            )
+            keys.add(dep)
 
         for root in deps:
             deps_map = defaultdict(list)
@@ -575,22 +584,24 @@ g = d.to_graph()
                 deps_map[a].append(b)
 
             for key, dependencies in deps_map.items():
-                edges.append(
-                    EdgeInfo(
-                        key=key,
-                        dependencies=list(sorted(set(dependencies))),
-                        metadata=self.get_metadata(key),
-                        spec=self.get_spec(key),
+                if key not in keys:  # Skip if already added as direct dependency
+                    edges.append(
+                        EdgeInfo(
+                            key=key,
+                            dependencies=list(sorted(set(dependencies))),
+                            metadata=self.get_metadata(key),
+                            spec=self.get_spec(key),
+                        )
                     )
-                )
-                keys.add(key)
+                    keys.add(key)
+                    
         if root_name not in keys:
             edges.append(
                 EdgeInfo(
                     key=root_name,
                     dependencies=list(sorted(set(deps))),
-                    metadata=Nothing,
-                    spec=Nothing,
+                    metadata=self.get_metadata(root_name),
+                    spec=self.get_spec(root_name),
                 )
             )
         return edges

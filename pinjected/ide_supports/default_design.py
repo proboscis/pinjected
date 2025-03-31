@@ -4,7 +4,7 @@ from returns.maybe import Some
 from pinjected.pinjected_logging import logger
 
 import pinjected.run_config_utils
-from pinjected import design, Design, Injected
+from pinjected import design, Design, Injected, SimpleBindSpec, DesignSpec
 from pinjected.exporter.llm_exporter import add_export_config
 from pinjected.helpers import inspect_and_make_configurations, find_default_design_paths
 from pinjected.module_inspector import get_project_root
@@ -24,4 +24,12 @@ pinjected_internal_design:Design = design(
     project_root=Injected.bind(lambda module_path: Path(get_project_root(module_path))),
     default_working_dir=Injected.bind(lambda project_root: Some(str(project_root))),
     internal_idea_config_creator=add_export_config,
+    __design_spec__=DesignSpec.new(
+        default_design_path=SimpleBindSpec(
+            documentation="The default design path used to run injected functions when no specific design path is provided."
+        ),
+        logger=SimpleBindSpec(
+            documentation="Logger instance used for logging information during the execution of injected functions."
+        )
+    )
 )

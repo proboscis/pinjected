@@ -261,6 +261,11 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         logger.info(f"deps:{cxt.var.dependencies()}")
         deps = list(cxt.var.dependencies())
         edges = digraph.to_edges(root_name, deps)
+        
+        for edge in edges:
+            logger.info(f"Edge key: {edge.key}, has spec: {edge.spec != Nothing}")
+            if edge.spec != Nothing:
+                logger.info(f"Edge spec: {edge.spec}")
     else:
         logger.error(f"Object {root_name} doesn't have dependencies method")
         raise AttributeError(f"Object {root_name} must have a dependencies() method to use the describe command")
@@ -357,17 +362,34 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
                 if "documentation" in spec_value:
                     try:
                         import ast
-                        spec_dict = ast.literal_eval(spec_value)
-                        doc = spec_dict.get('documentation', '')
-                        
-                        if doc:
-                            clean_spec = {k: v for k, v in spec_dict.items() if k != 'documentation'}
-                            content.append(str(clean_spec))
+                        try:
+                            spec_dict = ast.literal_eval(spec_value)
+                        except (ValueError, SyntaxError):
+                            import re
+                            doc_match = re.search(r"'documentation':\s*'([^']*)'", spec_value)
+                            if doc_match:
+                                doc = doc_match.group(1)
+                                clean_spec = re.sub(r"'documentation':\s*'[^']*'", "", spec_value)
+                                content.append(clean_spec)
+                                
+                                content.append("\n\nDocumentation: ")
+                                content.append(doc, style="blue")
+                                console.print(Panel(content, title=title))
+                                continue
+                            else:
+                                logger.debug(f"Failed to extract documentation with regex from: {spec_value}")
+                                raise ValueError("Could not extract documentation with regex")
+                        else:
+                            doc = spec_dict.get('documentation', '')
                             
-                            content.append("\n\nDocumentation: ")
-                            content.append(doc, style="blue")
-                            console.print(Panel(content, title=title))
-                            continue
+                            if doc:
+                                clean_spec = {k: v for k, v in spec_dict.items() if k != 'documentation'}
+                                content.append(str(clean_spec))
+                                
+                                content.append("\n\nDocumentation: ")
+                                content.append(doc, style="blue")
+                                console.print(Panel(content, title=title))
+                                continue
                     except Exception as e:
                         logger.debug(f"Failed to parse documentation: {e}")
                         logger.debug(f"Spec value: {spec_value}")
