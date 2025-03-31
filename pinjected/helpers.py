@@ -6,7 +6,7 @@ from beartype import beartype
 from returns.maybe import maybe
 from typing import Optional
 
-from pinjected import injected_function
+from pinjected import injected
 from pinjected.helper_structure import IdeaRunConfigurations
 from pinjected.maybe_patch import patch_maybe
 from pinjected.module_helper import walk_module_attr
@@ -16,7 +16,7 @@ from pinjected.runnables import get_runnables
 
 patch_maybe()
 
-@injected_function
+@injected
 @beartype
 def inspect_and_make_configurations(
         injected_to_idea_configs,

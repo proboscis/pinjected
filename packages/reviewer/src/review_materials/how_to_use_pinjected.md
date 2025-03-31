@@ -1253,7 +1253,7 @@ def run_something(dep1, dep2, /, arg1, arg2):
 
 # Deprecations
 - `instances`,`providers`,`classes`を用いたDesignの作成はdeprecated. 代わりに`design`関数を使用する。
-- `@injected_function`はdeprecated, 代わりに`@injected`を使用する。
+- `@injected_function`はdeprecated, 代わりに`@injected`を使用する。`@injected`では依存性を表す引数は`/`の左側に配置する。
 
 
 
