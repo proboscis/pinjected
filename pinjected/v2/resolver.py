@@ -23,8 +23,16 @@ from dataclasses import dataclass, field
 from typing import Union, Callable, Dict, Any, Optional
 
 from pinjected.pinjected_logging import logger
+import os
 
-SHOW_DETAILED_EVALUATION_CONTEXTS = False
+#
+#
+#
+#
+#
+#   try:
+#
+PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = os.environ.get("PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS", "0") == "1"
 
 from pinjected.di.expr_util import Expr, Call, UnaryOp, show_expr, Cache
 from pinjected.v2.binds import IBind
@@ -98,7 +106,7 @@ class EvaluationError(Exception):
         self.src = src
         
         self.eval_contexts = []
-        self.show_details = SHOW_DETAILED_EVALUATION_CONTEXTS
+        self.show_details = PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
         
         if parent_error and isinstance(parent_error, EvaluationError):
             self.eval_contexts.extend(parent_error.eval_contexts)
