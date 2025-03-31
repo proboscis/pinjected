@@ -3,35 +3,36 @@ import sys
 from unittest.mock import patch
 
 import pytest
+import fire
 
-from pinjected.main_impl import PinjectedCLI, display_help
-
-
-def test_display_help():
-    """Test that the display_help function prints the expected help message."""
-    captured_output = io.StringIO()
-    sys.stdout = captured_output
-    
-    display_help()
-    
-    output = captured_output.getvalue()
-    
-    sys.stdout = sys.__stdout__
-    
-    assert "Pinjected: Python Dependency Injection Framework" in output
-    assert "Available commands:" in output
-    assert "run" in output
-    assert "call" in output
-    assert "check_config" in output
-    assert "create_overloads" in output
-    assert "json_graph" in output
-    assert "describe" in output
+from pinjected.main_impl import PinjectedCLI
 
 
-def test_pinjected_cli_default():
-    """Test that the PinjectedCLI class calls display_help when called directly."""
+def test_pinjected_cli_docstring():
+    """Test that the PinjectedCLI class has the expected docstring."""
     cli = PinjectedCLI()
     
-    with patch('pinjected.main_impl.display_help') as mock_display_help:
-        cli()
-        mock_display_help.assert_called_once()
+    assert "Pinjected: Python Dependency Injection Framework" in cli.__doc__
+    assert "Available commands:" in cli.__doc__
+    assert "run" in cli.__doc__
+    assert "call" in cli.__doc__
+    assert "check_config" in cli.__doc__
+    assert "create_overloads" in cli.__doc__
+    assert "json_graph" in cli.__doc__
+    assert "describe" in cli.__doc__
+
+
+def test_fire_help_output():
+    """Test that the PinjectedCLI class has a comprehensive docstring for Fire help."""
+    cli = PinjectedCLI()
+    
+    assert "Pinjected: Python Dependency Injection Framework" in cli.__doc__
+    assert "Available commands:" in cli.__doc__
+    assert "run" in cli.__doc__
+    assert "call" in cli.__doc__
+    assert "check_config" in cli.__doc__
+    assert "create_overloads" in cli.__doc__
+    assert "json_graph" in cli.__doc__
+    assert "describe" in cli.__doc__
+    assert "For more information on a specific command" in cli.__doc__
+    assert "Example:" in cli.__doc__

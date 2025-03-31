@@ -208,26 +208,25 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
-def display_help():
-    """
-    Display help information for pinjected CLI commands.
-    """
-    print("Pinjected: Python Dependency Injection Framework")
-    print("\nAvailable commands:")
-    print("  run            - Run an injected variable with a specified design")
-    print("  call           - Call a function with injected dependencies")
-    print("  check_config   - Display the current configuration")
-    print("  create_overloads - Create type hint overloads for injected functions")
-    print("  json_graph     - Generate a JSON representation of the dependency graph")
-    print("  describe       - Generate a human-readable description of a dependency graph")
-    print("\nFor more information on a specific command, run:")
-    print("  pinjected COMMAND --help")
-    print("\nExample:")
-    print("  pinjected run --var_path=my_module.my_var")
 
 
 class PinjectedCLI:
-    """Pinjected CLI interface"""
+    """Pinjected: Python Dependency Injection Framework
+    
+    Available commands:
+      run            - Run an injected variable with a specified design
+      call           - Call a function with injected dependencies
+      check_config   - Display the current configuration
+      create_overloads - Create type hint overloads for injected functions
+      json_graph     - Generate a JSON representation of the dependency graph
+      describe       - Generate a human-readable description of a dependency graph
+    
+    For more information on a specific command, run:
+      pinjected COMMAND --help
+    
+    Example:
+      pinjected run --var_path=my_module.my_var
+    """
     
     def __init__(self):
         self.run = run
@@ -236,10 +235,8 @@ class PinjectedCLI:
         self.create_overloads = process_file
         self.json_graph = json_graph
         self.describe = describe
-    
-    def __call__(self):
-        """Default method when no command is specified"""
-        display_help()
+
+
 def main():
     import fire
     
