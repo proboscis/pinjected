@@ -364,9 +364,9 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
                             clean_spec = {k: v for k, v in spec_dict.items() if k != 'documentation'}
                             content.append(str(clean_spec))
                             
+                            content.append("\n\nDocumentation: ")
+                            content.append(doc, style="blue")
                             console.print(Panel(content, title=title))
-                            
-                            console.print(Panel(doc, title=f"{edge.key} Documentation", border_style="blue"))
                             continue
                     except Exception as e:
                         logger.debug(f"Failed to parse documentation: {e}")
