@@ -10,6 +10,29 @@ python -m pinjected run [path of an Injected variable] [optional path of a Desig
 - Design Path: `your.package.design.name`
 - Optional Overrides: `your.package.override_design.name`
 
+## CLI Commands
+
+### run
+The main command to run an injected variable.
+
+```bash
+python -m pinjected run [path of an Injected variable] [optional path of a Design variable] [Optional overrides for a design] --additional-bindings
+```
+
+### describe
+Generates a human-readable description of the dependency graph for a variable, showing dependencies with their documentation.
+
+```bash
+python -m pinjected describe [path of an Injected variable] [optional path of a Design variable] [additional parameters]
+```
+
+This command visualizes:
+- The dependency tree structure
+- Documentation for each dependency
+- Relationships between dependencies
+
+It's useful for understanding complex dependency relationships and their purpose.
+
 ## Example CLI Calls
 
 ```bash
