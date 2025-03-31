@@ -75,6 +75,73 @@ async def test_iproxy_composition():
     assert await resolver.provide("complex_expr") == 106
 
 
+@pytest.mark.asyncio
+async def test_iproxy_exception_visualization():
+    """
+    Test case for visualizing exceptions in IProxy AST evaluation.
+    Creates a proxy that always raises a RuntimeError and constructs a complex AST with it.
+    """
+    import logging
+    import sys
+    from pinjected.di.expr_util import show_expr
+    
+    logging.basicConfig(level=logging.DEBUG, stream=sys.stderr,
+                        format='%(asctime)s.%(msecs)03d | %(levelname)-8s | %(filename)s:%(funcName)s:%(lineno)d | %(message)s',
+                        datefmt='%H:%M:%S')
+    
+    def error_func():
+        raise RuntimeError("This is a test error in IProxy evaluation")
+    
+    error_proxy = Injected.bind(error_func).proxy
+    
+    num1 = Injected.pure(10).proxy
+    test_obj = Injected.pure(TestObject(20)).proxy
+    test_dict = Injected.pure({"x": 100, "y": 200, "z": 300}).proxy
+    
+    complex_error_expr1 = (num1 + error_proxy) / test_obj.value + test_dict[Injected.pure("x").proxy]
+    complex_error_expr2 = test_obj.multiply(error_proxy) + num1
+    complex_error_expr3 = test_dict[error_proxy]
+    
+    print("\nAST Structure for complex_error_expr1:")
+    print(show_expr(complex_error_expr1))
+    
+    print("\nAST Structure for complex_error_expr2:")
+    print(show_expr(complex_error_expr2))
+    
+    print("\nAST Structure for complex_error_expr3:")
+    print(show_expr(complex_error_expr3))
+    
+    test_design = design(
+        error_proxy=error_proxy,
+        complex_error_expr1=complex_error_expr1,
+        complex_error_expr2=complex_error_expr2,
+        complex_error_expr3=complex_error_expr3
+    )
+    
+    resolver = AsyncResolver(test_design)
+    
+    print("\nTesting simple error_proxy:")
+    with pytest.raises(Exception) as excinfo:
+        await resolver.provide("error_proxy")
+    print(f"\nException from error_proxy: {excinfo.value}")
+    
+    print("\nTesting complex_error_expr1:")
+    with pytest.raises(Exception) as excinfo:
+        await resolver.provide("complex_error_expr1")
+    print(f"\nException from complex_error_expr1: {excinfo.value}")
+    
+    print("\nTesting complex_error_expr2:")
+    with pytest.raises(Exception) as excinfo:
+        await resolver.provide("complex_error_expr2")
+    print(f"\nException from complex_error_expr2: {excinfo.value}")
+    
+    print("\nTesting complex_error_expr3:")
+    with pytest.raises(Exception) as excinfo:
+        await resolver.provide("complex_error_expr3")
+    print(f"\nException from complex_error_expr3: {excinfo.value}")
+    
+
+
 if __name__ == "__main__":
     import asyncio
     asyncio.run(test_iproxy_composition())
