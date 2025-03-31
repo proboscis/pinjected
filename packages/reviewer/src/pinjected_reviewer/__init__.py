@@ -8,6 +8,9 @@ from pinjected import design, instance, injected, Injected
 
 __version__ = "0.3.1"
 
+from pinjected_reviewer.reviewer_def import ReviewerDefinition
+from pinjected_reviewer.loader import reviewer_definitions, find_reviewer_markdown_files
+
 # This allows utils to be imported properly from the package
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
@@ -57,9 +60,11 @@ def __pinjected_reviewer_default_design():
             )
         ),
         a_sllm_for_code_review=injected('a_sllm_for_commit_review'),
+        a_sllm_for_markdown_extraction=injected('a_sllm_for_commit_review'),  # For reviewer markdown extraction
         logger=logger,
         pinjected_guide_md=pinjected_guide_md,
-        a_symbol_metadata_getter=a_symbol_metadata_getter
+        a_symbol_metadata_getter=a_symbol_metadata_getter,
+        repo_root=lambda: Path.cwd(),  # Default to current directory for reviewer definitions
     )
 
 

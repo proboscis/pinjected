@@ -217,9 +217,15 @@ class AsyncResolver:
                         f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
             self._callback(EvalResultEvent(cxt, expr, res))
         except EvaluationError as e:
-            raise EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src) from e.src
+            from pinjected.v2.resolver import PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+            error = EvaluationError(cxt, expr, cause_expr=e.cause_expr, src=e.src, parent_error=e)
+            error.show_details = PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+            raise error
         except Exception as e:
-            raise EvaluationError(cxt, expr, cause_expr=expr, src=e) from e
+            from pinjected.v2.resolver import PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+            error = EvaluationError(cxt, expr, cause_expr=expr, src=e)
+            error.show_details = PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+            raise error
 
         return res
 

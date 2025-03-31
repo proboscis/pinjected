@@ -3,6 +3,7 @@ import pytest_asyncio
 from pinjected import Injected, design
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.di.expr_util import show_expr
+from pinjected.v2.resolver import EvaluationError, PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
 
 
 class TestObject:
@@ -80,9 +81,11 @@ async def test_iproxy_exception_visualization():
     """
     Test case for visualizing exceptions in IProxy AST evaluation.
     Creates a proxy that always raises a RuntimeError and constructs a complex AST with it.
+    Tests the enhanced exception traceback with detailed source error information.
     """
     import logging
     import sys
+    import traceback
     from pinjected.di.expr_util import show_expr
     
     logging.basicConfig(level=logging.DEBUG, stream=sys.stderr,
@@ -120,15 +123,79 @@ async def test_iproxy_exception_visualization():
     
     resolver = AsyncResolver(test_design)
     
-    print("\nTesting simple error_proxy:")
+    print("\nTesting simple error_proxy with detailed level information disabled:")
     with pytest.raises(Exception) as excinfo:
         await resolver.provide("error_proxy")
     print(f"\nException from error_proxy: {excinfo.value}")
+    
+    print("\nFull Exception Stack Trace with Source Error Details:")
+    try:
+        await resolver.provide("error_proxy")
+    except Exception as e:
+        print(traceback.format_exc())
+        print(f"\nException type: {type(e)}")
+        print(f"Exception attributes: {dir(e)}")
+        
+        assert isinstance(e, EvaluationError)
+        assert hasattr(e, 'src')
+        assert hasattr(e, 'eval_contexts')
+        assert isinstance(e.src, RuntimeError)
+        
+        error_msg = str(e)
+        assert "EvaluationError:" in error_msg
+        assert "Context:" in error_msg, "Context section missing in default output"
+        assert "Context Expr:" in error_msg, "Context Expr missing in default output"
+        assert "Cause Expr:" in error_msg, "Cause Expr missing in default output"
+        assert "Source Error:" in error_msg
+        assert "Detailed Source Error Traceback:" in error_msg
+        assert "RuntimeError: This is a test error in IProxy evaluation" in error_msg
+        
+        assert "Evaluation Path:" not in error_msg, "Evaluation Path should not be present in default output"
+        assert "Context Details:" not in error_msg, "Context Details section should not be present in default output"
+        assert "Level 0:" not in error_msg, "Level information should not be present in default output"
+    
+    print("\nTesting with detailed level information enabled:")
+    try:
+        global PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+        global_flag_original = PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+        PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = True
+        
+        try:
+            await resolver.provide("error_proxy")
+        except EvaluationError as e:
+            e.show_details = True
+            print(f"\nManually set error.show_details to: {e.show_details}")
+            raise e
+    except Exception as e:
+        print(f"\nException with detailed level information: {e}")
+        
+        if isinstance(e, EvaluationError):
+            e.show_details = True
+            error_msg = str(e)
+        else:
+            error_msg = str(e)
+            
+        print(f"\nGlobal flag value: {PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS}")
+        print(f"\nError message with flag enabled:\n{error_msg}")
+        
+        assert "Context Details:" in error_msg, "Context Details section missing despite show_details=True"
+        assert "Level 0:" in error_msg, "Level information missing despite show_details=True"
+        assert "Context Expr:" in error_msg, "Context Expr missing despite show_details=True"
+        assert "Cause Expr:" in error_msg, "Cause Expr missing despite show_details=True"
+    finally:
+        PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = global_flag_original
     
     print("\nTesting complex_error_expr1:")
     with pytest.raises(Exception) as excinfo:
         await resolver.provide("complex_error_expr1")
     print(f"\nException from complex_error_expr1: {excinfo.value}")
+    
+    error_msg = str(excinfo.value)
+    assert "Context:" in error_msg
+    assert "Context Expr:" in error_msg
+    assert "Cause Expr:" in error_msg
+    assert "Source Error:" in error_msg
+    assert "Detailed Source Error Traceback:" in error_msg
     
     print("\nTesting complex_error_expr2:")
     with pytest.raises(Exception) as excinfo:
@@ -139,7 +206,6 @@ async def test_iproxy_exception_visualization():
     with pytest.raises(Exception) as excinfo:
         await resolver.provide("complex_error_expr3")
     print(f"\nException from complex_error_expr3: {excinfo.value}")
-    
 
 
 if __name__ == "__main__":
