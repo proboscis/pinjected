@@ -191,7 +191,9 @@ async def test_iproxy_exception_visualization():
     print(f"\nException from complex_error_expr1: {excinfo.value}")
     
     error_msg = str(excinfo.value)
-    assert "Evaluation Path:" in error_msg
+    assert "Context:" in error_msg
+    assert "Context Expr:" in error_msg
+    assert "Cause Expr:" in error_msg
     assert "Source Error:" in error_msg
     assert "Detailed Source Error Traceback:" in error_msg
     
