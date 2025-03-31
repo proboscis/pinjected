@@ -260,11 +260,10 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     if hasattr(cxt.var, 'dependencies'):
         logger.info(f"deps:{cxt.var.dependencies()}")
         deps = list(cxt.var.dependencies())
+        edges = digraph.to_edges(root_name, deps)
     else:
-        logger.info(f"Object {root_name} doesn't have dependencies method, using empty list")
-        deps = []
-    
-    edges = digraph.to_edges(root_name, deps)
+        logger.error(f"Object {root_name} doesn't have dependencies method")
+        raise AttributeError(f"Object {root_name} must have a dependencies() method to use the describe command")
     
     console = Console()
     root_tree = Tree(f"[bold blue]{root_name}[/bold blue]")
