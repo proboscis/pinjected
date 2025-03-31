@@ -250,15 +250,20 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     import re
     
     logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
-    if hasattr(cxt.var, 'dependencies'):
-        logger.info(f"deps:{cxt.var.dependencies()}")
     
     digraph = DIGraph(
         design,
         spec = Some(cxt.src_meta_context.spec_trace.accumulated)
     )
     root_name = cxt.src_var_spec.var_path.split(".")[-1]
-    edges = digraph.to_edges(root_name, list(cxt.var.dependencies()))
+    
+    if hasattr(cxt.var, 'dependencies'):
+        logger.info(f"deps:{cxt.var.dependencies()}")
+        deps = list(cxt.var.dependencies())
+        edges = digraph.to_edges(root_name, deps)
+    else:
+        logger.error(f"Object {root_name} doesn't have dependencies method")
+        raise AttributeError(f"Object {root_name} must have a dependencies() method to use the describe command")
     
     console = Console()
     root_tree = Tree(f"[bold blue]{root_name}[/bold blue]")
@@ -282,8 +287,10 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         
         if isinstance(value, dict) and 'documentation' in value:
             if value['documentation']:
-                value['documentation'] = re.sub(r'\\n', ' ', value['documentation'])
-                value['documentation'] = re.sub(r'\s+', ' ', value['documentation'])
+                doc = value['documentation']
+                doc = doc.replace('\\n', '\n')
+                doc = re.sub(r'[ \t]+', ' ', doc)
+                value['documentation'] = doc
                 value_str = str(value)
         
         return value_str
@@ -326,6 +333,8 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     console.print(root_tree)
     console.print("\n[bold]Edge Details:[/bold]")
     
+    console.print(Panel(f"[bold blue]{root_name}[/bold blue]", title="Root Node"))
+    
     for edge in edges:
         if edge.key != root_name:  # Skip root as it's already shown
             title = Text(edge.key, style="bold green")
@@ -343,7 +352,27 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
             
             if edge.spec:
                 content.append("\nSpec: ")
-                content.append(format_maybe(edge.spec))
+                spec_value = format_maybe(edge.spec)
+                
+                if "documentation" in spec_value:
+                    try:
+                        import ast
+                        spec_dict = ast.literal_eval(spec_value)
+                        doc = spec_dict.get('documentation', '')
+                        
+                        if doc:
+                            clean_spec = {k: v for k, v in spec_dict.items() if k != 'documentation'}
+                            content.append(str(clean_spec))
+                            
+                            console.print(Panel(content, title=title))
+                            
+                            console.print(Panel(doc, title=f"{edge.key} Documentation", border_style="blue"))
+                            continue
+                    except Exception as e:
+                        logger.debug(f"Failed to parse documentation: {e}")
+                        logger.debug(f"Spec value: {spec_value}")
+                
+                content.append(spec_value)
             
             console.print(Panel(content, title=title))
 
