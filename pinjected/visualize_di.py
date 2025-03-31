@@ -565,35 +565,34 @@ g = d.to_graph()
 
         edges = []
         keys = set()
+        deps_map = defaultdict(list)
+
+        for root in deps:
+            for a, b, _ in self.di_dfs(root, replace_missing=True):
+                deps_map[a].append(b)
 
         for dep in deps:
             edges.append(
                 EdgeInfo(
                     key=dep,
-                    dependencies=[],  # Direct dependencies don't have their own dependencies in this view
+                    dependencies=list(sorted(set(deps_map.get(dep, [])))),
                     metadata=self.get_metadata(dep),
                     spec=self.get_spec(dep),
                 )
             )
             keys.add(dep)
 
-        for root in deps:
-            deps_map = defaultdict(list)
-
-            for a, b, _ in self.di_dfs(root, replace_missing=True):
-                deps_map[a].append(b)
-
-            for key, dependencies in deps_map.items():
-                if key not in keys:  # Skip if already added as direct dependency
-                    edges.append(
-                        EdgeInfo(
-                            key=key,
-                            dependencies=list(sorted(set(dependencies))),
-                            metadata=self.get_metadata(key),
-                            spec=self.get_spec(key),
-                        )
+        for key, dependencies in deps_map.items():
+            if key not in keys:
+                edges.append(
+                    EdgeInfo(
+                        key=key,
+                        dependencies=list(sorted(set(dependencies))),
+                        metadata=self.get_metadata(key),
+                        spec=self.get_spec(key),
                     )
-                    keys.add(key)
+                )
+                keys.add(key)
                     
         if root_name not in keys:
             edges.append(
