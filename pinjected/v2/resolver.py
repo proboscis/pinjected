@@ -24,6 +24,8 @@ from typing import Union, Callable, Dict, Any, Optional
 
 from pinjected.pinjected_logging import logger
 
+SHOW_DETAILED_EVALUATION_CONTEXTS = False
+
 from pinjected.di.expr_util import Expr, Call, UnaryOp, show_expr, Cache
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey
@@ -89,20 +91,70 @@ UNARY_OPS = {
 
 
 class EvaluationError(Exception):
-    def __init__(self, cxt: ProvideContext, cxt_expr: Expr, cause_expr: Expr, src):
+    def __init__(self, cxt: ProvideContext, cxt_expr: Expr, cause_expr: Expr, src, parent_error=None):
         self.cxt = cxt
         self.cxt_expr = cxt_expr
         self.cause_expr = cause_expr
         self.src = src
-
-        super().__init__(f"""
-EvaluationError:
-    Context: {cxt.trace_str}
-    Context Expr: {self.truncate(show_expr(cxt_expr),100)}
-    Cause Expr: {self.truncate(show_expr(cause_expr),100)}
-    Source Error: {src}
-        """)
-    def truncate(self,text,n):
+        
+        self.eval_contexts = []
+        self.show_details = SHOW_DETAILED_EVALUATION_CONTEXTS
+        
+        if parent_error and isinstance(parent_error, EvaluationError):
+            self.eval_contexts.extend(parent_error.eval_contexts)
+            self.show_details = parent_error.show_details
+        
+        self.eval_contexts.append({
+            'context': cxt.trace_str,
+            'context_expr': show_expr(cxt_expr),
+            'cause_expr': show_expr(cause_expr)
+        })
+        
+        super().__init__("EvaluationError")
+    
+    def __str__(self):
+        """
+        Format the error message based on the current show_details flag value.
+        This ensures the message reflects the flag's value at the time it's displayed.
+        """
+        error_msg = "EvaluationError:\n"
+        
+        if self.eval_contexts:
+            error_msg += "Evaluation Path:\n"
+            for i, ctx in enumerate(self.eval_contexts):
+                prefix = "  " * i
+                error_msg += f"{prefix}→ {self.truncate(ctx['context'], 80)}\n"
+            
+            if self.show_details:
+                error_msg += "\nContext Details:\n"
+                for i, ctx in enumerate(self.eval_contexts):
+                    error_msg += f"  Level {i}:\n"
+                    error_msg += f"    Context: {ctx['context']}\n"
+                    error_msg += f"    Context Expr: {self.truncate(ctx['context_expr'], 100)}\n"
+                    error_msg += f"    Cause Expr: {self.truncate(ctx['cause_expr'], 100)}\n"
+        
+        error_msg += f"\nSource Error: {self.src}"
+        
+        if isinstance(self.src, Exception):
+            error_msg += self._format_source_exception(self.src)
+        
+        return error_msg
+    
+    def _format_source_exception(self, exc):
+        """Format the source exception with detailed traceback information."""
+        import traceback
+        import sys
+        
+        exc_type, exc_value, exc_tb = type(exc), exc, exc.__traceback__
+        
+        tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+        
+        formatted_tb = "\n\nDetailed Source Error Traceback:\n"
+        formatted_tb += "".join(tb_lines)
+        
+        return formatted_tb
+    
+    def truncate(self, text, n):
         if len(text) > n:
             return text[:n] + "..."
         return text
