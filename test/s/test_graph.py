@@ -1,6 +1,6 @@
 from pprint import pprint
 
-from pinjected import Design, injected_function, Injected, design
+from pinjected import Design, Injected, design, injected
 from pinjected.di.graph import MyObjectGraph, IObjectGraph
 from pinjected.v2.async_resolver import AsyncResolver
 
@@ -17,7 +17,7 @@ g2 = g.child_session(design(
 ))
 
 
-@injected_function
+@injected
 def test_factory(x, y, /, a):
     return x, y, a
 

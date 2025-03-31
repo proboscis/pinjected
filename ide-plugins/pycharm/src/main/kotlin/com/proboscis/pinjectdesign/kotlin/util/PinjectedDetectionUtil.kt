@@ -14,7 +14,7 @@ import com.jetbrains.python.psi.types.TypeEvalContext
  */
 object PinjectedDetectionUtil {
     private val INJECTED_FUNCTION_MARKERS = listOf(
-        "@injected_function", "@Injected.bind", "provide_", 
+        "@Injected.bind", "provide_", 
         "@injected_instance", "@injected", "@instance"
     )
     
