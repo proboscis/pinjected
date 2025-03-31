@@ -16,7 +16,14 @@ class DependencyResolutionFailure:
         return ' => '.join(self.trace)
 
     def explanation_str(self):
-        return f"failed to find dependency: {self.key} at {self.trace_str()}"
+        """
+        Generate a detailed explanation of the dependency resolution failure.
+        
+        Returns:
+            str: A formatted string explaining the dependency resolution failure
+                 with trace information.
+        """
+        return f"Failed to find dependency: {self.key}\nDependency chain: {self.trace_str()}\nCause: {self.cause}"
 
     def __repr__(self):
         return f"DependencyResolutionFailure(key:{self.key},trace:{self.trace_str()},cause: ({self.cause})"
