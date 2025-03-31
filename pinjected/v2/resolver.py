@@ -120,18 +120,24 @@ class EvaluationError(Exception):
         error_msg = "EvaluationError:\n"
         
         if self.eval_contexts:
-            error_msg += "Evaluation Path:\n"
-            for i, ctx in enumerate(self.eval_contexts):
-                prefix = "  " * i
-                error_msg += f"{prefix}→ {self.truncate(ctx['context'], 80)}\n"
-            
-            if self.show_details:
-                error_msg += "\nContext Details:\n"
+            if not self.show_details and self.eval_contexts:
+                last_ctx = self.eval_contexts[-1]
+                error_msg += f"Context: {last_ctx['context']}\n"
+                error_msg += f"Context Expr: {self.truncate(last_ctx['context_expr'], 100)}\n"
+                error_msg += f"Cause Expr: {self.truncate(last_ctx['cause_expr'], 100)}\n"
+            else:
+                error_msg += "Evaluation Path:\n"
                 for i, ctx in enumerate(self.eval_contexts):
-                    error_msg += f"  Level {i}:\n"
-                    error_msg += f"    Context: {ctx['context']}\n"
-                    error_msg += f"    Context Expr: {self.truncate(ctx['context_expr'], 100)}\n"
-                    error_msg += f"    Cause Expr: {self.truncate(ctx['cause_expr'], 100)}\n"
+                    prefix = "  " * i
+                    error_msg += f"{prefix}→ {self.truncate(ctx['context'], 80)}\n"
+                
+                if self.show_details:
+                    error_msg += "\nContext Details:\n"
+                    for i, ctx in enumerate(self.eval_contexts):
+                        error_msg += f"  Level {i}:\n"
+                        error_msg += f"    Context: {ctx['context']}\n"
+                        error_msg += f"    Context Expr: {self.truncate(ctx['context_expr'], 100)}\n"
+                        error_msg += f"    Cause Expr: {self.truncate(ctx['cause_expr'], 100)}\n"
         
         error_msg += f"\nSource Error: {self.src}"
         
