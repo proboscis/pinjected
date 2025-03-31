@@ -143,13 +143,16 @@ async def test_iproxy_exception_visualization():
         
         error_msg = str(e)
         assert "EvaluationError:" in error_msg
-        assert "Evaluation Path:" in error_msg
+        assert "Context:" in error_msg, "Context section missing in default output"
+        assert "Context Expr:" in error_msg, "Context Expr missing in default output"
+        assert "Cause Expr:" in error_msg, "Cause Expr missing in default output"
         assert "Source Error:" in error_msg
         assert "Detailed Source Error Traceback:" in error_msg
         assert "RuntimeError: This is a test error in IProxy evaluation" in error_msg
         
-        assert "Context Details:" not in error_msg
-        assert "Level 0:" not in error_msg
+        assert "Evaluation Path:" not in error_msg, "Evaluation Path should not be present in default output"
+        assert "Context Details:" not in error_msg, "Context Details section should not be present in default output"
+        assert "Level 0:" not in error_msg, "Level information should not be present in default output"
     
     print("\nTesting with detailed level information enabled:")
     try:
