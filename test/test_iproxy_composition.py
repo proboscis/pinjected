@@ -3,7 +3,7 @@ import pytest_asyncio
 from pinjected import Injected, design
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.di.expr_util import show_expr
-from pinjected.v2.resolver import EvaluationError, SHOW_DETAILED_EVALUATION_CONTEXTS
+from pinjected.v2.resolver import EvaluationError, PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
 
 
 class TestObject:
@@ -156,9 +156,9 @@ async def test_iproxy_exception_visualization():
     
     print("\nTesting with detailed level information enabled:")
     try:
-        global SHOW_DETAILED_EVALUATION_CONTEXTS
-        global_flag_original = SHOW_DETAILED_EVALUATION_CONTEXTS
-        SHOW_DETAILED_EVALUATION_CONTEXTS = True
+        global PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+        global_flag_original = PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
+        PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = True
         
         try:
             await resolver.provide("error_proxy")
@@ -175,7 +175,7 @@ async def test_iproxy_exception_visualization():
         else:
             error_msg = str(e)
             
-        print(f"\nGlobal flag value: {SHOW_DETAILED_EVALUATION_CONTEXTS}")
+        print(f"\nGlobal flag value: {PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS}")
         print(f"\nError message with flag enabled:\n{error_msg}")
         
         assert "Context Details:" in error_msg, "Context Details section missing despite show_details=True"
@@ -183,7 +183,7 @@ async def test_iproxy_exception_visualization():
         assert "Context Expr:" in error_msg, "Context Expr missing despite show_details=True"
         assert "Cause Expr:" in error_msg, "Cause Expr missing despite show_details=True"
     finally:
-        SHOW_DETAILED_EVALUATION_CONTEXTS = global_flag_original
+        PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = global_flag_original
     
     print("\nTesting complex_error_expr1:")
     with pytest.raises(Exception) as excinfo:
