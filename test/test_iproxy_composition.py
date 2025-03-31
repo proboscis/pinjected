@@ -1,4 +1,5 @@
 import pytest
+import pytest_asyncio
 from pinjected import Injected, design
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.di.expr_util import show_expr
@@ -18,6 +19,7 @@ class TestObject:
         return f"TestObject({self.value})"
 
 
+@pytest.mark.asyncio
 async def test_iproxy_composition():
     """
     Test case for composing multiple IProxy objects with various operations
