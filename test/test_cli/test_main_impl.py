@@ -25,6 +25,7 @@ def test_display_help():
     assert "check_config" in output
     assert "create_overloads" in output
     assert "json_graph" in output
+    assert "describe" in output
 
 
 def test_pinjected_cli_default():
