@@ -1,12 +1,12 @@
 import asyncio
 from asyncio import Queue, Future
 from typing import Union, AsyncIterator, Iterable
-from pinjected.compatibility.task_group import TaskGroup
+
+from returns.future import future_safe
+from tqdm import tqdm
 
 from pinjected import *
-
-from tqdm import tqdm
-from returns.future import future_safe
+from pinjected.compatibility.task_group import TaskGroup
 
 
 def ensure_agen(tasks):
@@ -29,6 +29,7 @@ def ensure_agen(tasks):
 
 @injected
 async def a_map_progress__tqdm(
+        logger,/,
         async_f: callable,
         tasks: Union[AsyncIterator, list, Iterable],
         desc: str,
@@ -47,9 +48,8 @@ async def a_map_progress__tqdm(
     producer_status = "not started"
 
     async def producer():
-        from loguru import logger
         nonlocal producer_status
-        logger.info(f"starting producer with {tasks}")
+        # logger.info(f"starting producer with {tasks}")
         producer_status = "started"
         async for task in tasks:
             fut = Future()
@@ -74,8 +74,7 @@ async def a_map_progress__tqdm(
         return await tgt
 
     async def consumer(idx):
-        from loguru import logger
-        logger.info(f"starting consumer")
+        # logger.info(f"starting consumer")
         consumer_status[idx] = "started"
         while True:
             consumer_status[idx] = "waiting"
@@ -99,6 +98,7 @@ async def a_map_progress__tqdm(
         return "consumer done"
 
     async with TaskGroup() as tg:
+        logger.info(f"starting a_map_progress")
         producer_task = tg.create_task(producer())
         consumer_tasks = [tg.create_task(consumer(idx)) for idx in range(pool_size)]
         while True:
@@ -107,3 +107,4 @@ async def a_map_progress__tqdm(
                 break
             else:
                 yield await done
+        logger.success("a_map_progress done")
