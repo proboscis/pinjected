@@ -561,39 +561,20 @@ g = d.to_graph()
         }
 
     def to_edges(self, root_name, deps: list[str]) -> list[EdgeInfo]:
-        from collections import defaultdict
-
-        edges = [
-
-        ]
-        keys = set()
-
-        for root in deps:
-            deps_map = defaultdict(list)
-
-            for a, b, _ in self.di_dfs(root, replace_missing=True):
-                deps_map[a].append(b)
-
-            for key, dependencies in deps_map.items():
-                edges.append(
-                    EdgeInfo(
-                        key=key,
-                        dependencies=list(sorted(set(dependencies))),
-                        metadata=self.get_metadata(key),
-                        spec=self.get_spec(key),
-                    )
-                )
-                keys.add(key)
-        if root_name not in keys:
-            edges.append(
-                EdgeInfo(
-                    key=root_name,
-                    dependencies=list(sorted(set(deps))),
-                    metadata=Nothing,
-                    spec=Nothing,
-                )
-            )
-        return edges
+        """
+        Generate a list of EdgeInfo objects representing the dependency graph.
+        
+        Args:
+            root_name: The name of the root node
+            deps: List of direct dependencies
+            
+        Returns:
+            A list of EdgeInfo objects representing the dependency graph
+        """
+        from pinjected.dependency_graph_builder import DependencyGraphBuilder
+        
+        builder = DependencyGraphBuilder(self)
+        return builder.build_edges(root_name, deps)
 
     def to_json(self, roots: Union[str, List[str]], replace_missing=True):
         """
