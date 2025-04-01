@@ -51,6 +51,7 @@ object GutterActionUtil {
     
     /**
      * Creates a list of action items for an injected function/variable.
+     * Follows the specific order: Run action (first), Show action (second), Describe action (third), Other actions (following)
      */
     fun createActions(project: Project, name: String): List<ActionItem> {
         // Save modified documents before running actions
@@ -58,15 +59,16 @@ object GutterActionUtil {
         
         val helper = InjectedFunctionActionHelper(project)
         val pinjectedUtil = PinjectedConsoleUtil(helper)
+        val actions = mutableListOf<ActionItem>()
         
-        // Basic run action - uses 'run' environment (default)
+        // Basic run action - uses 'run' environment (default) - ALWAYS FIRST
         val runAction = ActionItem("Run $name") {
             helper.runInBackground("Running $name") { indicator ->
                 try {
                     indicator.fraction = 0.1
                     val filePath = helper.getFilePath() ?: return@runInBackground
                     val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: return@runInBackground
-                    val runConfig = configs.firstOrNull { !it.name.contains("interpreter") }
+                    val runConfig = configs.firstOrNull { !it.name.contains("_viz") && !it.name.contains("describe") }
                     
                     indicator.fraction = 0.5
                     if (runConfig != null) {
@@ -85,16 +87,9 @@ object GutterActionUtil {
                 }
             }
         }
+        actions.add(runAction)
         
-        // Run in interpreter environment (optional)
-        val runInterpreterAction = ActionItem("Run $name in Interpreter") {
-            helper.runInBackground("Running $name in interpreter") { indicator ->
-                val filePath = helper.getFilePath() ?: return@runInBackground
-                pinjectedUtil.runInjected(filePath, name, null)
-            }
-        }
-        
-        // Show/Visualize action (if visualization config exists)
+        // Show/Visualize action - ALWAYS SECOND
         val showAction = ActionItem("Show $name") {
             helper.runInBackground("Visualizing $name") { indicator ->
                 indicator.fraction = 0.1
@@ -123,6 +118,39 @@ object GutterActionUtil {
                 indicator.fraction = 1.0
             }
         }
+        actions.add(showAction)
+        
+        // Describe action - ALWAYS THIRD (if available)
+        try {
+            val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: emptyList()
+            val describeConfig = configs.firstOrNull { it.name.contains("describe") }
+            
+            if (describeConfig != null) {
+                val describeAction = ActionItem("Describe $name") {
+                    helper.runInBackground("Describing $name") { indicator ->
+                        indicator.fraction = 0.1
+                        helper.runConfig(describeConfig)
+                        indicator.fraction = 1.0
+                    }
+                }
+                actions.add(describeAction)
+            }
+        } catch (e: Exception) {
+            LOG.error("Error loading describe configuration for $name", e)
+            helper.showNotification(
+                "Error Loading Describe Configuration",
+                "Error: ${e.message}",
+                com.intellij.notification.NotificationType.ERROR
+            )
+        }
+        
+        // Update configuration cache action - ALWAYS AVAILABLE
+        val updateConfigAction = ActionItem("Update Configurations") {
+            helper.runInBackground("Updating configurations") { indicator ->
+                helper.updateConfigurations()
+            }
+        }
+        actions.add(updateConfigAction)
         
         // Make sandbox action
         val makeSandboxAction = ActionItem("Make Sandbox") {
@@ -156,68 +184,39 @@ object GutterActionUtil {
                 indicator.fraction = 1.0
             }
         }
+        actions.add(makeSandboxAction)
         
-        // Select configuration action
-        val selectConfigAction = ActionItem("Select Configuration") {
-            helper.runInBackground("Loading configurations") { indicator ->
-                try {
-                    indicator.fraction = 0.5
-                    val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: return@runInBackground
+        // DYNAMICALLY ADD OTHER ACTIONS FROM CONFIGURATIONS
+        try {
+            val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: emptyList()
+            
+            // Add all other configurations as actions
+            for (config in configs) {
+                // Skip configs we've already handled (run, viz, describe)
+                if (!config.name.endsWith("_viz") && 
+                    !config.name.contains("describe") && 
+                    config.name != "Run $name") {
                     
-                    ApplicationManager.getApplication().invokeLater {
-                        val listModel = DefaultListModel<String>()
-                        configs.map { it.name }.forEach { listModel.addElement(it) }
-                        val list = JBList(listModel)
-                        
-                        val builder = PopupChooserBuilder(list)
-                        builder.setTitle("Select Configuration")
-                        builder.setItemChoosenCallback {
-                            val selectedConfig = configs[list.selectedIndex]
-                            helper.runConfig(selectedConfig)
+                    val actionName = config.name
+                    val action = ActionItem(actionName) {
+                        helper.runInBackground("Running $actionName") { indicator ->
+                            indicator.fraction = 0.1
+                            helper.runConfig(config)
+                            indicator.fraction = 1.0
                         }
-                        
-                        builder.createPopup().showInFocusCenter()
                     }
-                } catch (e: Exception) {
-                    helper.showNotification(
-                        "Error Loading Configurations",
-                        "Error: ${e.message}",
-                        com.intellij.notification.NotificationType.ERROR
-                    )
-                }
-                
-                indicator.fraction = 1.0
-            }
-        }
-        
-        // Update configuration cache action
-        val updateConfigAction = ActionItem("Update Configuration") {
-            helper.runInBackground("Updating configurations") { indicator ->
-                helper.updateConfigurations()
-            }
-        }
-        
-        // Describe action
-        val describeAction = ActionItem("Describe $name") {
-            helper.runInBackground("Describing $name") { indicator ->
-                try {
-                    indicator.fraction = 0.1
-                    val filePath = helper.getFilePath() ?: return@runInBackground
-                    
-                    indicator.fraction = 0.5
-                    pinjectedUtil.runPinjectedCommand(filePath, name, "describe")
-                    
-                    indicator.fraction = 1.0
-                } catch (e: Exception) {
-                    helper.showNotification(
-                        "Error Describing $name",
-                        "Error: ${e.message}",
-                        com.intellij.notification.NotificationType.ERROR
-                    )
+                    actions.add(action)
                 }
             }
+        } catch (e: Exception) {
+            LOG.error("Error loading configurations for $name", e)
+            helper.showNotification(
+                "Error Loading Configurations",
+                "Error: ${e.message}",
+                com.intellij.notification.NotificationType.ERROR
+            )
         }
         
-        return listOf(runAction, showAction, describeAction, makeSandboxAction, runInterpreterAction, selectConfigAction, updateConfigAction)
+        return actions
     }
 }
