@@ -148,6 +148,7 @@ def injected_to_idea_configs(
         /,
         tgt: ModuleVarSpec
 ):
+    from pinjected import __main__
     # question is: how can we pass the override to run_injected?
     logger.info(f"using custom_idea_config_creator {custom_idea_config_creator} for {tgt}")
     name = tgt.var_path.split(".")[-1]
@@ -190,7 +191,6 @@ def injected_to_idea_configs(
                 arguments=['run_injected', 'visualize'] + args[1:],
                 name=f"{name}({ddp_name})_viz",
             )
-            from pinjected import __main__
             describe_config = {
                 'script_path': __main__.__file__,
                 'interpreter_path': interpreter_path,
