@@ -197,6 +197,27 @@ object GutterActionUtil {
             }
         }
         
-        return listOf(runAction, showAction, makeSandboxAction, runInterpreterAction, selectConfigAction, updateConfigAction)
+        // Describe action
+        val describeAction = ActionItem("Describe $name") {
+            helper.runInBackground("Describing $name") { indicator ->
+                try {
+                    indicator.fraction = 0.1
+                    val filePath = helper.getFilePath() ?: return@runInBackground
+                    
+                    indicator.fraction = 0.5
+                    pinjectedUtil.runPinjectedCommand(filePath, name, "describe")
+                    
+                    indicator.fraction = 1.0
+                } catch (e: Exception) {
+                    helper.showNotification(
+                        "Error Describing $name",
+                        "Error: ${e.message}",
+                        com.intellij.notification.NotificationType.ERROR
+                    )
+                }
+            }
+        }
+        
+        return listOf(runAction, showAction, describeAction, makeSandboxAction, runInterpreterAction, selectConfigAction, updateConfigAction)
     }
 }
