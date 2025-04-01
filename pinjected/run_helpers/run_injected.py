@@ -156,6 +156,7 @@ def run_anything(
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
     cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
+    cxt = cxt.add_overrides(overrides)
     D = cxt.get_final_design()
     logger.info(f"loaded design:{D}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
