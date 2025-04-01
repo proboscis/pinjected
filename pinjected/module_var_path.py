@@ -77,19 +77,29 @@ class ModuleVarPath:
 def load_variable_by_module_path(full_module_path:str):
     from pinjected.pinjected_logging import logger
     logger.info(f"loading {full_module_path}")
+    
+    if full_module_path is None:
+        raise ValueError("Module path cannot be None. Please provide a path in the format 'full.module.path.var.name'")
+    
+    if '.' not in full_module_path:
+        raise ValueError(f"Invalid module path format: {full_module_path}. Expected format: 'full.module.path.var.name'")
+    
     module_path_parts = full_module_path.split('.')
     variable_name = module_path_parts[-1]
     module_path = '.'.join(module_path_parts[:-1])
 
-    # Import the module
-    module = importlib.import_module(module_path)
+    try:
+        # Import the module
+        module = importlib.import_module(module_path)
+    except ImportError:
+        raise ImportError(f"Could not import module '{module_path}'. Please ensure the module exists and is importable.")
 
     # Retrieve the variable using getattr()
     if not hasattr(module, variable_name):
         logger.warning(
             f"Module {module_path} at {module.__file__} does not have variable {variable_name}. src = \n{Path(module.__file__).read_text()}")
-        raise RuntimeError(
-            f"Module {module_path} at {module.__file__} does not have variable {variable_name}. but has {dir(module)}")
+        raise ValueError(
+            f"Module '{module_path}' does not have variable '{variable_name}'. Available variables: {', '.join(dir(module))[:200]}...")
     variable = getattr(module, variable_name)
 
     logger.info(f"loaded {full_module_path}")

@@ -55,18 +55,27 @@ class RunnableSpec:
 
 def get_design_path_from_var_path(var_path):
     from pinjected.pinjected_logging import logger
+    
+    if var_path is None:
+        raise ValueError("Variable path cannot be None. Please provide a path in the format 'full.module.path.var.name'")
+    
     logger.info(f"looking for default design paths from {var_path}")
-    module_path = ".".join(var_path.split(".")[:-1])
-    # we need to get the file path from var path
-    logger.info(f"loading module:{module_path}")
-    # Import the module
-    module = importlib.import_module(module_path)
-    module_path = module.__file__
-    design_paths = find_default_design_paths(module_path, None)
-    #assert design_paths, f"no default design paths found for {var_path}"
-    if design_paths:
-        design_path = design_paths[0]
-        return design_path
+    
+    try:
+        module_path = ".".join(var_path.split(".")[:-1])
+        # we need to get the file path from var path
+        logger.info(f"loading module:{module_path}")
+        # Import the module
+        module = importlib.import_module(module_path)
+        module_path = module.__file__
+        design_paths = find_default_design_paths(module_path, None)
+        #assert design_paths, f"no default design paths found for {var_path}"
+        if design_paths:
+            design_path = design_paths[0]
+            return design_path
+    except ImportError:
+        logger.warning(f"Could not import module path: {module_path}")
+        return None
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:

@@ -102,3 +102,32 @@ async def test_describe_command_with_docs():
     assert main_edge is not None, "Should find the main_target edge"
     assert "dep1" in main_edge.dependencies, "main_target should depend on dep1"
     assert "dep2" in main_edge.dependencies, "main_target should depend on dep2"
+
+
+def test_describe_command_with_none_var_path():
+    """Test that the describe command provides a helpful error message when var_path is None."""
+    from pinjected.main_impl import describe
+    
+    captured_output = StringIO()
+    with redirect_stdout(captured_output):
+        describe(var_path=None)
+    
+    output = captured_output.getvalue()
+    assert "Error: You must provide a var_path parameter" in output
+    assert "Example:" in output
+
+
+def test_describe_command_with_invalid_path():
+    """Test that the describe command handles invalid paths properly."""
+    from pinjected.main_impl import describe
+    
+    with pytest.raises(ValueError) as excinfo:
+        describe(var_path="module_with_no_dots")
+    
+    assert "Empty module name" in str(excinfo.value)
+    
+    with pytest.raises(ImportError) as excinfo:
+        describe(var_path="non.existent.module.path")
+    
+    assert "Could not import module" in str(excinfo.value)
+    assert "Please ensure the module exists" in str(excinfo.value)
