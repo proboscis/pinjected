@@ -13,7 +13,6 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
     private JPanel mainPanel;
     private JCheckBox enableDetailedAnalysisCheckBox;
     private JCheckBox checkForDependenciesCheckBox;
-    private JCheckBox enableCodeCompletionCheckBox;
     
     @Nls(capitalization = Nls.Capitalization.Title)
     @Override
@@ -38,9 +37,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         JLabel dependenciesDescription = new JLabel("    Checks if DI libraries (injector, dependency-injector, pinject) are installed via PythonUtils.isPackageInstalled()");
         dependenciesDescription.setFont(dependenciesDescription.getFont().deriveFont(Font.ITALIC));
         
-        enableCodeCompletionCheckBox = new JCheckBox("Enable code completion");
-        JLabel codeCompletionDescription = new JLabel("    Controls whether InjectedCompletionProvider shows code completion suggestions for injected functions");
-        codeCompletionDescription.setFont(codeCompletionDescription.getFont().deriveFont(Font.ITALIC));
+
         
         settingsPanel.add(enableDetailedAnalysisCheckBox);
         settingsPanel.add(detailedAnalysisDescription);
@@ -50,8 +47,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         settingsPanel.add(dependenciesDescription);
         settingsPanel.add(Box.createVerticalStrut(5));
         
-        settingsPanel.add(enableCodeCompletionCheckBox);
-        settingsPanel.add(codeCompletionDescription);
+
         
         mainPanel.add(settingsPanel);
         
@@ -59,7 +55,6 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         enableDetailedAnalysisCheckBox.setSelected(settings.enableDetailedAnalysis);
         checkForDependenciesCheckBox.setSelected(settings.checkForDependencies);
-        enableCodeCompletionCheckBox.setSelected(settings.enableCodeCompletion);
         
         return mainPanel;
     }
@@ -68,8 +63,7 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
     public boolean isModified() {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         return enableDetailedAnalysisCheckBox.isSelected() != settings.enableDetailedAnalysis ||
-               checkForDependenciesCheckBox.isSelected() != settings.checkForDependencies ||
-               enableCodeCompletionCheckBox.isSelected() != settings.enableCodeCompletion;
+               checkForDependenciesCheckBox.isSelected() != settings.checkForDependencies;
     }
     
     @Override
@@ -77,7 +71,6 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         settings.enableDetailedAnalysis = enableDetailedAnalysisCheckBox.isSelected();
         settings.checkForDependencies = checkForDependenciesCheckBox.isSelected();
-        settings.enableCodeCompletion = enableCodeCompletionCheckBox.isSelected();
     }
     
     @Override
@@ -85,7 +78,6 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         PInjectDesignSettings settings = ApplicationManager.getApplication().getService(PInjectDesignSettings.class);
         enableDetailedAnalysisCheckBox.setSelected(settings.enableDetailedAnalysis);
         checkForDependenciesCheckBox.setSelected(settings.checkForDependencies);
-        enableCodeCompletionCheckBox.setSelected(settings.enableCodeCompletion);
     }
     
     @Override
@@ -93,6 +85,5 @@ public class PInjectDesignSettingsConfigurable implements Configurable {
         mainPanel = null;
         enableDetailedAnalysisCheckBox = null;
         checkForDependenciesCheckBox = null;
-        enableCodeCompletionCheckBox = null;
     }
 }

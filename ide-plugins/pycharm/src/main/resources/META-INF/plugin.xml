@@ -13,25 +13,6 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationService 
             serviceImplementation="com.proboscis.pinjectdesign.settings.PInjectDesignSettings"/>
-        <applicationConfigurable 
-            parentId="tools"
-            instance="com.proboscis.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
-            id="com.proboscis.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
-            displayName="PInject Design"/>
-            
-        <!-- Injected Function Parameter Info Handler -->
-        <lang.parameterInfoHandler 
-            language="Python" 
-            implementationClass="com.proboscis.pinjectdesign.kotlin.handlers.InjectedFunctionParameterInfoHandler"/>
-            
-        <!-- Injected Function Completion Contributor -->
-        <completion.contributor 
-            language="Python" 
-            implementationClass="com.proboscis.pinjectdesign.kotlin.completion.InjectedFunctionCompletionContributor"/>
-            
-        <!-- Injected Function Goto Declaration Handler -->
-        <gotoDeclarationHandler 
-            implementation="com.proboscis.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
             
         <!-- Injected Function Gutter Icon Provider -->
         <codeInsight.lineMarkerProvider 
@@ -40,14 +21,6 @@
     </extensions>
 
     <actions>
-        <action id="PInjectDesign.AnalyzeCode" 
-                class="com.proboscis.pinjectdesign.actions.AnalyzePythonCodeAction"
-                text="Analyze Python Code"
-                description="Analyze Python code structure">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
-        </action>
-        
         <!-- Injected Function Actions -->
         <action id="PInjectDesign.RunSelectedInjected" 
                 class="com.proboscis.pinjectdesign.kotlin.actions.RunSelectedInjectedAction"
@@ -55,21 +28,6 @@
                 description="Run the selected injected function">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
-        </action>
-        
-        <action id="PInjectDesign.TestExecuteScript" 
-                class="com.proboscis.pinjectdesign.kotlin.actions.TestExecuteScriptAction"
-                text="Execute Test Script"
-                description="Execute a test script in the console">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-        </action>
-        
-        <!-- Find Injected Runnables Action -->
-        <action id="PInjectDesign.FindInjectedRunnables" 
-                class="com.proboscis.pinjectdesign.kotlin.actions.FindInjectedRunnablesAction"
-                text="Find Injected Runnables"
-                description="Find all injected runnables in current file">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>
