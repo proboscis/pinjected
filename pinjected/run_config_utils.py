@@ -179,8 +179,10 @@ def injected_to_idea_configs(
         if args is not None:
             ddp_name = ddp.split(".")[-1]
             config = dict(
-                **config_args,
-                arguments=['run_injected'] + args,
+                script_path= __main__.__file__,
+                interpreter_path= interpreter_path,
+                working_dir=default_working_dir.value_or(os.getcwd()),
+                arguments=['run'] + args[1:],
                 name=f"{name}({ddp_name})"
             )
             viz_config = dict(
