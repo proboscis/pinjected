@@ -14,7 +14,7 @@ from returns.primitives.tracing import collect_traces
 from returns.unsafe import unsafe_perform_io
 
 from pinjected import Injected
-from pinjected.compatibility.task_group import TaskGroup
+from pinjected.compatibility.task_group import TaskGroup, CompatibleExceptionGroup
 from pinjected.di.app_injected import walk_replace, EvaledInjected
 from pinjected.di.design_spec.protocols import DesignSpec, BindSpec
 from pinjected.di.expr_util import Expr, Object, Cache, Call, BiOp, UnaryOp, Attr, GetItem, show_expr
@@ -37,7 +37,6 @@ StaticProvisionError = Union[CyclicDependency, DependencyResolutionFailure]
 
 P = ParamSpec('P')
 T = TypeVar('T')
-
 
 def maybe_fre_to_fre(
         f: Maybe[Callable[P, FutureResultE[str]]],
@@ -80,7 +79,7 @@ class AsyncResolver:
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
     callbacks: list[IResolverCallback] = field(default=None)
     spec: DesignSpec = field(default=DesignSpec.empty())
-    use_implicit_bindings:bool = field(default=True)
+    use_implicit_bindings: bool = field(default=True)
 
     def add_callback(self, callback: IResolverCallback):
         self.callbacks.append(callback)
@@ -356,18 +355,18 @@ class AsyncResolver:
         match tgt:
             case Injected():
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design,use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(tmp_design, use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case str():
-                digraph: DIGraph = DIGraph(d,use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(d, use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation(tgt))
             case DelegatedVar() as dv:
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design,use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(tmp_design, use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation("__root__"))
             case f if callable(f):
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design,use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(tmp_design, use_implicit_bindings=self.use_implicit_bindings)
                 errors = list(digraph.di_dfs_validation("__root__"))
         return errors
 
@@ -443,14 +442,7 @@ class AsyncResolver:
                 else:
                     return await self._provide_providable(tgt)
             except Exception as e:
-                import pinjected.compatibility.task_group
-                if hasattr(pinjected.compatibility.task_group, 'ExceptionGroup'):
-                    logger.debug(f"using compatibility.task_group.ExceptionGroup")
-                    EG = pinjected.compatibility.task_group.ExceptionGroup
-                else:
-                    logger.debug(f"using builtin ExceptionGroup")
-                    EG = ExceptionGroup
-                if isinstance(e, EG):
+                if isinstance(e, CompatibleExceptionGroup):
                     if len(e.exceptions) == 1:
                         logger.debug(f"raising first exception from {[type(e) for e in e.exceptions]}")
                         raise e.exceptions[0]
