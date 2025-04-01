@@ -3,13 +3,15 @@ from inspect import isawaitable
 from pathlib import Path
 
 from pinjected import Design, design, Injected
+from pinjected.compatibility.task_group import CompatibleExceptionGroup
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
+from pinjected.exceptions import DependencyResolutionError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
-    a_get_run_context, RunContext
+    a_get_run_context, RunContext, PinjectedRunFailure
 
 
 def run(
@@ -208,6 +210,13 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
+def unwrap_exception_group(exc):
+    while isinstance(exc, CompatibleExceptionGroup) and len(exc.exceptions) == 1:
+        exc = exc.exceptions[0]
+    return exc
+
+
+class PinjectedRunDependencyResolutionFailure(Exception): pass
 
 
 class PinjectedCLI:
@@ -238,7 +247,15 @@ class PinjectedCLI:
 
 
 def main():
-    import fire
-    
-    cli = PinjectedCLI()
-    fire.Fire(cli)
+    try:
+        import fire
+        
+        cli = PinjectedCLI()
+        fire.Fire(cli)
+    except Exception as e:
+        e = unwrap_exception_group(e)
+        if isinstance(e, PinjectedRunFailure):
+            e = unwrap_exception_group(e.__cause__)
+            if isinstance(e, DependencyResolutionError):
+                raise PinjectedRunDependencyResolutionFailure(str(e))
+        raise
