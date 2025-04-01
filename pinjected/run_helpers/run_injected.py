@@ -385,6 +385,8 @@ def call_impl(call_args, call_kwargs, cxt, design):
     res = _run_target(design, var(*args, **kwargs), cxt)
     return res
 
+class PinjectedRunFailure(Exception):
+    """Raised when a pinjected run fails."""
 
 @dataclass(frozen=True)
 class RunContext:
@@ -431,7 +433,10 @@ class RunContext:
         return await self.a_provide(self.var)
 
     async def a_run(self):
-        return await self._a_run()
+        try:
+            return await self._a_run()
+        except Exception as e:
+            raise PinjectedRunFailure("pinjected run failed") from e
 
     def run(self):
         return asyncio.run(self.a_run())

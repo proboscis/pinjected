@@ -28,3 +28,7 @@ except ImportError:
                 results = await asyncio.gather(*self.tasks,return_exceptions=False)
             except Exception as e:
                 raise ExceptionGroup([e]) from e
+
+CompatibleExceptionGroup = ExceptionGroup
+
+
