@@ -23,13 +23,5 @@ pinjected_internal_design:Design = design(
                                        find_default_design_paths(module_path, default_design_path)),
     project_root=Injected.bind(lambda module_path: Path(get_project_root(module_path))),
     default_working_dir=Injected.bind(lambda project_root: Some(str(project_root))),
-    internal_idea_config_creator=add_export_config,
-    __design_spec__=DesignSpec.new(
-        default_design_path=SimpleBindSpec(
-            documentation="The default design path used to run injected functions when no specific design path is provided."
-        ),
-        logger=SimpleBindSpec(
-            documentation="Logger instance used for logging information during the execution of injected functions."
-        )
-    )
+    internal_idea_config_creator=add_export_config
 )
