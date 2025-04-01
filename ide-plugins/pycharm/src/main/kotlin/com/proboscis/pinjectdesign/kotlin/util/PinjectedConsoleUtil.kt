@@ -16,6 +16,12 @@ class PinjectedConsoleUtil(
         val block: CodeBlock = helper.runPythonJson<CodeBlock>(args)
         executeScriptInConsole(helper.project, block.code, editor)
     }
+    
+    fun runPinjectedCommand(scriptPath: String, funcName: String, command: String) {
+        val args = "-m pinjected.ide_supports.console_run_helper $command $scriptPath $funcName".split(" ")
+        val block: CodeBlock = helper.runPythonJson<CodeBlock>(args)
+        executeScriptInConsole(helper.project, block.code, null)
+    }
 }
 
 fun executeScriptInConsole(project: Project, script: String, editor: Editor?) {

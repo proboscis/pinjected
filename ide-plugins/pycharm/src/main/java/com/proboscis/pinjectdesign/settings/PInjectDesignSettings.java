@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 public class PInjectDesignSettings implements PersistentStateComponent<PInjectDesignSettings> {
     public boolean enableDetailedAnalysis = false;
     public boolean checkForDependencies = true;
-    public boolean enableCodeCompletion = true;
     
     @Override
     public @Nullable PInjectDesignSettings getState() {
