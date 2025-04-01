@@ -259,5 +259,5 @@ def main():
         if isinstance(e, PinjectedRunFailure):
             e = unwrap_exception_group(e.__cause__)
             if isinstance(e, DependencyResolutionError):
-                raise PinjectedRunDependencyResolutionFailure(str(e))
+                raise PinjectedRunDependencyResolutionFailure(str(e)) from None
         raise
