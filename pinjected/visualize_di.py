@@ -239,7 +239,7 @@ class DIGraph:
                 import traceback
                 trb = traceback.format_exc()
                 if replace_missing:
-                    logger.info(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e}")
+                    # logger.debug(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e}")
                     # logger.warning(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e} \n{trb}")
                     nexts = []
                 else:
