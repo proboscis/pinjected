@@ -46,13 +46,14 @@ class DependencyGraphBuilder:
                 
         return deps_map
     
-    def create_edge_info(self, key: str, dependencies: List[str]) -> EdgeInfo:
+    def create_edge_info(self, key: str, dependencies: List[str], used_by: List[str] = None) -> EdgeInfo:
         """
         Create an EdgeInfo object for a dependency key.
         
         Args:
             key: The dependency key
             dependencies: List of dependencies for this key
+            used_by: List of keys that use this key
             
         Returns:
             An EdgeInfo object with metadata and spec information
@@ -60,6 +61,7 @@ class DependencyGraphBuilder:
         return EdgeInfo(
             key=key,
             dependencies=list(sorted(set(dependencies))),
+            used_by=used_by,
             metadata=self.digraph.get_metadata(key),
             spec=self.digraph.get_spec(key)
         )
@@ -80,6 +82,11 @@ class DependencyGraphBuilder:
         
         deps_map = self.collect_dependencies(deps)
         
+        used_by_map = defaultdict(list)
+        for key, dependencies in deps_map.items():
+            for dep in dependencies:
+                used_by_map[dep].append(key)
+        
         for dep in deps:
             edges.append(self.create_edge_info(dep, deps_map.get(dep, [])))
             keys.add(dep)
@@ -93,8 +100,13 @@ class DependencyGraphBuilder:
             edges.append(EdgeInfo(
                 key=root_name,
                 dependencies=list(sorted(set(deps))),
+                used_by=list(sorted(set(used_by_map.get(root_name, [])))),
                 metadata=self.digraph.get_metadata(root_name),
                 spec=self.digraph.get_spec(root_name)
             ))
+        
+        for edge in edges:
+            if edge.used_by is None:  # Only update if not already set
+                edge.used_by = list(sorted(set(used_by_map.get(edge.key, []))))
             
         return edges

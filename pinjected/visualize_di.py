@@ -2,7 +2,7 @@ import inspect
 import platform
 import uuid
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Union, Any
 
@@ -71,8 +71,9 @@ class MissingKeyError(RuntimeError):
 class EdgeInfo:
     key: str
     dependencies: list[str]
-    metadata: Maybe[BindMetadata]
-    spec: Maybe[BindSpec]
+    used_by: list[str] = field(default_factory=list)
+    metadata: Maybe[BindMetadata] = Nothing
+    spec: Maybe[BindSpec] = Nothing
 
     def to_json_repr(self):
         """Convert edge information to a JSON-serializable representation with enhanced metadata and spec details."""
@@ -92,6 +93,8 @@ class EdgeInfo:
                 "docstring": metadata.docstring if hasattr(metadata, "docstring") else None,
                 "source": str(metadata.source) if hasattr(metadata, "source") else None
             }
+            
+        used_by_info = self.used_by if self.used_by else []
 
         # The spec should now have a better string representation from our __str__ implementation
         spec_info = None
