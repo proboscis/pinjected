@@ -11,7 +11,7 @@ from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
-    a_get_run_context, RunContext, PinjectedRunFailure
+    a_get_run_context, RunContext, PinjectedRunFailure, a_run_with_notify
 
 
 def run(
@@ -58,7 +58,9 @@ def run(
             ovr += kwargs_overrides
             cxt: RunContext = await a_get_run_context(design_path, var_path)
             cxt = cxt.add_overrides(ovr)
-        res = await cxt.a_run()
+        async def task(cxt):
+            return await cxt.a_run()
+        res = await a_run_with_notify(cxt, task)
         from pinjected.pinjected_logging import logger
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
         # now we've got the function to call

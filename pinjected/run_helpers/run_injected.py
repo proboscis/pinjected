@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import io
 import os
 import sys
@@ -155,81 +156,51 @@ def run_anything(
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
     cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
-    design = cxt.get_final_design()
-    logger.info(f"loaded design:{design}")
+    D = cxt.get_final_design()
+    logger.info(f"loaded design:{D}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
     logger.info(f"running target:{var_path} with design {design_path}")
-    # tree_str = design_rich_tree(design, cxt.var)
-    # logger.info(f"Dependency Tree:\n{tree_str}")
-
-    # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
-    # logger.info(f"metadata obtained from pinjected: {meta}")
-
-    # here we load the defaults and overrides from the user's environment
-    # design = load_user_default_design() + design + load_user_overrides_design()
-
     res = None
-
-    # @logger.catch(exclude="pinjected")
-    try:
-        if cmd == "get":
-            res = cxt.add_design(overrides).run()
-        elif cmd == "fire":
-            raise RuntimeError("fire is deprecated. use get.")
-        elif cmd == "visualize":
+    if cmd == "get":
+        async def task(cxt):
+            return await cxt.a_run()
+    elif cmd == "visualize":
+        async def task(cxt):
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
-            DIGraph(design).show_injected_html(cxt.var)
-        elif cmd == "export_visualization_html":
+            DIGraph(D).show_injected_html(cxt.var)
+    elif cmd == "export_visualization_html":
+        async def task(cxt):
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             dst = Path(".pinjected_visualization/")
-            res_html: Path = DIGraph(design).save_as_html(cxt.var, dst)
+            res_html: Path = DIGraph(D).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
-        elif cmd == "to_script":
-            d = design + design(__root__=Injected.bind(cxt.var))
+    elif cmd == "to_script":
+        async def task(cxt):
+            logger.info(f"exporting visualization {var_path} with design {design_path}")
+            logger.info(f"deps:{cxt.var.dependencies()}")
+            d = D + design(__root__=Injected.bind(cxt.var))
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
-        elif cmd == "json-graph":
+    elif cmd == "json-graph":
+        async def task(cxt):
             import json
             logger.info(f"generating JSON graph for {var_path} with design {design_path}")
             if hasattr(cxt.var, 'dependencies'):
                 logger.info(f"deps:{cxt.var.dependencies()}")
             json_graph = DIGraph(
-                design,
-                spec = Some(cxt.src_meta_context.spec_trace.accumulated)
-            ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1],list(cxt.var.dependencies()))
+                D,
+                spec=Some(cxt.src_meta_context.spec_trace.accumulated)
+            ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1], list(cxt.var.dependencies()))
             print(json.dumps(json_graph, indent=2))
-        elif cmd == "describe":
-            generate_dependency_graph_description(var_path, design_path, cxt, design)
-    except Exception as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            if PinjectedHandleMainException.key in design:
-                logger.warning(
-                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
-                from pinjected import IProxy
-                handler: IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
-                handling = handler(e)
-                handled: Optional[str] = asyncio.run(cxt.a_provide(handling, show_debug=False))
-                if handled:
-                    logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
-                raise e
-            else:
-                logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
-                notify(f"Run failed with error:\n{e}", sound="Frog")
-                raise e
-    with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
-        logger.success(f"pinjected run result:\n{pformat(res)}")
-        if PinjectedHandleMainResult.key in design:
-            from pinjected import IProxy
-            handler: IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
-            handling = handler(res)
-            asyncio.run(cxt.a_provide(handling, show_debug=False))
-        else:
-            logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
-            notify(f"Run result:\n{str(res)[:100]}")
-        if return_result:
-            logger.info(f"delegating the result to fire..")
-            return res
+    elif cmd == "describe":
+        async def task(cxt):
+            generate_dependency_graph_description(var_path, design_path, cxt, D)
+    else:
+        raise Exception(f"unknown command: {cmd}")
+    res = asyncio.run(a_run_with_notify(cxt, task, notify))
+    if return_result:
+        return res
 
 
 def generate_dependency_graph_description(var_path, design_path, cxt, design):
@@ -248,15 +219,15 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     from rich.text import Text
     from returns.maybe import Nothing, Some
     import re
-    
+
     logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
-    
+
     digraph = DIGraph(
         design,
-        spec = Some(cxt.src_meta_context.spec_trace.accumulated)
+        spec=Some(cxt.src_meta_context.spec_trace.accumulated)
     )
     root_name = cxt.src_var_spec.var_path.split(".")[-1]
-    
+
     if hasattr(cxt.var, 'dependencies'):
         logger.info(f"deps:{cxt.var.dependencies()}")
         deps = list(cxt.var.dependencies())
@@ -264,12 +235,12 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     else:
         logger.error(f"Object {root_name} doesn't have dependencies method")
         raise AttributeError(f"Object {root_name} must have a dependencies() method to use the describe command")
-    
+
     console = Console()
     root_tree = Tree(f"[bold blue]{root_name}[/bold blue]")
-    
+
     processed_nodes = set()
-    
+
     def format_maybe(value):
         """Format Maybe objects (Some/Nothing) to clean representation."""
         if value == Nothing:
@@ -277,14 +248,14 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         elif hasattr(value, 'unwrap'):  # Check if it's a Some instance
             return format_value(value.unwrap())
         return format_value(value)
-    
+
     def format_value(value):
         """Format values to clean representation."""
         if value is None:
             return "None"
-        
+
         value_str = str(value)
-        
+
         if isinstance(value, dict) and 'documentation' in value:
             if value['documentation']:
                 doc = value['documentation']
@@ -292,78 +263,78 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
                 doc = re.sub(r'[ \t]+', ' ', doc)
                 value['documentation'] = doc
                 value_str = str(value)
-        
+
         return value_str
-    
+
     def add_node_to_tree(parent_tree, edge):
         if edge.key in processed_nodes:
             return
-        
+
         processed_nodes.add(edge.key)
-        
+
         metadata_text = ""
         if edge.metadata:
             metadata_text = f"\n[dim]Metadata:[/dim] {format_maybe(edge.metadata)}"
-        
+
         spec_text = ""
         if edge.spec:
             spec_text = f"\n[dim]Spec:[/dim] {format_maybe(edge.spec)}"
-        
+
         node_text = f"[bold green]{edge.key}[/bold green]{metadata_text}{spec_text}"
-        
+
         node_tree = parent_tree.add(node_text)
-        
+
         for dep in edge.dependencies:
             node_tree.add(f"[yellow]→ {dep}[/yellow]")
-            
+
             for child_edge in edges:
                 if child_edge.key == dep:
                     add_node_to_tree(node_tree, child_edge)
-    
+
     for edge in edges:
         if edge.key == root_name:
             for dep in edge.dependencies:
                 root_tree.add(f"[yellow]→ {dep}[/yellow]")
-                
+
                 for child_edge in edges:
                     if child_edge.key == dep:
                         add_node_to_tree(root_tree, child_edge)
-    
+
     console.print("\n[bold]Dependency Graph Description:[/bold]")
     console.print(root_tree)
     console.print("\n[bold]Edge Details:[/bold]")
-    
+
     console.print(Panel(f"[bold blue]{root_name}[/bold blue]", title="Root Node"))
-    
+
     for edge in edges:
         if edge.key != root_name:  # Skip root as it's already shown
             title = Text(edge.key, style="bold green")
             content = Text()
-            
+
             content.append("\nDependencies: ")
             if edge.dependencies:
                 content.append(", ".join(edge.dependencies), style="yellow")
             else:
                 content.append("None", style="dim")
-            
+
             if edge.metadata:
                 content.append("\nMetadata: ")
                 content.append(format_maybe(edge.metadata))
-            
+
             if edge.spec:
                 content.append("\nSpec: ")
                 spec_value = format_maybe(edge.spec)
-                
+
                 if "documentation" in spec_value:
                     try:
                         import ast
                         spec_dict = ast.literal_eval(spec_value)
                         doc = spec_dict.get('documentation', '')
-                        
+
                         if doc:
                             clean_spec = {k: v for k, v in spec_dict.items() if k != 'documentation'}
                             content.append(str(clean_spec))
-                            
+
                             content.append("\n\nDocumentation: ")
                             content.append(doc, style="blue")
                             console.print(Panel(content, title=title))
@@ -371,9 +342,9 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
                     except Exception as e:
                         logger.debug(f"Failed to parse documentation: {e}")
                         logger.debug(f"Spec value: {spec_value}")
-                
+
                 content.append(spec_value)
-            
+
             console.print(Panel(content, title=title))
 
 
@@ -385,8 +356,10 @@ def call_impl(call_args, call_kwargs, cxt, design):
     res = _run_target(design, var(*args, **kwargs), cxt)
     return res
 
+
 class PinjectedRunFailure(Exception):
     """Raised when a pinjected run fails."""
+
 
 @dataclass(frozen=True)
 class RunContext:
@@ -440,6 +413,47 @@ class RunContext:
 
     def run(self):
         return asyncio.run(self.a_run())
+
+
+async def a_run_with_notify(
+        cxt: RunContext,
+        a_run,
+        notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs)):
+    """
+    A context manager that runs a function and notifies the result.
+    :param notify: A function to notify the result.
+    """
+    D = cxt.get_final_design()
+    res = None
+    try:
+        res = await a_run(cxt)
+    except Exception as e:
+        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
+            if PinjectedHandleMainException.key in D:
+                logger.warning(
+                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
+                from pinjected import IProxy
+                handler: IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
+                handling = handler(e)
+                handled: Optional[str] = await cxt.a_provide(handling, show_debug=False)
+                if handled:
+                    logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
+                raise e
+            else:
+                logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
+                notify(f"Run failed with error:\n{e}", sound="Frog")
+                raise e
+    with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
+        logger.success(f"pinjected run result:\n{pformat(res)}")
+        if PinjectedHandleMainResult.key in D:
+            from pinjected import IProxy
+            handler: IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
+            handling = handler(res)
+            await cxt.a_provide(handling, show_debug=False)
+        else:
+            logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
+            notify(f"Run result:\n{str(res)[:100]}")
+    return res
 
 
 async def a_resolve_design(design_path, meta_cxt: MetaContext) -> Design:
@@ -584,8 +598,6 @@ def load_user_default_design() -> Design:
         raise
 
 
-
-
 @safe
 def _load_design(design_path):
     if design_path == "":
@@ -616,7 +628,8 @@ def load_user_overrides_design():
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
     try:
-        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
+        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(
+            design_path).value_or(
             design()
         )
         logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
