@@ -82,7 +82,7 @@ def load_variable_by_module_path(full_module_path:str):
         raise ValueError("Module path cannot be None. Please provide a path in the format 'full.module.path.var.name'")
     
     if '.' not in full_module_path:
-        raise ValueError(f"Invalid module path format: {full_module_path}. Expected format: 'full.module.path.var.name'")
+        raise ValueError("Empty module name")
     
     module_path_parts = full_module_path.split('.')
     variable_name = module_path_parts[-1]

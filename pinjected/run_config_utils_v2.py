@@ -13,8 +13,12 @@ class RunInjected:
     design_path: str = None
 
     def __post_init__(self):
-        if self.design_path is None:
-            self.design_path = get_design_path_from_var_path(self.var_path)
+        try:
+            if self.design_path is None:
+                self.design_path = get_design_path_from_var_path(self.var_path)
+        except ValueError:
+            from pinjected.pinjected_logging import logger
+            logger.warning(f"No default design paths found for {self.var_path}. Proceeding with None design path.")
 
     def _var_design(self):
         var: Injected = Injected.ensure_injected(load_variable_by_module_path(self.var_path))

@@ -126,10 +126,21 @@ def test_describe_command_with_invalid_path():
     with pytest.raises(ValueError) as excinfo:
         describe(var_path="module_with_no_dots")
     
-    assert "Empty module name" in str(excinfo.value)
+    assert "Empty module name" == str(excinfo.value)
     
     with pytest.raises(ImportError) as excinfo:
         describe(var_path="non.existent.module.path")
     
     assert "Could not import module" in str(excinfo.value)
     assert "Please ensure the module exists" in str(excinfo.value)
+    
+    from unittest.mock import patch, MagicMock
+    from io import StringIO
+    import sys
+    
+    with patch('pinjected.helpers.find_default_design_paths', return_value=[]):
+        with patch('sys.stdout', new=StringIO()) as fake_out:
+            describe(var_path="pinjected.test_package.child.module1.test_runnable")
+            
+            output = fake_out.getvalue()
+            assert "Dependency Graph Description" in output
