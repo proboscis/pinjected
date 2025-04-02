@@ -34,6 +34,7 @@ class DependencyResolutionError(RuntimeError):
         super().__init__(msg)
         if causes is None:
             causes = []
+        self.msg=msg
         self.causes = causes.copy()
 
 

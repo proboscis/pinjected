@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import io
 import os
 import sys
@@ -163,81 +164,52 @@ def run_anything(
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
     cxt: RunContext = asyncio.run(a_get_run_context(design_path, var_path))
-    design = cxt.get_final_design()
-    logger.info(f"loaded design:{design}")
+    cxt = cxt.add_overrides(overrides)
+    D = cxt.get_final_design()
+    logger.info(f"loaded design:{D}")
     logger.info(f"meta_overrides:{cxt.meta_overrides}")
     logger.info(f"running target:{var_path} with design {design_path}")
-    # tree_str = design_rich_tree(design, cxt.var)
-    # logger.info(f"Dependency Tree:\n{tree_str}")
-
-    # logger.info(f"running target:{var} with cmd {cmd}, args {args}, kwargs {kwargs}")
-    # logger.info(f"metadata obtained from pinjected: {meta}")
-
-    # here we load the defaults and overrides from the user's environment
-    # design = load_user_default_design() + design + load_user_overrides_design()
-
     res = None
-
-    # @logger.catch(exclude="pinjected")
-    try:
-        if cmd == "get":
-            res = cxt.add_design(overrides).run()
-        elif cmd == "fire":
-            raise RuntimeError("fire is deprecated. use get.")
-        elif cmd == "visualize":
+    if cmd == "get":
+        async def task(cxt):
+            return await cxt.a_run()
+    elif cmd == "visualize":
+        async def task(cxt):
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
-            DIGraph(design).show_injected_html(cxt.var)
-        elif cmd == "export_visualization_html":
+            DIGraph(D).show_injected_html(cxt.var)
+    elif cmd == "export_visualization_html":
+        async def task(cxt):
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             dst = Path(".pinjected_visualization/")
-            res_html: Path = DIGraph(design).save_as_html(cxt.var, dst)
+            res_html: Path = DIGraph(D).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
-        elif cmd == "to_script":
-            d = design + design(__root__=Injected.bind(cxt.var))
+    elif cmd == "to_script":
+        async def task(cxt):
+            logger.info(f"exporting visualization {var_path} with design {design_path}")
+            logger.info(f"deps:{cxt.var.dependencies()}")
+            d = D + design(__root__=Injected.bind(cxt.var))
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
-        elif cmd == "json-graph":
+    elif cmd == "json-graph":
+        async def task(cxt):
             import json
             logger.info(f"generating JSON graph for {var_path} with design {design_path}")
             if hasattr(cxt.var, 'dependencies'):
                 logger.info(f"deps:{cxt.var.dependencies()}")
             json_graph = DIGraph(
-                design,
-                spec = Some(cxt.src_meta_context.spec_trace.accumulated)
-            ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1],list(cxt.var.dependencies()))
+                D,
+                spec=Some(cxt.src_meta_context.spec_trace.accumulated)
+            ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1], list(cxt.var.dependencies()))
             print(json.dumps(json_graph, indent=2))
-        elif cmd == "describe":
-            generate_dependency_graph_description(var_path, design_path, cxt, design)
-    except Exception as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            if PinjectedHandleMainException.key in design:
-                logger.warning(
-                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
-                from pinjected import IProxy
-                handler: IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
-                handling = handler(e)
-                handled: Optional[str] = asyncio.run(cxt.a_provide(handling, show_debug=False))
-                if handled:
-                    logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
-                raise e
-            else:
-                logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
-                notify(f"Run failed with error:\n{e}", sound="Frog")
-                raise e
-    with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
-        logger.success(f"pinjected run result:\n{pformat(res)}")
-        if PinjectedHandleMainResult.key in design:
-            from pinjected import IProxy
-            handler: IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
-            handling = handler(res)
-            asyncio.run(cxt.a_provide(handling, show_debug=False))
-        else:
-            logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
-            notify(f"Run result:\n{str(res)[:100]}")
-        if return_result:
-            logger.info(f"delegating the result to fire..")
-            return res
+    elif cmd == "describe":
+        async def task(cxt):
+            generate_dependency_graph_description(var_path, design_path, cxt, D)
+    else:
+        raise Exception(f"unknown command: {cmd}")
+    res = asyncio.run(a_run_with_notify(cxt, task, notify))
+    if return_result:
+        return res
 
 
 def generate_dependency_graph_description(var_path, design_path, cxt, design):
@@ -255,13 +227,13 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     from pinjected.dependency_graph_description import DependencyGraphDescriptionGenerator
     
     logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
-    
+
     digraph = DIGraph(
         design,
-        spec = Some(cxt.src_meta_context.spec_trace.accumulated)
+        spec=Some(cxt.src_meta_context.spec_trace.accumulated)
     )
     root_name = cxt.src_var_spec.var_path.split(".")[-1]
-    
+
     if hasattr(cxt.var, 'dependencies'):
         logger.info(f"deps:{cxt.var.dependencies()}")
         deps = list(cxt.var.dependencies())
@@ -280,6 +252,10 @@ def call_impl(call_args, call_kwargs, cxt, design):
     logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
     res = _run_target(design, var(*args, **kwargs), cxt)
     return res
+
+
+class PinjectedRunFailure(Exception):
+    """Raised when a pinjected run fails."""
 
 
 @dataclass(frozen=True)
@@ -327,10 +303,54 @@ class RunContext:
         return await self.a_provide(self.var)
 
     async def a_run(self):
-        return await self._a_run()
+        try:
+            return await self._a_run()
+        except Exception as e:
+            raise PinjectedRunFailure("pinjected run failed") from e
 
     def run(self):
         return asyncio.run(self.a_run())
+
+
+async def a_run_with_notify(
+        cxt: RunContext,
+        a_run,
+        notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs)):
+    """
+    A context manager that runs a function and notifies the result.
+    :param notify: A function to notify the result.
+    """
+    D = cxt.get_final_design()
+    res = None
+    try:
+        res = await a_run(cxt)
+    except Exception as e:
+        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
+            if PinjectedHandleMainException.key in D:
+                logger.warning(
+                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
+                from pinjected import IProxy
+                handler: IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
+                handling = handler(e)
+                handled: Optional[str] = await cxt.a_provide(handling, show_debug=False)
+                if handled:
+                    logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
+                raise e
+            else:
+                logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
+                notify(f"Run failed with error:\n{e}", sound="Frog")
+                raise e
+    with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
+        logger.success(f"pinjected run result:\n{pformat(res)}")
+        if PinjectedHandleMainResult.key in D:
+            from pinjected import IProxy
+            handler: IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
+            handling = handler(res)
+            await cxt.a_provide(handling, show_debug=False)
+        else:
+            logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
+            notify(f"Run result:\n{str(res)[:100]}")
+    return res
 
 
 async def a_resolve_design(design_path, meta_cxt: MetaContext) -> Design:
@@ -475,8 +495,6 @@ def load_user_default_design() -> Design:
         raise
 
 
-
-
 @safe
 def _load_design(design_path):
     if design_path == "":
@@ -507,7 +525,8 @@ def load_user_overrides_design():
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
     try:
-        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(design_path).value_or(
+        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(
+            design_path).value_or(
             design()
         )
         logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
@@ -517,28 +536,3 @@ def load_user_overrides_design():
             logger.debug(f"overrides_design is not defined in {design_path}")
             return design()
         raise e
-
-
-async def a_run_with_notify(cxt, task):
-    """Run the task with notification."""
-    from pinjected.pinjected_logging import logger
-    from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
-    
-    try:
-        with logger.contextualize(tag="PINJECTED RUN"):
-            logger.debug(f"Running task {task}")
-            res = await task(cxt)
-            logger.success(f"Task completed successfully")
-            return res
-    except DependencyResolutionError as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            logger.debug(f"Run failed. you can handle the exception with __pinjected_handle_main_exception__")
-            raise PinjectedRunFailure("pinjected run failed") from None
-    except DependencyValidationError as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            logger.debug(f"Run failed. you can handle the exception with __pinjected_handle_main_exception__")
-            raise PinjectedRunFailure("pinjected run failed") from None
-    except Exception as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            logger.debug(f"Run failed with unexpected error: {e}")
-            raise e

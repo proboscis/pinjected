@@ -12,3 +12,11 @@ poetry.lock
 requirements*.lock
 uv.lock
 CLAUDE.md
+
+# IDE Plugin build artifacts
+ide-plugins/pycharm/.gradle/
+ide-plugins/pycharm/build/
+ide-plugins/pycharm/.project
+ide-plugins/pycharm/.settings/
+ide-plugins/pycharm/.classpath
+ide-plugins/pycharm/bin/

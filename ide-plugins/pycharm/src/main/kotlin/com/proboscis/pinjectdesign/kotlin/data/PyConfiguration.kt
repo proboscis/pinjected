@@ -1,5 +1,6 @@
 package com.proboscis.pinjectdesign.kotlin.data
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -40,3 +41,18 @@ data class DesignMetadata(
 )
 
 // ActionItem moved to its own file
+
+/**
+ * Extension function to extract JSON content from a string that might be wrapped in <pinjected> tags.
+ * @return The extracted JSON content.
+ */
+fun String.extractPinjectedContent(): String {
+    val trimmed = this.trim()
+    return if (trimmed.contains("<pinjected>")) {
+        val pattern = Regex("<pinjected>(.*?)</pinjected>", RegexOption.DOT_MATCHES_ALL)
+        val match = pattern.find(trimmed)
+        match?.groupValues?.get(1)?.trim() ?: throw IllegalStateException("Failed to parse JSON from <pinjected> tags")
+    } else {
+        trimmed
+    }
+}

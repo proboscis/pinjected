@@ -114,7 +114,7 @@ def extract_args_for_runnable(
         case (Injected(), Failure()):
             args = ['get', tgt.var_path, ddp]
             logger.warning(f"using get for {tgt.var_path} (type Injected) because it has no __runnable_metadata__")
-        case (Designed(),Failure()):
+        case (Designed(), Failure()):
             args = ['get', tgt.var_path, ddp]
             logger.warning(f"using get for {tgt.var_path} (type Designed) because it has no __runnable_metadata__")
         case (DelegatedVar(), _):
@@ -143,11 +143,12 @@ def injected_to_idea_configs(
         default_working_dir: Maybe[str],
         extract_args_for_runnable,
         logger,
-        internal_idea_config_creator:IdeaConfigCreator,
+        internal_idea_config_creator: IdeaConfigCreator,
         custom_idea_config_creator: IdeaConfigCreator,
         /,
         tgt: ModuleVarSpec
 ):
+    from pinjected import __main__
     # question is: how can we pass the override to run_injected?
     logger.info(f"using custom_idea_config_creator {custom_idea_config_creator} for {tgt}")
     name = tgt.var_path.split(".")[-1]
@@ -179,8 +180,10 @@ def injected_to_idea_configs(
         if args is not None:
             ddp_name = ddp.split(".")[-1]
             config = dict(
-                **config_args,
-                arguments=['run_injected'] + args,
+                script_path= __main__.__file__,
+                interpreter_path= interpreter_path,
+                working_dir=default_working_dir.value_or(os.getcwd()),
+                arguments=['run'] + args[1:],
                 name=f"{name}({ddp_name})"
             )
             viz_config = dict(
@@ -188,8 +191,16 @@ def injected_to_idea_configs(
                 arguments=['run_injected', 'visualize'] + args[1:],
                 name=f"{name}({ddp_name})_viz",
             )
+            describe_config = {
+                'script_path': __main__.__file__,
+                'interpreter_path': interpreter_path,
+                'working_dir': default_working_dir.value_or(os.getcwd()),
+                'arguments': ['describe'] + args[1:],
+                'name': f"describe {name}"
+            }
             results[name].append(IdeaRunConfiguration(**config))
             results[name].append(IdeaRunConfiguration(**viz_config))
+            results[name].append(IdeaRunConfiguration(**describe_config))
         else:
             logger.warning(f"skipping {tgt.var_path} because it has no __runnable_metadata__")
     try:

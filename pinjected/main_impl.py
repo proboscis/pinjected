@@ -3,13 +3,15 @@ from inspect import isawaitable
 from pathlib import Path
 
 from pinjected import Design, design, Injected
+from pinjected.compatibility.task_group import CompatibleExceptionGroup
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
+from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
-    a_get_run_context, RunContext
+    a_get_run_context, RunContext, PinjectedRunFailure, a_run_with_notify
 
 
 def run(
@@ -56,7 +58,9 @@ def run(
             ovr += kwargs_overrides
             cxt: RunContext = await a_get_run_context(design_path, var_path)
             cxt = cxt.add_overrides(ovr)
-        res = await cxt.a_run()
+        async def task(cxt):
+            return await cxt.a_run()
+        res = await a_run_with_notify(cxt, task)
         from pinjected.pinjected_logging import logger
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
         # now we've got the function to call
@@ -217,6 +221,13 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
+def unwrap_exception_group(exc):
+    while isinstance(exc, CompatibleExceptionGroup) and len(exc.exceptions) == 1:
+        exc = exc.exceptions[0]
+    return exc
+
+
+class PinjectedRunDependencyResolutionFailure(Exception): pass
 
 
 class PinjectedCLI:
@@ -250,15 +261,17 @@ class PinjectedCLI:
 
 
 def main():
-    import fire
-    import asyncio
-    from pinjected.run_helpers.run_injected import PinjectedRunFailure
-    from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
-    
-    cli = PinjectedCLI()
     try:
+        import fire
+        
+        cli = PinjectedCLI()
         fire.Fire(cli)
-    except DependencyResolutionError as e:
-        raise PinjectedRunFailure(f"Dependency resolution failed: {str(e)}") from None
-    except DependencyValidationError as e:
-        raise PinjectedRunFailure(f"Dependency validation failed: {str(e)}") from None
+    except Exception as e:
+        e = unwrap_exception_group(e)
+        if isinstance(e, PinjectedRunFailure):
+            e = unwrap_exception_group(e.__cause__)
+            if isinstance(e, DependencyResolutionError):
+                raise PinjectedRunDependencyResolutionFailure(str(e)) from None
+            elif isinstance(e, DependencyValidationError):
+                raise PinjectedRunDependencyResolutionFailure(f"Dependency validation failed: {str(e)}") from None
+        raise
