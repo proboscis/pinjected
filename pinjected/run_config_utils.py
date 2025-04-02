@@ -39,7 +39,7 @@ from pinjected.pinjected_logging import logger
 from returns.maybe import Maybe, Some, maybe
 from returns.result import safe, Success, Failure
 
-from pinjected import Injected, Design, injected, Designed
+from pinjected import Injected, Design, injected, Designed, DesignSpec, SimpleBindSpec, EmptyDesign
 from pinjected.di.expr_util import Expr, Call, Object
 from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
 from pinjected.di.proxiable import DelegatedVar

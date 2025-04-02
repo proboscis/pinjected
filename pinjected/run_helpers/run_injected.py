@@ -23,6 +23,11 @@ class PinjectedConfigurationLoadFailure(Exception):
     pass
 
 
+class PinjectedRunFailure(Exception):
+    """Raised when a pinjected run fails."""
+    pass
+
+
 from pinjected import design, Injected, Design, Designed, EmptyDesign, injected
 from pinjected.cli_visualizations import design_rich_tree
 from pinjected.compatibility.task_group import TaskGroup
@@ -63,8 +68,11 @@ def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
             overrides = kwargs.pop("overrides")
         else:
             overrides = design()
-        if design_path is None:
-            design_path = get_design_path_from_var_path(var_path)
+        try:
+            if design_path is None:
+                design_path = get_design_path_from_var_path(var_path)
+        except ValueError:
+            logger.warning(f"No default design paths found for {var_path}. Proceeding with None design path.")
         logger.info(
             f"run_injected called with cmd:{cmd}, var_path:{var_path}, design_path:{design_path}, args:{args}, kwargs:{kwargs}"
         )
@@ -214,13 +222,10 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     :param cxt: the run context containing variable and design information
     :param design: the design object to use for dependency resolution
     """
-    from rich.console import Console
-    from rich.tree import Tree
-    from rich.panel import Panel
-    from rich.text import Text
-    from returns.maybe import Nothing, Some
-    import re
-
+    from returns.maybe import Some
+    from pinjected.visualize_di import DIGraph
+    from pinjected.dependency_graph_description import DependencyGraphDescriptionGenerator
+    
     logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
 
     digraph = DIGraph(
@@ -232,121 +237,12 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     if hasattr(cxt.var, 'dependencies'):
         logger.info(f"deps:{cxt.var.dependencies()}")
         deps = list(cxt.var.dependencies())
-        edges = digraph.to_edges(root_name, deps)
+        
+        generator = DependencyGraphDescriptionGenerator(digraph, root_name, deps)
+        generator.generate()
     else:
         logger.error(f"Object {root_name} doesn't have dependencies method")
         raise AttributeError(f"Object {root_name} must have a dependencies() method to use the describe command")
-
-    console = Console()
-    root_tree = Tree(f"[bold blue]{root_name}[/bold blue]")
-
-    processed_nodes = set()
-
-    def format_maybe(value):
-        """Format Maybe objects (Some/Nothing) to clean representation."""
-        if value == Nothing:
-            return "None"
-        elif hasattr(value, 'unwrap'):  # Check if it's a Some instance
-            return format_value(value.unwrap())
-        return format_value(value)
-
-    def format_value(value):
-        """Format values to clean representation."""
-        if value is None:
-            return "None"
-
-        value_str = str(value)
-
-        if isinstance(value, dict) and 'documentation' in value:
-            if value['documentation']:
-                doc = value['documentation']
-                doc = doc.replace('\\n', '\n')
-                doc = re.sub(r'[ \t]+', ' ', doc)
-                value['documentation'] = doc
-                value_str = str(value)
-
-        return value_str
-
-    def add_node_to_tree(parent_tree, edge):
-        if edge.key in processed_nodes:
-            return
-
-        processed_nodes.add(edge.key)
-
-        metadata_text = ""
-        if edge.metadata:
-            metadata_text = f"\n[dim]Metadata:[/dim] {format_maybe(edge.metadata)}"
-
-        spec_text = ""
-        if edge.spec:
-            spec_text = f"\n[dim]Spec:[/dim] {format_maybe(edge.spec)}"
-
-        node_text = f"[bold green]{edge.key}[/bold green]{metadata_text}{spec_text}"
-
-        node_tree = parent_tree.add(node_text)
-
-        for dep in edge.dependencies:
-            node_tree.add(f"[yellow]→ {dep}[/yellow]")
-
-            for child_edge in edges:
-                if child_edge.key == dep:
-                    add_node_to_tree(node_tree, child_edge)
-
-    for edge in edges:
-        if edge.key == root_name:
-            for dep in edge.dependencies:
-                root_tree.add(f"[yellow]→ {dep}[/yellow]")
-
-                for child_edge in edges:
-                    if child_edge.key == dep:
-                        add_node_to_tree(root_tree, child_edge)
-
-    console.print("\n[bold]Dependency Graph Description:[/bold]")
-    console.print(root_tree)
-    console.print("\n[bold]Edge Details:[/bold]")
-
-    console.print(Panel(f"[bold blue]{root_name}[/bold blue]", title="Root Node"))
-
-    for edge in edges:
-        if edge.key != root_name:  # Skip root as it's already shown
-            title = Text(edge.key, style="bold green")
-            content = Text()
-
-            content.append("\nDependencies: ")
-            if edge.dependencies:
-                content.append(", ".join(edge.dependencies), style="yellow")
-            else:
-                content.append("None", style="dim")
-
-            if edge.metadata:
-                content.append("\nMetadata: ")
-                content.append(format_maybe(edge.metadata))
-
-            if edge.spec:
-                content.append("\nSpec: ")
-                spec_value = format_maybe(edge.spec)
-
-                if "documentation" in spec_value:
-                    try:
-                        import ast
-                        spec_dict = ast.literal_eval(spec_value)
-                        doc = spec_dict.get('documentation', '')
-
-                        if doc:
-                            clean_spec = {k: v for k, v in spec_dict.items() if k != 'documentation'}
-                            content.append(str(clean_spec))
-
-                            content.append("\n\nDocumentation: ")
-                            content.append(doc, style="blue")
-                            console.print(Panel(content, title=title))
-                            continue
-                    except Exception as e:
-                        logger.debug(f"Failed to parse documentation: {e}")
-                        logger.debug(f"Spec value: {spec_value}")
-
-                content.append(spec_value)
-
-            console.print(Panel(content, title=title))
 
 
 def call_impl(call_args, call_kwargs, cxt, design):
@@ -640,3 +536,28 @@ def load_user_overrides_design():
             logger.debug(f"overrides_design is not defined in {design_path}")
             return design()
         raise e
+
+
+async def a_run_with_notify(cxt, task):
+    """Run the task with notification."""
+    from pinjected.pinjected_logging import logger
+    from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
+    
+    try:
+        with logger.contextualize(tag="PINJECTED RUN"):
+            logger.debug(f"Running task {task}")
+            res = await task(cxt)
+            logger.success(f"Task completed successfully")
+            return res
+    except DependencyResolutionError as e:
+        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
+            logger.debug(f"Run failed. you can handle the exception with __pinjected_handle_main_exception__")
+            raise PinjectedRunFailure("pinjected run failed") from None
+    except DependencyValidationError as e:
+        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
+            logger.debug(f"Run failed. you can handle the exception with __pinjected_handle_main_exception__")
+            raise PinjectedRunFailure("pinjected run failed") from None
+    except Exception as e:
+        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
+            logger.debug(f"Run failed with unexpected error: {e}")
+            raise e
