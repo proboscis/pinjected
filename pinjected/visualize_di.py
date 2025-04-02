@@ -148,13 +148,15 @@ class DIGraph:
 
     def get_metadata(self, key: str) -> Maybe[BindMetadata]:
         from returns.pipeline import flow
-        data = flow(
-            getitem(self.total_bindings, key),
-            bind(lambda x: x.metadata)
-        )
-        data = result_to_maybe(data)
-        assert isinstance(data, Maybe), f"metadata must be a Maybe, got {data}"
-        return data
+        from pinjected.v2.keys import StrBindKey
+        
+        bind_key = StrBindKey(key)
+        
+        if bind_key in self.total_bindings:
+            bind = self.total_bindings[bind_key]
+            return bind.metadata
+        
+        return Nothing
 
     def resolve_injected(self, i: Injected) -> List[str]:
         "give new name to unknown manual injected values and return dependencies"
@@ -596,10 +598,21 @@ g = d.to_graph()
 
     def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
-        return flow(
-            self.spec,
-            bind(lambda x: x.get_spec(StrBindKey(tgt)))
-        )
+        from pinjected.v2.keys import StrBindKey
+        from returns.maybe import Some, Nothing
+        
+        if self.spec == Nothing:
+            return Nothing
+            
+        try:
+            spec_dict = self.spec.unwrap()
+            bind_key = StrBindKey(tgt)
+            if bind_key in spec_dict:
+                return Some(spec_dict[bind_key])
+        except Exception as e:
+            pass
+            
+        return Nothing
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():

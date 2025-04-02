@@ -391,17 +391,12 @@ def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocat
 
     class ArgumentVisitor(ast.NodeVisitor):
         def visit_Call(self, node: ast.Call):
-            node_lineno = node.lineno + start_line
-            # parent_frame_lineno = parent_frame.f_lineno
-            # print(f'node_match? {node_lineno} == {parent_frame_lineno} ?')
-            # print(f"visit_Call:{node.lineno},{node.col_offset},{node},{start_line}, {parent_frame.f_lineno}")
-            # print(f"node keywords:{node.keywords}")
-            if node_lineno == parent_frame.f_lineno:  # The specific call that initiated the child frame
+            if isinstance(node.func, ast.Name) and node.func.id == 'design':
                 for keyword in node.keywords:
                     if keyword.arg in keys:
                         locations[keyword.arg] = ModuleVarLocation(
                             Path(parent_frame.f_code.co_filename),
-                            keyword.lineno + start_line,
+                            keyword.lineno + start_line - 1,  # Adjust for 0-based indexing
                             keyword.col_offset + 1,
                         )
 
