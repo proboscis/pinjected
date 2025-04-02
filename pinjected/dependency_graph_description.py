@@ -118,6 +118,12 @@ class DependencyGraphDescriptionGenerator:
         else:
             content.append("None", style="dim")
         
+        content.append("\nUsed by: ")
+        if edge.used_by and len(edge.used_by) > 0:
+            content.append(", ".join(edge.used_by), style="cyan")
+        else:
+            content.append("None", style="dim")
+        
         if edge.metadata:
             content.append("\nMetadata: ")
             content.append(self.format_maybe(edge.metadata))

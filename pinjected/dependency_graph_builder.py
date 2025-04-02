@@ -46,13 +46,14 @@ class DependencyGraphBuilder:
                 
         return deps_map
     
-    def create_edge_info(self, key: str, dependencies: List[str]) -> EdgeInfo:
+    def create_edge_info(self, key: str, dependencies: List[str], used_by: List[str] = None) -> EdgeInfo:
         """
         Create an EdgeInfo object for a dependency key.
         
         Args:
             key: The dependency key
             dependencies: List of dependencies for this key
+            used_by: List of keys that use this key
             
         Returns:
             An EdgeInfo object with metadata and spec information
@@ -60,9 +61,26 @@ class DependencyGraphBuilder:
         return EdgeInfo(
             key=key,
             dependencies=list(sorted(set(dependencies))),
+            used_by=used_by,
             metadata=self.digraph.get_metadata(key),
             spec=self.digraph.get_spec(key)
         )
+    
+    def collect_used_by(self, deps_map: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """
+        Collect all keys that use each dependency.
+        
+        Args:
+            deps_map: Dictionary mapping keys to their dependencies
+            
+        Returns:
+            A dictionary mapping dependency keys to the keys that use them
+        """
+        used_by_map = defaultdict(list)
+        for key, dependencies in deps_map.items():
+            for dep in dependencies:
+                used_by_map[dep].append(key)
+        return used_by_map
     
     def build_edges(self, root_name: str, deps: list[str]) -> list[EdgeInfo]:
         """
@@ -81,18 +99,35 @@ class DependencyGraphBuilder:
         deps_map = self.collect_dependencies(deps)
         
         for dep in deps:
-            edges.append(self.create_edge_info(dep, deps_map.get(dep, [])))
+            if root_name not in deps_map:
+                deps_map[root_name] = []
+            if dep not in deps_map[root_name]:
+                deps_map[root_name].append(dep)
+        
+        used_by_map = self.collect_used_by(deps_map)
+        
+        for dep in deps:
+            edges.append(self.create_edge_info(
+                dep, 
+                deps_map.get(dep, []),
+                used_by_map.get(dep, [])
+            ))
             keys.add(dep)
         
         for key, dependencies in deps_map.items():
             if key not in keys:
-                edges.append(self.create_edge_info(key, dependencies))
+                edges.append(self.create_edge_info(
+                    key, 
+                    dependencies,
+                    used_by_map.get(key, [])
+                ))
                 keys.add(key)
         
         if root_name not in keys:
             edges.append(EdgeInfo(
                 key=root_name,
                 dependencies=list(sorted(set(deps))),
+                used_by=list(sorted(set(used_by_map.get(root_name, [])))),
                 metadata=self.digraph.get_metadata(root_name),
                 spec=self.digraph.get_spec(root_name)
             ))
