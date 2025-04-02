@@ -609,20 +609,12 @@ g = d.to_graph()
     def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
         from pinjected.v2.keys import StrBindKey
-        from returns.maybe import Some, Nothing
+        from returns.result import bind
         
-        if self.spec == Nothing:
-            return Nothing
-            
-        try:
-            spec_dict = self.spec.unwrap()
-            bind_key = StrBindKey(tgt)
-            if bind_key in spec_dict:
-                return Some(spec_dict[bind_key])
-        except Exception as e:
-            pass
-            
-        return Nothing
+        return flow(
+            self.spec,
+            bind(lambda x: x.get_spec(StrBindKey(tgt)))
+        )
 
     def plot(self, roots: Union[str, List[str]], visualize_missing=True):
         if "darwin" in platform.system().lower():
