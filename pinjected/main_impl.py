@@ -6,7 +6,7 @@ from pinjected import Design, design, Injected
 from pinjected.compatibility.task_group import CompatibleExceptionGroup
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
-from pinjected.exceptions import DependencyResolutionError
+from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
