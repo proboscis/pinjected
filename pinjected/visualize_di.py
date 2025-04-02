@@ -151,13 +151,15 @@ class DIGraph:
 
     def get_metadata(self, key: str) -> Maybe[BindMetadata]:
         from returns.pipeline import flow
-        data = flow(
-            getitem(self.total_bindings, key),
-            bind(lambda x: x.metadata)
-        )
-        data = result_to_maybe(data)
-        assert isinstance(data, Maybe), f"metadata must be a Maybe, got {data}"
-        return data
+        from pinjected.v2.keys import StrBindKey
+        
+        bind_key = StrBindKey(key)
+        
+        if bind_key in self.total_bindings:
+            bind = self.total_bindings[bind_key]
+            return bind.metadata
+        
+        return Nothing
 
     def resolve_injected(self, i: Injected) -> List[str]:
         "give new name to unknown manual injected values and return dependencies"
@@ -282,13 +284,23 @@ class DIGraph:
     def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
         from pinjected import design
         from pinjected import Design
+        from pinjected.v2.keys import StrBindKey
+        
         match tgt:
             case str():
                 deps = set([t[1] for t in self.di_dfs(tgt)])
                 nodes = set([t[0] for t in self.di_dfs(tgt)])
-                distilled = Design.from_bindings(
-                    {k: self.src[k] for k in deps | nodes}
-                )
+                
+                bindings = {}
+                for k in deps | nodes:
+                    try:
+                        bind_key = StrBindKey(k)
+                        if bind_key in self.src:
+                            bindings[k] = self.src[bind_key]
+                    except KeyError:
+                        pass
+                        
+                distilled = Design.from_bindings(bindings)
                 return distilled
 
             case _:
@@ -599,6 +611,8 @@ g = d.to_graph()
 
     def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
+        from pinjected.v2.keys import StrBindKey
+        
         return flow(
             self.spec,
             bind(lambda x: x.get_spec(StrBindKey(tgt)))
