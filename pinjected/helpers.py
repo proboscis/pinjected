@@ -73,9 +73,10 @@ def get_design_path_from_var_path(var_path):
         if design_paths:
             design_path = design_paths[0]
             return design_path
+        return None
     except ImportError:
         logger.warning(f"Could not import module path: {module_path}")
-        return None
+        raise ImportError(f"Could not import module path: {module_path}. Please ensure the module exists and is importable.")
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:
