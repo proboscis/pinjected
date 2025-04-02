@@ -6,7 +6,7 @@ from pinjected import Design, design, Injected
 from pinjected.compatibility.task_group import CompatibleExceptionGroup
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
-from pinjected.exceptions import DependencyResolutionError
+from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
 from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
@@ -205,10 +205,19 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     Generate a human-readable description of the dependency graph for a variable.
     Uses to_edges() of DIGraph to show dependencies with their documentation.
     
-    :param var_path: the path to the variable to describe: e.g. "my_module.my_var"
-    :param design_path: the path to the design to be used: e.g. "my_module.my_design"
-    :param kwargs: additional parameters to pass to run_injected
+    :param var_path: Full module path to the variable to describe in the format 'full.module.path.var.name'.
+                    This parameter is required and must point to an importable variable.
+    :param design_path: Full module path to the design to be used in the format 'module.path.design'.
+                      If not provided, it will be inferred from var_path.
+    :param kwargs: Additional parameters to pass to run_injected.
     """
+    if var_path is None:
+        print("Error: You must provide a variable path in the format 'full.module.path.var.name'")
+        print("Examples:")
+        print("  pinjected describe my_module.my_submodule.my_variable")
+        print("  pinjected describe --var_path=my_module.my_submodule.my_variable")
+        return
+    
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
@@ -230,13 +239,16 @@ class PinjectedCLI:
       check_config   - Display the current configuration
       create_overloads - Create type hint overloads for injected functions
       json_graph     - Generate a JSON representation of the dependency graph
-      describe       - Generate a human-readable description of a dependency graph
+      describe       - Generate a human-readable description of a dependency graph.
+                       Requires a full module path in the format: full.module.path.var.name
+                       Can be used as: describe my_module.path.var or describe --var_path=my_module.path.var
     
     For more information on a specific command, run:
       pinjected COMMAND --help
     
     Example:
       pinjected run --var_path=my_module.my_var
+      pinjected describe --var_path=my_module.my_submodule.my_variable
     """
     
     def __init__(self):
@@ -260,4 +272,6 @@ def main():
             e = unwrap_exception_group(e.__cause__)
             if isinstance(e, DependencyResolutionError):
                 raise PinjectedRunDependencyResolutionFailure(str(e)) from None
+            elif isinstance(e, DependencyValidationError):
+                raise PinjectedRunDependencyResolutionFailure(f"Dependency validation failed: {str(e)}") from None
         raise

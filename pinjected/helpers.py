@@ -53,7 +53,8 @@ class RunnableSpec:
         return self.design_path.var_name
 
 
-def get_design_path_from_var_path(var_path) -> Optional[str]:
+<<<<<<< HEAD
+def get_design_path_from_var_path(var_path: str) -> Optional[str]:
     from pinjected.pinjected_logging import logger
     
     if var_path is None:
@@ -77,7 +78,7 @@ def get_design_path_from_var_path(var_path) -> Optional[str]:
         logger.warning(f"No default design paths found for {var_path}")
         return None
     except ImportError:
-        logger.warning(f"Could not import module path: {module_path}")
+        logger.warning(f"Could not import module path: {module_path}. Please ensure the module exists and is importable.")
         return None
 
 

@@ -2,7 +2,7 @@ import inspect
 import platform
 import uuid
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Union, Any
 
@@ -71,8 +71,9 @@ class MissingKeyError(RuntimeError):
 class EdgeInfo:
     key: str
     dependencies: list[str]
-    metadata: Maybe[BindMetadata]
-    spec: Maybe[BindSpec]
+    used_by: list[str] = field(default_factory=list)
+    metadata: Maybe[BindMetadata] = Nothing
+    spec: Maybe[BindSpec] = Nothing
 
     def to_json_repr(self):
         """Convert edge information to a JSON-serializable representation with enhanced metadata and spec details."""
@@ -92,6 +93,8 @@ class EdgeInfo:
                 "docstring": metadata.docstring if hasattr(metadata, "docstring") else None,
                 "source": str(metadata.source) if hasattr(metadata, "source") else None
             }
+            
+        used_by_info = self.used_by if self.used_by else []
 
         # The spec should now have a better string representation from our __str__ implementation
         spec_info = None
@@ -148,13 +151,15 @@ class DIGraph:
 
     def get_metadata(self, key: str) -> Maybe[BindMetadata]:
         from returns.pipeline import flow
-        data = flow(
-            getitem(self.total_bindings, key),
-            bind(lambda x: x.metadata)
-        )
-        data = result_to_maybe(data)
-        assert isinstance(data, Maybe), f"metadata must be a Maybe, got {data}"
-        return data
+        from pinjected.v2.keys import StrBindKey
+        
+        bind_key = StrBindKey(key)
+        
+        if bind_key in self.total_bindings:
+            bind = self.total_bindings[bind_key]
+            return bind.metadata
+        
+        return Nothing
 
     def resolve_injected(self, i: Injected) -> List[str]:
         "give new name to unknown manual injected values and return dependencies"
@@ -279,13 +284,23 @@ class DIGraph:
     def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
         from pinjected import design
         from pinjected import Design
+        from pinjected.v2.keys import StrBindKey
+        
         match tgt:
             case str():
                 deps = set([t[1] for t in self.di_dfs(tgt)])
                 nodes = set([t[0] for t in self.di_dfs(tgt)])
-                distilled = Design.from_bindings(
-                    {k: self.src[k] for k in deps | nodes}
-                )
+                
+                bindings = {}
+                for k in deps | nodes:
+                    try:
+                        bind_key = StrBindKey(k)
+                        if bind_key in self.src:
+                            bindings[k] = self.src[bind_key]
+                    except KeyError:
+                        pass
+                        
+                distilled = Design.from_bindings(bindings)
                 return distilled
 
             case _:
@@ -561,39 +576,20 @@ g = d.to_graph()
         }
 
     def to_edges(self, root_name, deps: list[str]) -> list[EdgeInfo]:
-        from collections import defaultdict
-
-        edges = [
-
-        ]
-        keys = set()
-
-        for root in deps:
-            deps_map = defaultdict(list)
-
-            for a, b, _ in self.di_dfs(root, replace_missing=True):
-                deps_map[a].append(b)
-
-            for key, dependencies in deps_map.items():
-                edges.append(
-                    EdgeInfo(
-                        key=key,
-                        dependencies=list(sorted(set(dependencies))),
-                        metadata=self.get_metadata(key),
-                        spec=self.get_spec(key),
-                    )
-                )
-                keys.add(key)
-        if root_name not in keys:
-            edges.append(
-                EdgeInfo(
-                    key=root_name,
-                    dependencies=list(sorted(set(deps))),
-                    metadata=Nothing,
-                    spec=Nothing,
-                )
-            )
-        return edges
+        """
+        Generate a list of EdgeInfo objects representing the dependency graph.
+        
+        Args:
+            root_name: The name of the root node
+            deps: List of direct dependencies
+            
+        Returns:
+            A list of EdgeInfo objects representing the dependency graph
+        """
+        from pinjected.dependency_graph_builder import DependencyGraphBuilder
+        
+        builder = DependencyGraphBuilder(self)
+        return builder.build_edges(root_name, deps)
 
     def to_json(self, roots: Union[str, List[str]], replace_missing=True):
         """
@@ -615,6 +611,8 @@ g = d.to_graph()
 
     def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
+        from pinjected.v2.keys import StrBindKey
+        
         return flow(
             self.spec,
             bind(lambda x: x.get_spec(StrBindKey(tgt)))
