@@ -53,7 +53,6 @@ class RunnableSpec:
         return self.design_path.var_name
 
 
-<<<<<<< HEAD
 def get_design_path_from_var_path(var_path: str) -> Optional[str]:
     from pinjected.pinjected_logging import logger
     
