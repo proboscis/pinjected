@@ -281,13 +281,23 @@ class DIGraph:
     def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
         from pinjected import design
         from pinjected import Design
+        from pinjected.v2.keys import StrBindKey
+        
         match tgt:
             case str():
                 deps = set([t[1] for t in self.di_dfs(tgt)])
                 nodes = set([t[0] for t in self.di_dfs(tgt)])
-                distilled = Design.from_bindings(
-                    {k: self.src[k] for k in deps | nodes}
-                )
+                
+                bindings = {}
+                for k in deps | nodes:
+                    try:
+                        bind_key = StrBindKey(k)
+                        if bind_key in self.src:
+                            bindings[k] = self.src[bind_key]
+                    except KeyError:
+                        pass
+                        
+                distilled = Design.from_bindings(bindings)
                 return distilled
 
             case _:
