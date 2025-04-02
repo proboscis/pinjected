@@ -208,8 +208,10 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     :param kwargs: Additional parameters to pass to run_injected.
     """
     if var_path is None:
-        print("Error: You must provide a var_path parameter in the format 'full.module.path.var.name'")
-        print("Example: pinjected describe --var_path=my_module.my_submodule.my_variable")
+        print("Error: You must provide a variable path in the format 'full.module.path.var.name'")
+        print("Examples:")
+        print("  pinjected describe my_module.my_submodule.my_variable")
+        print("  pinjected describe --var_path=my_module.my_submodule.my_variable")
         return
     
     return run_injected("describe", var_path, design_path, **kwargs)
@@ -228,6 +230,7 @@ class PinjectedCLI:
       json_graph     - Generate a JSON representation of the dependency graph
       describe       - Generate a human-readable description of a dependency graph.
                        Requires a full module path in the format: full.module.path.var.name
+                       Can be used as: describe my_module.path.var or describe --var_path=my_module.path.var
     
     For more information on a specific command, run:
       pinjected COMMAND --help
