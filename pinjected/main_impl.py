@@ -239,6 +239,14 @@ class PinjectedCLI:
 
 def main():
     import fire
+    import asyncio
+    from pinjected.run_helpers.run_injected import PinjectedRunFailure
+    from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
     
     cli = PinjectedCLI()
-    fire.Fire(cli)
+    try:
+        fire.Fire(cli)
+    except DependencyResolutionError as e:
+        raise PinjectedRunFailure(f"Dependency resolution failed: {str(e)}") from None
+    except DependencyValidationError as e:
+        raise PinjectedRunFailure(f"Dependency validation failed: {str(e)}") from None
