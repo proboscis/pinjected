@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch, call
 from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+from pinjected.visualize_di import DIGraph, EdgeInfo
+from pinjected.dependency_graph_builder import DependencyGraphBuilder
 from rich.panel import Panel
 from rich.text import Text
 from returns.maybe import Some, Nothing
@@ -55,3 +57,63 @@ def test_used_by_in_edge_details():
                         assert user in panel_content
                 else:
                     assert "Used by: None" in panel_content
+
+def test_collect_used_by_with_multiple_users():
+    """Test that collect_used_by correctly identifies multiple users for a dependency."""
+    mock_digraph = MagicMock()
+    builder = DependencyGraphBuilder(mock_digraph)
+    
+    deps_map = {
+        'service1': ['shared_dep', 'dep1'],
+        'service2': ['shared_dep', 'dep2'],
+        'service3': ['shared_dep', 'dep3'],
+        'dep1': [],
+        'dep2': ['dep4'],
+        'dep3': ['dep4'],
+        'dep4': [],
+        'shared_dep': []
+    }
+    
+    used_by_map = builder.collect_used_by(deps_map)
+    
+    assert sorted(used_by_map['shared_dep']) == sorted(['service1', 'service2', 'service3']), \
+        "shared_dep should be used by service1, service2, and service3"
+    assert used_by_map['dep1'] == ['service1'], "dep1 should be used by service1"
+    assert used_by_map['dep2'] == ['service2'], "dep2 should be used by service2"
+    assert used_by_map['dep3'] == ['service3'], "dep3 should be used by service3"
+    assert sorted(used_by_map['dep4']) == sorted(['dep2', 'dep3']), \
+        "dep4 should be used by dep2 and dep3"
+
+def test_build_edges_with_complex_dependency_graph():
+    """Test that build_edges correctly populates used_by with multiple users in a complex graph."""
+    mock_digraph = MagicMock()
+    
+    deps_map = {
+        'root': ['service1', 'service2', 'service3'],
+        'service1': ['shared_dep', 'dep1'],
+        'service2': ['shared_dep', 'dep2'],
+        'service3': ['shared_dep', 'dep3'],
+        'dep1': [],
+        'dep2': ['dep4'],
+        'dep3': ['dep4'],
+        'dep4': [],
+        'shared_dep': []
+    }
+    
+    builder = DependencyGraphBuilder(mock_digraph)
+    builder.collect_dependencies = MagicMock(return_value=deps_map)
+    
+    edges = builder.build_edges('root', ['service1', 'service2', 'service3'])
+    
+    edge_dict = {edge.key: edge for edge in edges}
+    
+    assert sorted(edge_dict['shared_dep'].used_by) == sorted(['service1', 'service2', 'service3']), \
+        "shared_dep should be used by service1, service2, and service3"
+    assert edge_dict['dep1'].used_by == ['service1'], "dep1 should be used by service1"
+    assert edge_dict['dep2'].used_by == ['service2'], "dep2 should be used by service2"
+    assert edge_dict['dep3'].used_by == ['service3'], "dep3 should be used by service3"
+    assert sorted(edge_dict['dep4'].used_by) == sorted(['dep2', 'dep3']), \
+        "dep4 should be used by dep2 and dep3"
+    assert sorted(edge_dict['service1'].used_by) == ['root'], "service1 should be used by root"
+    assert sorted(edge_dict['service2'].used_by) == ['root'], "service2 should be used by root"
+    assert sorted(edge_dict['service3'].used_by) == ['root'], "service3 should be used by root"
