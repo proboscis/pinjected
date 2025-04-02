@@ -67,8 +67,11 @@ def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
             overrides = kwargs.pop("overrides")
         else:
             overrides = design()
-        if design_path is None:
-            design_path = get_design_path_from_var_path(var_path)
+        try:
+            if design_path is None:
+                design_path = get_design_path_from_var_path(var_path)
+        except ValueError:
+            logger.warning(f"No default design paths found for {var_path}. Proceeding with None design path.")
         logger.info(
             f"run_injected called with cmd:{cmd}, var_path:{var_path}, design_path:{design_path}, args:{args}, kwargs:{kwargs}"
         )

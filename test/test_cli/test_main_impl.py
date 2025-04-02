@@ -36,3 +36,16 @@ def test_fire_help_output():
     assert "describe" in cli.__doc__
     assert "For more information on a specific command" in cli.__doc__
     assert "Example:" in cli.__doc__
+
+
+def test_describe_command_help():
+    """Test that the describe command docstring mentions the required format and both usage options."""
+    from pinjected.main_impl import describe
+    
+    assert "full.module.path.var.name" in describe.__doc__
+    assert "This parameter is required" in describe.__doc__
+    assert "must point to an importable variable" in describe.__doc__
+    
+    cli = PinjectedCLI()
+    assert "describe my_module.path.var" in cli.__doc__
+    assert "describe --var_path=my_module.path.var" in cli.__doc__
