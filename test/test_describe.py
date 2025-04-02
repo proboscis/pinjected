@@ -113,8 +113,10 @@ def test_describe_command_with_none_var_path():
         describe(var_path=None)
     
     output = captured_output.getvalue()
-    assert "Error: You must provide a var_path parameter" in output
-    assert "Example:" in output
+    assert "Error: You must provide a variable path" in output
+    assert "Examples:" in output
+    assert "pinjected describe my_module.my_submodule.my_variable" in output
+    assert "pinjected describe --var_path=my_module.my_submodule.my_variable" in output
 
 
 def test_describe_command_with_invalid_path():
