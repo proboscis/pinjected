@@ -536,7 +536,3 @@ def load_user_overrides_design():
             logger.debug(f"overrides_design is not defined in {design_path}")
             return design()
         raise e
-<<<<<<< HEAD
-=======
-
->>>>>>> 09f890a (Remove deprecated a_run_with_notify function and related tests)
