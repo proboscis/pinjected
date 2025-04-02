@@ -1,24 +1,23 @@
 import pytest
-from pinjected.di.design import DesignImpl
+from pinjected.di.util import design
 from pinjected.visualize_di import DIGraph
 from pinjected.dependency_graph_builder import DependencyGraphBuilder
 from collections import defaultdict
 
 def test_used_by_with_actual_design_objects():
     """Test that used_by field correctly tracks multiple users with actual Design objects."""
-    design = DesignImpl().bind_instance(
+    test_design = design(
         shared_dep="shared dependency",
         dep1="dependency 1",
         dep2="dependency 2",
-        dep3="dependency 3"
-    ).bind_provider(
+        dep3="dependency 3",
         service1=lambda shared_dep, dep1: f"{shared_dep} and {dep1}",
         service2=lambda shared_dep, dep2: f"{shared_dep} and {dep2}",
         service3=lambda shared_dep, dep3: f"{shared_dep} and {dep3}",
         root=lambda service1, service2, service3: [service1, service2, service3]
     )
     
-    digraph = DIGraph(design)
+    digraph = DIGraph(test_design)
     
     builder = DependencyGraphBuilder(digraph)
     
