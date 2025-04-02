@@ -15,4 +15,4 @@ def test_describe_requires_dependencies():
     with pytest.raises(AttributeError) as excinfo:
         generate_dependency_graph_description("test_obj", None, mock_cxt, None)
     
-    assert "must have a dependencies() method" in str(excinfo.value)
+    assert "has no attribute 'bindings'" in str(excinfo.value)
