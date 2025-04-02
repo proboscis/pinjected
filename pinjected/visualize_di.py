@@ -609,7 +609,7 @@ g = d.to_graph()
     def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
         from pinjected.v2.keys import StrBindKey
-        from returns.result import bind
+        from returns.maybe import bind
         
         return flow(
             self.spec,
