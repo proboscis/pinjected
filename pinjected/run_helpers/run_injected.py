@@ -536,28 +536,3 @@ def load_user_overrides_design():
             logger.debug(f"overrides_design is not defined in {design_path}")
             return design()
         raise e
-
-
-async def a_run_with_notify(cxt, task):
-    """Run the task with notification."""
-    from pinjected.pinjected_logging import logger
-    from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
-    
-    try:
-        with logger.contextualize(tag="PINJECTED RUN"):
-            logger.debug(f"Running task {task}")
-            res = await task(cxt)
-            logger.success(f"Task completed successfully")
-            return res
-    except DependencyResolutionError as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            logger.debug(f"Run failed. you can handle the exception with __pinjected_handle_main_exception__")
-            raise PinjectedRunFailure("pinjected run failed") from None
-    except DependencyValidationError as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            logger.debug(f"Run failed. you can handle the exception with __pinjected_handle_main_exception__")
-            raise PinjectedRunFailure("pinjected run failed") from None
-    except Exception as e:
-        with logger.contextualize(tag="PINJECTED RUN FAILURE"):
-            logger.debug(f"Run failed with unexpected error: {e}")
-            raise e
