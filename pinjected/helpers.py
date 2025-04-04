@@ -57,8 +57,7 @@ def get_design_path_from_var_path(var_path: str) -> Optional[str]:
     from pinjected.pinjected_logging import logger
     
     if var_path is None:
-        logger.warning("Variable path cannot be None. Please provide a path in the format 'full.module.path.var.name'")
-        return None
+        raise ValueError("Variable path cannot be None. Please provide a path in the format 'full.module.path.var.name'")
     
     logger.info(f"looking for default design paths from {var_path}")
     
@@ -74,11 +73,10 @@ def get_design_path_from_var_path(var_path: str) -> Optional[str]:
         if design_paths:
             design_path = design_paths[0]
             return design_path
-        logger.warning(f"No default design paths found for {var_path}")
-        return None
+        raise ValueError(f"No default design paths found for {var_path}")
     except ImportError:
-        logger.warning(f"Could not import module path: {module_path}. Please ensure the module exists and is importable.")
-        return None
+        logger.warning(f"Could not import module path: {module_path}")
+        raise ImportError(f"Could not import module path: {module_path}. Please ensure the module exists and is importable.")
 
 
 def find_default_design_path(file_path: str) -> Optional[str]:

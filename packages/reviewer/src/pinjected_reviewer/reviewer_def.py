@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field
 
 class ReviewerAttributes(BaseModel):
-    """Represents attributes extracted from a reviewer markdown file. Used for LLM based extraction."""
+    """Represents attributes extracted from a reviewer markdown file."""
     Name: str = Field(..., description="The name of the reviewer")
     When_to_trigger: str = Field(..., description="When this reviewer should be triggered (e.g., on commit)")
     Return_Type: str = Field(..., description="The return type of this reviewer")
