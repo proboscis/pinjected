@@ -61,7 +61,7 @@ class DependencyGraphBuilder:
         return EdgeInfo(
             key=key,
             dependencies=list(sorted(set(dependencies))),
-            used_by=used_by,
+            used_by=list(sorted(set(used_by or []))),
             metadata=self.digraph.get_metadata(key),
             spec=self.digraph.get_spec(key)
         )
