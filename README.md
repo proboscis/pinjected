@@ -5,44 +5,7 @@
 [![codecov](https://codecov.io/gh/proboscis/pinjected/branch/main/graph/badge.svg)](https://codecov.io/gh/proboscis/pinjected)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/CyberAgentAILab/pinjected/actions/workflows/pytest.yml)
 
-This repository is organized as a monorepo with the following packages:
-
-- **pinjected**: Core dependency injection framework
-- **pinjected-openai**: OpenAI API bindings for pinjected (in packages/openai_support)
-
-## Working with the Monorepo
-
-### Installation
-
-To install all packages for development:
-
-```bash
-# Install uv if you haven't already
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Set up the workspace
-make sync
-make setup-all
-```
-
-### Running Tests
-
-Run tests for all packages:
-
-```bash
-make test
-```
-
-### Building Packages
-
-Build individual packages:
-
-```bash
-make publish          # Build and publish pinjected
-make publish-openai   # Build and publish pinjected-openai
-```
-
-## Core Pinjected Framework
+# Core Pinjected Framework
 
 Welcome to Pinjected, a powerful dependency injection and dependency resolver library for Python inspired by pinject.
 ## Prerequisites
@@ -232,3 +195,50 @@ Stay up to date with the latest changes and releases by checking the Updates sec
 The Migration Guides section provides step-by-step instructions for transitioning from deprecated APIs to newer ones. Currently featuring a comprehensive guide for migrating from `instances()`, `providers()`, and `classes()` to the new unified `design()` function.
 
 We hope you find Pinjected helpful in your projects! If you have any questions or feedback, please don't hesitate to reach out.
+
+# Pinjected Monorepo Structure
+
+This repository is organized as a monorepo with the following packages:
+
+- **pinjected**: Core dependency injection framework (root package)
+- **pinjected-openai**: OpenAI API bindings for pinjected (in packages/openai_support)
+- **pinjected-anthropic**: Anthropic API bindings for pinjected (in packages/anthropic)
+- **pinjected-wandb**: Weights & Biases integration for pinjected (in packages/wandb)
+- **pinjected-error-reports**: Error reporting utilities for pinjected (in packages/error_reports)
+- **pinjected-reviewer**: Code review tools for pinjected (in packages/reviewer)
+- **pinjected-rate-limit**: Rate limiting utilities for API calls (in packages/rate_limit)
+- **pinjected-niji-voice**: Niji Voice integration for pinjected (in packages/niji_voice)
+- **injected-utils**: Utility functions for pinjected packages (in packages/injected_utils)
+
+## Working with the Monorepo
+
+### Installation
+
+To install all packages for development:
+
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Set up the workspace
+make sync
+make setup-all
+```
+
+### Running Tests
+
+Run tests for all packages:
+
+```bash
+make test
+```
+
+### Building Packages
+
+Build individual packages:
+
+```bash
+make publish          # Build and publish pinjected
+make publish-openai   # Build and publish pinjected-openai
+# And other packages similarly
+```
