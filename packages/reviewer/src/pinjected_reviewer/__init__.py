@@ -8,9 +8,6 @@ from pinjected import design, instance, injected, Injected
 
 __version__ = "0.3.1"
 
-from pinjected_reviewer.reviewer_def import ReviewerDefinition
-from pinjected_reviewer.loader import reviewer_definitions, find_reviewer_markdown_files
-
 # This allows utils to be imported properly from the package
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
