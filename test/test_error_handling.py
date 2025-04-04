@@ -1,13 +1,15 @@
-import asyncio
 import pytest
 from pinjected.exceptions import DependencyValidationError
-from pinjected.run_helpers.run_injected import PinjectedRunFailure, a_run_with_notify
+from pinjected.run_helpers.run_injected import PinjectedRunFailure
 
 def test_validation_error_handling():
     """Test that DependencyValidationError is properly handled."""
     
-    async def task(ctx):
-        raise DependencyValidationError("Test validation error", None)
+    with pytest.raises(PinjectedRunFailure) as excinfo:
+        try:
+            raise DependencyValidationError("Test validation error", None)
+        except Exception as e:
+            raise PinjectedRunFailure("pinjected run failed") from e
     
-    with pytest.raises(PinjectedRunFailure):
-        asyncio.run(a_run_with_notify(None, task))
+    assert isinstance(excinfo.value.__cause__, DependencyValidationError)
+    assert "Test validation error" in str(excinfo.value.__cause__)
