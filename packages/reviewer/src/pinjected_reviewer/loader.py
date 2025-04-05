@@ -322,7 +322,7 @@ async def pre_commit_reviews__phased(
         a_map_progress,
         git_info,
         git_info_reviewers: list[Reviewer[GitInfo]],
-        file_diff_reviewers: list[Reviewer[FileDiff]] = None ,
+        file_diff_reviewers: list[Reviewer[FileDiff]],
 )->list[Review]:
 
     reviews:list[ReviewResult] = []

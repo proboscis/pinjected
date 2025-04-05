@@ -3,8 +3,7 @@ This reviewer checks code diff and see if @instance decorator is correctly used.
 - When to trigger: pre_commit
 - Return Type: Approval
 - Target Files: .py
-# - Model: anthropic/claude-3.7-sonnet:thinking
-- Model: google/gemini-2.0-flash-001
+- Model: anthropic/claude-3.7-sonnet:thinking
 
 # Pinjected: AIのための利用ガイド
 
