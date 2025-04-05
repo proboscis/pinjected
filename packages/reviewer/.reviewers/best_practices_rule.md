@@ -3,7 +3,7 @@ This reviewer checks code diff and see if best practices are followed.
 - When to trigger: pre_commit
 - Return Type: approval
 - Target Files: .py
-- Model: anthropic/claude-3.7-sonnet:thinking
+- Model: google/gemini-2.5-pro-preview-03-25
 - Review scope: file_diff
 
 # 実装パターンとベストプラクティス
