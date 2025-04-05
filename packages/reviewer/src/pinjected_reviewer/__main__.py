@@ -14,23 +14,31 @@ the standards.
 # pinjected-reviewer: ignore
 # we dont want this file to be reviewed as ordinal pinjected code, since this is for the CLI
 
-import asyncio
 import argparse
+import asyncio
 import os
+import subprocess
 import sys
 from pathlib import Path
-import subprocess
 
 from loguru import logger
 
-from pinjected import IProxy, injected
-from pinjected.compatibility.task_group import TaskGroup
-from pinjected_reviewer.entrypoint import pre_commit_reviews
-from pinjected_reviewer.schema.types import PreCommitReviewer
+from pinjected import IProxy
+from pinjected_reviewer.loader import pre_commit_reviews__phased
 
 
 # We'll keep logging for the main CLI but filter noise
 # The logger in entrypoint.py already handles filtering review process logs
+
+async def run_pinjected(tgt: IProxy):
+    # Run the review process
+    from pinjected.helper_structure import MetaContext
+    from pinjected_reviewer import entrypoint
+    mc = await MetaContext.a_gather_bindings_with_legacy(Path(entrypoint.__file__))
+    d = await mc.a_final_design
+    from pinjected import AsyncResolver
+    resolver = AsyncResolver(d)
+    return await resolver.provide(tgt)
 
 
 async def run_review():
@@ -53,15 +61,10 @@ async def run_review():
     logger.remove()  # Remove all handlers
     from pinjected_reviewer import entrypoint
     logger.remove()  # Remove all handlers
-    from pinjected_reviewer.entrypoint import review_diff__pinjected_code_style
     from pinjected_reviewer.schema.types import Review
     logger.remove()  # Remove all handlers
-
-    # Run the review process
-    mc = await MetaContext.a_gather_bindings_with_legacy(Path(entrypoint.__file__))
-    d = await mc.a_final_design
-    resolver = AsyncResolver(d)
-    reviews:list[Review] = await resolver.provide(pre_commit_reviews)
+    from pinjected_reviewer.loader import pre_commit_reviews__phased
+    reviews = await run_pinjected(pre_commit_reviews__phased)
     approved = all([r.approved for r in reviews])
     if approved:
         print("✓ All changes approved.")
@@ -71,7 +74,8 @@ async def run_review():
             if review.approved:
                 continue
             # Show rejection messages
-            print(f"\n❌ Changes not approved.\n\n{review.name}\n{'-' * len(review.name)}\n\n{review.review_text}", file=sys.stderr)
+            print(f"\n❌ Changes not approved.\n\n{review.name}\n{'-' * len(review.name)}\n\n{review.review_text}",
+                  file=sys.stderr)
         return False
 
 
@@ -205,9 +209,9 @@ def main():
 
     # Uninstall command
     subparsers.add_parser("uninstall", help="Uninstall git pre-commit hook")
-    
+
     subparsers.add_parser("list-reviewers", help="List all reviewer definitions")
-    
+
     args = parser.parse_args()
 
     if args.command == "review" or args.command is None:

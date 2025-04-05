@@ -3,7 +3,8 @@ This reviewer checks code diff and see if @instance decorator is correctly used.
 - When to trigger: pre_commit
 - Return Type: Approval
 - Target Files: .py
-- Model: anthropic/claude-3.7-sonnet:thinking
+# - Model: anthropic/claude-3.7-sonnet:thinking
+- Model: google/gemini-2.0-flash-001
 
 # Pinjected: AIのための利用ガイド
 
@@ -68,5 +69,4 @@ def wrong_usage(dep0,dep1=1):
 def correct_usage(dep0:int,dep1:int):
     return dep0+dep1
 ```
-
 

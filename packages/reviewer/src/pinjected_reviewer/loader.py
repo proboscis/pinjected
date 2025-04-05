@@ -322,26 +322,20 @@ async def pre_commit_reviews__phased(
         a_map_progress,
         git_info,
         git_info_reviewers: list[Reviewer[GitInfo]],
-        file_diff_reviewers: list[Reviewer[FileDiff]],
-):
-    """
-    1. gather all Reviewer instances
-    2. proceed with stages
-    3. query reviewers per stage
-    """
-    # 1. first stage, reviews that want GitInfo
-    # how do i get reviewers that want gitinfo?
-    reviews = []
+        file_diff_reviewers: list[Reviewer[FileDiff]] = None ,
+)->list[Review]:
+
+    reviews:list[ReviewResult] = []
 
     async def git_info_review(reviewer: Reviewer[GitInfo]):
         return ReviewResult(git_info, await reviewer(git_info))
 
-    async for reviewer in a_map_progress(
+    async for review in a_map_progress(
             git_info_review,
             git_info_reviewers,
             desc="Running GitInfo reviewers",
     ):
-        reviews.append(reviewer)
+        reviews.append(review)
 
     # 2. second stage, reviews that want file diffs
 
@@ -350,6 +344,7 @@ async def pre_commit_reviews__phased(
             return ReviewResult(diff, await reviewer(diff))
 
         results = []
+        # TODO ignore files with flags like # pinjected-reviewer: ignore
         async for item in a_map_progress(
                 task,
                 git_info.file_diffs.values(),
@@ -365,4 +360,4 @@ async def pre_commit_reviews__phased(
             desc="Running FileDiff reviewers",
     ):
         reviews.extend(reviewer)
-    return reviews
+    return [r.result for r in reviews]
