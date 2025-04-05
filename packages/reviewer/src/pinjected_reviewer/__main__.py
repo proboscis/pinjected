@@ -24,7 +24,7 @@ from pathlib import Path
 from loguru import logger
 
 from pinjected import IProxy
-from pinjected_reviewer.loader import pre_commit_reviews__phased
+from pinjected_reviewer.schema.reviewer_def import ReviewResult
 
 
 # We'll keep logging for the main CLI but filter noise
@@ -64,18 +64,23 @@ async def run_review():
     from pinjected_reviewer.schema.types import Review
     logger.remove()  # Remove all handlers
     from pinjected_reviewer.loader import pre_commit_reviews__phased
-    reviews = await run_pinjected(pre_commit_reviews__phased)
-    approved = all([r.approved for r in reviews])
+    reviews:list[ReviewResult] = await run_pinjected(pre_commit_reviews__phased)
+    approved = all([r.result.approved for r in reviews])
     if approved:
         print("✓ All changes approved.")
         return True
     else:
-        for review in reviews:
-            if review.approved:
+        for i,review in enumerate(reviews):
+            if review.result.approved:
                 continue
             # Show rejection messages
-            print(f"\n❌ Changes not approved.\n\n{review.name}\n{'-' * len(review.name)}\n\n{review.review_text}",
-                  file=sys.stderr)
+            msg =  f"================= BEGIN REVIEW({i}) =====================\n"
+            msg += f"❌ Changes not approved by {review.result.name}.\n"
+            msg += f"Reviewed Target: {review.input}\n"
+            msg += f"Reviewer Name: {review.result.name}\n"
+            msg += f"{'-' * len(review.result.name)}\n\n{review.result.review_text}\n"
+            msg += f"================= END REVIEW({i}) =====================\n"
+            print(msg,file=sys.stderr)
         return False
 
 
@@ -228,8 +233,8 @@ def main():
         if not success:
             sys.exit(1)
     elif args.command == "list-reviewers":
-        from pinjected_reviewer.commands.list_reviewers import main as list_reviewers_main
-        list_reviewers_main()
+        from pinjected_reviewer.loader import all_reviewers
+        run_pinjected(all_reviewers)
 
 
 if __name__ == '__main__':

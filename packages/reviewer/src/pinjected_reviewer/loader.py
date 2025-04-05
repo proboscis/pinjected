@@ -3,13 +3,15 @@ from pathlib import Path
 from typing import List, Callable, Union, Awaitable, TypeVar
 
 from pydantic import BaseModel
-from returns.future import future_safe, Future, future
+from returns.future import future_safe, Future, future, FutureResultE
 from returns.io import IOResultE
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import is_successful
 from returns.unsafe import unsafe_perform_io
 
-from pinjected import instance, injected
+from pinjected import instance, injected, IProxy
+from pinjected.run_config_utils import load_variable_from_script
+from pinjected.v2.async_resolver import create_tb
 from pinjected_openai.openrouter.instances import StructuredLLM
 from pinjected_reviewer.reviewer_v1 import ExtractApproved
 from pinjected_reviewer.schema.reviewer_def import ReviewerAttributes_v4, MarkdownReviewerDefinition, \
@@ -192,7 +194,7 @@ def map_io_result(f: Callable[[X], Y], items: list[IOResultE]) -> list[IOResultE
 
 
 @instance
-async def all_reviewers_from__from_markdowns(
+async def all_reviewers__from_markdowns(
         repo_root,
         a_map_progress,
         a_reviewer_definition_from_path,
@@ -224,6 +226,35 @@ async def all_reviewers_from__from_markdowns(
     return reviewers
 
 
+@injected
+@future_safe
+async def a_py_file_to_reviewer(__resolver__, /, path: Path) -> Reviewer:
+    """
+    Load a reviewer from a Python file.
+    Expects the file to contain a variable named __reviewer__:IProxy[Reviewer].
+    """
+    reviewer_iproxy: IProxy[Reviewer] = load_variable_from_script(path, "__reviewer__")
+    reviewer: Reviewer = await __resolver__[reviewer_iproxy]
+    return reviewer
+
+
+@instance
+async def all_reviewers__from_python_files(
+        a_py_file_to_reviewer,
+        a_await_all,
+        repo_root,
+) -> list[IOResultE[Reviewer]]:
+    """
+    Load all reviewers from Python files in the .reviewers directory.
+    """
+    reviewer_dir = Path(repo_root) / ".reviewers"
+    py_files = list(reviewer_dir.glob("*.py"))
+    reviewers: list[FutureResultE[Reviewer]] = [a_py_file_to_reviewer(py_file) for py_file in py_files]
+    reviewers: list[IOResultE[Reviewer]] = await a_await_all(reviewers,
+                                                             desc="Loading reviewer definitions from python files")
+    return reviewers
+
+
 def log_failure_as_table(items: list[IOResultE]):
     failures = [r for r in items if not is_successful(r)]
     succeeded = [r for r in items if is_successful(r)]
@@ -239,16 +270,21 @@ def log_failure_as_table(items: list[IOResultE]):
     for failure in failures:
         error_message = str(failure.failure())
         table.add_row("Failed", error_message)
+        print(create_tb(failure))
+
+
 
     console.print(table)
 
 
 @instance
 async def all_reviewers(
-        all_reviewers_from__from_markdowns: list[IOResultE[Reviewer]],
+        all_reviewers__from_markdowns: list[IOResultE[Reviewer]],
+        all_reviewers__from_python_files: list[IOResultE[Reviewer]],
 ) -> list[Reviewer]:
-    log_failure_as_table(all_reviewers_from__from_markdowns)
-    succeeded = [r for r in all_reviewers_from__from_markdowns if is_successful(r)]
+    src_reviewers = all_reviewers__from_python_files + all_reviewers__from_markdowns
+    log_failure_as_table(src_reviewers)
+    succeeded = [r for r in src_reviewers if is_successful(r)]
     return [unsafe_perform_io(item.unwrap()) for item in succeeded]
 
 
@@ -276,7 +312,9 @@ File Diff:
 {file_diff.diff}
 Review Material:
 {self.material}
-Please provide a detailed review and indicate if the changes are approved or not.
+If the content is out of scope of the provided material, please approve.
+If the decision is to approve the change, the answer must be just "Approved", try to refrain from providing long answers.
+Otherwise, please provide a detailed review and explain why the change is not approved, and how it should be fixed.
 """
         review = await self.llm(prompt)
         approved = await self.a_extract_approved(review)
@@ -304,7 +342,7 @@ async def git_info_reviewers(all_reviewers: list[Reviewer]) -> list[Reviewer[Git
 
 
 @instance
-async def file_diff_reviewers(logger,all_reviewers: list[Reviewer]) -> list[Reviewer[FileDiff]]:
+async def file_diff_reviewers(logger, all_reviewers: list[Reviewer]) -> list[Reviewer[FileDiff]]:
     res = []
     for r in all_reviewers:
         logger.info(f"Reviewer: {r.name}, Interests: {r.interests}")
@@ -317,47 +355,53 @@ async def file_diff_reviewers(logger,all_reviewers: list[Reviewer]) -> list[Revi
     return res
 
 
+@injected
+async def a_await_all(a_map_progress, /, tasks: list[FutureResultE], desc: str = None) -> list[IOResultE]:
+    """
+    Await all tasks and return the results, using a_map_progress for progress tracking.
+    Basically converting list of FutureResultE to list of IOResultE
+    """
+    result: list[IOResultE] = []
+
+    async def awaiter(item: FutureResultE) -> IOResultE:
+        return await item
+
+    async for item in a_map_progress(
+            awaiter,
+            tasks,
+            desc=desc,
+            total=len(tasks),
+    ):
+        result.append(item)
+    return result
+
+
 @instance
 async def pre_commit_reviews__phased(
-        a_map_progress,
+        a_await_all,
         git_info,
         git_info_reviewers: list[Reviewer[GitInfo]],
         file_diff_reviewers: list[Reviewer[FileDiff]],
-)->list[Review]:
-
-    reviews:list[ReviewResult] = []
-
+) -> list[ReviewResult]:
+    @future_safe
     async def git_info_review(reviewer: Reviewer[GitInfo]):
         return ReviewResult(git_info, await reviewer(git_info))
 
-    async for review in a_map_progress(
-            git_info_review,
-            git_info_reviewers,
-            desc="Running GitInfo reviewers",
-    ):
-        reviews.append(review)
+    tasks: list[FutureResultE[ReviewResult]] = []
+    tasks += [git_info_review(reviewer) for reviewer in git_info_reviewers]
 
     # 2. second stage, reviews that want file diffs
+    @future_safe
+    async def review_file(reviewer: Reviewer[FileDiff], diff: FileDiff):
+        return ReviewResult(diff, await reviewer(diff))
 
-    async def file_review(reviewer) -> list[FileDiff]:
-        async def task(diff: FileDiff):
-            return ReviewResult(diff, await reviewer(diff))
+    for reviewer in file_diff_reviewers:
+        for file_diff in git_info.file_diffs.values():
+            file_diff:FileDiff
+            if file_diff.filename.exists():
+                tasks.append(review_file(reviewer, file_diff))
 
-        results = []
-        # TODO ignore files with flags like # pinjected-reviewer: ignore
-        async for item in a_map_progress(
-                task,
-                git_info.file_diffs.values(),
-                desc=f"Running {reviewer.name}...",
-        ):
-            results.append(item)
-
-        return results
-
-    async for reviewer in a_map_progress(
-            file_review,
-            file_diff_reviewers,
-            desc="Running FileDiff reviewers",
-    ):
-        reviews.extend(reviewer)
-    return [r.result for r in reviews]
+    reviews: list[IOResultE[ReviewResult]] = await a_await_all(tasks, desc="Running reviewers")
+    log_failure_as_table(reviews)
+    succeeded = [unsafe_perform_io(r).unwrap() for r in reviews if is_successful(r)]
+    return succeeded

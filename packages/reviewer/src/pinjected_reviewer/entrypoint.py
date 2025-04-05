@@ -1,8 +1,6 @@
 from typing import Callable, Awaitable
 
 from pinjected import *
-
-from pinjected_reviewer.reviewer_v1 import a_pre_commit_review__code_style
 from pinjected_reviewer.schema.types import GitInfo, Review, PreCommitReviewer
 
 # a_openrouter_chat_completion()

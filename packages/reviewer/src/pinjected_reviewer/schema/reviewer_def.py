@@ -60,6 +60,7 @@ Interests = set[Interest]
 # so, each reviewer can declare their interests and we should pick them up.
 ReviewTarget = TypeVar('ReviewTarget')
 
+ReviewerFunc = Callable[[ReviewTarget], Future[Review]]
 
 class Reviewer(Protocol[ReviewTarget]):
     name: str

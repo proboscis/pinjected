@@ -53,7 +53,7 @@ async def run_review_for_pytest(session: pytest.Session):
     from pinjected.helper_structure import MetaContext
     from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import Diagnostic
 
-    mc = await MetaContext.a_gather_from_path(Path(__file__))
+    mc = await MetaContext.a_gather_bindings_with_legacy(Path(__file__))
 
     # Check if we should use changed files only
     only_changed_files = session.config.getoption("pinjected_only_changed_files", False)

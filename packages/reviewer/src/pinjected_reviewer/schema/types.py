@@ -15,6 +15,8 @@ class FileDiff:
     is_binary: bool = False
     is_new_file: bool = False
     is_deleted: bool = False
+    def __repr__(self):
+        return f"FileDiff(filename={self.filename}, diff_length={len(self.diff)}, is_binary={self.is_binary}, is_new_file={self.is_new_file}, is_deleted={self.is_deleted})"
 
 
 @dataclass
@@ -67,7 +69,7 @@ class Review:
     approved: bool
 
     def __repr__(self):
-        return f"Review(name={self.name}, approved={self.approved}, review_text={self.review_text[:100]})"
+        return f"Review(name={self.name}, approved={self.approved}, len_review_text={len(self.review_text)})"
 
 
 class Approved(BaseModel):

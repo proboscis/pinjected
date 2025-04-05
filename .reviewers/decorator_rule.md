@@ -1,5 +1,5 @@
-# Pinjected @instance decorator usage reviewer
-This reviewer checks code diff and see if @instance decorator is correctly used.
+# Pinjected decorator usage reviewer
+This reviewer checks code diff and see if @instance and @injected decorator is correctly used.
 - When to trigger: pre_commit
 - Return Type: Approval
 - Target Files: .py
@@ -69,3 +69,29 @@ def correct_usage(dep0:int,dep1:int):
     return dep0+dep1
 ```
 
+
+### 2.2 @injectedデコレータ
+DI後にintやstrではなく、関数を得たいケースはよくあります。
+```python
+from pinjected import instance
+@instance
+def generate_text(llm_model):
+    def impl(prompt: str):
+        return llm_model.generate(prompt)
+    return impl
+```
+しかし、この記法は冗長であるため、@injectedデコレータが糖衣構文として用意されています。
+
+`@injected`デコレータは、関数引数を「注入対象の引数」と「呼び出し時に指定する引数」に分離できます。`/`の左側が依存として注入され、右側が実行時に渡される引数です。
+```python
+from pinjected import injected
+
+@injected
+def generate_text(llm_model, /, prompt: str):
+    # llm_modelはDIから注入される
+    # promptは実行時に任意の値を渡せる
+    return llm_model.generate(prompt)
+```
+これにより、先のimpl関数と等価な関数を簡潔に記述できます。
+
+# TODO add more examples.
