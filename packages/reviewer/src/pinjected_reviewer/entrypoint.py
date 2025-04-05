@@ -2,7 +2,6 @@ from typing import Callable, Awaitable
 
 from pinjected import *
 
-from pinjected_reviewer.git_util import git_info
 from pinjected_reviewer.reviewer_v1 import a_pre_commit_review__code_style
 from pinjected_reviewer.schema.types import GitInfo, Review, PreCommitReviewer
 
@@ -34,10 +33,6 @@ async def pre_commit_reviews(
 
     return res
 
-
-test_git_info: IProxy = git_info
-check_git_info_py: IProxy = git_info.python_diffs
-test_review: IProxy = a_pre_commit_review__code_style(git_info)
 
 __meta_design__ = design(
     overrides=design(

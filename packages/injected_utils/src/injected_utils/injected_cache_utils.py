@@ -503,8 +503,8 @@ class CustomKeyHasher:
         encoded_dict['kwargs'] = frozendict(encoded_kwargs)
         encoded_dict = frozendict(encoded_dict)
         from loguru import logger
-        logger.info(f"signature: {self.signature}")
-        logger.info(f"encoded_dict: {encoded_dict}")
+        #logger.info(f"signature: {self.signature}")
+        #logger.info(f"encoded_dict: {encoded_dict}")
         return cloudpickle.dumps(encoded_dict)
 
     def encode_key(self, key):

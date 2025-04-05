@@ -76,6 +76,8 @@ class Reviewer(Protocol[ReviewTarget]):
 class ReviewResult:
     input: Any
     result: Review
+    def __repr__(self):
+        return f"ReviewResult(input={type(self.input)},name={self.result.name} approved={self.result.approved})"
 
 
 SkipReasonProvider = Callable[[FileDiff], Future[Maybe[str]]]
