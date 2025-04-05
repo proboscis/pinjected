@@ -271,6 +271,7 @@ def log_failure_as_table(items: list[IOResultE]):
         error_message = str(failure.failure())
         table.add_row("Failed", error_message)
         print(create_tb(failure))
+        print(failure)
 
 
 
