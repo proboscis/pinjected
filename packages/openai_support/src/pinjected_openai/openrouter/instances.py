@@ -14,9 +14,8 @@ class NoEndpointsFoundError(Exception):
 
 
 class StructuredLLM(Protocol):
-    async def __call__(self, text: str, model: str, images=None, response_format: type[BaseModel] = None,
-                       max_tokens: int = 8192):
-        ...
+    async def __call__(self, text: str,images=None, response_format: type[BaseModel]=None):
+        pass
 
 
 @injected

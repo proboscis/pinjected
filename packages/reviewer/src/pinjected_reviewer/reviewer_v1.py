@@ -2,7 +2,7 @@ import asyncio
 import importlib.resources
 import sys
 from pathlib import Path
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Protocol
 
 from loguru import logger
 from tqdm import tqdm
@@ -85,11 +85,24 @@ The answer must be true if it is approved and false if it is not approved.
 async def pinjected_guide_md():
     return load_review_material('how_to_use_pinjected.md')
 
+class ExtractApproved(Protocol):
+    async def __call__(self, text: str) -> Approved:
+        """
+        Extracts the approval status from the provided text.
+
+        Args:
+            text: The text to analyze
+
+        Returns:
+            Approved: The extracted approval status
+        """
+        pass
+
 
 @injected
 async def a_review_python_diff(
         a_sllm_for_commit_review: StructuredLLM,
-        a_extract_approved: Callable[[str], Awaitable[Approved]],
+        a_extract_approved:ExtractApproved,
         pinjected_guide_md: str,
         /,
         diff: FileDiff

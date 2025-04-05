@@ -5,6 +5,7 @@ from injected_utils.progress import a_map_progress__tqdm
 from pinjected import design, instance, injected, Injected
 
 from pinjected_openai.openrouter.instances import a_cached_structured_llm__gemini_flash_2_0
+from pinjected_reviewer.models import a_cached_openrouter_chat_completion
 from pinjected_reviewer.reviewer_v1 import a_pre_commit_review__code_style
 
 
@@ -59,9 +60,8 @@ def __pinjected_reviewer_default_design():
         a_symbol_metadata_getter=a_symbol_metadata_getter,
         repo_root=Path.cwd(),
         a_map_progress=a_map_progress__tqdm,
-        pre_commit_reviewers=Injected.list(
-            a_pre_commit_review__code_style
-        )
+        a_cached_openrouter_chat_completion=a_cached_openrouter_chat_completion,
+        pinjected_reviewer_cache_path=Path("~/.cache/pinjected_reviewer").expanduser(),
     )
 
 

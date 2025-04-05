@@ -66,6 +66,9 @@ class Review:
     review_text: str
     approved: bool
 
+    def __repr__(self):
+        return f"Review(name={self.name}, approved={self.approved}, review_text={self.review_text[:100]})"
+
 
 class Approved(BaseModel):
     result: bool
