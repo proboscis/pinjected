@@ -11,10 +11,10 @@ from pinjected_reviewer.reviewer_def import ReviewerDefinition, ReviewerAttribut
 
 @injected
 async def a_reviewer_definition_from_path(
-    a_structured_llm_for_markdown_extraction: StructuredLLM,
-    logger,
-    /,
-    path: Path
+        a_structured_llm_for_markdown_extraction: StructuredLLM,
+        logger,
+        /,
+        path: Path
 ) -> ReviewerDefinition:
     """
     Create a ReviewerDefinition from a markdown file path using a structured LLM.
@@ -28,7 +28,7 @@ async def a_reviewer_definition_from_path(
         A ReviewerDefinition instance
     """
     content = path.read_text()
-    
+
     prompt = f"""
     Extract the following attributes from this markdown reviewer definition:
     - Name: The name of the reviewer
@@ -38,12 +38,12 @@ async def a_reviewer_definition_from_path(
     Markdown content:
     {content}
     """
-    
+
     attributes = await a_structured_llm_for_markdown_extraction(
         text=prompt,
         response_format=ReviewerAttributes
     )
-    
+
     return ReviewerDefinition(
         name=attributes.Name,
         trigger_condition=attributes.When_to_trigger,
@@ -52,11 +52,12 @@ async def a_reviewer_definition_from_path(
         raw_content=content
     )
 
+
 @injected
 def find_reviewer_markdown_files(
-    logger,
-    /,
-    repo_root: Path
+        logger,
+        /,
+        repo_root: Path
 ) -> List[Path]:
     """
     Find all markdown files in the .reviewers directory.
@@ -72,7 +73,7 @@ def find_reviewer_markdown_files(
     if not reviewers_dir.exists():
         logger.warning(f"Reviewers directory not found: {reviewers_dir}")
         return []
-        
+
     markdown_files = list(reviewers_dir.glob("*.md"))
     logger.info(f"Found {len(markdown_files)} reviewer definition files in {reviewers_dir}")
     return markdown_files
@@ -80,8 +81,9 @@ def find_reviewer_markdown_files(
 
 @instance
 async def reviewer_definitions(
-    repo_root: Path,
-    a_reviewer_definition_from_path
+        repo_root: Path,
+        a_reviewer_definition_from_path,
+        find_reviewer_markdown_files
 ) -> List[ReviewerDefinition]:
     """
     Load all reviewer definitions from markdown files.
@@ -95,7 +97,7 @@ async def reviewer_definitions(
     """
     markdown_files = find_reviewer_markdown_files(repo_root)
     definitions = []
-    
+
     for file_path in markdown_files:
         try:
             definition = await a_reviewer_definition_from_path(path=file_path)
@@ -103,5 +105,5 @@ async def reviewer_definitions(
             logger.info(f"Loaded reviewer definition: {definition.name} from {file_path.name}")
         except Exception as e:
             logger.error(f"Error loading reviewer definition from {file_path}: {e}")
-    
+
     return definitions

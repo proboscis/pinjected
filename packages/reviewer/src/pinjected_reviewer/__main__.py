@@ -23,7 +23,10 @@ import subprocess
 
 from loguru import logger
 
-
+from pinjected import IProxy, injected
+from pinjected.compatibility.task_group import TaskGroup
+from pinjected_reviewer.entrypoint import pre_commit_reviews
+from pinjected_reviewer.schema.types import PreCommitReviewer
 
 
 # We'll keep logging for the main CLI but filter noise
@@ -50,21 +53,25 @@ async def run_review():
     logger.remove()  # Remove all handlers
     from pinjected_reviewer import entrypoint
     logger.remove()  # Remove all handlers
-    from pinjected_reviewer.entrypoint import review_diff__pinjected_code_style, Review
+    from pinjected_reviewer.entrypoint import review_diff__pinjected_code_style
+    from pinjected_reviewer.schema.types import Review
     logger.remove()  # Remove all handlers
 
     # Run the review process
     mc = await MetaContext.a_gather_bindings_with_legacy(Path(entrypoint.__file__))
     d = await mc.a_final_design
     resolver = AsyncResolver(d)
-    review: Review = await resolver.provide(review_diff__pinjected_code_style)
-
-    if review.approved:
+    reviews:list[Review] = await resolver.provide(pre_commit_reviews)
+    approved = all([r.approved for r in reviews])
+    if approved:
         print("✓ All changes approved.")
         return True
     else:
-        # Always show rejection messages
-        print(f"\n❌ Changes not approved.\n\n{review.name}\n{'-' * len(review.name)}\n\n{review.review_text}", file=sys.stderr)
+        for review in reviews:
+            if review.approved:
+                continue
+            # Show rejection messages
+            print(f"\n❌ Changes not approved.\n\n{review.name}\n{'-' * len(review.name)}\n\n{review.review_text}", file=sys.stderr)
         return False
 
 
