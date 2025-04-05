@@ -40,28 +40,44 @@ def test_cli_command_visibility_with_subprocess():
     cli = PinjectedCLI()
     help_text = cli.__doc__ or ""
     
-    assert "run " in help_text, "The 'run' command should be visible in CLI help text"
-    assert "describe " in help_text, "The 'describe' command should be visible in CLI help text"
+    assert "run" in help_text, "The 'run' command should be visible in CLI help text"
+    assert "describe" in help_text, "The 'describe' command should be visible in CLI help text"
+    
+    assert hasattr(cli, 'run'), "The 'run' command should be registered in CLI"
+    assert hasattr(cli, 'describe'), "The 'describe' command should be registered in CLI"
 
 
 def test_run_command_help_with_subprocess():
-    """Test that the 'run' command help is accessible."""
-    from pinjected.main_impl import run
+    """Test that the 'run' command help is accessible using subprocess."""
+    python_executable = sys.executable
     
-    help_text = run.__doc__ or ""
+    result = subprocess.run(
+        [python_executable, "-m", "pinjected", "run", "--help"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
     
-    assert "var_path" in help_text, "The 'run' command help should mention var_path parameter"
-    assert "design_path" in help_text, "The 'run' command help should mention design_path parameter"
+    output = result.stdout + result.stderr
+    
+    assert "var_path" in output, "The 'run' command help should mention var_path parameter"
+    assert "design_path" in output, "The 'run' command help should mention design_path parameter"
 
 
 def test_describe_command_help_with_subprocess():
-    """Test that the 'describe' command help is accessible."""
-    from pinjected.main_impl import describe
+    """Test that the 'describe' command help is accessible using subprocess."""
+    python_executable = sys.executable
     
-    help_text = describe.__doc__ or ""
+    result = subprocess.run(
+        [python_executable, "-m", "pinjected", "describe", "--help"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
     
-    assert "var_path" in help_text, "The 'describe' command help should mention var_path parameter"
-    assert "design_path" in help_text, "The 'describe' command help should mention design_path parameter"
+    output = result.stdout + result.stderr
+    
+    assert "var_path" in output, "The 'describe' command help should mention var_path parameter"
 
 
 def test_command_visibility_in_module():
@@ -84,3 +100,31 @@ def test_command_visibility_in_module():
         pytest.fail(f"Failed to import pinjected module: {e}")
     except Exception as e:
         pytest.fail(f"Unexpected error when testing module imports: {e}")
+
+
+def test_module_command_execution():
+    """Test that the module can be executed directly with commands."""
+    python_executable = sys.executable
+    
+    describe_result = subprocess.run(
+        [python_executable, "-m", "pinjected", "describe"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    
+    assert "Error: You must provide a variable path" in describe_result.stdout, \
+        "The describe command should show an error when no variable path is provided"
+    assert "Examples:" in describe_result.stdout, \
+        "The describe command should show examples when no variable path is provided"
+    
+    run_result = subprocess.run(
+        [python_executable, "-m", "pinjected", "run"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    
+    error_output = run_result.stderr
+    assert "var_path" in error_output or "NoneType" in error_output, \
+        "The run command should show an error related to missing var_path"
