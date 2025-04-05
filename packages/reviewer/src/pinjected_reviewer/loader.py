@@ -262,20 +262,18 @@ def log_failure_as_table(items: list[IOResultE]):
     from rich.console import Console
     from rich.table import Table
 
-    console = Console()
-    table = Table(title=f"Results: {len(succeeded)} succeeded, {len(failures)} failed")
-    table.add_column("Status", style="green")
-    table.add_column("Error", style="red")
+    if failures:
+        console = Console()
+        table = Table(title=f"Results: {len(succeeded)} succeeded, {len(failures)} failed")
+        table.add_column("Status", style="green")
+        table.add_column("Error", style="red")
 
-    for failure in failures:
-        error_message = str(failure.failure())
-        table.add_row("Failed", error_message)
-        print(create_tb(failure))
-        print(failure)
-
-
-
-    console.print(table)
+        for failure in failures:
+            error_message = str(failure.failure())
+            table.add_row("Failed", error_message)
+            print(create_tb(failure))
+            print(failure)
+        console.print(table)
 
 
 @instance
