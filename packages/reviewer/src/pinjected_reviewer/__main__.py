@@ -24,7 +24,7 @@ from pathlib import Path
 from loguru import logger
 
 from pinjected import IProxy
-from pinjected_reviewer.schema.reviewer_def import ReviewResult
+from pinjected_reviewer.schema.reviewer_def import ReviewResult, Reviewer
 
 
 # We'll keep logging for the main CLI but filter noise
@@ -234,7 +234,10 @@ def main():
             sys.exit(1)
     elif args.command == "list-reviewers":
         from pinjected_reviewer.loader import all_reviewers
-        run_pinjected(all_reviewers)
+        reviewers:list[Reviewer] = asyncio.run(run_pinjected(all_reviewers))
+        print("Available reviewers:")
+        for r in reviewers:
+            print(f"- {r.name}: {type(r)}-{r.interests}")
 
 
 if __name__ == '__main__':
