@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Protocol, Union
 from injected_utils import async_cached
 from loguru import logger
 from pinjected import injected, IProxy, Injected, instance
-
+import pinjected_reviewer.entrypoint
 
 @contextlib.contextmanager
 def suppress_logs():
@@ -484,7 +484,6 @@ test_collect_imported_file: IProxy = a_collect_imported_symbol_metadata(
 test_detect_misuse: IProxy = a_detect_misuse_of_pinjected_proxies(
     Path(pinjected_reviewer.examples.__file__)
 )
-import pinjected_reviewer.entrypoint
 
 test_detect_misuse_2: IProxy = a_detect_misuse_of_pinjected_proxies(
     Path(pinjected_reviewer.entrypoint.__file__)

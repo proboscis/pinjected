@@ -30,7 +30,8 @@ dependencies = [
     "beartype",
     "rich",
     "argparse",
-    "pinjected-openai"
+    "pinjected-openai",
+    "injected-utils"
 ]
 
 [project.scripts]
@@ -48,6 +49,7 @@ pythonpath = ["src/pinjected_reviewer"]
 [tool.uv.sources]
 pinjected = { workspace = true }
 pinjected-openai = { workspace = true }
+injected-utils = { workspace = true }
 
 [dependency-groups]
 dev = [

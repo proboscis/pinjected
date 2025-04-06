@@ -28,6 +28,7 @@ test:
 	cd packages/rate_limit && uv sync --group dev && uv run -m pytest tests
 	cd packages/niji_voice && uv sync --group dev && uv run -m pytest tests
 	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
+	uv sync --group dev --all-packages
 
 test-cov:
 	cd test && uv run pytest -v --cov=pinjected --cov-report=xml

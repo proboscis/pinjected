@@ -39,10 +39,17 @@ class DependencyGraphBuilder:
             A dictionary mapping dependency keys to their dependencies
         """
         deps_map = defaultdict(list)
+        all_keys = set()
         
         for root in deps:
             for a, b, _ in self.digraph.di_dfs(root, replace_missing=True):
                 deps_map[a].append(b)
+                all_keys.add(a)
+                all_keys.add(b)
+                
+        for key in all_keys:
+            if key not in deps_map:
+                deps_map[key] = []
                 
         return deps_map
     

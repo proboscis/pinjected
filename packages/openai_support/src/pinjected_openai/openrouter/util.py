@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Type, Union, get_origin, get_args
 from typing import Callable, Awaitable, Protocol, Literal
 
 
+
 # Custom exceptions for schema compatibility issues
 class SchemaCompatibilityError(Exception):
     """Base exception for schema compatibility issues."""
@@ -37,7 +38,7 @@ from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 from pinjected import instance, design, IProxy, injected, Injected
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from tenacity import retry, stop_after_attempt, retry_if_exception_type, wait_exponential
 
 from pinjected_openai.compatibles import a_openai_compatible_llm
@@ -47,17 +48,45 @@ from pinjected_openai.vision_llm import to_content
 # from vision_llm import a_vision_llm__gpt4o
 
 
+class OpenRouterCapabilities(BaseModel):
+    """Capabilities of a model in OpenRouter API."""
+    vision: bool = False
+    json: bool = False
+    tools: bool = False
+    
+    model_config = {
+        "extra": "allow"  # Allow extra fields for compatibility with changing API
+    }
+
+
 class OpenRouterArchitecture(BaseModel):
+    """Architecture information for an OpenRouter model."""
     modality: str
     tokenizer: str
     instruct_type: Optional[str] = None
+    input_modalities: Optional[List[str]] = None
+    output_modalities: Optional[List[str]] = None
+    capabilities: Optional[OpenRouterCapabilities] = None
+    
+    model_config = {
+        "extra": "allow"  # Allow extra fields for compatibility with changing API
+    }
 
 
 class OpenRouterModelPricing(BaseModel):
+    """Pricing information for an OpenRouter model."""
     prompt: str
     completion: str
-    image: str
-    request: str
+    image: Optional[str] = None
+    request: Optional[str] = None
+    web_search: Optional[str] = None
+    internal_reasoning: Optional[str] = None
+    input_cache_read: Optional[str] = None
+    input_cache_write: Optional[str] = None
+    
+    model_config = {
+        "extra": "allow"  # Allow extra fields for compatibility with changing API
+    }
 
     def calc_cost(self, usage: CompletionUsage):
         completion_cost = usage.completion_tokens * float(self.completion)
@@ -76,13 +105,23 @@ class OpenRouterModelPricing(BaseModel):
         )
 
 
-class OpenRouterTopProvider(BaseModel):
+class OpenRouterProviderInfo(BaseModel):
+    """Provider information for an OpenRouter model."""
+    id: Optional[str] = None
+    name: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    is_moderated: bool = False
     context_length: Optional[int] = None
     max_completion_tokens: Optional[int] = None
-    is_moderated: bool
+    can_stream: Optional[bool] = True
+    
+    model_config = {
+        "extra": "allow"  # Allow extra fields for compatibility with changing API
+    }
 
 
 class OpenRouterModel(BaseModel):
+    """Represents a model in the OpenRouter API."""
     id: str
     name: str
     created: int
@@ -90,12 +129,22 @@ class OpenRouterModel(BaseModel):
     context_length: int
     architecture: OpenRouterArchitecture
     pricing: OpenRouterModelPricing
-    top_provider: Optional[OpenRouterTopProvider] = None
+    providers: Optional[List[OpenRouterProviderInfo]] = None
+    top_provider: Optional[OpenRouterProviderInfo] = None
     per_request_limits: Optional[Dict[str, Any]] = None
+    
+    model_config = {
+        "extra": "allow"  # Allow extra fields for compatibility with changing API
+    }
 
 
 class OpenRouterModelTable(BaseModel):
+    """Collection of models available in the OpenRouter API."""
     data: List[OpenRouterModel]
+    
+    model_config = {
+        "extra": "allow"  # Allow extra fields for compatibility with changing API
+    }
 
     def pricing(self, model_id: str) -> OpenRouterModelPricing:
         if not hasattr(self, "_pricing"):
@@ -112,7 +161,12 @@ async def openrouter_model_table(logger) -> OpenRouterModelTable:
         response = await client.get("https://openrouter.ai/api/v1/models")
         response.raise_for_status()
         data = response.json()["data"]
-        return OpenRouterModelTable.model_validate(dict(data=data))
+        
+        try:
+            return OpenRouterModelTable.model_validate(dict(data=data))
+        except ValidationError as ve:
+            logger.error(f"Error in OpenRouterModelTable validation: {ve} caused by: \n{data}")
+            raise ve
 
 
 @instance
@@ -866,8 +920,10 @@ test_resize_image: IProxy = a_resize_image_below_5mb(
 
 @instance
 def __debug_design():
-    from openrouter.instances import a_cached_sllm_gpt4o__openrouter
-    from openrouter.instances import a_cached_sllm_gpt4o_mini__openrouter
+    #from openrouter.instances import a_cached_sllm_gpt4o__openrouter
+    #from openrouter.instances import a_cached_sllm_gpt4o_mini__openrouter
+    from pinjected_openai.openrouter.instances import a_cached_sllm_gpt4o__openrouter, \
+        a_cached_sllm_gpt4o_mini__openrouter
     return design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
         a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,
