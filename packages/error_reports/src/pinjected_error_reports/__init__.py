@@ -93,7 +93,11 @@ async def a_handle_result_with_llm_voice(
 ):
     import rich
     from rich.panel import Panel
-    rich.print(Panel(f"Result: {result}", title="Result",style="bold green"))
+    from rich.errors import MarkupError
+    try:
+        rich.print(Panel(f"Result: {result}", title="Result",style="bold green"))
+    except MarkupError:
+        logger.success(f"Result: {result}")
     from pinjected.notification import notify
     if __pinjected_error_reports_enable_voice__:
         voice = await a_niji_voice(NijiVoiceParam(
