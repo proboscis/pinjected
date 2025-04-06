@@ -125,28 +125,50 @@ async def a_markdown_reviewer_def_to_reviewer(
 
 
 @injected
-def find_reviewer_markdown_files(
-        logger,
-        /,
-        repo_root: Path
-) -> List[Path]:
+def reviewer_paths(logger, /, repo_root: Path) -> List[Path]:
     """
-    Find all markdown files in the .reviewers directory.
+    Return a list of paths to load reviewer files from.
     
     Args:
         logger: Logger instance
         repo_root: The root directory of the repository
         
     Returns:
+        List of paths to search for reviewer files
+    """
+    home_reviewers = Path("~/.reviewers").expanduser()
+    return [repo_root / ".reviewers", home_reviewers]
+
+
+@injected
+def find_reviewer_markdown_files(
+        logger,
+        reviewer_paths,
+        /,
+        repo_root: Path
+) -> List[Path]:
+    """
+    Find all markdown files in the paths provided by reviewer_paths.
+    
+    Args:
+        logger: Logger instance
+        reviewer_paths: Function that returns paths to search for reviewer files
+        repo_root: The root directory of the repository
+        
+    Returns:
         List of paths to reviewer markdown files
     """
-    reviewers_dir = repo_root / ".reviewers"
-    if not reviewers_dir.exists():
-        logger.warning(f"Reviewers directory not found: {reviewers_dir}")
-        return []
-
-    markdown_files = list(reviewers_dir.glob("*.md"))
-    logger.info(f"Found {len(markdown_files)} reviewer definition files in {reviewers_dir}")
+    paths = reviewer_paths(repo_root)
+    markdown_files = []
+    
+    for path in paths:
+        if not path.exists():
+            logger.warning(f"Reviewers directory not found: {path}")
+            continue
+            
+        markdown_files.extend(list(path.glob("*.md")))
+    
+    logger.info(f"Found {len(markdown_files)} reviewer definition files in {paths}")
     return markdown_files
 
 
@@ -243,15 +265,21 @@ async def all_reviewers__from_python_files(
         a_py_file_to_reviewer,
         a_await_all,
         repo_root,
+        reviewer_paths,
 ) -> list[IOResultE[Reviewer]]:
     """
-    Load all reviewers from Python files in the .reviewers directory.
+    Load all reviewers from Python files in the paths provided by reviewer_paths.
     """
-    reviewer_dir = Path(repo_root) / ".reviewers"
-    py_files = list(reviewer_dir.glob("*.py"))
+    paths = reviewer_paths(repo_root)
+    py_files = []
+    
+    for path in paths:
+        if path.exists():
+            py_files.extend(list(path.glob("*.py")))
+            
     reviewers: list[FutureResultE[Reviewer]] = [a_py_file_to_reviewer(py_file) for py_file in py_files]
     reviewers: list[IOResultE[Reviewer]] = await a_await_all(reviewers,
-                                                             desc="Loading reviewer definitions from python files")
+                                                           desc="Loading reviewer definitions from python files")
     return reviewers
 
 
