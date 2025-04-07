@@ -5,14 +5,25 @@ pinjected用のテスト関数モジュール
 """
 import asyncio
 import inspect
+import os
 from pathlib import Path
 from typing import Awaitable, Union, Callable
 
 from pinjected import Injected, Design, EmptyDesign, instance
 from pinjected import instances
-from pinjected.compatibility.task_group import TaskGroup
+from pinjected.compatibility.task_group import TaskGroup, CompatibleExceptionGroup
 from pinjected.helper_structure import MetaContext
 from pinjected import AsyncResolver
+
+
+def unwrap_exception_group(exc):
+    """Unwrap exception from ExceptionGroup if it's the only exception."""
+    while isinstance(exc, CompatibleExceptionGroup) and len(exc.exceptions) == 1:
+        exc = exc.exceptions[0]
+    return exc
+
+
+UNWRAP_EXCEPTIONS = os.environ.get("PINJECTED_UNWRAP_EXCEPTIONS", "True").lower() in ("true", "1", "yes")
 
 
 def injected_pytest(override: Union[Callable, Design] = EmptyDesign):
@@ -94,6 +105,8 @@ def _to_pytest(p: Injected, override: Design, caller_file: str):
             try:
                 res = await resolver.provide(Injected.ensure_injected(p))
             except Exception as e:
+                if UNWRAP_EXCEPTIONS:
+                    raise unwrap_exception_group(e)
                 raise e
             if isinstance(res, Awaitable):
                 res = await res
