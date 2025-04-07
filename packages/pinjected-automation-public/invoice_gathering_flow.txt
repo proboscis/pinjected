@@ -1,0 +1,58 @@
+Invoice Gathering Automation Flow
+==============================
+
+START
+  |
+  v
+[1] Go to billing page (https://platform.openai.com/settings/organization/billing/history)
+  |
+  v
+[2] Click team name in top left corner to open dropdown
+  |
+  v
+[3] Select a team from dropdown
+  |
+  v
+[4] For each invoice in the list:
+    |
+    +-> Check if invoice is from last month (October 2024)
+    |   |
+    |   +-> If yes: Continue to next step
+    |   |
+    |   +-> If no: Skip to next invoice
+    |   |
+    |   v
+    +-> Click "View" button (opens new tab)
+    |   |
+    |   v
+    +-> Click "領収書をダウンロード" button (black button with white text)
+    |   |
+    |   v
+    +-> Wait 5 seconds
+    |   |
+    |   v
+    +-> Add line to downloads.csv:
+    |   team_name, invoice_id, amount, create_date
+    |   |
+    |   v
+    +-> Press Command+W to close tab
+    |   |
+    |   v
+    +-> Return to main invoice list
+    |
+    v
+[5] Check if more teams exist:
+    |
+    +-> If yes: Go back to step 2
+    |
+    +-> If no: END
+
+END
+
+Important Notes:
+- Today's date: 2024-11-05
+- Target invoice period: October 2024
+- Need to handle team switching carefully - dropdown closes when clicking elsewhere
+- Must wait 5 seconds after each download
+- Do not download "請求書" - only "領収書"
+- CSV format: team_name, invoice id, amount, create date

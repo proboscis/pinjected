@@ -1,0 +1,39 @@
+OpenAI Invoice Collection Flow Chart
+
+START
+|
+|---> Click team name (top left corner)
+|     |
+|     |---> Select team from dropdown
+|           |
+|           |---> For each invoice in current month:
+|                 |
+|                 |---> Click "View" button
+|                 |     |
+|                 |---> Wait for new tab to load
+|                 |     |
+|                 |---> Find "領収書をダウンロード" button (white text on black)
+|                 |     |
+|                 |---> Click to download receipt
+|                 |     |
+|                 |---> Wait 5 seconds
+|                 |     |
+|                 |---> Close tab (Command+W)
+|                 |     |
+|                 |---> Add line to downloads.csv:
+|                       team_name, invoice_id, amount, create_date
+|                 |
+|                 |---> Continue to next invoice
+|           |
+|           |---> When all invoices for current team are done:
+|                 Click team name again to start over with next team
+|
+|---> Repeat until all teams are processed
+|
+END
+
+Notes:
+- Current date: 2024-11-05
+- Only process invoices from previous month
+- Download 領収書 (receipt) not 請求書 (invoice)
+- Must click team name each time to reopen dropdown
