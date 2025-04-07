@@ -94,4 +94,41 @@ def generate_text(llm_model, /, prompt: str):
 ```
 これにより、先のimpl関数と等価な関数を簡潔に記述できます。
 
-# TODO add more examples.
+# Naming conventions and choosing between @instance and @injected
+
+## @instance/@injectedの間違った利用例と修正
+@instanceはDIセッションでただ一つ存在するシングルトンなオブジェクトを定義するために利用します
+```python
+# 良い例: プログラム全体でただ一つの学習モデルを利用する場合
+@instance
+def model():
+    return SimpleCNN()
+
+# 悪い例: モデルを毎回新しく生成する場合に@instanceを使うのは不適切。この定義ではget_modelキーにシングルトンなSimpleCNNが定義されます。
+@instance
+def get_model()
+    return SimpleCNN()
+@instance
+def user_side(get_model:SimpleCNN):
+    # get_modelは名前があたかも関数であるかのように見えますが、実際にはSimpleCNNのインスタンスです
+    ...
+
+# この場合、@injectedを使うべきです
+@injected
+def get_model():
+    return SimpleCNN()
+@instance 
+def user_side(get_model:SimpleCNN):
+    new_model = get_model()
+    return new_model
+```
+
+## 命名規則
+- 基本的に、@injectedでデコレートされた関数は動詞、@instanceでデコレートされた関数は名詞で命名されることが自然です。
+- 特に、副作用を伴って何度も実行される可能性がある関数はシングルトンなオブジェクトではないため、@injectedでデコレートされるべきです。
+
+## 依存性がない@injected関数の扱い
+- @injectedでデコレートされた関数は、引数に依存性がない場合でも、@injectedでデコレートすることができます。
+これは@injectedが対象の関数をIProxyに変換することにより、より高度なDSL機能を適用するためです。
+また、@injectedでデコレートされた関数の関数名はDIのキーとして作用するため、@injectedでラップしておくことにより、後にpinjectedの機能で入れ替えを行うことが可能になります。
+
