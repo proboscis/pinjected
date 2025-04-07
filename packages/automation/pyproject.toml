@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling==1.26.3"]
+build-backend = "hatchling.build"
+
 [project]
 name = "pinjected-automation"
 version = "0.1.1a5"
@@ -6,24 +10,20 @@ authors = [
     { name = "proboscis" }
 ]
 dependencies = [
-    "pinjected-anthropic @ git+https://github.com/proboscis/pinjected_anthropic.git",
+    "pinjected-anthropic",
     "pyautogui>=0.9.54",
     "pillow>=11.0.0",
     "rich>=13.9.3",
 ]
 readme = "README.md"
-requires-python = ">= 3.8"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.rye]
-managed = true
-dev-dependencies = []
+requires-python = ">= 3.10"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pinjected_automation"]
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+pinjected-anthropic = { workspace = true }
