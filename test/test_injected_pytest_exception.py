@@ -16,12 +16,19 @@ def test_exception_unwrapping():
     from pinjected.test.injected_pytest import unwrap_exception_group
     
     original_error = ValueError("Test error")
-    wrapped_error = CompatibleExceptionGroup("test group", [original_error])
+    try:
+        wrapped_error = CompatibleExceptionGroup([original_error])
+    except TypeError:
+        wrapped_error = CompatibleExceptionGroup("test group", [original_error])
     
     unwrapped = unwrap_exception_group(wrapped_error)
     assert unwrapped == original_error
     
-    double_wrapped = CompatibleExceptionGroup("test group", [wrapped_error])
+    try:
+        double_wrapped = CompatibleExceptionGroup([wrapped_error])
+    except TypeError:
+        double_wrapped = CompatibleExceptionGroup("test group", [wrapped_error])
+    
     unwrapped = unwrap_exception_group(double_wrapped)
     assert unwrapped == original_error
 
