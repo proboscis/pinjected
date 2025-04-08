@@ -228,7 +228,7 @@ async def a_detect_injected_function_call_without_requesting(
         end = group.iloc[0].end
         func_src = "\n".join(whole_src[start - 3:end])
         context += f"""
-# We found a misuse of pinjected proxy objects in the function `{user_function}`.
+# We found possible misuse of pinjected proxy objects in the function `{user_function}`.
 line {start} to {end}:
 Source:
 {func_src}
@@ -243,7 +243,7 @@ Source:
 Read the following guide for how to use pinjected.
 {guide}
 
-Now, we found following misuses of pinjected proxies in the code:
+Now, we found following possible misuses of pinjected proxies in the code:
 {context}
 
 Please provide a detailed guide to explain how the code should be fixed, for each mistake.
