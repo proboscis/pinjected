@@ -1264,6 +1264,63 @@ def run_something(dep1, dep2, /, arg1, arg2):
 - 推奨: `run_training`, `run_evaluation`, `run_inference`
 - 避けるべき: 具体的動作を表す一般的名前（`train`, `evaluate`, `predict`）
 
+## Pipeline Pattern with dataclass
+IProxyを用いたデータセットパイプラインの作成など、複雑な構築を行う際には
+@dataclassやclassを用いてパイプラインを作成することが推奨されます。
+
+```python
+#典型的な例
+
+@dataclass
+class ExpandedDatasetPipeline:
+    start_date: pd.Timestamp
+    end_date: pd.Timestamp
+    version: str
+
+    def __post_init__(self):
+        self.daily_cache_dir = injected("cache_root_path") / "ema" / "daily_dataset"
+        self.generator_cache_path = injected("cache_root_path") / "ema" / f"cache_{self.version}"
+        self.src: IProxy[AsyncIterator[DailyDataset]] = a_cached_daily_rust_dataset_gen(
+            start_date=self.start_date,
+            end_date=self.end_date,
+            cache_dir=self.daily_cache_dir,
+            version=self.version,
+        )
+        self.cached_src: IProxy[AsyncIterator[TypedDataset[RustDatasetItem]]] = a_save_dataset_gen_to_dir(self.src,
+                                                                                                          self.generator_cache_path)
+        self.cached_datasets: IProxy[list[TypedDataset[RustDatasetItem]]] = alist(self.cached_src)
+        self.cached_dataset: IProxy[TypedDataset[RustDatasetItem]] = injected(concatenate_datasets)(
+            self.cached_datasets)
+        self.expanded_dataset: IProxy[TypedDataset[ExpandedRDItem]] = self.cached_dataset.map(_expand_instrument,
+                                                                                              batched=True,
+                                                                                              batch_size=10000)
+        self.scaled_dataset: IProxy[TypedDataset[ExpandedRDItem]] = a_scale_dataset(self.expanded_dataset,
+                                                                                    expanded_inst_columns)
+        self.sampler: IProxy[SamplerAdapter] = injected(SamplerAdapter)(
+            injected(BalancedIndexSampler)(
+                a_sampling_weight_from_labels(self.scaled_dataset), n_buckets=100
+            )
+        )
+        self.loader: IProxy[DataLoader] = injected(DataLoader)(
+            dataset=self.scaled_dataset,
+            batch_size=injected('batch_size'),
+            sampler=self.sampler,
+            num_workers=0,
+        )
+
+
+pipeline_20250316: ExpandedDatasetPipeline = ExpandedDatasetPipeline(
+    start_date=pd.Timestamp("2025-03-01", tz="UTC"),
+    end_date=pd.Timestamp("2025-03-31", tz="UTC"),
+    version="20250316",
+)
+```
+上記の様に、クラスメンバーや関数がIProxyを返すように明示的に設計することで、
+データセットなど静的な情報の構築を行うことができます。
+
+
+
+
 ## 9. まとめ
 
 Pinjectedは研究開発コードの問題(大きなcfg依存、多数のif分岐、テスト困難性)の解決策。
