@@ -61,9 +61,7 @@ def load_review_material(filename: str) -> str:
         except Exception as e:
             continue
 
-    # Nothing worked, return a default message
-    logger.error(f"Could not find review material: {filename}")
-    return f"# Pinjected Guide\nNo guide found for {filename}. Please check installation."
+    raise RuntimeError(f"Could not find review material at {filename}")
 
 
 @injected
