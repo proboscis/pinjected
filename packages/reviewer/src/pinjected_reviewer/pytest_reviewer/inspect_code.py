@@ -398,9 +398,11 @@ class MisuseDetector(ast.NodeVisitor):
     def __init__(self, symbol_metadata_getter):
         self.symbol_metadata_getter:SymbolMetadataGetter = symbol_metadata_getter
         self.injection_stack: list[FuncStack] = []
+        self.assign_stack: list[ast.AnnAssign] = []
         self.misuses = []
 
     def _get_injection_keys(self, node):
+        # I want to check if the ast is around assignment
         assert isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         for dec in node.decorator_list:
             if isinstance(dec, ast.Name):
@@ -435,6 +437,11 @@ class MisuseDetector(ast.NodeVisitor):
         self.generic_visit(node)
         self._pop_function()
 
+    def visit_AnnAssign(self, node):
+        self.assign_stack.append(node)
+        self.generic_visit(node)
+        self.assign_stack.pop()
+
     def _outermost_function(self):
         if not self.injection_stack:
             return None
@@ -445,6 +452,26 @@ class MisuseDetector(ast.NodeVisitor):
             return None
         return self.injection_stack[0]
 
+    def _innermost_assign(self):
+        if not self.assign_stack:
+            return None
+        return self.assign_stack[-1]
+
+    def _innermost_assign_type(self):
+        assign_node:Optional[ast.AnnAssign] = self._innermost_assign()
+        if assign_node is not None and hasattr(assign_node, 'annotation'):
+            # Check if the annotation is directly IProxy
+            if isinstance(assign_node.annotation, ast.Name) and "IProxy" in assign_node.annotation.id:
+                return True
+            # Check if the annotation is a subscripted type like List[IProxy] or Optional[IProxy]
+            elif isinstance(assign_node.annotation, ast.Subscript):
+                # Check the inner types for IProxy
+                for node in ast.walk(assign_node.annotation):
+                    if isinstance(node, ast.Name) and "IProxy" in node.id:
+                        return True
+        return False
+
+
     def visit_Name(self, node):
         """
         Now we can check if a key is actually injected, or not.
@@ -453,6 +480,9 @@ class MisuseDetector(ast.NodeVisitor):
         """
         info, name = self.symbol_metadata_getter.get_symbol_info(node.id)
         info: SymbolMetadata
+        if self._innermost_assign_type():
+            # we do not check if we are in AnnAssign with IProxy type
+            return
         if info and info.is_iproxy and not self.is_key_injected(node.id):
             if innermost := self._innermost_function():
                 if not self.symbol_metadata_getter.func_returns_iproxy(innermost.node.name):
@@ -494,6 +524,9 @@ test_not_detect_imports: IProxy = a_detect_misuse_of_pinjected_proxies(
 
 test_detect_misuse_3:IProxy = a_detect_misuse_of_pinjected_proxies(
     Path("~/repos/proboscis-ema/src/ema_cython/artemis/label_feature_creation_design.py").expanduser()
+)
+test_detect_misuse_4:IProxy = a_detect_misuse_of_pinjected_proxies(
+    Path("~/repos/pinjected/packages/reviewer/src/__package_for_tests__/test_review_target.py").expanduser()
 )
 
 
