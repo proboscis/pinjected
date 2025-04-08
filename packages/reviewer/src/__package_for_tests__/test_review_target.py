@@ -1,0 +1,346 @@
+from pinjected import *
+
+
+D_20250316_expand_dataset = recap_design_20250223 + design(
+    a_get_ex_events_df=a_get_ex_events_df,
+    a_get_ba_events_df=a_get_ba_events_df,
+)
+dataset: IProxy = injected("dataset")
+"""
+Purpose of this experiment
+
+- Use the features implemented by devin to update the dataset
+
+"""
+datasets_gen: IProxy[AsyncIterator[DailyDataset]] = a_create_rust_dataset_for_date_range(
+    start_date=pd.Timestamp("2025-03-01", tz="UTC"),
+    end_date=pd.Timestamp("2025-04-1", tz="UTC"),
+)
+
+
+@injected
+async def alist(items: AsyncIterator) -> list:
+    """
+    Convert an async iterator to a list.
+
+    Args:
+        items: AsyncIterator to convert
+
+    Returns:
+        List of items
+    """
+    return [item async for item in items]
+
+
+datasets: IProxy[list[DailyDataset]] = alist(datasets_gen)
+
+
+@injected
+async def pickled(logger, __resolver__, /, path: Path, target: Injected):
+    if path.exists():
+        try:
+            with open(path, "rb") as f:
+                return cloudpickle.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load {path}: {e}")
+    shutil.rmtree(path, ignore_errors=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = await __resolver__[target]
+    with open(path, "wb") as f:
+        cloudpickle.dump(value, f)
+    return value
+
+
+@injected
+async def log_dataset_stats(logger, /, dataset_gen: AsyncIterator[DailyDataset]):
+    async for dataset in dataset_gen:
+        dataset: DailyDataset
+        logger.info(
+            f"Dataset from {dataset.start_date} to {dataset.end_date}, features shape: {dataset.dataset.features.shape}, size in gb:{dataset.dataset.memory_size_gb()}")
+
+
+daily_dataset_gen_20250316: IProxy = a_cached_daily_rust_dataset_gen(
+    start_date=pd.Timestamp("2025-03-01", tz="UTC"),
+    end_date=pd.Timestamp("2025-03-31", tz="UTC"),
+    cache_dir=injected("cache_root_path") / "ema" / "daily_dataset",
+    version="20250316",
+)
+run_log_gen: IProxy = log_dataset_stats(daily_dataset_gen_20250316)
+
+
+@injected
+async def a_save_dataset_gen_to_dir(
+        rust_dataset_to_hf_dataset,
+        /,
+        gen: AsyncIterator[DailyDataset],
+        path: Path) -> AsyncIterator[Dataset]:
+    if not path.exists():
+        bar = tqdm(desc="save dataset to disk")
+        path.mkdir(parents=True, exist_ok=True)
+        async for dataset in gen:
+            dataset: DailyDataset
+            hf_dataset = rust_dataset_to_hf_dataset(dataset.dataset)
+            hf_dataset.save_to_disk(path / f"rust_dataset_{dataset.start_date.strftime('%Y%m%d')}")
+            bar.update(1)
+        bar.close()
+    paths = list(sorted(list(path.glob("rust_dataset_*"))))
+    for item in paths:
+        yield load_from_disk(str(item.absolute()))
+
+
+@dataclass
+class DatasetScaler:
+    """
+    Scales dataset columns using StandardScaler.
+
+    This scaler fits a StandardScaler for each specified column and provides
+    methods to transform data using these scalers.
+    """
+    dataset: Dataset
+    columns: list[str]
+    batch_size: int = field(default=10000)  # Add batch_size parameter
+
+    def __post_init__(self):
+        self.scalers = {col: StandardScaler() for col in self.columns}
+
+        # Use partial_fit with batches
+        num_batches = (len(self.dataset) + self.batch_size - 1) // self.batch_size
+
+        for batch in tqdm(self.dataset.iter(batch_size=self.batch_size), total=num_batches, desc="Fitting scalers"):
+            for column in self.columns:
+                assert column in batch, f"Column {column} not found in batch:{batch.keys()}"
+                # flatten to treat as 1D array
+                data = np.array(batch[column]).reshape(-1, 1)
+                # Filter out NaN or infinite values before fitting
+                valid_data = data[np.isfinite(data).all(axis=1)]
+                if valid_data.shape[0] > 0:
+                    self.scalers[column].partial_fit(valid_data)
+        for col in self.columns:
+            if col in self.scalers:
+                logger.info(f"Scaler for {col}: mean={self.scalers[col].mean_}, scale={self.scalers[col].scale_}")
+
+    def transform(self, batch: dict) -> dict:
+        """
+        Transform a batch of data using the fitted scalers.
+
+        Args:
+            batch: Dictionary with column data to transform
+
+        Returns:
+            Transformed batch
+        """
+        for column in self.columns:
+            if column in self.scalers and column in batch:
+                data = np.array(batch[column])
+                orig_shape = data.shape
+                batch[column] = self.scalers[column].transform(data.reshape(-1, 1)).reshape(orig_shape).tolist()
+        return batch
+
+    def transform_dataset(self, dataset: Dataset = None) -> Dataset:
+        """
+        Transform a dataset using the fitted scalers.
+
+        Args:
+            dataset: Dataset to transform. If None, uses the original dataset.
+
+        Returns:
+            Transformed dataset
+        """
+        if dataset is None:
+            dataset = self.dataset
+
+        return dataset.map(self.transform, batched=True)
+
+
+@dataclass
+class BalancedIndexSampler:
+    """
+    Balanced index sampler that uses inverse frequency weights for sampling.
+
+    This sampler divides the range of values into buckets, counts the frequency
+    of values in each bucket, and then assigns sampling weights inversely
+    proportional to these frequencies. This gives rare values (in sparsely populated
+    buckets) a higher probability of being sampled.
+
+    It's a simple alternative to more complex sampling strategies and can be used
+    with numpy.random.choice directly.
+    """
+    src: np.ndarray | list  # 1d array with values
+    n_buckets: int = field(default=100)
+
+    def __post_init__(self):
+        self.src = np.array(self.src)
+        _min, _max = np.min(self.src), np.max(self.src)
+        self.buckets = np.linspace(_min, _max, self.n_buckets + 1)
+        self.bucket_indices = np.digitize(self.src, self.buckets)
+
+        # Count frequency of each bucket
+        counts = np.bincount(self.bucket_indices, minlength=self.n_buckets + 2)
+        counts = np.clip(counts, 1, None)  # Avoid division by zero
+
+        # Create inverse frequency weights - rare values get higher sampling probability
+        self.weights = 1.0 / counts[self.bucket_indices]
+        self.normalized_weights = self.weights / np.sum(self.weights)
+
+    def sample(self, size: int, replace: bool = True) -> np.ndarray:
+        """
+        Sample indices based on inverse frequency weights.
+
+        Args:
+            size: Number of samples to take
+            replace: Whether to sample with replacement
+
+        Returns:
+            Array of sampled indices
+        """
+        return np.random.choice(
+            len(self.src),
+            size=size,
+            p=self.normalized_weights,
+            replace=replace
+        )
+
+
+class SamplerAdapter(Sampler):
+    """
+    Adapter for using BalancedIndexSampler with PyTorch DataLoader.
+
+    This adapter allows the use of BalancedIndexSampler in PyTorch DataLoader
+    by implementing the __iter__ and __len__ methods.
+    """
+
+    def __init__(self, sampler: BalancedIndexSampler):
+        self.sampler = sampler
+
+    def __iter__(self):
+        return iter(self.sampler.sample(len(self.sampler.src)))
+
+    def __len__(self):
+        return len(self.sampler.src)
+
+
+"""
+Plan: 
+- create dataset composed of concatinating multiple dataset -> done
+- have a sampler in data loader creation phase -> 
+- have a scaler 
+"""
+
+
+@injected
+async def _run_test_sampling(dataset: TypedDataset[RustDatasetItem]):
+    sampler = BalancedIndexSampler(np.array(dataset['labels'])[:, 0], n_buckets=100)
+    indices = sampler.sample(1000)
+    batch = dataset[indices]
+    sampled_labels = np.array(batch['labels'])[:, 0]
+    import matplotlib.pyplot as plt
+
+    # plot histogram
+    plt.hist(sampled_labels, bins=100)
+    plt.title("Sampled Labels Histogram")
+    plt.xlabel("Label Value")
+    plt.ylabel("Frequency")
+    plt.show()
+
+
+@injected
+def _expand_instrument(n_instrument, n_bins, /, item):
+    return expand_instrument(item, n_instrument, n_bins)
+
+
+@injected
+async def _test_scaler(dataset: TypedDataset[Dataset], columns):
+    scaler = DatasetScaler(dataset, columns)
+    scaled_dataset = scaler.transform_dataset()
+    # Check if the scaling was applied correctly
+    for column in columns:
+        assert np.all(np.isfinite(scaled_dataset[column]))
+        assert np.all(np.abs(scaled_dataset[column]) < 1e10)
+
+
+# now we can make a scaled dataset
+@injected
+async def a_scale_dataset(dataset: TypedDataset[Dataset], columns):
+    scaler = DatasetScaler(dataset, columns)
+    scaled_dataset = scaler.transform_dataset()
+    return scaled_dataset
+
+
+@instance
+async def expanded_inst_columns(n_instrument):
+    side = ["buy", "sell"]
+    return [f"inst_{i // 2}_{side[i % 2]}" for i in range(n_instrument * 2)]
+
+
+@injected
+async def a_sampling_weight_from_labels(dataset: TypedDataset[RustDatasetItem]):
+    labels = np.array(dataset['labels'])
+    buy_labels = np.abs(labels[:, 0])
+    sell_labels = np.abs(labels[:, 1])
+    weights = (buy_labels + sell_labels) / 2
+    return weights
+
+
+@injected
+async def _test_loader(logger, /, loader: DataLoader):
+    for batch in tqdm(loader, desc="Loading batches"):
+        # Check if the batch is empty
+        assert len(batch) > 0, "Batch is empty"
+
+        # Check if the batch contains the expected keys
+        expected_keys = ['inst_0_buy', 'inst_0_sell', 'labels', 'times', 'feature_times']
+        for key in expected_keys:
+            assert key in batch, f"Key {key} not found in batch"
+
+        # Check if the data types are correct
+        for key, v in batch.items():
+            logger.info(f"Key: {key}, Type: {type(v)}")
+        break
+
+
+@dataclass
+class ExpandedDatasetPipeline:
+    start_date: pd.Timestamp
+    end_date: pd.Timestamp
+    version: str
+
+    def __post_init__(self):
+        self.daily_cache_dir = injected("cache_root_path") / "ema" / "daily_dataset"
+        self.generator_cache_path = injected("cache_root_path") / "ema" / f"cache_{self.version}"
+        self.src: IProxy[AsyncIterator[DailyDataset]] = a_cached_daily_rust_dataset_gen(
+            start_date=self.start_date,
+            end_date=self.end_date,
+            cache_dir=self.daily_cache_dir,
+            version=self.version,
+        )
+        self.cached_src: IProxy[AsyncIterator[TypedDataset[RustDatasetItem]]] = a_save_dataset_gen_to_dir(self.src,
+                                                                                                          self.generator_cache_path)
+        self.cached_datasets: IProxy[list[TypedDataset[RustDatasetItem]]] = alist(self.cached_src)
+        self.cached_dataset: IProxy[TypedDataset[RustDatasetItem]] = injected(concatenate_datasets)(
+            self.cached_datasets)
+        self.expanded_dataset: IProxy[TypedDataset[ExpandedRDItem]] = self.cached_dataset.map(_expand_instrument,
+                                                                                              batched=True,
+                                                                                              batch_size=10000)
+        self.scaled_dataset: IProxy[TypedDataset[ExpandedRDItem]] = a_scale_dataset(self.expanded_dataset,
+                                                                                    expanded_inst_columns)
+        self.sampler: IProxy[SamplerAdapter] = injected(SamplerAdapter)(
+            injected(BalancedIndexSampler)(
+                a_sampling_weight_from_labels(self.scaled_dataset), n_buckets=100
+            )
+        )
+        self.loader: IProxy[DataLoader] = injected(DataLoader)(
+            dataset=self.scaled_dataset,
+            batch_size=injected('batch_size'),
+            sampler=self.sampler,
+            num_workers=0,
+        )
+
+
+pipeline_20250316: ExpandedDatasetPipeline = ExpandedDatasetPipeline(
+    start_date=pd.Timestamp("2025-03-01", tz="UTC"),
+    end_date=pd.Timestamp("2025-03-31", tz="UTC"),
+    version="20250316",
+)
+check_dataset_20250316 = pipeline_20250316.expanded_dataset
+
+__design__ = D_20250316_expand_dataset
