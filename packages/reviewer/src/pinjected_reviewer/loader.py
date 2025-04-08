@@ -17,6 +17,7 @@ from pinjected_reviewer.reviewer_v1 import ExtractApproved
 from pinjected_reviewer.schema.reviewer_def import ReviewerAttributes_v4, MarkdownReviewerDefinition, \
     PreCommitFileDiffInterest, Reviewer, ReviewResult, PreCommitGitInfoInterest, Interests, SkipReasonProvider
 from pinjected_reviewer.schema.types import GitInfo, Review, FileDiff
+from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
 
 @injected
@@ -397,8 +398,9 @@ async def pre_commit_reviews__phased(
     for reviewer in file_diff_reviewers:
         for file_diff in git_info.file_diffs.values():
             file_diff:FileDiff
-            if file_diff.filename.exists():
-                tasks.append(review_file(reviewer, file_diff))
+            if check_if_file_should_be_ignored(file_diff.filename.read_text(),file_diff.filename):
+                continue
+            tasks.append(review_file(reviewer, file_diff))
 
     reviews: list[IOResultE[ReviewResult]] = await a_await_all(tasks, desc="Running reviewers")
     log_failure_as_table(reviews)
