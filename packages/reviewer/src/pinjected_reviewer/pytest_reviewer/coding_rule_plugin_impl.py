@@ -11,6 +11,7 @@ from tqdm import tqdm
 from loguru import logger
 
 from pinjected_reviewer.pytest_reviewer.inspect_code import DetectMisuseOfPinjectedProxies
+from pinjected_reviewer.reviewer_v1 import ExtractApproved
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
 
@@ -173,6 +174,7 @@ async def a_detect_injected_function_call_without_requesting(
         pinjected_guide_md: str,
         a_sllm_for_code_review: StructuredLLM,
         logger,
+        a_extract_approved:ExtractApproved,
         /,
         src_path: Path
 ) -> list[Diagnostic]:
@@ -249,8 +251,12 @@ Now, we found following possible misuses of pinjected proxies in the code:
 Please provide a detailed guide to explain how the code should be fixed, for each mistake.
 Please only provide the correct use of @injected and @instance, rather than hacking anyway to make the code work.
 IProxy objects can be used to construct a tree of IProxy, but the user should be aware of the usage.
+Finally, please provide the final approval status as `approved` or `rejected`.
 """
     resp: str = await a_sllm_for_code_review(prompt)
+    app = await a_extract_approved(resp)
+    if app.result:
+        return []
     return [Diagnostic(
         name='Misuse of pinjected proxies',
         level='warning',
