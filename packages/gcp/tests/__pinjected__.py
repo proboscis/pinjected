@@ -2,6 +2,7 @@ from pathlib import Path
 import tempfile
 
 from pinjected import design
+from pinjected_gcp.api import a_upload_gcs, a_download_gcs
 
 
 class MockBlob:
@@ -68,5 +69,8 @@ __design__ = design(
         'debug': lambda *args, **kwargs: None,
         'warning': lambda *args, **kwargs: None,
         'error': lambda *args, **kwargs: None
-    })()
+    })(),
+    
+    a_upload_gcs=a_upload_gcs,
+    a_download_gcs=a_download_gcs
 )
