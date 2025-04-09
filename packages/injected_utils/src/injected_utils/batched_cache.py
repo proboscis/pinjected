@@ -88,7 +88,7 @@ def _async_batch_cached(
                     cache[k] = r
                     io_results[k] = IOResult.from_value(r)
             # 5. すべての結果を返す（キャッシュ + 新規計算）
-            return [unsafe_perform_io(io_results[k].unwrap()) for k in key_to_item.keys()]
+            return [unsafe_perform_io(io_results[k].unwrap()) for k in keys]
 
 
         return impl
