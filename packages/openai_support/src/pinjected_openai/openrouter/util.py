@@ -275,6 +275,9 @@ async def a_openrouter_chat_completion__without_fix(
         }
         openai_response_format = build_openrouter_response_format(response_format)
         provider_filter['response_format'] = openai_response_format
+    elif response_format is not None:
+        provider_filter['response_format'] = response_format
+
     if provider is not None:
         p = provider_filter.get('provider', dict())
         p.update(provider)
