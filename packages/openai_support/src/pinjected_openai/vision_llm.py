@@ -656,5 +656,3 @@ test_vision_llm__gpt4 = a_vision_llm__gpt4(
 test_llm__gpt4_turbo = a_llm__gpt4_turbo("Hello world")
 
 test_json_llm__gpt4_turbo = a_json_llm__gpt4_turbo("Hello world, respond to me in json")
-
-__meta_design__ = instances()
