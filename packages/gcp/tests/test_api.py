@@ -7,13 +7,11 @@ import pytest
 from pinjected import design
 from pinjected.test.injected_pytest import injected_pytest
 
-from pinjected_gcp.api import a_upload_gcs, a_download_gcs
-
 
 @injected_pytest
-def test_upload_gcs(gcp_service_account_credentials, temp_file):
+async def test_upload_gcs(gcp_service_account_credentials, a_upload_gcs, temp_file):
     """Test uploading a file to GCS."""
-    result = a_upload_gcs(
+    result = await a_upload_gcs(
         bucket_name="test-bucket",
         source_file_path=temp_file,
         destination_blob_name="test-file.txt"
@@ -24,7 +22,7 @@ def test_upload_gcs(gcp_service_account_credentials, temp_file):
 
 
 @injected_pytest
-def test_download_gcs(gcp_service_account_credentials):
+async def test_download_gcs(gcp_service_account_credentials, a_upload_gcs, a_download_gcs):
     """Test downloading a file from GCS."""
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as temp:
         temp.write(b"test content")
@@ -48,7 +46,7 @@ def test_download_gcs(gcp_service_account_credentials):
         
         # Upload a file first to have something to download
         print("Starting upload...")
-        upload_result = a_upload_gcs(
+        upload_result = await a_upload_gcs(
             bucket_name="test-bucket",
             source_file_path=source_file,
             destination_blob_name="source-file.txt"
@@ -57,7 +55,7 @@ def test_download_gcs(gcp_service_account_credentials):
         
         # Download the file
         print("Starting download...")
-        result = a_download_gcs(
+        result = await a_download_gcs(
             bucket_name="test-bucket",
             source_blob_name="source-file.txt",
             destination_file_path=download_path
