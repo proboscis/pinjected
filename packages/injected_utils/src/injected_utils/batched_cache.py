@@ -4,6 +4,12 @@ from typing import TypeVar, Callable, Awaitable
 import inspect
 
 import jsonpickle
+from returns.future import future_safe, FutureResultE
+from returns.io import IOResultE, IOResult
+from returns.pipeline import is_successful
+from returns.result import safe, ResultE
+from returns.unsafe import unsafe_perform_io
+
 from pinjected import *
 from pinjected.decoration import update_if_registered
 from pinjected.di.metadata.bind_metadata import BindMetadata
@@ -13,7 +19,7 @@ from returns.maybe import Some
 T = TypeVar('T')
 U = TypeVar('U')
 
-
+# pinjected-reviewer: ignore
 @injected
 def _async_batch_cached(
         injected_utils_default_hasher,
@@ -58,13 +64,21 @@ def _async_batch_cached(
         assert any(param.kind == inspect.Parameter.VAR_POSITIONAL for param in params), \
             f"func must have *args parameter, but got {sig}"
 
+        @future_safe
+        async def safe_getitem(key):
+            return await asyncio.to_thread(cache.__getitem__,key)
+
         async def impl(*items: list[T]) -> list[U]:
             # 1. 各アイテムのハッシュ値を計算
-            key_to_item = {hasher(i): i for i in items}
-            # 2. キャッシュにない項目を特定
-            keys_to_calc = [k for k in key_to_item.keys() if k not in cache]
-            for k in keys_to_calc:
-                logger.info(f"Cache miss: {key_to_item[k]} {k[:100]}")
+            keys = [hasher(i) for i in items]
+            key_to_item = dict(zip(keys,items))
+            # 2. 読み込みに失敗するものを特定
+            loaded:list[IOResultE] = list(await asyncio.gather(*[safe_getitem(k) for k in keys]))
+            io_results:dict[str,IOResultE] = dict(zip(keys,loaded))
+            keys_to_calc = [k for k,v in io_results.items() if not is_successful(v)]
+            for fk in keys_to_calc:
+                logger.info(f"Cache miss: {key_to_item[fk]} {fk[:50]},{io_results[fk]}")
+
             # 3. キャッシュにないアイテムのみを計算
             inputs = [key_to_item[k] for k in keys_to_calc]
             if inputs:  # 計算が必要なアイテムがある場合のみ関数を実行
@@ -72,11 +86,9 @@ def _async_batch_cached(
                 # 4. 新しい結果をキャッシュに保存
                 for k, r in zip(keys_to_calc, results):
                     cache[k] = r
+                    io_results[k] = IOResult.from_value(r)
             # 5. すべての結果を返す（キャッシュ + 新規計算）
-            res = await asyncio.gather(
-                *[asyncio.get_event_loop().run_in_executor(None, cache.__getitem__,k) for k in key_to_item.keys()]
-            )
-            return list(res)
+            return [unsafe_perform_io(io_results[k].unwrap()) for k in key_to_item.keys()]
 
 
         return impl
