@@ -1,5 +1,6 @@
 from pathlib import Path
 import tempfile
+import loguru
 
 from pinjected import design
 from pinjected_gcp.api import a_upload_gcs, a_download_gcs
@@ -47,7 +48,7 @@ class MockStorageClient:
 
 
 __design__ = design(
-    gcp_service_account_credentials=lambda: {
+    gcp_service_account_credentials={
         "type": "service_account",
         "project_id": "test-project",
         "private_key_id": "test-key-id",
@@ -60,16 +61,11 @@ __design__ = design(
         "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40example.com"
     },
     
-    gcp_storage_client=lambda: MockStorageClient(),
+    gcp_storage_client=MockStorageClient(),
     
-    temp_file=lambda: Path(tempfile.NamedTemporaryFile(delete=False, suffix='.txt').name).absolute(),
+    temp_file=Path(tempfile.NamedTemporaryFile(delete=False, suffix='.txt').name).absolute(),
     
-    logger=lambda: type('MockLogger', (), {
-        'info': lambda *args, **kwargs: None,
-        'debug': lambda *args, **kwargs: None,
-        'warning': lambda *args, **kwargs: None,
-        'error': lambda *args, **kwargs: None
-    })(),
+    logger=loguru.logger,
     
     a_upload_gcs=a_upload_gcs,
     a_download_gcs=a_download_gcs
