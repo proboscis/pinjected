@@ -85,3 +85,21 @@ base_design = design(learning_rate=0.001, batch_size=128)
 conf_lr_01 = base_design + design(learning_rate=0.01)
 conf_lr_1 = base_design + design(learning_rate=0.1)
 ```
+
+4. design()に対するlambdaの設定
+    基本的に、designにはlambdaを設定しないでください。designは注入オブジェクトそのものか、InjectedかIProxyが設定されることを期待しています。
+```python
+
+@injected 
+def some_injected_function(dep1):
+    pass
+some_design = design(
+    invalid_use = lambda : 1,  # lambdaは非推奨。1をinvalid_useに注入したい場合は単に1を指定してください。そうしないばあい、関数が注入されてしまいます。
+    valid_use = 1,  # 1
+    valid_use_2 = Injected.pure(1), # Injected型を設定できます、この場合は1が注入されます
+    key_for_function = Injected.pure(function), # 関数を注入したい場合はInjected.pureで囲うとより適切です
+    key_for_function_2 = some_injected_function, # some_functionはIProxy[Callable]]であり、関数が注入されます。こちらの利用が一般的です
+)
+```
+つまり、designの挙動としては、
+Injected/IProxyが設定されていれば、依存性を解決したものが注入されます。それ以外を設定すると、それそのものが注入されます。
