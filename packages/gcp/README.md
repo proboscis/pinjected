@@ -20,6 +20,8 @@ import asyncio
 @injected
 async def upload_and_download_example(
     gcp_service_account_credentials,
+    a_upload_gcs,
+    a_download_gcs,
     /,
 ):
     # Upload a file to GCS
@@ -50,16 +52,13 @@ di = design(
     }
 )
 
-# Run the example
-async def main():
-    result = await upload_and_download_example(di)
-    print(f"Final result: {result}")
-
-# Run with asyncio
-asyncio.run(main())
-
-# Alternatively, run using the CLI
+# Run using the CLI (recommended approach)
 # python -m pinjected run your.module.upload_and_download_example
+
+# Or run directly with the design
+result = upload_and_download_example(di)
+print(f"Final result: {result}")
+
 ```
 
 ## Features
