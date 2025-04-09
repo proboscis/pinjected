@@ -88,7 +88,7 @@ def parse_kwargs_as_design(**kwargs):
             v = v[1:-1]
             loaded = load_variable_by_module_path(v)
             res += design(
-                **{k: Injected.bind(loaded)}
+                **{k: loaded}
             )
         else:
             res += design(
