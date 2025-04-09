@@ -199,6 +199,3 @@ cmd_save_transcribe = __save_text(
     a_transcribe_mp3_file(injected("input_file")),
     injected("input_file").eval().map(Path).proxy.with_suffix(".txt")
 )
-
-__meta_design__ = instances(
-)

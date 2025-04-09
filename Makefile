@@ -1,5 +1,5 @@
 
-.PHONY: test test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils sync setup-all
+.PHONY: test test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils publish-gcp tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils tag-version-gcp release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils release-gcp sync setup-all
 
 sync:
 	uv venv
@@ -16,6 +16,7 @@ setup-all:
 	cd packages/rate_limit && uv sync --group dev
 	cd packages/niji_voice && uv sync --group dev
 	cd packages/injected_utils && uv sync --group dev
+	cd packages/gcp && uv sync --group dev
 
 test:
 	uv sync --all-packages
@@ -28,6 +29,7 @@ test:
 	cd packages/rate_limit && uv sync --group dev && uv run -m pytest tests
 	cd packages/niji_voice && uv sync --group dev && uv run -m pytest tests
 	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
+	cd packages/gcp && uv sync --group dev && uv run -m pytest tests
 	uv sync --group dev --all-packages
 
 test-cov:
@@ -140,3 +142,13 @@ tag-version-injected-utils:
 
 release-niji-voice: tag-version-niji-voice publish-niji-voice
 release-injected-utils: tag-version-injected-utils publish-injected-utils
+
+publish-gcp:
+	cd packages/gcp && uv build
+	cd packages/gcp && uv pip publish dist/*.whl dist/*.tar.gz
+
+tag-version-gcp:
+	git tag pinjected-gcp-v$(shell grep -m 1 version packages/gcp/pyproject.toml | cut -d'"' -f2)
+	git push --tags
+
+release-gcp: tag-version-gcp publish-gcp
