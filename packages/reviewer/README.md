@@ -25,6 +25,20 @@ pip install git+https://github.com/CyberAgentAILab/pinjected.git#subdirectory=pa
 - OpenRouter API key (for LLM-powered reviews)
 - Git (for pre-commit hook functionality)
 
+### Setting up the OpenRouter API Key
+
+Create a `~/.pinjected.py` file to configure your OpenRouter API key:
+
+```python
+from pinjected import design
+
+default_design = design(
+    openrouter_api_key="your_openrouter_api_key_here"
+)
+```
+
+This file is used for user-local settings and will be automatically loaded by pinjected.
+
 ## Usage
 
 ### Command-line Interface
@@ -68,17 +82,12 @@ uv run python -m pinjected_reviewer review
 uv run python -m pinjected_reviewer install
 ```
 
-## What Gets Reviewed
+## Reviewer Configuration
 
-The reviewer checks for:
+The reviewer loads review rules from the `.reviewers` directory in your project. This directory can contain:
 
-- Proper usage of `@injected` and `@instance` decorators
-- Correct dependency injection patterns
-- Avoiding deprecated functions like `bind_provider()`
-- Proper naming conventions
-- And other pinjected-specific best practices
-
-## Configuration
+- Python files (*.py) with reviewer definitions
+- Markdown files (*.md) with review rules
 
 The reviewer automatically ignores files with the following comment:
 
