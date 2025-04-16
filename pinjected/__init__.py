@@ -7,8 +7,9 @@ from pinjected.di.design_interface import Design
 from pinjected.di.designed import Designed
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.async_resolver import AsyncResolver
+from pinjected.di.iproxy import IProxy
 
-IProxy = DelegatedVar
+# I want to use IProxy() as constructor. and also type check. what can i do?
 
 __version__ = "0.2.251"
 
