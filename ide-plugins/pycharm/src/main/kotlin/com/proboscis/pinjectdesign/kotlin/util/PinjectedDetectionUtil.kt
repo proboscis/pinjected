@@ -19,7 +19,7 @@ object PinjectedDetectionUtil {
     )
     
     private val INJECTED_TYPE_MARKERS = listOf(
-        "Injected", "DelegatedVar", "PartialInjectedFunction", "Designed"
+        "Injected", "DelegatedVar", "PartialInjectedFunction", "Designed", "IProxy"
     )
     
     /**
