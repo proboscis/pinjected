@@ -49,7 +49,7 @@ asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 pythonpath = [
     "packages/anthropic/src",
-    "packages/wandb/src",
+    "packages/wandb_util/src",
     "packages/error_reports/src",
     "packages/reviewer/src",
     "packages/rate_limit/src",
