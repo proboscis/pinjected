@@ -24,6 +24,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
         
+    - name: Remove uv.lock
+      run: rm -f uv.lock
+        
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
