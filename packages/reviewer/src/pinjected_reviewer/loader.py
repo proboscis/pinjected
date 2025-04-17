@@ -398,6 +398,8 @@ async def pre_commit_reviews__phased(
     for reviewer in file_diff_reviewers:
         for file_diff in git_info.file_diffs.values():
             file_diff:FileDiff
+            if not file_diff.filename.exists():
+                continue
             if check_if_file_should_be_ignored(file_diff.filename.read_text(),file_diff.filename):
                 continue
             tasks.append(review_file(reviewer, file_diff))
