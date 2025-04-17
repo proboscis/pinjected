@@ -83,3 +83,38 @@ __design__ = design(
     my_global_var=some_function(arg1="value")
 )
 ```
+
+# エントリポイントとしてのIProxy
+以下のようなIProxyについては、エントリポイントとしてpinjected run <path.to.IProxy>を使用することができます。
+そのため注入されていなくても有効かつ重要です。
+レビュー時にはIProxyがdepのキーとして注入されると勘違いされているのか、
+エントリポイントを意図しているのかを明確に判別しておこなってください。
+エントリポイントであればApproveしてください。
+一方IProxyの名前が@injectedのdepキーとして設定されるかのように勘違いされていれば、Rejectしてください。
+```python
+# Approved
+test_something_20250401:IProxy = a_test_something()
+run_something:IProxy = a_run_something()
+
+# Rejected
+@injected
+async def user_function(
+        test_something_20250401, # this will never be injected and naming is also too specific.
+        /,
+        arg
+):
+    pass
+
+# Approved if dep1 is to be bound somewhere. 
+# maybe in ~/.pinjected.py or __pinjected__.py
+@injected
+async def user_function(
+        dep1,/,arg
+):
+    pass
+__design__ = design(
+    dep1 = test_something_20250401 # here we set the dep1 to the IProxy
+)
+    
+
+```

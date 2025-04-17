@@ -21,6 +21,9 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v3
 
+      - name: Remove uv.lock
+        run: rm -f uv.lock
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
