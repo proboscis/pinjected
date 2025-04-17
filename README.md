@@ -203,7 +203,7 @@ This repository is organized as a monorepo with the following packages:
 - **pinjected**: Core dependency injection framework (root package)
 - **pinjected-openai**: OpenAI API bindings for pinjected (in packages/openai_support)
 - **pinjected-anthropic**: Anthropic API bindings for pinjected (in packages/anthropic)
-- **pinjected-wandb**: Weights & Biases integration for pinjected (in packages/wandb)
+- **pinjected-wandb**: Weights & Biases integration for pinjected (in packages/wandb_util)
 - **pinjected-error-reports**: Error reporting utilities for pinjected (in packages/error_reports)
 - **pinjected-reviewer**: Code review tools for pinjected (in packages/reviewer)
 - **pinjected-rate-limit**: Rate limiting utilities for API calls (in packages/rate_limit)

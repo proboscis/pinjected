@@ -10,7 +10,7 @@ sync:
 setup-all:
 	cd packages/openai_support && uv sync --group dev
 	cd packages/anthropic && uv sync --group dev
-	cd packages/wandb && uv sync --group dev
+	cd packages/wandb_util && uv sync --group dev
 	cd packages/error_reports && uv sync --group dev
 	cd packages/reviewer && uv sync --group dev
 	cd packages/rate_limit && uv sync --group dev
@@ -23,7 +23,7 @@ test:
 	cd test && uv run pytest
 	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
 	cd packages/anthropic && uv sync --group dev && uv run -m pytest tests
-	cd packages/wandb && uv sync --group dev && uv run -m pytest tests
+	cd packages/wandb_util && uv sync --group dev && uv run -m pytest tests
 	cd packages/error_reports && uv sync --group dev && uv run -m pytest tests
 	cd packages/reviewer && uv sync --group dev && uv run -m pytest tests
 	cd packages/rate_limit && uv sync --group dev && uv run -m pytest tests
@@ -73,8 +73,8 @@ publish-anthropic:
 	cd packages/anthropic && uv pip publish dist/*.whl dist/*.tar.gz
 
 publish-wandb:
-	cd packages/wandb && uv build
-	cd packages/wandb && uv pip publish dist/*.whl dist/*.tar.gz
+	cd packages/wandb_util && uv build
+	cd packages/wandb_util && uv pip publish dist/*.whl dist/*.tar.gz
 
 publish-error-reports:
 	cd packages/error_reports && uv build
@@ -101,7 +101,7 @@ tag-version-anthropic:
 	git push --tags
 
 tag-version-wandb:
-	git tag pinjected-wandb-v$(shell grep -m 1 version packages/wandb/pyproject.toml | cut -d'"' -f2)
+	git tag pinjected-wandb-v$(shell grep -m 1 version packages/wandb_util/pyproject.toml | cut -d'"' -f2)
 	git push --tags
 
 tag-version-error-reports:
