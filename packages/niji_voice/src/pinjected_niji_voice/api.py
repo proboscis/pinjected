@@ -197,23 +197,23 @@ def niji_voice_api_url():
     return "https://api.nijivoice.com/api/platform/v1"
 
 
-test_niji_voice_actor_list: IProxy = niji_voice_actor_list
+_test_niji_voice_actor_list: IProxy = niji_voice_actor_list
 
-test_param = NijiVoiceParam(
+_test_param = NijiVoiceParam(
     actor_name="水戸 明日菜",
     script="ハローワールド"
 )
-test_param2 = NijiVoiceParam(
+_test_param2 = NijiVoiceParam(
     actor_name="漆夜 蓮",
     script="ハローワールド"
 )
 
-test_generate_voice: IProxy = a_niji_generate_voice_raw(
-    param=test_param2
+_test_generate_voice: IProxy = a_niji_generate_voice_raw(
+    param=_test_param2
 )
 
-test_download_voice:IProxy = a_niji_voice_download(
-    param=test_param,
+_test_download_voice:IProxy = a_niji_voice_download(
+    param=_test_param,
     dst=Path("test.mp3")
 )
 
@@ -268,13 +268,13 @@ async def a_niji_voice(
 def niji_voice_cache_dir():
     return Path("~/.cache/niji_voice").expanduser()
 
-test_play_voice:IProxy = a_niji_voice_play(param=NijiVoiceParam(
+_test_play_voice:IProxy = a_niji_voice_play(param=NijiVoiceParam(
     actor_name="小夜",
     script="完成しました。",
     #emotion_level=0,
 ))
 
-test_play_voice2:IProxy = a_niji_voice_play(param=NijiVoiceParam(
+_test_play_voice2:IProxy = a_niji_voice_play(param=NijiVoiceParam(
     actor_name="小夜",
     script="うーん、、、失敗しました。",
     #emotion_level=0,
