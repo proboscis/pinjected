@@ -326,19 +326,22 @@ async def a_openrouter_chat_completion__without_fix(
 
 def build_openrouter_response_format(response_format):
     pydantic_schema = response_format.model_json_schema()
+    match pydantic_schema:
+        case {"$defs":defs}:
+            for k,d in defs.items():
+                d['additionalProperties'] = False
     pydantic_schema['additionalProperties'] = False
     schema_dict = dict(
         name=response_format.__name__,
         description=f"Pydantic model for {response_format}",
         strict=True,
-        schema=pydantic_schema
+        schema=pydantic_schema,
     )
     openai_response_format = dict(
         type='json_schema',
-        json_schema=schema_dict
+        json_schema=schema_dict,
     )
     return openai_response_format
-
 
 @injected
 async def a_resize_image_below_5mb(logger, /, img: PIL.Image.Image):
