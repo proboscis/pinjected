@@ -28,7 +28,8 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
-    "mlflow"
+    "mlflow",
+    "google-cloud-storage"
 ]
 
 [tool.hatch.metadata]
