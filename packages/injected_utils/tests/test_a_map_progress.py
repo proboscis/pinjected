@@ -6,6 +6,7 @@ import pytest
 from injected_utils.progress import a_map_progress__tqdm
 from pinjected import design
 from pinjected.test import injected_pytest
+from pinjected.compatibility.task_group import CompatibleExceptionGroup
 
 
 
@@ -48,10 +49,16 @@ async def test_a_map_progress__tqdm_raise_exception(
         )
         res = [item async for item in agen]
         raise AssertionError("Expected exception not raised")
-    except* DummyException as e:
-        pass
-    except* Exception as e:
-        raise AssertionError(f"Unexpected exception raised: {e}")
+    except Exception as e:
+        if isinstance(e, CompatibleExceptionGroup):
+            if any(isinstance(ex, DummyException) for ex in e.exceptions):
+                pass
+            else:
+                raise AssertionError(f"Unexpected exception raised: {e}")
+        elif isinstance(e, DummyException):
+            pass
+        else:
+            raise AssertionError(f"Unexpected exception raised: {e}")
 
 def test_exception_group():
     def func():
@@ -59,11 +66,17 @@ def test_exception_group():
 
     try:
         func()
-    except* DummyException as e:
-        # so we can catch the exception group, even the src exception is just single.
-        pass
-    except* Exception as e:
-        raise AssertionError(f"Unexpected exception raised: {e}")
+    except Exception as e:
+        if isinstance(e, CompatibleExceptionGroup):
+            if any(isinstance(ex, DummyException) for ex in e.exceptions):
+                # so we can catch the exception group, even the src exception is just single.
+                pass
+            else:
+                raise AssertionError(f"Unexpected exception raised: {e}")
+        elif isinstance(e, DummyException):
+            pass
+        else:
+            raise AssertionError(f"Unexpected exception raised: {e}")
 
 
 

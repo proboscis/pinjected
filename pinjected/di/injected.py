@@ -157,7 +157,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     .. code-block:: python
 
-        from pinjected.di.util import Injected
+        from pinjected.di.util import Injected, design
         from pinjected import Design
 
         def provide_ab(a:int, b:int) -> int:
@@ -167,8 +167,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # arguments as dependencies.
         injected: Injected[int] = Injected.bind(provide_ab)
 
-        design = EmptyDesign.bind_instance(a=1, b=2)
-        assert design.to_graph()[injected] == 3
+        d = design(a=1, b=2)
+        assert d.to_graph()[injected] == 3
 
     Advanced Features:
     ------------------
@@ -181,25 +181,25 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected, instances
+            from pinjected.di.util import Injected, design
             from pinjected import Design
 
-            design: Design = instances(a=1)  # Shortcut for binding instances
+            d: Design = design(a=1)  # Direct way to bind dependencies
             a: Injected[int] = Injected.by_name('a')
             b: Injected[int] = a.map(lambda x: x + 1)  # b is now a + 1
 
-            g = design.to_graph()
+            g = d.to_graph()
             assert g[a] + 1 == g[b]
 
     2. **zip/mzip**: Combine multiple ``Injected`` instances.
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected
+            from pinjected.di.util import Injected, design
             from pinjected import Design
 
-            design = EmptyDesign.bind_instance(a=1, b=2)
-            g = design.to_graph()
+            d = design(a=1, b=2)
+            g = d.to_graph()
 
             a = Injected.by_name('a')
             b = Injected.by_name('b')
@@ -214,9 +214,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected, instances
+            from pinjected.di.util import Injected, design
 
-            design = instances(a=1, b=2)
+            d = design(a=1, b=2)
             a = Injected.by_name('a')
             b = Injected.by_name('b')
             c = a.map(lambda x: x + 2)
