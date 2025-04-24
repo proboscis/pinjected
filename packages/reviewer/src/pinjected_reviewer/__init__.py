@@ -1,10 +1,8 @@
 """
 pinjected-reviewer - A git pre-commit hook for reviewing code with pinjected.
 """
-from pathlib import Path
 
-from injected_utils import async_cached, lzma_sqlite
-from pinjected import design, instance, injected, Injected
+from pinjected import design
 
 __version__ = "0.3.1"
 
