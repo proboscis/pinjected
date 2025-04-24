@@ -3,9 +3,9 @@ requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
 
 [project]
-name = "injected-utils"
-version = "0.1.32"
-description = "Utility functions for pinjected library"
+name = "pinjected-mlflow"
+version = "0.1.0"
+description = "wandb bindings for pinjected library"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -20,30 +20,26 @@ classifiers = [
 
 dependencies = [
     "pinjected",
-    "sqlitedict",
     "loguru",
-    "filelock>=3.16.1",
-    "tqdm",
     "returns",
-    "pandas",
-    "aiosqlite>=0.21.0",
     "cloudpickle",
     "frozendict",
     "makefun",
     "cytoolz",
     "beartype",
     "rich",
-    "filelock"
+    "mlflow",
+    "google-cloud-storage"
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/injected_utils"]
+packages = ["src/pinjected_mlflow"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src/injected_utils"]
+pythonpath = ["src/pinjected_mlflow"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }
@@ -52,6 +48,3 @@ pinjected = { workspace = true }
 dev = [
     "pytest>=8.1.1,<9"
 ]
-
-[tool.ruff]
-ignore = ["F403", "F405", "F401"]

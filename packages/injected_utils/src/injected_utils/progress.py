@@ -87,11 +87,11 @@ async def a_map_progress__tqdm(
                             res = await safe_await(async_f(task))
                         else:
                             res = await async_f(task)
+                        fut.set_result(res)
                     except Exception as e:
                         fut.set_exception(e)
-                        continue
-                    bar.update(1)
-                    fut.set_result(res)
+                    finally:
+                        bar.update(1)
                 case (False, None):
                     consumer_status[idx] = "done"
                     break
