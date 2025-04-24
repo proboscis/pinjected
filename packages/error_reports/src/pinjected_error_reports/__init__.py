@@ -27,7 +27,7 @@ async def a_handle_error_with_llm_voice(
         a_sllm_for_error_analysis: StructuredLLM,
         a_niji_voice,
         logger,
-        __pinjected_error_reports_enable_voice__:bool,
+        __pinjected_error_reports_enable_voice__: bool,
         /,
         e: Exception
 ):
@@ -82,12 +82,13 @@ async def a_handle_error_with_llm_voice(
 
     return "handled "
 
+
 @injected
 async def a_handle_result_with_llm_voice(
         a_sllm_for_error_analysis: StructuredLLM,
         a_niji_voice,
         logger,
-        __pinjected_error_reports_enable_voice__:bool,
+        __pinjected_error_reports_enable_voice__: bool,
         /,
         result: object
 ):
@@ -95,7 +96,7 @@ async def a_handle_result_with_llm_voice(
     from rich.panel import Panel
     from rich.errors import MarkupError
     try:
-        rich.print(Panel(f"Result: {result}", title="Result",style="bold green"))
+        rich.print(Panel(f"Result: {result}", title="Result", style="bold green"))
     except MarkupError:
         logger.success(f"Result: {result}")
     from pinjected.notification import notify
@@ -108,13 +109,16 @@ async def a_handle_result_with_llm_voice(
     else:
         notify(f"成功", sound='Glass')
 
+
 @instance
 def __pinjected_error_reports_enable_voice__():
     return True
 
+
 @instance
 def test_implementation():
     raise RuntimeError("Example Exception")
+
 
 @instance
 def test_success_result():
@@ -124,8 +128,9 @@ def test_success_result():
 a_cached_openrouter_chat_completion = async_cached(
     lzma_sqlite(injected('error_reports_cache_path') / "openrouter_chat_completion_cache.sqlite"),
     key_hashers=Injected.dict(
-        response_format=lambda m: hashlib.sha256(str(m.model_json_schema()).encode()).hexdigest()
-    )
+        response_format=lambda m: hashlib.sha256(str(m.model_json_schema()).encode()).hexdigest() if m is not None else "None"
+    ),
+    replace_binding=False
 )(
     a_openrouter_chat_completion,
 )
@@ -157,11 +162,4 @@ design_for_error_reports = design(
     cache_root_path=Path("~/.cache").expanduser(),
     a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
     a_structured_llm_for_json_fix=a_cached_sllm_gpt4o__openrouter,
-)
-
-__meta_design__ = design(
-    # overrides=design_for_error_reports
-    overrides = design(
-
-    )
 )

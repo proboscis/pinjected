@@ -34,7 +34,6 @@ try:
 except ImportError:
     from pinjected.v2.resolver import AsyncResolver
 
-
 # from data_tree.util import Pickled
 
 P = ParamSpec('P')
@@ -257,12 +256,13 @@ class HasherKeyEncoder(IKeyEncoder):
 
 
 def async_cached(cache: Injected[Dict],
-                  *additional_key: Injected,
-                  en_async=None,
-                  value_invalidator=None,
-                  hasher_factory: Injected[HasherFactory] = None,
-                  key_hashers: Injected[dict[str, callable]] = None,
-                  ):
+                 *additional_key: Injected,
+                 en_async=None,
+                 value_invalidator=None,
+                 hasher_factory: Injected[HasherFactory] = None,
+                 key_hashers: Injected[dict[str, callable]] = None,
+                 replace_binding=True
+                 ):
     """
     非同期関数の結果をキャッシュするためのデコレータファクトリです。
 
@@ -284,6 +284,8 @@ def async_cached(cache: Injected[Dict],
         キャッシュキーの生成方法をカスタマイズするファクトリ関数
     key_hashers : Optional[Injected[dict[str, callable]]]
         引数名ごとにハッシュ関数を指定する辞書
+    replace_binding : bool
+        デコレータが適用された関数のバインディングを置き換えるかどうか。デフォルトはTrue
 
     Returns
     -------
@@ -345,15 +347,16 @@ def async_cached(cache: Injected[Dict],
             key_encoder_factory=key_encoder_factory
         )
         res.__is_async_function__ = True
-
-        return update_if_registered(
-            async_func,
-            res,
-            Some(BindMetadata(code_location=Some(get_code_location(parent_frame))))
-        )
+        if replace_binding:
+            return update_if_registered(
+                async_func,
+                res,
+                Some(BindMetadata(code_location=Some(get_code_location(parent_frame))))
+            )
+        else:
+            return res
 
     return impl
-
 
 
 @dataclass
@@ -503,8 +506,8 @@ class CustomKeyHasher:
         encoded_dict['kwargs'] = frozendict(encoded_kwargs)
         encoded_dict = frozendict(encoded_dict)
         from loguru import logger
-        #logger.info(f"signature: {self.signature}")
-        #logger.info(f"encoded_dict: {encoded_dict}")
+        # logger.info(f"signature: {self.signature}")
+        # logger.info(f"encoded_dict: {encoded_dict}")
         return cloudpickle.dumps(encoded_dict)
 
     def encode_key(self, key):
@@ -696,6 +699,7 @@ def parse_preference_assignments(res: dict):
     :param res:
     :return:
     """
+
 
 __meta_design__ = design(
     overrides=design(
