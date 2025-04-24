@@ -25,9 +25,8 @@ def logger():
 
 
 # Usage
-design:Design = instances(
-    train_cfg = dict(dataset='dummy')
-) + providers(
+design:Design = design(
+    train_cfg = dict(dataset='dummy'),
     logger=logger
 )
 
@@ -64,10 +63,10 @@ def trainer(model, train_loader, /, epochs):
       ...
 
 # Usage
-design = providers(
+design = design(
   train_dataset=train_dataset,
   train_cfg=train_cfg,
-  model=model,
+  model=model
 )
 
 trainer_fn:Callable[[int],None] = design.provide(trainer)
