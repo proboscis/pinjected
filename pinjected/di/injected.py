@@ -7,7 +7,10 @@ import sys
 from copy import copy
 from dataclasses import dataclass, field
 from inspect import Traceback
-from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional
+from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional, Iterable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pinjected.di.graph import IObjectGraph
 
 import cloudpickle
 from frozendict import frozendict
@@ -154,7 +157,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     .. code-block:: python
 
-        from pinjected.di.util import Injected
+        from pinjected.di.util import Injected, design
         from pinjected import Design
 
         def provide_ab(a:int, b:int) -> int:
@@ -164,8 +167,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # arguments as dependencies.
         injected: Injected[int] = Injected.bind(provide_ab)
 
-        design = EmptyDesign.bind_instance(a=1, b=2)
-        assert design.to_graph()[injected] == 3
+        d = design(a=1, b=2)
+        assert d.to_graph()[injected] == 3
 
     Advanced Features:
     ------------------
@@ -178,25 +181,25 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected, instances
+            from pinjected.di.util import Injected, design
             from pinjected import Design
 
-            design: Design = instances(a=1)  # Shortcut for binding instances
+            d: Design = design(a=1)  # Direct way to bind dependencies
             a: Injected[int] = Injected.by_name('a')
             b: Injected[int] = a.map(lambda x: x + 1)  # b is now a + 1
 
-            g = design.to_graph()
+            g = d.to_graph()
             assert g[a] + 1 == g[b]
 
     2. **zip/mzip**: Combine multiple ``Injected`` instances.
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected
+            from pinjected.di.util import Injected, design
             from pinjected import Design
 
-            design = EmptyDesign.bind_instance(a=1, b=2)
-            g = design.to_graph()
+            d = design(a=1, b=2)
+            g = d.to_graph()
 
             a = Injected.by_name('a')
             b = Injected.by_name('b')
@@ -211,9 +214,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected, instances
+            from pinjected.di.util import Injected, design
 
-            design = instances(a=1, b=2)
+            d = design(a=1, b=2)
             a = Injected.by_name('a')
             b = Injected.by_name('b')
             c = a.map(lambda x: x + 2)
@@ -463,15 +466,22 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def map_elements(f: "Injected[Callable]", elements: "Injected[Iterable]") -> "Injected[Iterable]":
         """
-        # for (
-        #     f <- f,
-        #     elements <- elements
-        #     ) yield map(f,elements)
-
-        :param f:
-        :param elements:
-        :return:
-
+        Maps a function over each element in an iterable, both of which are injected dependencies.
+        
+        This method applies the injected function `f` to each element in the injected iterable `elements`,
+        returning a new injected iterable with the results. This is useful for transforming collections
+        where both the function and the collection are provided via dependency injection.
+        
+        :param f: An injected function to apply to each element
+        :param elements: An injected iterable containing the elements to transform
+        :return: An injected iterable containing the transformed elements
+        
+        Example:
+        ```python
+        transform = Injected.by_name("transform_function")
+        data_list = Injected.by_name("data_collection")
+        transformed = Injected.map_elements(transform, data_list)
+        ```
         """
         return Injected.mzip(
             f, elements
@@ -479,17 +489,51 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     # this is ap of applicative functor.
     def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
+        """
+        Applies an injected function to this injected value.
+        
+        This method implements the "ap" operation of the applicative functor pattern,
+        allowing an injected function to be applied to an injected value.
+        
+        :param other: An injected function that takes a value of type T and returns a value of type U
+        :return: An injected value of type U, the result of applying the function to this value
+        """
         return self.zip(other).map(
             lambda t: t[1](t[0])
         )
 
     def and_then_injected(self, other: "Injected[Callable[[T],U]]") -> "Injected[Callable[[Any],U]]":
+        """
+        Composes this injected callable with another injected function.
+        
+        Creates a new injected function that first applies this function to its arguments,
+        then passes the result to the 'other' function.
+        
+        :param other: An injected function to apply after this function
+        :return: An injected composed function that applies both functions in sequence
+        """
         return self.zip(other).map(
             lambda t: lambda *args, **kwargs: t[1](t[0](*args, **kwargs))
         )
 
     @staticmethod
     def dict(**kwargs: "Injected") -> "Injected[Dict]":
+        """
+        Creates an injected dictionary from injected values.
+        
+        This method takes keyword arguments where each value is an injected instance
+        and returns an injected dictionary with the same keys and resolved values.
+        
+        :param kwargs: Keyword arguments where values are Injected instances
+        :return: An injected dictionary containing the resolved values
+        
+        Example:
+        ```python
+        a = Injected.by_name('a')
+        b = Injected.by_name('b')
+        injected_dict = Injected.dict(key_a=a, key_b=b)
+        ```
+        """
         # from pinjected.di.static_method_impl import idict
         # return idict(**kwargs)
         # raise RuntimeError("disabled")
