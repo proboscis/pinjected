@@ -735,9 +735,9 @@ pinjectedは~/.pinjected.pyというファイルを通じて、ユーザーロ�
 
 ```python
 # ~/.pinjected.py
-from pinjected import instances
+from pinjected import design
 
-default_design = instances(
+default_design = design(
     openai_api_key = "sk-xxxxxx_your_secret_key_here",
     cache_dir = "/home/user/.cache/myproject"
 )
@@ -758,7 +758,7 @@ pinjectedはdesign()を+演算子で合成するだけでなく、withステー�
 これは一時的に依存関係を差し替えて実行する際に有用です。
 
 ```python
-from pinjected import providers, instances, `IProxy`, design
+from pinjected import `IProxy`, design
 
 # __pinjected__.py
 from pinjected import design
@@ -778,7 +778,7 @@ __design__ = design( # python -m pinjected runが自動的に収集する変数
 
 train_with_bs_128:IProxy = train() # __meta_design__.overridesが自動で適用される
 
-with instances(
+with design(
         batch_size=64  # 一時的にbatch_sizeを64へ
 ):
     # このwithブロック内ではbatch_sizeは64として解決される

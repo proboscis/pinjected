@@ -197,7 +197,7 @@ default_design = design(
 `with`ステートメントを用いて、一時的なオーバーライドを行えます。
 
 ```python
-from pinjected import providers, IProxy, design
+from pinjected import IProxy, design
 
 with design(
         batch_size=64  # 一時的にbatch_sizeを64へ
@@ -475,7 +475,7 @@ def test_with_override(some_dependency):
 ```python
 import pytest
 from pinjected.test import injected_pytest
-from pinjected import design, instances
+from pinjected import design
 
 # テスト用のモックロガー
 class MockLogger:
@@ -486,8 +486,7 @@ class MockLogger:
         self.logs.append(message)
 
 # テスト用のデザイン
-test_design = design()
-test_design += instances(
+test_design = design(
     logger=MockLogger()
 )
 
@@ -523,8 +522,7 @@ class AsyncMockService:
         return {"status": "success"}
 
 # テスト用のデザイン
-async_test_design = design()
-async_test_design += instances(
+async_test_design = design(
     service=AsyncMockService()
 )
 
@@ -563,7 +561,7 @@ base_test_design = design(
 
 ```python
 from pinjected.test import injected_pytest
-from pinjected import design, instances, injected
+from pinjected import design, injected
 
 # モックデータベース
 class MockDatabase:
