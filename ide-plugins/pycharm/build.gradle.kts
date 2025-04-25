@@ -17,6 +17,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.2.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.0")
+    testImplementation("com.intellij.testFramework:testFramework:243.21053.29")
 }
 
 // Configure Gradle IntelliJ Plugin
@@ -24,6 +25,7 @@ intellij {
     version.set("2024.3") // Same version as your PyCharm
     type.set("PY") // PyCharm Professional
     plugins.set(listOf("python")) // This is the built-in Python plugin
+    downloadSources.set(true)
 }
 
 tasks {
@@ -49,5 +51,9 @@ tasks {
     
     test {
         useJUnit()
+        testLogging {
+            events("passed", "skipped", "failed")
+            showStandardStreams = true
+        }
     }
 }
