@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinjected-wandb"
+version = "0.1.0"
+description = "Weights & Biases integration for pinjected"
+authors = [
+    {name = "CyberAgentAILab"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pinjected",
+    "wandb"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pinjected_wandb"]
+
+[tool.uv.sources]
+pinjected = { workspace = true }
