@@ -18,12 +18,12 @@ fun saveModifiedDocuments() {
     fileDocumentManager.saveAllDocuments()
 }
 
-class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
+open class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
     override fun actionPerformed(e: AnActionEvent) {
         saveModifiedDocuments()
         val project = e.project ?: return
-        val helper = InjectedFunctionActionHelper(project)
-        val pinjectedUtil = PinjectedConsoleUtil(helper)
+        val helper = createHelper(project)
+        val pinjectedUtil = createConsoleUtil(helper)
         val editor: Editor? = e.getData(CommonDataKeys.EDITOR)
         val file: PsiFile? = e.getData(CommonDataKeys.PSI_FILE)
         var found = false
@@ -52,5 +52,14 @@ class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
         if (!found){
             helper.showNotification("No Injected Found", "No injected found at the current cursor position", NotificationType.INFORMATION)
         }
+    }
+    
+    // Factory methods for testing
+    open fun createHelper(project: com.intellij.openapi.project.Project): InjectedFunctionActionHelper {
+        return InjectedFunctionActionHelper(project)
+    }
+    
+    open fun createConsoleUtil(helper: InjectedFunctionActionHelper): PinjectedConsoleUtil {
+        return PinjectedConsoleUtil(helper)
     }
 }
