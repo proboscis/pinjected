@@ -311,6 +311,36 @@ class PinjectedCLI:
 def main():
     try:
         import fire
+        import inspect
+        
+        try:
+            original_info = fire.inspectutils.Info
+            
+            def patched_info(component):
+                try:
+                    from IPython.core import oinspect
+                    inspector = oinspect.Inspector(theme_name="Neutral")
+                    info = inspector.info(component)
+                    
+                    if info['docstring'] == '<no docstring>':
+                        info['docstring'] = None
+                except ImportError:
+                    info = fire.inspectutils._InfoBackup(component)
+                
+                try:
+                    unused_code, lineindex = inspect.findsource(component)
+                    info['line'] = lineindex + 1
+                except (TypeError, OSError):
+                    info['line'] = None
+                
+                if 'docstring' in info:
+                    info['docstring_info'] = fire.docstrings.parse(info['docstring'])
+                
+                return info
+            
+            fire.inspectutils.Info = patched_info
+        except (ImportError, AttributeError):
+            pass
         
         cli = PinjectedCLI()
         fire.Fire(cli)
