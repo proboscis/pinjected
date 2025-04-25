@@ -115,7 +115,7 @@ class EvaluationError(Exception):
         self.eval_contexts.append({
             'context': cxt.trace_str,
             'context_expr': show_expr(cxt_expr),
-            'cause_expr': show_expr(cause_expr)
+            'cause_expr': str(cause_expr)
         })
         
         super().__init__("EvaluationError")
@@ -147,10 +147,10 @@ class EvaluationError(Exception):
                         error_msg += f"    Context Expr: {self.truncate(ctx['context_expr'], 100)}\n"
                         error_msg += f"    Cause Expr: {self.truncate(ctx['cause_expr'], 100)}\n"
         
-        error_msg += f"\nSource Error: {self.src}"
+        #error_msg += f"\nSource Error: {self.src}"
         
-        if isinstance(self.src, Exception):
-            error_msg += self._format_source_exception(self.src)
+        # if isinstance(self.src, Exception):
+        #     error_msg += self._format_source_exception(self.src)
         
         return error_msg
     

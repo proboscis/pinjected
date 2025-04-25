@@ -1,27 +1,33 @@
 import asyncio
 import base64
 import datetime
+import inspect
 import os
 import pickle
 from abc import ABC, abstractmethod, ABCMeta
 from collections import defaultdict
 from dataclasses import dataclass, field
 from threading import Lock, RLock
-from typing import Callable, Dict, Any, Union, Awaitable
+from typing import Callable, Dict, Any, Union, Awaitable, TypeVar
 
 import cloudpickle
 from frozendict import frozendict
-from sqlitedict import SqliteDict
-
-import inspect
+from returns._internal.pipeline.flow import flow
+from returns.future import FutureResultE, future_safe, FutureSuccess, FutureFailure
 from returns.maybe import Nothing, Maybe, Some
+from returns.pipeline import is_successful
+from returns.pointfree import bind
+from returns.unsafe import unsafe_perform_io
+from sqlitedict import SqliteDict
 
 from injected_utils.picklability_checker import assert_picklable
 from injected_utils.shelf_util import MyShelf
 from pinjected import Injected
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import check_picklable
-from loguru import logger
+from pinjected.pinjected_logging import logger
+
+T = TypeVar("T")
 
 
 class IStringKeyProtocol(ABC):
@@ -87,6 +93,7 @@ class ProtocolWrappedDict:
     def items(self):
         return [(self.protocol.decode_key(k), v) for k, v in self.cache.items()]
 
+
 @dataclass
 class CachedFunction:
     """
@@ -106,7 +113,7 @@ class CachedFunction:
         # funcの引数が*varargs（可変長引数）のみを持つことを確認
         assert len(sig.parameters) == 1 and list(sig.parameters.values())[0].kind == inspect.Parameter.VAR_POSITIONAL, \
             f"func must have only *args parameter, but got {sig}"
-            
+
         self.cache_type = type(self.cache)
         if self.protocol is None:
             self.protocol: IStringKeyProtocol = StringKeyProtocol(
@@ -318,25 +325,27 @@ class KeyEncoder(IKeyEncoder):
 class AsyncLockMap:
     locks: Dict[Any, Lock] = field(default_factory=dict)
 
-    def get(self,key):
+    def get(self, key):
         if key not in self.locks:
             self.locks[key] = asyncio.Lock()
         return self.locks[key]
 
-class CacheValidationError(Exception):
+
+class CacheNewValueValidationFailure(Exception):
     def __init__(self,
-                 name:str,
-                 args:tuple,
-                    kwargs:dict,
-                 function:Callable,
-                 validator:Callable,
-                 msg:str):
+                 name: str,
+                 args: tuple,
+                 kwargs: dict,
+                 function: Callable,
+                 validator: Callable,
+                 msg: str):
         super().__init__(msg)
         self.name = name
         self.args = args
         self.kwargs = kwargs
         self.function = function
         self.validator = validator
+
 
 @dataclass
 class AsyncCachedFunction:
@@ -351,10 +360,9 @@ class AsyncCachedFunction:
     name: str = field(default=None)
     value_invalidator: Callable[[Any], Union[bool, Awaitable[bool]]] = field(default=lambda x: False)
     _concurrent_validation_count: int = field(default=0)
-    _lock_map:AsyncLockMap = field(default_factory=AsyncLockMap)
+    _lock_map: AsyncLockMap = field(default_factory=AsyncLockMap)
 
     def __post_init__(self):
-        from loguru import logger
         logger.info(f"async cached function created with cache: {self.cache}")
         assert not isinstance(self.cache, (Injected, DelegatedVar)), f"cache must be a dict, not {type(self.cache)}"
         if self.name is None:
@@ -385,70 +393,58 @@ class AsyncCachedFunction:
         await self.en_async(impl)()
 
     async def _invalidate_value(self, value) -> str:
-        from loguru import logger
-        # self._concurrent_validation_count += 1
-        # logger.debug(f"invalidation start. {self._concurrent_validation_count} validations. {self.cache}")
         validation = self.value_invalidator(value)  # calling ray.remote doesn't stop .
         if inspect.isawaitable(validation):
             validation = await validation
-        # this doesnt seem to be the bottle neck? the number of running validations are always 1.
-        # logger.debug(f"invalidation end.   {self._concurrent_validation_count} validations. {self.cache}")
-        # self._concurrent_validation_count -= 1
-        match validation:
-            case str():
-                logger.warning(f"invalidated cache for {self.name}! {validation}")
-                return validation
-            case bool():
-                return validation
-            case None:
-                return ""
-
         return validation
+
+    @future_safe
+    async def _safe_load_value(self, key):
+        return await self._load_value(key)
+
+    class _CacheValidationFailure(RuntimeError):
+        def __init__(self, item, cause, msg):
+            super().__init__(msg)
+            self.item = item,
+            self.cause = cause
+
+    @future_safe
+    async def _safe_validate(self, item):
+        cause = await self._invalidate_value(item)
+        if cause:
+            raise self._CacheValidationFailure(item, cause, cause)
+        return item
 
     async def __call__(self, *args, **kwargs):
         key = self.key_encoder.get_key(*args, **kwargs)
-        invalidated = False
-        async with self._lock_map.get(key):
-            if key in self.cache:
-                # logger.debug(f"async cached function hit for {self.name}! {str(args)[:100]}...,{str(kwargs)}...")
-                try:
-                    loaded = await self._load_value(key)
-                    try:
-                        if invalidated := await self._invalidate_value(loaded):
-                            logger.warning(
-                                f"invalidated a loaded cache for {self.name}! {str(args)[:100]}...,{str(kwargs)}...")
-                        else:
-                            return loaded
-                    except Exception as validation_error:
-                        logger.error(f"error while validating the decoded value")
-                        raise validation_error
-                except Exception as e:
-                    logger.warning(f"error decoding cache for {self.name}:{key} {e}")
-                    logger.warning(f"cache: {self.cache}")
-                    logger.warning(f"cache key: {key}")
-            if key in self.cache:
-                logger.warning(f"cache hit but invalidated for {self.name}! {str(args)[:100]}...,{str(kwargs)}...")
-            if not isinstance(self.cache, dict):
-                logger.info(f"cache miss for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}... in {self.cache}")
-            try:
-                result = await self.func(*args, **kwargs)  # this still has image_data in args
-            except Exception as e:
-                # import traceback
-                # trb = "\n".join(traceback.format_exception(e))
-                # logger.warning(
-                #     f"error {type(e)}{e} when running impl:{self.func} for cache {self.name}! {str(args)[:100]}...,{str(kwargs)[:100]}... => not saving\n{trb}"
-                # )
-                raise e
-            # logger.info(f"obtained result for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
-            if cause := await self._invalidate_value(result):
-                raise CacheValidationError(self.name, args, kwargs, self.func, self.value_invalidator, cause)
-            if invalidated:
-                logger.info(
-                    f"cache was invalidated and is now valid for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
-            await self._write_value(key, result)
-            if not isinstance(self.cache, dict):
+        with logger.contextualize(tag=self.name):
+            async with self._lock_map.get(key):
+                valid_key: FutureResultE[str] = FutureSuccess(key) if key in self.cache else FutureFailure(
+                    f'key ({key}) not found')
+                loaded_value: FutureResultE[T] = flow(
+                    valid_key,
+                    bind(self._safe_load_value),
+                    bind(self._safe_validate),
+                )
+                if is_successful(await valid_key) and not is_successful(await loaded_value):
+                    logger.warning(f"cache hit but invalidated for {self.name}! {str(args)[:100]}...,{str(kwargs)}...")
+                if is_successful(await loaded_value):
+                    data = unsafe_perform_io(await loaded_value).unwrap()
+                    return data
+                if not is_successful(await valid_key):
+                    logger.debug(f"cache miss for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
+                result = await self.func(*args, **kwargs)
+                if cause := await self._invalidate_value(result):
+                    raise CacheNewValueValidationFailure(
+                        name=self.name,
+                        args=args,
+                        kwargs=kwargs,
+                        function=self.func,
+                        validator=self.value_invalidator,
+                        msg=cause)
+                await self._write_value(key, result)
                 logger.info(f"cache written for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
-            return result
+                return result
 
     def keys(self):
         return [self.decode_key(s) for s in self.cache.keys()]
@@ -461,7 +457,7 @@ class AsyncCachedFunction:
 
 @dataclass
 class RemoteDict:
-    src: "Var"#[Dict]
+    src: "Var"  # [Dict]
 
     def __getitem__(self, item):
         return self.src[item].fetch()

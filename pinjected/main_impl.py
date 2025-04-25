@@ -3,9 +3,9 @@ from inspect import isawaitable
 from pathlib import Path
 
 from pinjected import Design, design, Injected
-from pinjected.compatibility.task_group import CompatibleExceptionGroup
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
+from pinjected.exception_util import unwrap_exception_group
 from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
@@ -58,8 +58,8 @@ def run(
             ovr += kwargs_overrides
             cxt: RunContext = await a_get_run_context(design_path, var_path)
             cxt = cxt.add_overrides(ovr)
-        async def task(cxt):
-            return await cxt.a_run()
+        async def task(cxt: RunContext):
+            return await cxt.a_run_with_clean_stacktrace()
         res = await a_run_with_notify(cxt, task)
         from pinjected.pinjected_logging import logger
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
@@ -219,12 +219,6 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
         return
     
     return run_injected("describe", var_path, design_path, **kwargs)
-
-
-def unwrap_exception_group(exc):
-    while isinstance(exc, CompatibleExceptionGroup) and len(exc.exceptions) == 1:
-        exc = exc.exceptions[0]
-    return exc
 
 
 class PinjectedRunDependencyResolutionFailure(Exception): pass

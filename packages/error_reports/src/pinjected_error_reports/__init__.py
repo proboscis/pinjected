@@ -34,9 +34,10 @@ async def a_handle_error_with_llm_voice(
     import traceback
     fmt = traceback.format_exception(e)
     fmt = "".join(fmt)
-    logger.error(f"Error occurred: {e} \n {fmt}")
+    #logger.error(f"Error occurred: {e} \n {fmt}")
 
     async def analysis_task():
+        logger.info(f"sending stacktrace to LLM for better message...")
         prompt = f"""
     こちらのエラー内容を分析してください。以下はエラーメッセージです:
     {fmt}
@@ -51,6 +52,7 @@ async def a_handle_error_with_llm_voice(
         rich.print(Panel(Markdown(resp.solution_md_in_1_sentence), title="Solution", style="bold green"))
 
     async def play_sound_task():
+        logger.info(f"playing sound for error...")
         main_e = e
 
         try:

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from pprint import pprint
 
@@ -46,5 +47,5 @@ def test_walk_module_attr():
 
 def test_gather_meta_design():
     test_file = Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
-    mc: MetaContext = MetaContext.gather_from_path(test_file)
+    mc: MetaContext = asyncio.run(MetaContext.a_gather_bindings_with_legacy(test_file))
     assert mc.final_design.provide('name') == "test_package.child.module1"

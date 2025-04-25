@@ -93,25 +93,32 @@ def _to_pytest(p: Injected, override: Design, caller_file: str):
         mc: MetaContext = await MetaContext.a_gather_bindings_with_legacy(caller_path)
         final_design = await mc.a_final_design
         design = final_design + override
-        async with TaskGroup() as tg:
-            from pinjected import design as design_fn
-            design += design_fn(
-                __task_group__=tg
-            )
-            resolver = AsyncResolver(
-                design,
-                callbacks=[]
-            )
-            try:
+        resolver = None
+        try:
+            async with TaskGroup() as tg:
+                from pinjected import design as design_fn
+                design += design_fn(
+                    __task_group__=tg
+                )
+                resolver = AsyncResolver(
+                    design,
+                    callbacks=[]
+                )
                 res = await resolver.provide(Injected.ensure_injected(p))
-            except Exception as e:
-                if UNWRAP_EXCEPTIONS:
-                    raise unwrap_exception_group(e)
-                raise e
-            if isinstance(res, Awaitable):
-                res = await res
-        await resolver.destruct()
-        return res
+                if isinstance(res, Awaitable):
+                    res = await res
+                return res
+        except Exception as e:
+            # doing this causes stack trace to become very deep. because it adds
+            # `During handling of the above exception, another exception occurred:`
+            # to the stack trace.
+            # To prevent this, we throw from e.
+            if UNWRAP_EXCEPTIONS:
+                raise unwrap_exception_group(e) from None
+            raise e
+        finally:
+            if resolver is not None:
+                await resolver.destruct()
 
     def test_impl():
         return asyncio.run(impl())
