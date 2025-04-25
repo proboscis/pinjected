@@ -430,15 +430,7 @@ class AsyncCachedFunction:
                 logger.warning(f"cache hit but invalidated for {self.name}! {str(args)[:100]}...,{str(kwargs)}...")
             if not isinstance(self.cache, dict):
                 logger.info(f"cache miss for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}... in {self.cache}")
-            try:
-                result = await self.func(*args, **kwargs)  # this still has image_data in args
-            except Exception as e:
-                # import traceback
-                # trb = "\n".join(traceback.format_exception(e))
-                # logger.warning(
-                #     f"error {type(e)}{e} when running impl:{self.func} for cache {self.name}! {str(args)[:100]}...,{str(kwargs)[:100]}... => not saving\n{trb}"
-                # )
-                raise e
+            result = await self.func(*args, **kwargs)  # this still has image_data in args
             # logger.info(f"obtained result for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
             if cause := await self._invalidate_value(result):
                 raise CacheValidationError(self.name, args, kwargs, self.func, self.value_invalidator, cause)

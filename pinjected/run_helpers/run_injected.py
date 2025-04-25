@@ -15,7 +15,9 @@ from beartype import beartype
 from returns.maybe import Some
 from returns.result import safe, Result
 
+from pinjected.exception_util import unwrap_exception_group
 from pinjected.module_inspector import ModuleVarSpec
+from pinjected.v2.resolver import EvaluationError
 
 
 class PinjectedConfigurationLoadFailure(Exception):
@@ -285,17 +287,16 @@ class RunContext:
             logger.info(f"running target:{self.var} with design {final_design}")
             tree_str = design_rich_tree(final_design, self.var)
             logger.info(f"Dependency Tree:\n{tree_str}")
-        async with TaskGroup() as tg:
-            dd = final_design + design(__task_group__=tg)
-            resolver = AsyncResolver(
-                dd,
-                callbacks=[self.provision_callback] if self.provision_callback else [],
-                spec=self.src_meta_context.spec_trace.accumulated
-            )
-            _res = await resolver.provide(tgt)
+        dd = final_design
+        resolver = AsyncResolver(
+            dd,
+            callbacks=[self.provision_callback] if self.provision_callback else [],
+            spec=self.src_meta_context.spec_trace.accumulated
+        )
+        _res = await resolver.provide(tgt)
 
-            if isinstance(_res, Awaitable):
-                _res = await _res
+        if isinstance(_res, Awaitable):
+            _res = await _res
         await resolver.destruct()
         return _res
 
@@ -303,10 +304,10 @@ class RunContext:
         return await self.a_provide(self.var)
 
     async def a_run(self):
-        try:
-            return await self._a_run()
-        except Exception as e:
-            raise PinjectedRunFailure("pinjected run failed") from e
+        return await self._a_run()
+
+    async def a_run_with_clean_stacktrace(self):
+        return await self._a_run()
 
     def run(self):
         return asyncio.run(self.a_run())
@@ -335,11 +336,11 @@ async def a_run_with_notify(
                 handled: Optional[str] = await cxt.a_provide(handling, show_debug=False)
                 if handled:
                     logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
-                raise e
+                raise
             else:
                 logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
                 notify(f"Run failed with error:\n{e}", sound="Frog")
-                raise e
+                raise
     with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
         logger.success(f"pinjected run result:\n{pformat(res)}")
         if PinjectedHandleMainResult.key in D:
