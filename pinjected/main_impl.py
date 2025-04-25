@@ -1,8 +1,9 @@
 import asyncio
 from inspect import isawaitable
+import json
 from pathlib import Path
 
-from pinjected import Design, design, Injected
+from pinjected import Design, design, Injected, IProxy
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.exception_util import unwrap_exception_group
@@ -221,6 +222,54 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
+def list(var_path: str = None):
+    """
+    List all IProxy objects that are runnable in the specified module.
+    
+    :param var_path: Path to the module containing IProxy objects.
+    
+    Example:
+        python -m pinjected list my.module.path
+    """
+    import importlib
+    from pathlib import Path
+    from pinjected.runnables import get_runnables
+    from pinjected.di.proxiable import DelegatedVar
+    from pinjected.di.app_injected import InjectedEvalContext
+    from pinjected import IProxy
+    
+    if var_path is None:
+        print("Error: You must provide a module path in the format 'full.module.path'")
+        print("Examples:")
+        print("  pinjected list my_module.my_submodule")
+        print("  pinjected list --var_path=my_module.my_submodule")
+        return
+    
+    try:
+        module = importlib.import_module(var_path)
+        module_file = Path(module.__file__)
+        
+        runnables = get_runnables(module_file)
+        
+        iproxies = []
+        for runnable in runnables:
+            # Check if it's an IProxy object or a DelegatedVar with InjectedEvalContext
+            if isinstance(runnable.var, IProxy) or (
+                isinstance(runnable.var, DelegatedVar) and 
+                getattr(runnable.var, 'context', None) == InjectedEvalContext
+            ):
+                iproxies.append(runnable.var_path)
+        
+        print(json.dumps(iproxies))
+        return 0
+    except ImportError as e:
+        print(f"Error: Could not import module '{var_path}': {str(e)}")
+        return 1
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 1
+
+
 class PinjectedRunDependencyResolutionFailure(Exception): pass
 
 
@@ -236,6 +285,9 @@ class PinjectedCLI:
       describe       - Generate a human-readable description of a dependency graph.
                        Requires a full module path in the format: full.module.path.var.name
                        Can be used as: describe my_module.path.var or describe --var_path=my_module.path.var
+      list           - List all IProxy objects that are runnable in the specified module.
+                       Requires a module path in the format: full.module.path
+                       Can be used as: list my_module.path or list --var_path=my_module.path
     
     For more information on a specific command, run:
       pinjected COMMAND --help
@@ -243,6 +295,7 @@ class PinjectedCLI:
     Example:
       pinjected run --var_path=my_module.my_var
       pinjected describe --var_path=my_module.my_submodule.my_variable
+      pinjected list my_module.my_submodule
     """
     
     def __init__(self):
@@ -252,6 +305,7 @@ class PinjectedCLI:
         self.create_overloads = process_file
         self.json_graph = json_graph
         self.describe = describe
+        self.list = list
 
 
 def main():
