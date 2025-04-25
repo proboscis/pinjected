@@ -312,6 +312,7 @@ def main():
     try:
         import fire
         import inspect
+        import sys
         
         try:
             original_info = fire.inspectutils.Info
@@ -319,7 +320,15 @@ def main():
             def patched_info(component):
                 try:
                     from IPython.core import oinspect
-                    inspector = oinspect.Inspector(theme_name="Neutral")
+                    import IPython
+                    
+                    ipython_version = tuple(map(int, IPython.__version__.split('.')))
+                    
+                    if ipython_version >= (9, 0):
+                        inspector = oinspect.Inspector(theme_name="Neutral")
+                    else:
+                        inspector = oinspect.Inspector()
+                        
                     info = inspector.info(component)
                     
                     if info['docstring'] == '<no docstring>':
