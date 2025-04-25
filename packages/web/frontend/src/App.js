@@ -112,6 +112,7 @@ function App() {
                 label="Module Path"
               >
                 <MenuItem value="pinjected_web.test_example.example_design">test_example.example_design</MenuItem>
+                <MenuItem value="pinjected_reviewer.__pinjected__.__pinjected_reviewer_default_design">pinjected_reviewer.default_design</MenuItem>
               </Select>
             </FormControl>
             <TextField
