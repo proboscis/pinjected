@@ -5,6 +5,7 @@ from injected_utils.progress import a_map_progress__tqdm
 from pinjected import design, instance, injected, Injected
 from pinjected_openai.openrouter.instances import a_cached_structured_llm__gemini_flash_2_0
 from pinjected_reviewer.git_util import git_info
+from pinjected_reviewer.loader import reviewer_paths
 from pinjected_reviewer.models import a_cached_openrouter_chat_completion
 
 
