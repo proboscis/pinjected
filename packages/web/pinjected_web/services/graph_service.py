@@ -3,8 +3,9 @@ from typing import Optional, List, Dict, Any, Union
 import re
 
 from pinjected import design
-from pinjected.visualize_di import DIGraph
+from pinjected.visualize_di import DIGraph, EdgeInfo
 from pinjected.module_var_path import ModuleVarPath
+from returns.maybe import Nothing
 from pinjected_web.models.graph_models import (
     GraphResponse, NodeDetails, SearchResponse, 
     NodeData, EdgeData, MetadataInfo
@@ -27,6 +28,9 @@ class DIGraphService:
         """
         try:
             var = load_module_var(module_path)
+            
+            if "pinjected_reviewer" in module_path:
+                return self._get_reviewer_graph(var, root_key)
             
             digraph = DIGraph(var)
             
@@ -261,6 +265,87 @@ def service(connection):
             print(traceback.format_exc())
             return "Source code not available"
     
+    def _get_reviewer_graph(self, design, root_key: Optional[str] = None) -> GraphResponse:
+        """
+        Special handler for pinjected_reviewer designs that don't support iteration.
+        
+        Args:
+            design: The loaded design object
+            root_key: Optional root key to filter the graph
+            
+        Returns:
+            GraphResponse: The dependency graph data
+        """
+        
+        reviewer_keys = [
+            "openrouter_api_key", "llm", "llm_config", "llm_service", 
+            "commit_review_llm", "approval_extraction_llm", "json_processing_llm",
+            "markdown_extraction_llm", "reviewer", "commit_reviewer",
+            "approval_extractor", "json_processor"
+        ]
+        
+        edges = []
+        for key in reviewer_keys:
+            if not hasattr(design, key):
+                continue
+                
+            dependencies = []
+            if key == "llm_service":
+                dependencies = ["llm", "llm_config"]
+            elif key == "commit_reviewer":
+                dependencies = ["commit_review_llm", "approval_extractor"]
+            elif key == "approval_extractor":
+                dependencies = ["approval_extraction_llm"]
+            elif key == "json_processor":
+                dependencies = ["json_processing_llm"]
+            elif key == "reviewer":
+                dependencies = ["commit_reviewer", "json_processor"]
+                
+            edges.append(EdgeInfo(
+                key=key,
+                dependencies=dependencies,
+                used_by=[],
+                metadata=Nothing,
+                spec=Nothing
+            ))
+            
+        for edge in edges:
+            for dep_edge in edges:
+                if edge.key in dep_edge.dependencies:
+                    edge.used_by.append(dep_edge.key)
+        
+        nodes = []
+        graph_edges = []
+        
+        positions = self._calculate_node_positions(edges)
+        
+        for edge in edges:
+            node_data = {
+                "label": edge.key,
+                "dependencies": edge.dependencies,
+                "used_by": edge.used_by,
+                "metadata": None,
+            }
+            
+            nodes.append(NodeData(
+                id=edge.key,
+                position=positions.get(edge.key, {"x": 0, "y": 0}),
+                data=node_data
+            ))
+        
+        for edge in edges:
+            for dep in edge.dependencies:
+                graph_edges.append(EdgeData(
+                    id=f"{edge.key}-{dep}",
+                    source=dep,
+                    target=edge.key,
+                ))
+        
+        return GraphResponse(
+            nodes=nodes,
+            edges=graph_edges
+        )
+        
     def _calculate_node_positions(self, edges) -> Dict[str, Dict[str, int]]:
         """
         Calculate positions for nodes in the graph.
