@@ -17,7 +17,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.2.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.0")
-    testImplementation("com.intellij.testFramework:testFramework:243.21053.29")
 }
 
 // Configure Gradle IntelliJ Plugin
