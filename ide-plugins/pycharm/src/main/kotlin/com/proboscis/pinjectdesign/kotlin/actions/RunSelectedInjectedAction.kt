@@ -18,7 +18,7 @@ fun saveModifiedDocuments() {
     fileDocumentManager.saveAllDocuments()
 }
 
-class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
+open class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
     override fun actionPerformed(e: AnActionEvent) {
         saveModifiedDocuments()
         val project = e.project ?: return
