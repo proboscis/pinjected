@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pinjected-wandb"
+name = "pinjected-wandb-integration"
 version = "0.1.0"
 description = "Weights & Biases integration for pinjected"
 authors = [
