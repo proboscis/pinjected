@@ -356,6 +356,7 @@ Otherwise, please provide a detailed review and explain why the change is not ap
         try:
             review = await self.llm(prompt)
         except Exception as e:
+            from loguru import logger
             import traceback
             logger.warning(e)
             logger.warning(traceback.format_exc())
