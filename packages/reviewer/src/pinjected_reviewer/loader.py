@@ -344,7 +344,14 @@ If the content is out of scope of the provided material, please approve.
 If the decision is to approve the change, the answer must be just "Approved", try to refrain from providing long answers.
 Otherwise, please provide a detailed review and explain why the change is not approved, and how it should be fixed.
 """
-        review = await self.llm(prompt)
+        try:
+            review = await self.llm(prompt)
+        except Exception as e:
+            import traceback
+            logger.warning(e)
+            logger.warning(traceback.format_exc())
+            raise e
+
         approved = await self.a_extract_approved(review)
 
         return Review(
