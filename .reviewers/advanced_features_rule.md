@@ -81,3 +81,6 @@ train_sample_0 = injected("dataset")["train"][0]
 2. `Injected.by_name()`と`injected()`の使い分けに注意してください。`Injected.by_name()`はInjectedオブジェクトを返し、`injected()`はIProxyオブジェクトを返します。
 
 3. IProxyオブジェクトを直接printするとリゾルブされないことに注意してください。値を取得するには、実行時に解決する必要があります。
+
+# レビュー時の注意
+上記以外に関する問題点は指摘せずApproveすること。他のレビュワーに任せるため。
