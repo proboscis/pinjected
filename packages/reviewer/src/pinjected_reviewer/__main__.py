@@ -67,6 +67,17 @@ async def run_review():
     reviews:list[ReviewResult] = await run_pinjected(pre_commit_reviews__phased)
     approved = all([r.result.approved for r in reviews])
     if approved:
+        for i,review in enumerate(reviews):
+            if review.result.approved:
+                continue
+            # Show approval messages
+            msg =  f"================= BEGIN REVIEW({i}) =====================\n"
+            msg += f"✓ Changes approved by {review.result.name}.\n"
+            msg += f"Reviewed Target: {review.input}\n"
+            msg += f"Reviewer Name: {review.result.name}\n"
+            msg += f"{'-' * len(review.result.name)}\n\n{review.result.review_text}\n"
+            msg += f"================= END REVIEW({i}) =====================\n"
+            print(msg)
         print("✓ All changes approved.")
         return True
     else:
