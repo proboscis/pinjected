@@ -4,7 +4,7 @@ This reviewer checks code diff and see if best practices are followed.
 - Return Type: approval
 - Target Files: .py
 - Model: google/gemini-2.5-pro-preview-03-25
-- Review scope: file_diff
+- Review scope: file_full
 
 # 実装パターンとベストプラクティス
 
@@ -15,7 +15,6 @@ Pinjectedでは、依存関係の命名に関して以下の規則が推奨さ�
 1. **一般的な依存関係**: スネークケースで記述（例: `learning_rate`, `batch_size`）
 2. **モデル関連**: `model__`プレフィックスを使用（例: `model__resnet`, `model__transformer`）
 3. **データセット関連**: `dataset__`プレフィックスを使用（例: `dataset__mnist`, `dataset__cifar10`）
-4. **関数型依存**: `a_`プレフィックスを使用（例: `a_process_data`, `a_transform_image`）
 
 ```python
 # 命名規則に従った例
@@ -27,11 +26,7 @@ def model__resnet(input_size, hidden_units):
 def dataset__mnist(batch_size):
     return MNISTDataset(batch_size)
 
-@instance
-def a_transform_image(image_size):
-    def transform(image):
-        return resize(image, (image_size, image_size))
-    return transform
+
 ```
 
 ## テスト構造のベストプラクティス
@@ -91,23 +86,15 @@ def bad_optimizer(config):
 1. **グローバル変数の過剰使用**: グローバル変数ではなく、依存性注入を使用する
 2. **過度に複雑な依存グラフ**: 依存関係はシンプルに保ち、必要に応じて分割する
 3. **型アノテーションの欠如**: 可能な限り型アノテーションを使用して可読性を高める
-4. **ドキュメントの不足**: 複雑な依存関係には適切なドキュメントを提供する
 
 ```python
-# 良い例: 型アノテーションとドキュメントを含む
+# 良い例: 型アノテーションを含む
 @instance
 def model(input_size: int, hidden_units: int) -> nn.Module:
-    """
-    モデルを作成する関数
-    
-    Args:
-        input_size: 入力サイズ
-        hidden_units: 隠れ層のユニット数
-        
-    Returns:
-        nn.Module: 初期化されたモデル
-    """
+
     return Model(input_size, hidden_units)
 ```
 
-# 上記以外に関する問題はレビューせず Approveすること。別のレビュアーに任せるためです。
+# レビュー時の注意
+上記に示されていない部分についてはレビューせず、Approveすること。親切心でも関係ないレビューを提供してはならない。
+これは他に存在するレビュワーが詳細にレビューを提供し、混乱を避けるためです。

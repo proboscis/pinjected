@@ -19,7 +19,7 @@ from pinjected_reviewer.schema.reviewer_def import ReviewerAttributes_v4, Markdo
 from pinjected_reviewer.schema.types import GitInfo, Review, FileDiff
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
-
+# pinjected-reviewer: ignore
 @injected
 async def a_llm_factory_for_reviewer(
         a_cached_openrouter_chat_completion,
@@ -45,12 +45,12 @@ async def a_reviewer_definition_from_path(
 ) -> MarkdownReviewerDefinition:
     """
     Create a ReviewerDefinition from a markdown file path using a structured LLM.
-    
+
     Args:
         a_structured_llm_for_markdown_extraction: Structured LLM for extracting attributes from markdown
         logger: Logger instance
         path: Path to the markdown file
-        
+
     Returns:
         A ReviewerDefinition instance
     """
@@ -61,7 +61,7 @@ async def a_reviewer_definition_from_path(
     - Name: The name of the reviewer
     - When_to_trigger: When this reviewer should be triggered (e.g., on commit)
     - Return_Type: The return type of this reviewer
-    
+
     Markdown content:
     {content}
     """
@@ -289,7 +289,7 @@ async def all_reviewers__from_python_files(
 
     reviewers: list[FutureResultE[Reviewer]] = [a_py_file_to_reviewer(py_file) for py_file in py_files]
     reviewers: list[IOResultE[Reviewer]] = await a_await_all(reviewers,
-                                                           desc="Loading reviewer definitions from python files")
+                                                             desc="Loading reviewer definitions from python files")
     return reviewers
 
 
@@ -373,6 +373,7 @@ Otherwise, please provide a detailed review and explain why the change is not ap
     def __repr__(self) -> str:
         return f"MarkdownFileDiffReviewer(name={self.name}, interests={self.interests} material_length={len(self.material)})"
 
+
 @dataclass
 class MarkdownFileFullReviewer(Reviewer[FileDiff]):
     llm: StructuredLLM
@@ -392,21 +393,27 @@ class MarkdownFileFullReviewer(Reviewer[FileDiff]):
                     approved=True
                 )
         prompt = f"""
-Review the following file and provide feedback.
-# File Content:
+Read the following review material to provide a detailed review for the code at the end.
 
-{file_diff.filename.read_text()}
-
-# Review Material:
+========== Review Material ==========
+```markdown
 {self.material}
-If the content is out of scope of the provided material, please approve.
-If the decision is to approve the change, the answer must be just "Approved", try to refrain from providing long answers.
-Otherwise, please provide a detailed review and explain why the change is not approved, and how it should be fixed.
+```
+Please make a checklist for reviewing the file.
+For rejection, please provide a detailed review and explain why the change is not approved, and how it should be fixed with examples.
+Make sure to only focus on the point where the review material points out.
+
+========== File Content ==========
+```python
+{file_diff.filename.read_text()}
+```
 """
         try:
             review = await self.llm(prompt)
+            print(review)
         except Exception as e:
             import traceback
+            from loguru import logger
             logger.warning(e)
             logger.warning(traceback.format_exc())
             raise e
@@ -421,7 +428,6 @@ Otherwise, please provide a detailed review and explain why the change is not ap
 
     def __repr__(self) -> str:
         return f"MarkdownFileFullReviewer(name={self.name}, interests={self.interests} material_length={len(self.material)})"
-
 
 
 @instance
@@ -493,10 +499,10 @@ async def pre_commit_reviews__phased(
 
     for reviewer in file_diff_reviewers:
         for file_diff in git_info.file_diffs.values():
-            file_diff:FileDiff
+            file_diff: FileDiff
             if not file_diff.filename.exists():
                 continue
-            if check_if_file_should_be_ignored(file_diff.filename.read_text(),file_diff.filename):
+            if check_if_file_should_be_ignored(file_diff.filename.read_text(), file_diff.filename):
                 continue
             tasks.append(review_file(reviewer, file_diff))
 
