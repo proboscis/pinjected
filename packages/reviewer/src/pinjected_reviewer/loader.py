@@ -126,7 +126,7 @@ async def a_markdown_reviewer_def_to_reviewer(
                 name=rev_def.attributes.name,
                 material=rev_def.review_material,
                 reason_to_skip=get_skipper(rev_def.attributes.target_file_extension),
-                interests={PreCommitGitInfoInterest()},
+                interests={PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)},
             )
 
     raise ValueError(
@@ -138,11 +138,11 @@ async def a_markdown_reviewer_def_to_reviewer(
 def reviewer_paths(logger, /, repo_root: Path) -> List[Path]:
     """
     Return a list of paths to load reviewer files from.
-    
+
     Args:
         logger: Logger instance
         repo_root: The root directory of the repository
-        
+
     Returns:
         List of paths to search for reviewer files
     """
@@ -159,25 +159,25 @@ def find_reviewer_markdown_files(
 ) -> List[Path]:
     """
     Find all markdown files in the paths provided by reviewer_paths.
-    
+
     Args:
         logger: Logger instance
         reviewer_paths: Function that returns paths to search for reviewer files
         repo_root: The root directory of the repository
-        
+
     Returns:
         List of paths to reviewer markdown files
     """
     paths = reviewer_paths(repo_root)
     markdown_files = []
-    
+
     for path in paths:
         if not path.exists():
             logger.warning(f"Reviewers directory not found: {path}")
             continue
-            
+
         markdown_files.extend(list(path.glob("*.md")))
-    
+
     logger.info(f"Found {len(markdown_files)} reviewer definition files in {paths}")
     return markdown_files
 
@@ -191,11 +191,11 @@ async def reviewer_definitions(
 ) -> List[IOResultE[MarkdownReviewerDefinition]]:
     """
     Load all reviewer definitions from markdown files.
-    
+
     Args:
         repo_root: Root directory of the repository
         a_reviewer_definition_from_path: Function to create a ReviewerDefinition from a file path
-        
+
     Returns:
         List of ReviewerDefinition instances
     """
@@ -282,11 +282,11 @@ async def all_reviewers__from_python_files(
     """
     paths = reviewer_paths(repo_root)
     py_files = []
-    
+
     for path in paths:
         if path.exists():
             py_files.extend(list(path.glob("*.py")))
-            
+
     reviewers: list[FutureResultE[Reviewer]] = [a_py_file_to_reviewer(py_file) for py_file in py_files]
     reviewers: list[IOResultE[Reviewer]] = await a_await_all(reviewers,
                                                            desc="Loading reviewer definitions from python files")
@@ -445,6 +445,7 @@ async def file_diff_reviewers(logger, all_reviewers: list[Reviewer]) -> list[Rev
             case [PreCommitFileDiffInterest(), *_]:
                 res.append(r)
             case _:
+                logger.warning(f"Reviewer {r.name} has no interest in file diffs")
                 pass
 
     return res
