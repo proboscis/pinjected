@@ -68,8 +68,6 @@ async def run_review():
     approved = all([r.result.approved for r in reviews])
     if approved:
         for i,review in enumerate(reviews):
-            if review.result.approved:
-                continue
             # Show approval messages
             msg =  f"================= BEGIN REVIEW({i}) =====================\n"
             msg += f"✓ Changes approved by {review.result.name}.\n"
