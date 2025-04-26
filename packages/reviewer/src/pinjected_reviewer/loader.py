@@ -119,7 +119,7 @@ async def a_markdown_reviewer_def_to_reviewer(
                 reason_to_skip=get_skipper(rev_def.attributes.target_file_extension),
                 interests={PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)},
             )
-        case ('pre_commit', 'full_file'):
+        case ('pre_commit', 'file_full'):
             return MarkdownFileFullReviewer(
                 llm=await a_llm_factory_for_reviewer(rev_def.attributes.llm_name),
                 a_extract_approved=a_extract_approved,
