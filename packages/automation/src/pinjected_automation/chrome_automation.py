@@ -30,6 +30,7 @@ class ScreenshotError(Exception):
     pass
 
 
+
 @dataclass
 class BrowserBBox:
     """Represents the bounding box of the browser window on screen"""
