@@ -119,6 +119,15 @@ async def a_markdown_reviewer_def_to_reviewer(
                 reason_to_skip=get_skipper(rev_def.attributes.target_file_extension),
                 interests={PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)},
             )
+        case ('pre_commit', 'full_file'):
+            return MarkdownFileFullReviewer(
+                llm=await a_llm_factory_for_reviewer(rev_def.attributes.llm_name),
+                a_extract_approved=a_extract_approved,
+                name=rev_def.attributes.name,
+                material=rev_def.review_material,
+                reason_to_skip=get_skipper(rev_def.attributes.target_file_extension),
+                interests={PreCommitGitInfoInterest()},
+            )
 
     raise ValueError(
         f"Unsupported reviewer definition: {rev_def} "
@@ -362,6 +371,56 @@ Otherwise, please provide a detailed review and explain why the change is not ap
 
     def __repr__(self) -> str:
         return f"MarkdownFileDiffReviewer(name={self.name}, interests={self.interests} material_length={len(self.material)})"
+
+@dataclass
+class MarkdownFileFullReviewer(Reviewer[FileDiff]):
+    llm: StructuredLLM
+    a_extract_approved: ExtractApproved
+    name: str
+    material: str
+    reason_to_skip: SkipReasonProvider = field(default=lambda _: Future.from_value(Nothing))
+    interests: Interests = field(default_factory=lambda: {PreCommitFileDiffInterest()})
+
+    async def __call__(self, file_diff: FileDiff) -> Review:
+        skip_reason: Maybe[str] = unsafe_perform_io(await self.reason_to_skip(file_diff))
+        match skip_reason:
+            case Some(reason):
+                return Review(
+                    name=self.name,
+                    review_text=f"Skipped review: {reason}",
+                    approved=True
+                )
+        prompt = f"""
+Review the following file and provide feedback.
+# File Content:
+
+{file_diff.filename.read_text()}
+
+# Review Material:
+{self.material}
+If the content is out of scope of the provided material, please approve.
+If the decision is to approve the change, the answer must be just "Approved", try to refrain from providing long answers.
+Otherwise, please provide a detailed review and explain why the change is not approved, and how it should be fixed.
+"""
+        try:
+            review = await self.llm(prompt)
+        except Exception as e:
+            import traceback
+            logger.warning(e)
+            logger.warning(traceback.format_exc())
+            raise e
+
+        approved = await self.a_extract_approved(review)
+
+        return Review(
+            name=self.name,
+            review_text=review,
+            approved=approved.result
+        )
+
+    def __repr__(self) -> str:
+        return f"MarkdownFileFullReviewer(name={self.name}, interests={self.interests} material_length={len(self.material)})"
+
 
 
 @instance
