@@ -1,9 +1,7 @@
 import subprocess
-import pytest
-import os
 import sys
-import re
-from unittest.mock import patch
+
+import pytest
 
 
 def test_commands_in_module_output():
@@ -15,8 +13,8 @@ def test_commands_in_module_output():
     assert hasattr(cli, 'run'), "The 'run' command should be available in CLI"
     assert hasattr(cli, 'describe'), "The 'describe' command should be available in CLI"
     
-    run_impl = getattr(cli, 'run')
-    describe_impl = getattr(cli, 'describe')
+    run_impl = cli.run
+    describe_impl = cli.describe
     assert callable(run_impl), "The 'run' command should be callable"
     assert callable(describe_impl), "The 'describe' command should be callable"
 
@@ -24,7 +22,7 @@ def test_commands_in_module_output():
 @pytest.mark.asyncio
 async def test_command_help_documentation():
     """Test that command help documentation is properly set up."""
-    from pinjected.main_impl import run, describe
+    from pinjected.main_impl import describe, run
     
     assert run.__doc__ is not None, "The 'run' command should have documentation"
     assert "load the injected variable" in run.__doc__, "The 'run' command documentation should explain its purpose"

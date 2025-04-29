@@ -1,4 +1,5 @@
-from typing import Protocol, TypeVar, Callable, runtime_checkable
+from collections.abc import Callable
+from typing import Protocol, TypeVar, runtime_checkable
 
 from returns.future import FutureResultE
 from returns.maybe import Maybe
@@ -50,7 +51,6 @@ class DesignSpec(Protocol):
         Returns:
             A new DesignSpec combining both specs with the right-hand side having precedence
         """
-        pass
 
     def get_spec(self, key: IBindKey) -> Maybe[BindSpec]:
         """
@@ -62,7 +62,6 @@ class DesignSpec(Protocol):
         Returns:
             Maybe[BindSpec]: Just(spec) if the key is found, Nothing otherwise
         """
-        pass
 
     @staticmethod
     def empty():

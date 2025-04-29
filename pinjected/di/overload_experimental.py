@@ -46,7 +46,6 @@ class DataFactory:
 @injected
 def data_user(new_data: DataFactory,/,msg) -> Data:
     d = new_data(x=0)
-    pass
 
 
 class IDataUser:
@@ -56,4 +55,3 @@ class IDataUser:
         :param msg:
         :return:
         """
-        pass

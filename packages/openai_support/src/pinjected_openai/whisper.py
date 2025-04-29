@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pydub
 from beartype import beartype
-from injected_utils.injected_cache_utils import sqlite_cache, async_cached
 from openai import AsyncOpenAI
 from openai.types.audio import Transcription
-from pinjected import *
 from tqdm import tqdm
+
+from pinjected import *
 
 
 def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
@@ -48,7 +48,7 @@ def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
             try:
                 clip = mp.AudioFileClip(str(input_path))
             except Exception as audio_error:
-                raise RuntimeError(f"Failed to load file as video ({str(video_error)}) or audio ({str(audio_error)})")
+                raise RuntimeError(f"Failed to load file as video ({video_error!s}) or audio ({audio_error!s})")
 
         # Extract audio (or use the audio directly if it's an audio file)
         audio = clip.audio if hasattr(clip, 'audio') else clip
@@ -63,7 +63,7 @@ def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
 
         return str(output_file)
     except Exception as e:
-        raise RuntimeError(f"Error converting {input_file} to MP3: {str(e)}")
+        raise RuntimeError(f"Error converting {input_file} to MP3: {e!s}")
 
 
 @injected

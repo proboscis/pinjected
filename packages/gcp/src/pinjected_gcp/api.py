@@ -1,12 +1,10 @@
 import asyncio
 from pathlib import Path
-from typing import Optional, Union, BinaryIO
 
 from google.cloud import storage
 from google.oauth2 import service_account
-from pinjected import injected, instance, design
-from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential
+
+from pinjected import design, injected, instance
 
 
 @instance
@@ -24,8 +22,8 @@ async def a_upload_gcs(
     logger,
     /,
     bucket_name: str,
-    source_file_path: Union[str, Path],
-    destination_blob_name: Optional[str] = None,
+    source_file_path: str | Path,
+    destination_blob_name: str | None = None,
 ) -> str:
     """
     Uploads a file to Google Cloud Storage.
@@ -63,7 +61,7 @@ async def a_download_gcs(
     /,
     bucket_name: str,
     source_blob_name: str,
-    destination_file_path: Union[str, Path],
+    destination_file_path: str | Path,
 ) -> Path:
     """
     Downloads a file from Google Cloud Storage.

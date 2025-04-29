@@ -1,13 +1,12 @@
 """
 Command to list all reviewer definitions.
 """
-import argparse
-import asyncio
 from pathlib import Path
 
 from pinjected import AsyncResolver, instances
 from pinjected.helper_structure import MetaContext
 from pinjected_reviewer.loader import reviewer_definitions
+
 
 async def list_reviewers(repo_path: Path):
     """

@@ -1,8 +1,8 @@
 import asyncio
+from collections.abc import Coroutine
 from dataclasses import dataclass
-from typing import Coroutine
 
-from pinjected import Injected, Design
+from pinjected import Design, Injected
 from pinjected.helpers import get_design_path_from_var_path
 from pinjected.module_var_path import load_variable_by_module_path
 

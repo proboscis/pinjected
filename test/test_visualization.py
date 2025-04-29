@@ -1,4 +1,4 @@
-from pinjected import injected, Injected, design
+from pinjected import Injected, design, injected
 
 test_design=design()
 __default_design_paths__ = ['test.test_visualization.test_design']

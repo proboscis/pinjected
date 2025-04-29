@@ -1,4 +1,4 @@
-from pinjected import injected, Injected, design, instance
+from pinjected import Injected, design, injected, instance
 
 
 @injected
@@ -21,7 +21,7 @@ def test_args_pure():
 
 
 def test_something():
-    assert type(0) == int, "0 must be int"
+    assert int == int, "0 must be int"
 
 @instance
 def run_test(dep1,dep2):

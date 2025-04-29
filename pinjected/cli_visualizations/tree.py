@@ -1,28 +1,30 @@
 import io
-from pinjected.di.injected import (
-    Injected,
-    InjectedWithDefaultDesign,
-    InjectedFromFunction,
-    InjectedPure,
-    PartialInjectedFunction,
-    MappedInjected,
-    ZippedInjected,
-    MZippedInjected,
-    InjectedByName,
-)
+
+from rich.style import Style
+from rich.text import Text
+from rich.tree import Tree
+
 from pinjected.di.app_injected import EvaledInjected
 from pinjected.di.expr_util import show_expr
+from pinjected.di.injected import (
+    Injected,
+    InjectedByName,
+    InjectedFromFunction,
+    InjectedPure,
+    InjectedWithDefaultDesign,
+    MappedInjected,
+    MZippedInjected,
+    PartialInjectedFunction,
+    ZippedInjected,
+)
 from pinjected.visualize_di import DIGraph
-from rich.tree import Tree
-from rich.text import Text
-from rich.style import Style
 
 
 def format_injected_for_tree(injected: Injected) -> str:
     """依存関係ツリー表示用にInjectedをフォーマットする"""
     if isinstance(injected, InjectedWithDefaultDesign):
         return format_injected_for_tree(injected.src)
-    elif isinstance(injected, InjectedFromFunction):
+    if isinstance(injected, InjectedFromFunction):
         try:
             return f"<function {injected.original_function.__name__}>"
         except:
@@ -31,9 +33,9 @@ def format_injected_for_tree(injected: Injected) -> str:
         v = injected.value
         if isinstance(v, str):
             return f"<str instance>"
-        elif isinstance(v, type):
+        if isinstance(v, type):
             return f"<class '{v.__name__}'>"
-        elif callable(v):
+        if callable(v):
             try:
                 return f"<function {v.__name__}>"
             except:
@@ -81,7 +83,7 @@ def design_rich_tree(tgt_design, root):
                 (value_str, Style(color="yellow")),
             )
         except Exception as e:
-            return Text(f"{node} (Error: {str(e)})", style="red")
+            return Text(f"{node} (Error: {e!s})", style="red")
 
     root = Tree(Text("target", style="green bold"))
     trees = dict(__root__=root)

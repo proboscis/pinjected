@@ -1,7 +1,6 @@
-from asyncio import Future
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Dict, AsyncIterator
 
 from rich.console import Console, ConsoleRenderable
 from rich.live import Live
@@ -14,8 +13,8 @@ class RichTaskVisualizer:
     Visualize the tasks in progress in async. No progress bar.
     Shows one line message per task.
     """
-    statuses: Dict[str, ConsoleRenderable | str] = field(default_factory=dict)
-    messages: Dict[str, ConsoleRenderable | str] = field(default_factory=dict)
+    statuses: dict[str, ConsoleRenderable | str] = field(default_factory=dict)
+    messages: dict[str, ConsoleRenderable | str] = field(default_factory=dict)
     console: Console = field(default_factory=Console)
     live: Live = field(init=False)
 

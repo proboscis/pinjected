@@ -1,16 +1,17 @@
 import asyncio
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal, Optional, Protocol
+from typing import Literal, Protocol
 
 import pandas as pd
 import pytest
-from pinjected import *
 from pinjected_openai.openrouter.instances import StructuredLLM
 from tqdm import tqdm
-from loguru import logger
 
-from pinjected_reviewer.pytest_reviewer.inspect_code import DetectMisuseOfPinjectedProxies
+from pinjected import *
+from pinjected_reviewer.pytest_reviewer.inspect_code import (
+    DetectMisuseOfPinjectedProxies,
+)
 from pinjected_reviewer.reviewer_v1 import ExtractApproved
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
@@ -21,8 +22,8 @@ class Diagnostic:
     level: Literal['error', 'warning', 'suggest', 'approve']
     message: str
     file: Path
-    line: Optional[int] = None
-    column: Optional[int] = None
+    line: int | None = None
+    column: int | None = None
 
 
 @instance

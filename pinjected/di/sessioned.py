@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from pinjected.di.designed import Designed
-from pinjected.di.injected import Injected
 from pinjected.di.applicative import Applicative
-from pinjected.di.static_proxy import AstProxyContextImpl, eval_applicative
+from pinjected.di.designed import Designed
 from pinjected.di.expr_util import Expr
+from pinjected.di.injected import Injected
+from pinjected.di.static_proxy import AstProxyContextImpl, eval_applicative
 
 T = TypeVar("T")
 
@@ -47,8 +47,7 @@ class ApplicativeSesionedImpl(Applicative[Sessioned]):
     def zip(self, *targets: Sessioned):
         if targets:
             return targets[0].zip(*targets[1:])
-        else:
-            return Sessioned(self.parent, Designed.bind(Injected.pure(())))
+        return Sessioned(self.parent, Designed.bind(Injected.pure(())))
 
 
     def pure(self, item) -> Sessioned:

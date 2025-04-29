@@ -1,12 +1,12 @@
 import importlib.util
 import os
 import sys
-from typing import List, Generic, TypeVar, Any, Callable, Union
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, Generic, TypeVar
 
 import fire
 from cytoolz import memoize
-from pydantic import BaseModel
 from pydantic.dataclasses import dataclass
 
 T = TypeVar("T")
@@ -26,7 +26,7 @@ class ModuleVarSpec(Generic[T]):
         return ModuleVarPath(self.var_path).module_file_path
 
     def __str__(self):
-        return f"ModuleVarSpec({self.var_path} with type {str(type(self.var))})"
+        return f"ModuleVarSpec({self.var_path} with type {type(self.var)!s})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -71,8 +71,8 @@ def get_module_path(root_path, module_path):
 
 
 def inspect_module_for_type(
-    module_path: Union[str, Path], accept: Callable[[str, Any], bool]
-) -> List[ModuleVarSpec[T]]:
+    module_path: str | Path, accept: Callable[[str, Any], bool]
+) -> list[ModuleVarSpec[T]]:
     from pinjected.pinjected_logging import logger
 
     logger.debug(f"inspecting module:{module_path}")

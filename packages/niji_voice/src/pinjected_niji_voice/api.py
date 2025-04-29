@@ -3,15 +3,15 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 import httpx
-from pinjected import *
 from pydantic import BaseModel, Field, HttpUrl
 from pydub import AudioSegment
 from pydub.playback import play
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from pinjected import *
 
 
 class VoiceStyle(BaseModel):
@@ -20,9 +20,9 @@ class VoiceStyle(BaseModel):
 
 
 class VoiceActor(BaseModel):
-    age: Optional[int] = None
-    birthDay: Optional[int] = Field(default=None, ge=1, le=31)
-    birthMonth: Optional[int] = Field(default=None, ge=1, le=12)
+    age: int | None = None
+    birthDay: int | None = Field(default=None, ge=1, le=31)
+    birthMonth: int | None = Field(default=None, ge=1, le=12)
     gender: str
     id: UUID
     largeImageUrl: HttpUrl
@@ -63,8 +63,8 @@ class VoiceResponse(BaseModel):
 class NijiVoiceParam:
     actor_name: str
     script: str
-    sound_duration: Optional[float] = None
-    emotion_level: Optional[float] = None
+    sound_duration: float | None = None
+    emotion_level: float | None = None
     format = 'mp3'
     speed = 1.0
 

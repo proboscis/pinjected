@@ -24,8 +24,7 @@ from pathlib import Path
 from loguru import logger
 
 from pinjected import IProxy
-from pinjected_reviewer.schema.reviewer_def import ReviewResult, Reviewer
-
+from pinjected_reviewer.schema.reviewer_def import Reviewer, ReviewResult
 
 # We'll keep logging for the main CLI but filter noise
 # The logger in entrypoint.py already handles filtering review process logs
@@ -55,13 +54,9 @@ async def run_review():
     logger.remove()  # Remove all handlers
 
     # Import after logger.remove() to avoid unnecessary log initialization
-    from pinjected import AsyncResolver
     logger.remove()  # Remove all handlers
-    from pinjected.helper_structure import MetaContext
     logger.remove()  # Remove all handlers
-    from pinjected_reviewer import entrypoint
     logger.remove()  # Remove all handlers
-    from pinjected_reviewer.schema.types import Review
     logger.remove()  # Remove all handlers
     from pinjected_reviewer.loader import pre_commit_reviews__phased
     reviews:list[ReviewResult] = await run_pinjected(pre_commit_reviews__phased)
@@ -116,7 +111,7 @@ def install_hook():
 """
         # Check if pre-commit already exists
         if pre_commit_path.exists():
-            with open(pre_commit_path, "r") as f:
+            with open(pre_commit_path) as f:
                 existing_content = f.read()
             if "pinjected-reviewer" in existing_content:
                 logger.info("pre-commit hook with pinjected-reviewer already installed")
@@ -163,7 +158,7 @@ def uninstall_hook():
             logger.info("No pre-commit hook found")
             return True
 
-        with open(pre_commit_path, "r") as f:
+        with open(pre_commit_path) as f:
             content = f.read()
 
         if "pinjected-reviewer" not in content:

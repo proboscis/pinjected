@@ -1,7 +1,6 @@
 """
 injected_pytestの括弧なし使用テスト
 """
-import pytest
 
 
 def test_injected_pytest_no_parens_usage():
@@ -9,7 +8,6 @@ def test_injected_pytest_no_parens_usage():
     injected_pytestが括弧なしで正しく動作することを確認するテスト
     """
     from pinjected.test import injected_pytest
-    from pinjected import design, instances, EmptyDesign, Injected
     
     @injected_pytest
     def test_func():

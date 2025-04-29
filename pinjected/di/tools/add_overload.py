@@ -1,13 +1,14 @@
 import ast
 import inspect
 import textwrap
-from typing import List, Dict, Any
-from typing import overload
+from typing import Any, overload
+
+from pinjected import design, injected
 from pinjected.pinjected_logging import logger
-from pinjected import injected, design
+
 
 def process_file(file_path):
-    with open(file_path, 'r') as file:
+    with open(file_path) as file:
         source_code = file.read()
     tree = ast.parse(source_code)
     import_overload = False
@@ -29,7 +30,7 @@ def process_file(file_path):
 
 def add_overload_import(tree):
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == 'typing' and any((alias.name == 'overload' for alias in node.names)):
+        if isinstance(node, ast.ImportFrom) and node.module == 'typing' and any(alias.name == 'overload' for alias in node.names):
             return
     import_node = ast.ImportFrom(module='typing', names=[ast.alias(name='overload', asname=None)], level=0)
     tree.body.insert(0, import_node)
@@ -42,16 +43,16 @@ def has_injected_decorator(node):
 
 def get_function_signature(node: ast.FunctionDef) -> inspect.Signature:
     args: ast.arguments = node.args
-    pos_only_args: List[ast.arg] = args.posonlyargs
-    pos_or_kw_args: List[ast.arg] = args.args
-    kw_only_args: List[ast.arg] = args.kwonlyargs
-    defaults: List[Any] = [ast.literal_eval(default) for default in args.defaults]
-    kw_defaults: Dict[str, Any] = {kw.arg: ast.literal_eval(kw.value) for kw in args.kw_defaults}
+    pos_only_args: list[ast.arg] = args.posonlyargs
+    pos_or_kw_args: list[ast.arg] = args.args
+    kw_only_args: list[ast.arg] = args.kwonlyargs
+    defaults: list[Any] = [ast.literal_eval(default) for default in args.defaults]
+    kw_defaults: dict[str, Any] = {kw.arg: ast.literal_eval(kw.value) for kw in args.kw_defaults}
     num_non_defaults: int = len(pos_or_kw_args) - len(defaults)
-    non_def_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in pos_or_kw_args[:num_non_defaults]]
-    def_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, default=default, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg, default in zip(pos_or_kw_args[num_non_defaults:], defaults)]
-    pos_only_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_ONLY, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in pos_only_args]
-    kw_only_params: List[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.KEYWORD_ONLY, default=kw_defaults.get(arg.arg, inspect.Parameter.empty), annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in kw_only_args]
+    non_def_params: list[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in pos_or_kw_args[:num_non_defaults]]
+    def_params: list[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, default=default, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg, default in zip(pos_or_kw_args[num_non_defaults:], defaults, strict=False)]
+    pos_only_params: list[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.POSITIONAL_ONLY, annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in pos_only_args]
+    kw_only_params: list[inspect.Parameter] = [inspect.Parameter(name=arg.arg, kind=inspect.Parameter.KEYWORD_ONLY, default=kw_defaults.get(arg.arg, inspect.Parameter.empty), annotation=arg.annotation.id if arg.annotation else inspect.Parameter.empty) for arg in kw_only_args]
     return_annotation = node.returns.value if isinstance(node.returns, ast.Constant) else node.returns.id if node.returns else inspect.Signature.empty
     sig: inspect.Signature = inspect.Signature(parameters=pos_only_params + non_def_params + def_params + kw_only_params, return_annotation=return_annotation)
     logger.info(f'signature: {sig}')
@@ -85,12 +86,9 @@ def generate_overload_signature(func_name, signature):
 def get_annotation_string(annotation):
     if isinstance(annotation, str):
         return annotation
-    elif isinstance(annotation, type):
+    if isinstance(annotation, type) or hasattr(annotation, '__name__'):
         return annotation.__name__
-    elif hasattr(annotation, '__name__'):
-        return annotation.__name__
-    else:
-        return str(annotation)
+    return str(annotation)
 
 def inject_overload_signature(tree, node, overload_signature):
     overload_node = ast.parse(textwrap.dedent(overload_signature)).body[0]
@@ -111,7 +109,6 @@ def has_overload_decorator(node):
 @overload
 def add_overload(file_path: str) -> int:
     """Signature of the function after being injected."""
-    ...
 
 @injected
 def add_overload(file_path: str) -> int:

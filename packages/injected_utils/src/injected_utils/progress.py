@@ -98,7 +98,7 @@ async def a_map_progress__tqdm(
         return "consumer done"
 
     async with TaskGroup() as tg:
-        logger.info(f"starting a_map_progress")
+        logger.info("starting a_map_progress")
         producer_task = tg.create_task(producer())
         consumer_tasks = [tg.create_task(consumer(idx)) for idx in range(pool_size)]
         while True:

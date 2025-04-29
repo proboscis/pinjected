@@ -1,18 +1,17 @@
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from beartype import beartype
 
+from pinjected import DelegatedVar, Design, EmptyDesign, Injected, design
 from pinjected.di.design_spec.protocols import DesignSpec
-from pinjected.pinjected_logging import logger
-from pathlib import Path
-from typing import Dict, List, Union, Any
-
-from pinjected import Design, Injected, design, EmptyDesign, DelegatedVar
 from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
 from pinjected.module_inspector import ModuleVarSpec
-from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
-from pinjected.v2.keys import StrBindKey, IBindKey
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.pinjected_logging import logger
 from pinjected.v2.async_resolver import AsyncResolver
+from pinjected.v2.keys import IBindKey, StrBindKey
 
 
 @dataclass
@@ -20,16 +19,16 @@ class IdeaRunConfiguration:
     name: str
     script_path: str
     interpreter_path: str
-    arguments: List[str]
+    arguments: list[str]
     working_dir: str
 
 
 @dataclass
 class IdeaRunConfigurations:
-    configs: Dict[str, List[IdeaRunConfiguration]]
+    configs: dict[str, list[IdeaRunConfiguration]]
 
 
-async def _a_resolve(tgt: Union[Any, DelegatedVar, Injected]):
+async def _a_resolve(tgt: Any | DelegatedVar | Injected):
     if isinstance(tgt, (DelegatedVar, Injected)):
         resolver = AsyncResolver(EmptyDesign)
         return await resolver.provide(tgt)
@@ -38,7 +37,7 @@ async def _a_resolve(tgt: Union[Any, DelegatedVar, Injected]):
 
 @dataclass
 class SpecTrace:
-    trace: List[ModuleVarSpec[DesignSpec]]
+    trace: list[ModuleVarSpec[DesignSpec]]
     accumulated: DesignSpec
 
     @staticmethod
@@ -60,7 +59,7 @@ class SpecTrace:
 
 @dataclass
 class MetaContext:
-    trace: List[ModuleVarSpec[Design]]
+    trace: list[ModuleVarSpec[Design]]
     accumulated: Design
     spec_trace: SpecTrace
 
@@ -183,7 +182,10 @@ class MetaContext:
     @property
     async def a_final_design(self):
         with logger.contextualize(tag="design_preparation"):
-            from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+            from pinjected.run_helpers.run_injected import (
+                load_user_default_design,
+                load_user_overrides_design,
+            )
             acc = self.accumulated
             # g = acc.to_resolver()
             r = AsyncResolver(acc)
@@ -202,7 +204,6 @@ class MetaContext:
 
     @staticmethod
     async def a_load_default_design_for_variable(var: ModuleVarPath | str):
-        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         if isinstance(var, str):
             var = ModuleVarPath(var)
         meta_context = await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)
@@ -223,14 +224,13 @@ class MetaContext:
             stacklevel=2
         )
         import asyncio
-        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
+
         if isinstance(var, str):
             var = ModuleVarPath(var)
         return asyncio.run(MetaContext.a_load_default_design_for_variable(var))
 
     @staticmethod
     async def a_design_for_variable(var: ModuleVarPath | str):
-        from pinjected.run_helpers.run_injected import load_user_default_design, load_user_overrides_design
         if isinstance(var, str):
             var = ModuleVarPath(var)
         design = await (await MetaContext.a_gather_bindings_with_legacy(var.module_file_path)).a_final_design
@@ -258,7 +258,7 @@ try:
     # pydantic over version 2
     from pydantic import field_validator
 except ImportError:
-    from pydantic import validator as field_validator
+    pass
 
 __meta_design__ = design(
     default_design_paths=["pinjected.helper_structure.__meta_design__"]

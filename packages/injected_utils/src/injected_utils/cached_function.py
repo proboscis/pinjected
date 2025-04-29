@@ -149,7 +149,7 @@ class CachedFunction:
                 try:
                     res = self.cache[key]
                     return res
-                except Exception as e:
+                except Exception:
                     logger.warning(f"failed to load cache for {args_repr}")
                 # logger.debug(f"cache hit for {args_repr} took {(datetime.datetime.now() - t).total_seconds()} seconds")
             else:

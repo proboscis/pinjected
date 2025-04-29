@@ -1,9 +1,16 @@
 
 from pinjected.pinjected_logging import logger
-
 from pinjected.v2.callback import IResolverCallback
-from pinjected.v2.events import ResolverEvent, RequestEvent, ProvideEvent, DepsReadyEvent, EvalRequestEvent, \
-    CallInEvalStart, CallInEvalEnd, EvalResultEvent
+from pinjected.v2.events import (
+    CallInEvalEnd,
+    CallInEvalStart,
+    DepsReadyEvent,
+    EvalRequestEvent,
+    EvalResultEvent,
+    ProvideEvent,
+    RequestEvent,
+    ResolverEvent,
+)
 
 try:
     import nest_asyncio
@@ -18,12 +25,13 @@ except ImportError:
 import asyncio
 import datetime
 import operator
+import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Union, Callable, Dict, Any, Optional
+from typing import Any, Union
 
 from pinjected.pinjected_logging import logger
-import os
 
 #
 #
@@ -34,7 +42,7 @@ import os
 #
 PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = os.environ.get("PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS", "0") == "1"
 
-from pinjected.di.expr_util import Expr, Call, UnaryOp, show_expr, Cache
+from pinjected.di.expr_util import Cache, Call, Expr, UnaryOp, show_expr
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey
 from pinjected.v2.provide_context import ProvideContext
@@ -49,7 +57,7 @@ class IScope(ABC):
 
 
 class ScopeNode(IScope):
-    objects: Dict[IBindKey, Any] = field(default_factory=dict)
+    objects: dict[IBindKey, Any] = field(default_factory=dict)
 
     def provide(self, tgt: IBindKey, cxt: ProvideContext, provider: Callable[[IBindKey, ProvideContext], Any]):
         if tgt not in self.objects:
@@ -62,7 +70,7 @@ class ScopeNode(IScope):
 
 @dataclass
 class AsyncLockMap:
-    locks: Dict[IBindKey, asyncio.Lock] = field(default_factory=dict)
+    locks: dict[IBindKey, asyncio.Lock] = field(default_factory=dict)
 
     def get(self, key: IBindKey):
         if key not in self.locks:
@@ -157,7 +165,6 @@ class EvaluationError(Exception):
     def _format_source_exception(self, exc):
         """Format the source exception with detailed traceback information."""
         import traceback
-        import sys
         
         exc_type, exc_value, exc_tb = type(exc), exc, exc.__traceback__
         
@@ -180,8 +187,8 @@ class ResolveStatus:
     key: Any
     kind: str  # eval or provide
     status: str
-    start: Optional[datetime.datetime]
-    end: Optional[datetime.datetime]
+    start: datetime.datetime | None
+    end: datetime.datetime | None
 
 
 @dataclass
@@ -190,7 +197,7 @@ class BaseResolverCallback(IResolverCallback):
         self.request_status: dict[IBindKey, str] = {}
         self.logger = logger.opt(colors=True, ansi=True)
         self.eval_status: dict[str, str] = {}
-        self.total_status: dict[Union[IBindKey, str]] = {}
+        self.total_status: dict[IBindKey | str] = {}
 
     def __call__(self, event: ResolverEvent):
         if isinstance(event, RequestEvent):

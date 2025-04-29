@@ -12,26 +12,25 @@ Using PinjectedTestAggregator, We want to run the tests in organized manner...
 """
 import asyncio
 import multiprocessing
-import os
-from abc import abstractmethod, ABC
+from abc import ABC
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional, Literal
-import pytest
+from typing import Any, Literal
 
 import rich
-from beartype import beartype
-from returns.result import ResultE, Success, Failure
-from rich.console import Group
-from rich.layout import Layout
+from returns.result import Failure, ResultE, Success
 from rich.panel import Panel
 from rich.spinner import Spinner
 
 from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.run_helpers.run_injected import a_run_target__mp
-from pinjected.test_helper.rich_task_viz import task_visualizer, RichTaskVisualizer
-from pinjected.test_helper.test_aggregator import VariableInFile, PinjectedTestAggregator
+from pinjected.test_helper.rich_task_viz import RichTaskVisualizer, task_visualizer
+from pinjected.test_helper.test_aggregator import (
+    PinjectedTestAggregator,
+    VariableInFile,
+)
 
 
 @dataclass
@@ -40,7 +39,7 @@ class PinjectedTestResult:
     stdout: str
     stderr: str
     value: ResultE[Any]
-    trace: Optional[str]
+    trace: str | None
 
     def __str__(self):
         return f"PinjectedTestResult({self.target.to_module_var_path().path},{self.value})"
@@ -232,23 +231,20 @@ async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
     # logger.info(f"TestEvent: {e}")
     match e:
         case TestEvent(name, PinjectedTestResult() as res):
-            from rich.panel import Panel
-            from rich.console import Console
             import rich
+            from rich.panel import Panel
             if res.failed():
                 tgt: VariableInFile = res.target
                 mod_path = tgt.to_module_var_path().path
                 mod_file = tgt.file_path
-                msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
+                msg = f'file\t:"{mod_file}"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}'
                 panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
                 rich.print(panel)
-                pass
             else:
                 rich.print(
                     Panel(f"Success: {res.target.to_module_var_path().path}", title="Success", style="bold green")
                 )
                 # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
-                pass
 
 
 @instance
@@ -267,7 +263,7 @@ async def a_pinjected_test_event_callback(
         tgt: VariableInFile = res.target
         mod_path = tgt.to_module_var_path().path
         mod_file = tgt.file_path
-        msg = f"file\t:\"{mod_file}\"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}"
+        msg = f'file\t:"{mod_file}"\ntarget\t:{tgt.name}\nstdout\t:{res.stdout}\nstderr\t:{res.stderr}'
         msg = escape(msg)
         panel = Panel(msg, title=f"Failed ({mod_path})", style="bold red")
         rich.print(panel)
@@ -297,7 +293,6 @@ async def a_pinjected_test_event_callback(
                 viz.update_status(e.name, spinner)
             case TestEvent(_, TestStatus(msg)):
                 viz.update_message(e.name, escape(msg))
-                pass
             case TestEvent(key, PinjectedTestResult() as res):
                 active_tests.remove(key)
                 if res.failed():
@@ -435,7 +430,7 @@ def test_current_file():
 
 @injected
 def test_tagged(*tags: str):
-    raise NotImplementedError()
+    raise NotImplementedError
 
 # This is not a test for pytet, but a user interface
 def test_tree():

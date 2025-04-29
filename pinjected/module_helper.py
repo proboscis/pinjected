@@ -1,43 +1,37 @@
 import importlib
 import os
 import sys
-from pathlib import Path
-from typing import List, Optional, Iterator, Union, Tuple, Dict
-from types import ModuleType
+from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
 
-from pinjected.module_inspector import get_project_root, ModuleVarSpec
+from pinjected.module_inspector import ModuleVarSpec, get_project_root
 from pinjected.pinjected_logging import logger
 
 
 class ModuleHelperError(Exception):
     """Base exception for all module helper errors."""
-    pass
 
 
 class InvalidPythonFileError(ModuleHelperError):
     """Raised when a file path is not a valid Python file."""
-    pass
 
 
 class ModulePathError(ModuleHelperError):
     """Raised when there's an issue with module paths."""
-    pass
 
 
 class ModuleLoadError(ModuleHelperError):
     """Raised when a module cannot be loaded."""
-    pass
 
 
 class ModuleAttributeError(ModuleHelperError):
     """Raised when there's an issue extracting an attribute from a module."""
-    pass
 
 
 class SpecialFileError(ModuleHelperError):
     """Raised when there's an issue processing special files."""
-    pass
 
 
 @dataclass(frozen=True)
@@ -54,9 +48,9 @@ class DirectoryProcessParams:
     """
     directory: Path
     root_module_path: Path
-    attr_names: List[str]
-    special_filenames: List[str]
-    exclude_path: Optional[Path] = None
+    attr_names: list[str]
+    special_filenames: list[str]
+    exclude_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -69,7 +63,7 @@ class ModuleHierarchy:
         module_paths: Ordered list of module paths from root to target
     """
     root_module_path: Path
-    module_paths: List[Path]
+    module_paths: list[Path]
 
 
 def validate_python_file_path(file_path: Path) -> None:
@@ -146,8 +140,8 @@ def validate_path_under_root(file_path: Path, root_path: Path) -> None:
 
 
 def normalize_special_filenames(
-    special_filenames: Optional[Union[str, List[str]]]
-) -> List[str]:
+    special_filenames: str | list[str] | None
+) -> list[str]:
     """
     Normalize the special_filenames parameter to ensure it's a list.
     
@@ -162,14 +156,13 @@ def normalize_special_filenames(
     """
     if special_filenames is None:
         return []
-    elif isinstance(special_filenames, str):
+    if isinstance(special_filenames, str):
         return [special_filenames]
-    elif isinstance(special_filenames, list):
+    if isinstance(special_filenames, list):
         if not all(isinstance(item, str) for item in special_filenames):
             raise TypeError("All items in special_filenames list must be strings")
         return special_filenames
-    else:
-        raise TypeError(f"special_filenames must be a string, list of strings, or None, got {type(special_filenames)}")
+    raise TypeError(f"special_filenames must be a string, list of strings, or None, got {type(special_filenames)}")
 
 
 def validate_module_paths(file_path: Path, root_module_path: Path) -> None:
@@ -262,7 +255,7 @@ def get_module_name(file_path: Path, root_module_path: Path) -> str:
     return module_name
 
 
-def create_module_spec(module_name: str, file_path: Path) -> Tuple[ModuleType, importlib.machinery.ModuleSpec]:
+def create_module_spec(module_name: str, file_path: Path) -> tuple[ModuleType, importlib.machinery.ModuleSpec]:
     """
     Creates a module spec from a file path.
     
@@ -337,17 +330,16 @@ def load_module_from_path(module_name: str, file_path: Path) -> ModuleType:
         error_type = type(e).__name__
         if isinstance(e, ValueError):
             raise ModuleLoadError(f"Cannot execute module {module_name} at {file_path}: {e}")
-        elif isinstance(e, (ImportError, ModuleNotFoundError)):
+        if isinstance(e, (ImportError, ModuleNotFoundError)):
             raise ModuleLoadError(f"Cannot import module {module_name} at {file_path}: {e}")
-        else:
-            raise ModuleLoadError(f"Unexpected error ({error_type}) when loading module {module_name} at {file_path}: {e}")
+        raise ModuleLoadError(f"Unexpected error ({error_type}) when loading module {module_name} at {file_path}: {e}")
 
 
 def extract_module_attribute(
     module: ModuleType, 
     module_name: str, 
     attr_name: str
-) -> Optional[ModuleVarSpec]:
+) -> ModuleVarSpec | None:
     """
     Extract an attribute from a module if it exists.
     
@@ -394,7 +386,7 @@ def extract_module_attribute(
 def build_parent_path_tree(
     current_path: Path, 
     root_module_path: Path
-) -> List[Path]:
+) -> list[Path]:
     """
     Build a tree of parent paths with __init__.py files.
     
@@ -481,9 +473,9 @@ def build_module_hierarchy(
 
 def find_special_files(
     directory: Path,
-    special_filenames: List[str],
-    exclude_path: Optional[Path] = None
-) -> List[Path]:
+    special_filenames: list[str],
+    exclude_path: Path | None = None
+) -> list[Path]:
     """
     Find all special files in a directory.
     
@@ -533,7 +525,7 @@ def find_special_files(
 def process_special_file(
     special_file_path: Path,
     root_module_path: Path,
-    attr_names: List[str]
+    attr_names: list[str]
 ) -> dict[str, ModuleVarSpec]:
     """
     Process a special file and extract the attributes if they exist.
@@ -647,7 +639,7 @@ def process_directory(
 
 def process_parent_module(
     parent_file_path: Path,
-    attr_names: List[str],
+    attr_names: list[str],
     root_module_path: Path
 ) -> dict[str, ModuleVarSpec]:
     """
@@ -676,7 +668,7 @@ def process_parent_module(
 
 def walk_parent_modules(
     file_path: Path, 
-    attr_names: List[str], 
+    attr_names: list[str], 
     root_module_path: Path
 ) -> Iterator[ModuleVarSpec]:
     """
@@ -722,8 +714,8 @@ def walk_parent_modules(
 
 def prepare_module_paths(
     file_path: Path,
-    root_module_path: Optional[Path]
-) -> Tuple[Path, Path]:
+    root_module_path: Path | None
+) -> tuple[Path, Path]:
     """
     Prepare and validate the module paths.
     
@@ -756,8 +748,8 @@ def prepare_module_paths(
 
 def walk_module_attr(
     file_path: Path, 
-    attr_names: Union[str, List[str]], 
-    root_module_path: Optional[Path] = None
+    attr_names: str | list[str], 
+    root_module_path: Path | None = None
 ) -> Iterator[ModuleVarSpec]:
     """
     Walk from a root module to the file_path, looking for the attr_names
@@ -829,8 +821,8 @@ def walk_module_attr(
 
 def process_module_hierarchy(
     module_hierarchy: ModuleHierarchy,
-    attr_names: List[str],
-    special_filenames: List[str]
+    attr_names: list[str],
+    special_filenames: list[str]
 ) -> Iterator[ModuleVarSpec]:
     """
     Process a module hierarchy to find attributes in modules and special files.
@@ -880,7 +872,7 @@ def process_module_hierarchy(
         yield from process_directory(params)
 
 
-def validate_attr_params(file_path: Path, attr_names: Union[str, List[str]]) -> List[str]:
+def validate_attr_params(file_path: Path, attr_names: str | list[str]) -> list[str]:
     """
     Validate common parameters for attribute search functions and normalize attr_names.
     
@@ -938,9 +930,9 @@ def yield_unique_results(
 
 def walk_module_with_special_files(
     file_path: Path, 
-    attr_names: Union[str, List[str]], 
-    special_filenames: Optional[Union[str, List[str]]] = ["__pinjected__.py"], 
-    root_module_path: Optional[Path] = None
+    attr_names: str | list[str], 
+    special_filenames: str | list[str] | None = ["__pinjected__.py"], 
+    root_module_path: Path | None = None
 ) -> Iterator[ModuleVarSpec]:
     """
     Walk from the root module down to the target file_path, looking for the 

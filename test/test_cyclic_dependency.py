@@ -2,10 +2,9 @@ import asyncio
 
 import pytest
 
-from pinjected import design, injected, Injected
+from pinjected import Injected, design, injected
 from pinjected.exceptions import DependencyResolutionError
 from pinjected.pinjected_logging import logger
-
 from pinjected.v2.async_resolver import AsyncResolver
 
 

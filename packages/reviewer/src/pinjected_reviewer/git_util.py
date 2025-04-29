@@ -1,17 +1,15 @@
 import asyncio
-import pwd
 import subprocess
 from pathlib import Path
-from typing import Tuple
 
 from loguru import logger
 
-from pinjected import injected, instance, IProxy
-from pinjected_reviewer.schema.types import GitInfo, FileDiff
+from pinjected import IProxy, injected, instance
+from pinjected_reviewer.schema.types import FileDiff, GitInfo
 
 
 @injected
-async def a_system(logger, /, command: str, *args) -> Tuple[str, str]:
+async def a_system(logger, /, command: str, *args) -> tuple[str, str]:
     """
     Generic function to execute system commands asynchronously.
 
@@ -171,7 +169,7 @@ async def git_info(a_system) -> GitInfo:
             # Add an empty diff entry
             file_diffs[file_path] = FileDiff(
                 filename=file_path,
-                diff=f"[Error: {str(e)}]",
+                diff=f"[Error: {e!s}]",
                 is_binary=False
             )
 

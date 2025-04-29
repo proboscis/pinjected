@@ -3,10 +3,13 @@ from typing import Protocol
 
 from httpx import ReadTimeout
 from injected_utils import async_cached, lzma_sqlite, sqlite_dict
-from pinjected import injected, Injected, IProxy, design
+from pinjected_openai.openrouter.util import (
+    Text,
+    a_openrouter_chat_completion__without_fix,
+)
 from pydantic import BaseModel
 
-from pinjected_openai.openrouter.util import a_openrouter_chat_completion__without_fix, Text
+from pinjected import Injected, IProxy, design, injected
 
 
 class NoEndpointsFoundError(Exception):

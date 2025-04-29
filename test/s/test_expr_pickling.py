@@ -1,4 +1,3 @@
-from typing import List
 
 from pinjected import *
 
@@ -7,8 +6,8 @@ ImageData = object
 
 
 @injected
-def zip_image_pairs(styles: List[ImageData], contents: List[ImageData]):
-    return [StyleContentPair(s, c) for s, c in zip(styles, contents)]
+def zip_image_pairs(styles: list[ImageData], contents: list[ImageData]):
+    return [StyleContentPair(s, c) for s, c in zip(styles, contents, strict=False)]
 
 
 wikiart_abstract_samples = {
@@ -55,14 +54,15 @@ realistic_various_pairs: Injected = zip_image_pairs(realistic_styles, imagenet_v
 def check(tgt: Injected, trace: list[tuple[str, object]] = None):
     if trace is None:
         trace = [('root', tgt)]
-    from pinjected.di.app_injected import EvaledInjected
-    from pinjected.di.injected import MappedInjected, MZippedInjected, InjectedPure
     import cloudpickle
+
+    from pinjected.di.app_injected import EvaledInjected
+    from pinjected.di.injected import InjectedPure, MappedInjected, MZippedInjected
     from pinjected.pinjected_logging import logger
     try:
         cloudpickle.dumps(tgt)
         return
-    except Exception as e:
+    except Exception:
         trc_string = '->'.join([f'{k}' for k, v in trace])
         trc_values = '\n'.join([f'{v}' for k, v in trace])
         logger.error(f'failed to pickle {tgt} at {trc_string}. \n values:{trc_values}')

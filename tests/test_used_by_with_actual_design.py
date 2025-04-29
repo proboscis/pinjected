@@ -1,8 +1,9 @@
-import pytest
+from collections import defaultdict
+
+from pinjected.dependency_graph_builder import DependencyGraphBuilder
 from pinjected.di.util import design
 from pinjected.visualize_di import DIGraph
-from pinjected.dependency_graph_builder import DependencyGraphBuilder
-from collections import defaultdict
+
 
 def test_used_by_with_actual_design_objects():
     """Test that used_by field correctly tracks multiple users with actual Design objects."""
@@ -69,12 +70,16 @@ def test_used_by_with_actual_design_objects():
 
 def test_used_by_in_dependency_graph_description():
     """Test that used_by field is correctly included in dependency graph description."""
-    from pinjected.dependency_graph_description import DependencyGraphDescriptionGenerator
-    from unittest.mock import MagicMock, patch, call
+    from unittest.mock import MagicMock, call, patch
+
+    from returns.maybe import Nothing
     from rich.panel import Panel
     from rich.text import Text
-    from pinjected.visualize_di import EdgeInfo, DIGraph
-    from returns.maybe import Nothing
+
+    from pinjected.dependency_graph_description import (
+        DependencyGraphDescriptionGenerator,
+    )
+    from pinjected.visualize_di import DIGraph, EdgeInfo
     
     mock_edges = [
         EdgeInfo(key="root", dependencies=["service1", "service2"], used_by=[], metadata=Nothing, spec=Nothing),

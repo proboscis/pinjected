@@ -1,15 +1,13 @@
 from dataclasses import dataclass
-from typing import List, Any
+from typing import Any
 
 from returns.io import IOResultE
-
-from pinjected.di.validation import ValFailure
 
 
 @dataclass
 class DependencyResolutionFailure:
     key: str
-    trace: List[str]
+    trace: list[str]
     cause: Any
 
     def trace_str(self):
@@ -30,7 +28,7 @@ class DependencyResolutionFailure:
 
 
 class DependencyResolutionError(RuntimeError):
-    def __init__(self, msg: str, causes: List[DependencyResolutionFailure] = None):
+    def __init__(self, msg: str, causes: list[DependencyResolutionFailure] = None):
         super().__init__(msg)
         if causes is None:
             causes = []
@@ -47,7 +45,7 @@ class DependencyValidationError(RuntimeError):
 @dataclass
 class CyclicDependency:
     key: str
-    trace: List[str]
+    trace: list[str]
 
     def __repr__(self):
         trace = self.trace + [self.key]
@@ -56,7 +54,7 @@ class CyclicDependency:
 
 
 class _MissingDepsError(RuntimeError):
-    def __init__(self, msg: str, name: str, trace: List[str]):
+    def __init__(self, msg: str, name: str, trace: list[str]):
         super().__init__(msg)
         self.name = name
         self.trace = trace.copy()

@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 
-from pinjected import Designed, Injected, Design
+from pinjected import Design, Designed, Injected
 from pinjected.di.applicative import Applicative
 from pinjected.di.designed import PureDesigned
-from pinjected.di.injected import InjectedPure
-from pinjected.di.proxiable import T, DelegatedVar
-from pinjected.di.static_proxy import eval_applicative, ast_proxy, AstProxyContextImpl
 from pinjected.di.expr_util import Expr, Object, show_expr
+from pinjected.di.injected import InjectedPure
+from pinjected.di.proxiable import DelegatedVar, T
+from pinjected.di.static_proxy import AstProxyContextImpl, ast_proxy, eval_applicative
 
 
 class ApplicativeDesignedImpl(Applicative[Designed]):
@@ -27,7 +27,7 @@ class ApplicativeDesignedImpl(Applicative[Designed]):
 def reduce_designed_expr(expr: Expr):
     match expr:
         case Object(PureDesigned(design, InjectedPure(value))):
-            return f"Object({str(value)} with {design})"
+            return f"Object({value!s} with {design})"
 
 
 @dataclass

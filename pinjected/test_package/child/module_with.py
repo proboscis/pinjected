@@ -1,6 +1,9 @@
 
 from pinjected import design, injected
-from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
+from pinjected.schema.handlers import (
+    PinjectedHandleMainException,
+    PinjectedHandleMainResult,
+)
 
 with design(x=10):
     y = injected('x')

@@ -4,10 +4,9 @@ import pytest
 from returns.future import future_safe
 from returns.maybe import Some
 
-from pinjected import design
-from pinjected import injected
-from pinjected.di.design_spec.impl import DesignSpecImpl, BindSpecImpl, SimpleBindSpec
-from pinjected.exceptions import DependencyValidationError, DependencyResolutionError
+from pinjected import design, injected
+from pinjected.di.design_spec.impl import BindSpecImpl, DesignSpecImpl, SimpleBindSpec
+from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.pinjected_logging import logger
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.keys import IBindKey, StrBindKey

@@ -15,8 +15,8 @@ import pytest
 @pytest.mark.asyncio
 async def test_create_configurations():
     """Test configuration creation using the non-deprecated a_gather_bindings_with_legacy method."""
-    from pinjected.ide_supports.default_design import pinjected_internal_design
     from pinjected.helper_structure import IdeaRunConfigurations
+    from pinjected.ide_supports.default_design import pinjected_internal_design
     
     # create_idea_configurationsの引数を正しく設定
     configs = create_idea_configurations(wrap_output_with_tag=False)
@@ -85,8 +85,8 @@ async def test_create_configurations_legacy_comparison():
     Legacy comparison test showing the differences between a_gather_from_path and a_gather_bindings_with_legacy.
     This test is kept for reference to understand the behavior of the deprecated method.
     """
-    from pinjected.ide_supports.default_design import pinjected_internal_design
     from pinjected.helper_structure import IdeaRunConfigurations
+    from pinjected.ide_supports.default_design import pinjected_internal_design
     
     # Create configurations injected object
     configs = create_idea_configurations(wrap_output_with_tag=False)
@@ -143,7 +143,7 @@ async def test_create_configurations_legacy_comparison():
         print(f"additional_config_value with legacy method: {legacy_add_value}")
         legacy_has_additional = True
     except Exception as e:
-        print(f"Legacy method can't access additional_config_value: {str(e)}")
+        print(f"Legacy method can't access additional_config_value: {e!s}")
         legacy_has_additional = False
     
     new_add_value = await new_rr.provide("additional_config_value")
@@ -188,7 +188,7 @@ async def test_create_configurations_legacy_comparison():
         assert len(legacy_items) == len(new_items), f"Key '{key}' has different number of configurations"
         
         # Compare each configuration item
-        for i, (legacy_item, new_item) in enumerate(zip(legacy_items, new_items)):
+        for i, (legacy_item, new_item) in enumerate(zip(legacy_items, new_items, strict=False)):
             # Compare each field
             assert legacy_item.name == new_item.name, f"Configuration {i} for '{key}' has different name"
             assert legacy_item.script_path == new_item.script_path, f"Configuration {i} for '{key}' has different script_path"

@@ -1,16 +1,14 @@
-import loguru
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-import sys
+from returns.maybe import Some, maybe
 
-from dataclasses import dataclass
-from pinjected.pinjected_logging import logger
-from returns.maybe import maybe, Some
-
-from pinjected import design, Injected
+from pinjected import Injected, design
 from pinjected.helper_structure import MetaContext
 from pinjected.helpers import find_default_design_paths
 from pinjected.module_inspector import get_project_root
+from pinjected.pinjected_logging import logger
 
 
 @dataclass

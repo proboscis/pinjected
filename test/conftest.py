@@ -1,6 +1,9 @@
 import copy
+
 import pytest
-from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverridesStore
+
+from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
+
 
 @pytest.fixture(scope="function")
 def override_store_isolation():

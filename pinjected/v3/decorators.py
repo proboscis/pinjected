@@ -1,7 +1,6 @@
+from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Concatenate, Callable, TypedDict, ParamSpec, TypeVar, Awaitable
-
-from IPython.conftest import inject
+from typing import ParamSpec, TypedDict, TypeVar
 
 from pinjected import IProxy
 
@@ -33,9 +32,10 @@ def test_func_proxy(
 # this is understandable
 y = test_func_proxy(0)
 
-from typing import Callable, ParamSpec, TypeVar, Generic
 import inspect
+from collections.abc import Callable
 from functools import wraps
+from typing import ParamSpec, TypeVar
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -125,7 +125,7 @@ p_service: IProxy = InjectedService()
 # from now on we should be using type as key?
 @to_proxy
 class OpenRouterSLLM:
-    impl_function:Callable[[str,],Awaitable[str]] = Inject('a_openrouter_chat_completion')
+    impl_function:Callable[[str],Awaitable[str]] = Inject('a_openrouter_chat_completion')
     async def __call__(self, request):
         pass
 

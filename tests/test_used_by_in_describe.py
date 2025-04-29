@@ -1,11 +1,12 @@
-import pytest
-from unittest.mock import MagicMock, patch, call
-from pinjected.run_helpers.run_injected import generate_dependency_graph_description
-from pinjected.visualize_di import DIGraph, EdgeInfo
-from pinjected.dependency_graph_builder import DependencyGraphBuilder
+from unittest.mock import MagicMock, patch
+
+from returns.maybe import Nothing
 from rich.panel import Panel
 from rich.text import Text
-from returns.maybe import Some, Nothing
+
+from pinjected.dependency_graph_builder import DependencyGraphBuilder
+from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+
 
 def test_used_by_in_edge_details():
     """Test that 'used_by' information is included in edge details."""

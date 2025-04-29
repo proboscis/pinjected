@@ -6,7 +6,7 @@ from pprint import pformat
 
 import click
 
-from pinjected import injected, Injected
+from pinjected import Injected, injected
 
 
 @click.group()

@@ -1,7 +1,7 @@
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from pinjected import *
-from pinjected_reviewer.schema.types import GitInfo, Review, PreCommitReviewer
+from pinjected_reviewer.schema.types import GitInfo, PreCommitReviewer, Review
 
 # a_openrouter_chat_completion()
 

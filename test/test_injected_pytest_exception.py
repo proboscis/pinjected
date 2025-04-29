@@ -1,12 +1,12 @@
 """
 Test exception unwrapping in injected_pytest
 """
-import pytest
 from unittest.mock import patch
 
-from pinjected.test import injected_pytest
-from pinjected import design, Injected
+import pytest
+
 from pinjected.compatibility.task_group import CompatibleExceptionGroup
+from pinjected.test import injected_pytest
 
 
 def test_exception_unwrapping():
@@ -38,7 +38,10 @@ def test_injected_pytest_error():
     Test that errors in injected_pytest are properly unwrapped
     """
     with patch.dict('os.environ', {'PINJECTED_UNWRAP_EXCEPTIONS': 'True'}):
-        from pinjected.test.injected_pytest import UNWRAP_EXCEPTIONS, unwrap_exception_group
+        from pinjected.test.injected_pytest import (
+            UNWRAP_EXCEPTIONS,
+            unwrap_exception_group,
+        )
         assert UNWRAP_EXCEPTIONS is True
         
         @injected_pytest()

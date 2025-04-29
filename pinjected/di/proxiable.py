@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Any
+from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -43,13 +43,13 @@ class IProxyContext(Generic[T]):
         """Bi-Operator Implementation
         op: '+' | '-' | '*' | '/' | '%' | '**' | '<<' | '>>' | '&' | '^' | '|' | '//'
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def unary_impl(self, op: str, tgt: T):
         """Unary Operator Implementation
         op: '-' | '~' | 'len' | 'del'
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def magic_method_impl(self, method_name, tgt: T, *args, **kwargs):
         return NotImplemented

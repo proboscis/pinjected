@@ -14,4 +14,3 @@ class BindMetadata:
     """
     The location of the binding location, this will be used by the IDE to jump to the binding location.
     """
-    pass

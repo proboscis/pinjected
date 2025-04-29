@@ -1,12 +1,13 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Any, Union, Literal, TypeVar, Protocol, Callable
+from typing import Any, Literal, Protocol, TypeVar, Union
 
 from pydantic import BaseModel, Field
 from returns.future import Future
 from returns.maybe import Maybe
 
-from pinjected_reviewer.schema.types import Review, FileDiff
+from pinjected_reviewer.schema.types import FileDiff, Review
 
 
 class ReviewerAttributes_v4(BaseModel):
@@ -41,7 +42,7 @@ ReviewerAttributes = ReviewerAttributes_v4
 class MarkdownReviewerDefinition:
     attributes: ReviewerAttributes
     review_material: str
-    material_path: Optional[Path] = None
+    material_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,6 @@ class Reviewer(Protocol[ReviewTarget]):
         """
         Run the reviewer on the provided target.
         """
-        pass
 
 
 @dataclass

@@ -3,12 +3,14 @@ import contextlib
 import symtable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional, Protocol, Union
+from typing import Protocol
 
 from injected_utils import async_cached
 from loguru import logger
-from pinjected import injected, IProxy, Injected, instance
+
 import pinjected_reviewer.entrypoint
+from pinjected import Injected, IProxy, injected
+
 
 @contextlib.contextmanager
 def suppress_logs():
@@ -50,7 +52,7 @@ async def a_collect_symbol_metadata(
         a_ast: callable,
         /,
         src_path: Path
-) -> Dict[str, SymbolMetadata]:
+) -> dict[str, SymbolMetadata]:
     tree = await a_ast(src_path.read_text())
     metadata = {}
     module_name = src_path.stem
@@ -87,7 +89,7 @@ async def a_collect_imported_symbol_metadata(
         a_ast: callable,
         /,
         src_path: Path
-) -> Dict[str, SymbolMetadata]:
+) -> dict[str, SymbolMetadata]:
     # Use context manager to suppress logging
     logger.disable('pinjected_reviewer')
     logger.debug(f"a_collect_imported_symbol_metadata が呼び出されました: {src_path}")
@@ -113,7 +115,7 @@ async def a_collect_imported_symbol_metadata(
             return module_name.startswith(package_path)
         return False
 
-    def find_project_root(start_dir: Path) -> tuple[Path, Optional[Path]]:
+    def find_project_root(start_dir: Path) -> tuple[Path, Path | None]:
         """プロジェクトルートとsrcディレクトリを探す"""
         logger.debug(f"プロジェクトルート検索開始: {start_dir}")
         current = start_dir
@@ -139,7 +141,7 @@ async def a_collect_imported_symbol_metadata(
 
         return current, src_dir
 
-    def module_path_calc(node: ast.ImportFrom, current_path: Path) -> Optional[Path]:
+    def module_path_calc(node: ast.ImportFrom, current_path: Path) -> Path | None:
         """モジュールの実際のファイルパスを計算する"""
         logger.debug(
             f"module_path_calc 呼び出し: module={node.module}, level={node.level}, current_path={current_path}")
@@ -226,45 +228,45 @@ async def a_collect_imported_symbol_metadata(
 
             logger.debug(f"  絶対インポートのパス解決に失敗: {node.module}")
             return None
-        else:  # 相対インポート
-            logger.debug(f"  相対インポートの処理: level={node.level}, module={node.module}")
+        # 相対インポート
+        logger.debug(f"  相対インポートの処理: level={node.level}, module={node.module}")
 
-            # 現在のファイルの親ディレクトリから開始
-            relative_path = current_path.parent
-            logger.debug(f"  開始ディレクトリ: {relative_path}")
+        # 現在のファイルの親ディレクトリから開始
+        relative_path = current_path.parent
+        logger.debug(f"  開始ディレクトリ: {relative_path}")
 
-            # レベルに合わせて上に移動
-            original_level = node.level
-            for i in range(node.level - 1):
-                prev_path = relative_path
-                relative_path = relative_path.parent
-                logger.debug(f"  レベル {i + 1}/{original_level - 1}: {prev_path} -> {relative_path}")
+        # レベルに合わせて上に移動
+        original_level = node.level
+        for i in range(node.level - 1):
+            prev_path = relative_path
+            relative_path = relative_path.parent
+            logger.debug(f"  レベル {i + 1}/{original_level - 1}: {prev_path} -> {relative_path}")
 
-            # モジュールが指定されている場合は追加
-            final_path = relative_path
-            if node.module:
-                module_parts = node.module.split('.')
-                for i, part in enumerate(module_parts):
-                    prev_path = final_path
-                    final_path = final_path / part
-                    logger.debug(f"  モジュール部分 {i + 1}/{len(module_parts)}を追加: {prev_path} -> {final_path}")
+        # モジュールが指定されている場合は追加
+        final_path = relative_path
+        if node.module:
+            module_parts = node.module.split('.')
+            for i, part in enumerate(module_parts):
+                prev_path = final_path
+                final_path = final_path / part
+                logger.debug(f"  モジュール部分 {i + 1}/{len(module_parts)}を追加: {prev_path} -> {final_path}")
 
-            # モジュールファイルが存在するか確認
-            module_file = final_path.with_suffix('.py')
-            logger.debug(f"  モジュールファイルをチェック: {module_file}")
-            if module_file.exists():
-                logger.debug(f"  モジュールファイルが存在します")
-                return module_file
+        # モジュールファイルが存在するか確認
+        module_file = final_path.with_suffix('.py')
+        logger.debug(f"  モジュールファイルをチェック: {module_file}")
+        if module_file.exists():
+            logger.debug(f"  モジュールファイルが存在します")
+            return module_file
 
-            # パッケージの場合は__init__.pyを確認
-            init_file = final_path / '__init__.py'
-            logger.debug(f"  __init__.pyファイルをチェック: {init_file}")
-            if init_file.exists():
-                logger.debug(f"  __init__.pyファイルが存在します")
-                return init_file
+        # パッケージの場合は__init__.pyを確認
+        init_file = final_path / '__init__.py'
+        logger.debug(f"  __init__.pyファイルをチェック: {init_file}")
+        if init_file.exists():
+            logger.debug(f"  __init__.pyファイルが存在します")
+            return init_file
 
-            logger.debug(f"  相対インポートのパス解決に失敗: level={node.level}, module={node.module}")
-            return None
+        logger.debug(f"  相対インポートのパス解決に失敗: level={node.level}, module={node.module}")
+        return None
 
     # インポート文を収集
     import_nodes = []
@@ -324,9 +326,7 @@ class SymbolMetadataGetter:
                 returns_iproxy = False
                 # IProxy型の返り値かどうかをチェック
                 if node.returns:
-                    if isinstance(node.returns, ast.Name) and node.returns.id == "IProxy":
-                        returns_iproxy = True
-                    elif isinstance(node.returns, ast.Subscript) and getattr(node.returns.value, "id", "") == "IProxy":
+                    if (isinstance(node.returns, ast.Name) and node.returns.id == "IProxy") or (isinstance(node.returns, ast.Subscript) and getattr(node.returns.value, "id", "") == "IProxy"):
                         returns_iproxy = True
 
                 function_returns[node.name] = returns_iproxy
@@ -336,7 +336,7 @@ class SymbolMetadataGetter:
         return self.function_returns.get(func_name, False)
 
     # シンボル情報を取得する関数
-    def get_symbol_info(self, name) -> tuple[Optional[SymbolMetadata], Optional[str]]:
+    def get_symbol_info(self, name) -> tuple[SymbolMetadata | None, str | None]:
         module_name = self.src_path.stem
         qualified_name = f"{module_name}.{name}"
         symbol_info = self.all_metadata.get(qualified_name)
@@ -378,19 +378,19 @@ async def a_detect_misuse_of_pinjected_proxies(
         a_ast,
         /,
         src_path: Path
-) -> List[Misuse]:
+) -> list[Misuse]:
     with logger.contextualize(tag="a_detect_misuse"):
         detector = MisuseDetector(await a_symbol_metadata_getter(src_path))
         # metadata_getter = await a_symbol_metadata_getter(src_path)
         # misuse = await _find_misues(metadata_getter)
         detector.visit(await a_ast(src_path.read_text()))
         misuse = detector.misuses
-        return list(sorted(misuse, key=lambda x: x.line_number))
+        return sorted(misuse, key=lambda x: x.line_number)
 
 
 @dataclass
 class FuncStack:
-    node: Union[ast.FunctionDef, ast.AsyncFunctionDef]
+    node: ast.FunctionDef | ast.AsyncFunctionDef
     injection_keys: set[str]
 
 
@@ -458,13 +458,13 @@ class MisuseDetector(ast.NodeVisitor):
         return self.assign_stack[-1]
 
     def _innermost_assign_type(self):
-        assign_node:Optional[ast.AnnAssign] = self._innermost_assign()
+        assign_node:ast.AnnAssign | None = self._innermost_assign()
         if assign_node is not None and hasattr(assign_node, 'annotation'):
             # Check if the annotation is directly IProxy
             if isinstance(assign_node.annotation, ast.Name) and "IProxy" in assign_node.annotation.id:
                 return True
             # Check if the annotation is a subscripted type like List[IProxy] or Optional[IProxy]
-            elif isinstance(assign_node.annotation, ast.Subscript):
+            if isinstance(assign_node.annotation, ast.Subscript):
                 # Check the inner types for IProxy
                 for node in ast.walk(assign_node.annotation):
                     if isinstance(node, ast.Name) and "IProxy" in node.id:
@@ -499,8 +499,8 @@ class MisuseDetector(ast.NodeVisitor):
 
 
 
-from pinjected import design
 import pinjected_reviewer.examples
+from pinjected import design
 
 test_collect_current_file: IProxy = a_collect_symbol_metadata(
     Path(pinjected_reviewer.examples.__file__)
@@ -544,7 +544,7 @@ check_symtable: IProxy = a_symtable(Path(pinjected_reviewer.examples.__file__)).
 
 
 class DetectMisuseOfPinjectedProxies(Protocol):
-    async def __call__(self, src_path: Path) -> List[Misuse]:
+    async def __call__(self, src_path: Path) -> list[Misuse]:
         ...
 
 

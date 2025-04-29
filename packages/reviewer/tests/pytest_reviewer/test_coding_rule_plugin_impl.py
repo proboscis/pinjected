@@ -1,7 +1,8 @@
-import pytest
 from pathlib import Path
 
-from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import check_if_file_should_be_ignored
+from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import (
+    check_if_file_should_be_ignored,
+)
 
 
 def test_check_if_file_should_be_ignored():

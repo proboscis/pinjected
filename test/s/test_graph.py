@@ -1,7 +1,5 @@
-from pprint import pprint
 
-from pinjected import Design, Injected, design, injected
-from pinjected.di.graph import MyObjectGraph, IObjectGraph
+from pinjected import Injected, design, injected
 from pinjected.v2.async_resolver import AsyncResolver
 
 test_design = design(

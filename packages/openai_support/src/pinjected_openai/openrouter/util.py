@@ -1,21 +1,26 @@
 import inspect
-from typing import Any, Dict, List, Optional, Type, Union, get_origin, get_args
-from typing import Callable, Awaitable, Protocol, Literal
+from collections.abc import Awaitable, Callable
+from typing import (
+    Any,
+    Literal,
+    Protocol,
+    Union,
+    get_args,
+    get_origin,
+)
 
-from returns.pipeline import is_successful
 from returns.result import ResultE, safe
 
 
 # Custom exceptions for schema compatibility issues
 class SchemaCompatibilityError(Exception):
     """Base exception for schema compatibility issues."""
-    pass
 
 
 class OpenAPI3CompatibilityError(SchemaCompatibilityError):
     """Exception raised when a schema is not compatible with OpenAPI 3.0."""
 
-    def __init__(self, model: Type, issues: Dict[str, List[str]]):
+    def __init__(self, model: type, issues: dict[str, list[str]]):
         self.model = model
         self.issues = issues
         message = f"OpenAPI 3.0 compatibility issues found in {model.__name__}: {issues}"
@@ -25,27 +30,31 @@ class OpenAPI3CompatibilityError(SchemaCompatibilityError):
 class GeminiCompatibilityError(SchemaCompatibilityError):
     """Exception raised when a schema is not compatible with Gemini API."""
 
-    def __init__(self, model: Type, issues: Dict[str, List[str]]):
+    def __init__(self, model: type, issues: dict[str, list[str]]):
         self.model = model
         self.issues = issues
         message = f"Gemini API compatibility issues found in {model.__name__}: {issues}"
         super().__init__(message)
 
 
-import PIL
 import httpx
 import json_repair
-from injected_utils.injected_cache_utils import sqlite_dict, async_cached
+import PIL
+from injected_utils.injected_cache_utils import async_cached, sqlite_dict
 from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
-from pinjected import instance, design, IProxy, injected, Injected
-from pydantic import BaseModel, ValidationError
-from tenacity import retry, stop_after_attempt, retry_if_exception_type, wait_exponential
-
 from pinjected_openai.compatibles import a_openai_compatible_llm
 from pinjected_openai.vision_llm import to_content
+from pydantic import BaseModel, ValidationError
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
+from pinjected import Injected, IProxy, design, injected, instance
 
 # from vision_llm import a_vision_llm__gpt4o
 
@@ -65,10 +74,10 @@ class OpenRouterArchitecture(BaseModel):
     """Architecture information for an OpenRouter model."""
     modality: str
     tokenizer: str
-    instruct_type: Optional[str] = None
-    input_modalities: Optional[List[str]] = None
-    output_modalities: Optional[List[str]] = None
-    capabilities: Optional[OpenRouterCapabilities] = None
+    instruct_type: str | None = None
+    input_modalities: list[str] | None = None
+    output_modalities: list[str] | None = None
+    capabilities: OpenRouterCapabilities | None = None
     
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
@@ -79,12 +88,12 @@ class OpenRouterModelPricing(BaseModel):
     """Pricing information for an OpenRouter model."""
     prompt: str
     completion: str
-    image: Optional[str] = None
-    request: Optional[str] = None
-    web_search: Optional[str] = None
-    internal_reasoning: Optional[str] = None
-    input_cache_read: Optional[str] = None
-    input_cache_write: Optional[str] = None
+    image: str | None = None
+    request: str | None = None
+    web_search: str | None = None
+    internal_reasoning: str | None = None
+    input_cache_read: str | None = None
+    input_cache_write: str | None = None
     
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
@@ -109,13 +118,13 @@ class OpenRouterModelPricing(BaseModel):
 
 class OpenRouterProviderInfo(BaseModel):
     """Provider information for an OpenRouter model."""
-    id: Optional[str] = None
-    name: Optional[str] = None
-    parameters: Optional[Dict[str, Any]] = None
+    id: str | None = None
+    name: str | None = None
+    parameters: dict[str, Any] | None = None
     is_moderated: bool = False
-    context_length: Optional[int] = None
-    max_completion_tokens: Optional[int] = None
-    can_stream: Optional[bool] = True
+    context_length: int | None = None
+    max_completion_tokens: int | None = None
+    can_stream: bool | None = True
     
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
@@ -131,9 +140,9 @@ class OpenRouterModel(BaseModel):
     context_length: int
     architecture: OpenRouterArchitecture
     pricing: OpenRouterModelPricing
-    providers: Optional[List[OpenRouterProviderInfo]] = None
-    top_provider: Optional[OpenRouterProviderInfo] = None
-    per_request_limits: Optional[Dict[str, Any]] = None
+    providers: list[OpenRouterProviderInfo] | None = None
+    top_provider: OpenRouterProviderInfo | None = None
+    per_request_limits: dict[str, Any] | None = None
     
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
@@ -142,7 +151,7 @@ class OpenRouterModel(BaseModel):
 
 class OpenRouterModelTable(BaseModel):
     """Collection of models available in the OpenRouter API."""
-    data: List[OpenRouterModel]
+    data: list[OpenRouterModel]
     
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
@@ -231,9 +240,9 @@ class OpenRouterChatCompletion(Protocol):
             model: str,
             max_tokens: int = 8192,
             temperature: float = 1,
-            images: List[PIL.Image.Image] = None,
-            response_format: Optional[BaseModel] = None,
-            provider: Optional[Dict[str, Any]] = None,
+            images: list[PIL.Image.Image] = None,
+            response_format: BaseModel | None = None,
+            provider: dict[str, Any] | None = None,
             **kwargs
     ) -> Any:
         ...
@@ -288,7 +297,7 @@ async def a_openrouter_chat_completion__without_fix(
         p.update(provider)
         provider_filter['provider'] = p
 
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {
@@ -398,7 +407,7 @@ async def a_resize_image_below_5mb(logger, /, img: PIL.Image.Image):
 __openapi3_compatibility_cache = {}
 
 
-def is_openapi3_compatible(model: Type[BaseModel]) -> Dict[str, List[str]]:
+def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
     """
     Pydantic BaseModelがOpenAPI 3.0と互換性があるかどうかを判別し、
     問題がある場合はその詳細を返します。
@@ -429,7 +438,7 @@ def is_openapi3_compatible(model: Type[BaseModel]) -> Dict[str, List[str]]:
                 issues.append(f"複数タイプのUnion型はOpenAPI 3.0でサポートされていません: {field_type}")
 
         # List[Union[...]]のような入れ子になった複雑な型をチェック
-        if get_origin(field_type) in (list, List) and get_args(field_type):
+        if get_origin(field_type) in (list, list) and get_args(field_type):
             inner_type = get_args(field_type)[0]
             if get_origin(inner_type) is Union and len(get_args(inner_type)) > 2:
                 issues.append(f"リスト内の複数Unionタイプ {inner_type} はOpenAPI 3.0でサポートされていません")
@@ -476,7 +485,7 @@ def is_openapi3_compatible(model: Type[BaseModel]) -> Dict[str, List[str]]:
 __gemini_compatibility_cache = {}
 
 
-def is_gemini_compatible(model: Type[BaseModel]) -> Dict[str, List[str]]:
+def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
     """
     Pydantic BaseModelがGoogle Gemini APIと互換性があるかどうかを判別し、
     問題がある場合はその詳細を返します。Gemini APIはOpenAPI 3.0のサブセットのみをサポートしており、
@@ -518,7 +527,7 @@ def is_gemini_compatible(model: Type[BaseModel]) -> Dict[str, List[str]]:
                 issues.append(f"Union型はGemini APIではサポートされていません: {field_type}")
 
         # リスト/配列の検証
-        elif get_origin(field_type) in (list, List) and get_args(field_type):
+        elif get_origin(field_type) in (list, list) and get_args(field_type):
             inner_type = get_args(field_type)[0]
 
             # リスト内のUnion型はサポートされていない
@@ -532,7 +541,7 @@ def is_gemini_compatible(model: Type[BaseModel]) -> Dict[str, List[str]]:
                     issues.append(f"リスト内の要素に互換性の問題があります: List[{inner_type}]")
 
         # 辞書型の検証
-        elif get_origin(field_type) in (dict, Dict):
+        elif get_origin(field_type) in (dict, dict):
             # 辞書型のキー・バリューの型を取得
             key_type, value_type = get_args(field_type)
 
@@ -669,7 +678,7 @@ async def a_openrouter_chat_completion(
 
     images = [await a_resize_image_below_5mb(img) for img in images]
 
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {
@@ -776,7 +785,7 @@ class Text(BaseModel):
 
 
 class OptionalText(BaseModel):
-    text_lines: Optional[list[str]]
+    text_lines: list[str] | None
 
 
 test_call_gpt4o: IProxy = a_openrouter_chat_completion__without_fix(
@@ -833,7 +842,7 @@ class ContactInfoWithUnion(BaseModel):
 class PersonWithUnion(BaseModel):
     name: str
     age: int
-    contact: Union[ContactInfoWithUnion, str]  # Union type with complex object and string
+    contact: ContactInfoWithUnion | str  # Union type with complex object and string
 
 
 # Test Gemini models with incompatible schema features
@@ -878,13 +887,13 @@ test_is_gemini_compatible_union: IProxy = Injected.pure(is_gemini_compatible).pr
 class PersonWithDict(BaseModel):
     name: str
     age: int
-    attributes: Dict[str, str]  # String keys, string values - should be compatible
+    attributes: dict[str, str]  # String keys, string values - should be compatible
 
 
 class PersonWithComplexDict(BaseModel):
     name: str
     age: int
-    scores: Dict[int, float]  # Int keys - not compatible
+    scores: dict[int, float]  # Int keys - not compatible
 
 
 class ComplexValue(BaseModel):
@@ -895,7 +904,7 @@ class ComplexValue(BaseModel):
 class PersonWithComplexValueDict(BaseModel):
     name: str
     age: int
-    details: Dict[str, ComplexValue]  # String keys, complex values - partially compatible
+    details: dict[str, ComplexValue]  # String keys, complex values - partially compatible
 
 
 test_is_gemini_compatible_dict: IProxy = Injected.pure(is_gemini_compatible).proxy(PersonWithDict)
@@ -914,7 +923,7 @@ class Address(BaseModel):
 class PersonWithComplexList(BaseModel):
     name: str
     age: int
-    addresses: List[Address]
+    addresses: list[Address]
 
 
 test_is_gemini_compatible_complex_list: IProxy = Injected.pure(is_gemini_compatible).proxy(PersonWithComplexList)
@@ -934,8 +943,10 @@ test_resize_image: IProxy = a_resize_image_below_5mb(
 def __debug_design():
     #from openrouter.instances import a_cached_sllm_gpt4o__openrouter
     #from openrouter.instances import a_cached_sllm_gpt4o_mini__openrouter
-    from pinjected_openai.openrouter.instances import a_cached_sllm_gpt4o__openrouter, \
-        a_cached_sllm_gpt4o_mini__openrouter
+    from pinjected_openai.openrouter.instances import (
+        a_cached_sllm_gpt4o__openrouter,
+        a_cached_sllm_gpt4o_mini__openrouter,
+    )
     return design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
         a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,

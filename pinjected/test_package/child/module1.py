@@ -1,8 +1,10 @@
 import asyncio
 
-from pinjected import injected, design, instance, IProxy, Injected
-from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
-from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
+from pinjected import Injected, IProxy, design, injected, instance
+from pinjected.schema.handlers import (
+    PinjectedHandleMainException,
+    PinjectedHandleMainResult,
+)
 from pinjected.test_helper.test_runner import test_current_file
 
 design01 = design(name='design01')

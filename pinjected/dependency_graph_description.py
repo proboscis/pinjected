@@ -1,15 +1,14 @@
+import re
 from dataclasses import dataclass
-from typing import List, Set, Dict, Any, Optional
 
-from returns.maybe import Nothing, Some
+from returns.maybe import Nothing
 from rich.console import Console
-from rich.tree import Tree
 from rich.panel import Panel
 from rich.text import Text
-import re
+from rich.tree import Tree
 
 from pinjected.pinjected_logging import logger
-from pinjected.visualize_di import DIGraph, EdgeInfo
+from pinjected.visualize_di import DIGraph
 
 
 @dataclass
@@ -20,7 +19,7 @@ class DependencyGraphDescriptionGenerator:
     relationships and their documentation.
     """
     
-    def __init__(self, digraph: DIGraph, root_name: str, deps: List[str]):
+    def __init__(self, digraph: DIGraph, root_name: str, deps: list[str]):
         """
         Initialize the DependencyGraphDescriptionGenerator.
         
@@ -45,7 +44,7 @@ class DependencyGraphDescriptionGenerator:
         """Format Maybe objects (Some/Nothing) to clean representation."""
         if value == Nothing:
             return "None"
-        elif hasattr(value, 'unwrap'):  # Check if it's a Some instance
+        if hasattr(value, 'unwrap'):  # Check if it's a Some instance
             return self.format_value(value.unwrap())
         return self.format_value(value)
     
@@ -149,9 +148,8 @@ class DependencyGraphDescriptionGenerator:
                             content.append(doc, style="blue")
                             self.console.print(Panel(content, title=title))
                             return
-                        else:
-                            logger.debug(f"Failed to extract documentation with regex from: {spec_value}")
-                            raise ValueError("Could not extract documentation with regex")
+                        logger.debug(f"Failed to extract documentation with regex from: {spec_value}")
+                        raise ValueError("Could not extract documentation with regex")
                     else:
                         doc = spec_dict.get('documentation', '')
                         

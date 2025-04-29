@@ -1,17 +1,17 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
+from beartype import beartype
 from pydantic import validator as field_validator
 
-from pinjected import Injected, Designed
+from pinjected import Designed, Injected
 from pinjected.di.app_injected import InjectedEvalContext
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
-from beartype import beartype
+
 
 @beartype
-def get_runnables(module_path:Path) -> List[ModuleVarSpec]:
+def get_runnables(module_path:Path) -> list[ModuleVarSpec]:
     def accept(name, tgt):
         match (name, tgt):
             case (n, _) if n.startswith("provide"):

@@ -1,13 +1,6 @@
-import inspect
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Dict, Set, Any, Optional
 
-from returns.maybe import Maybe, Nothing
-
-from pinjected.di.design_spec.protocols import BindSpec
-from pinjected.di.metadata.bind_metadata import BindMetadata
-from pinjected.pinjected_logging import logger
 from pinjected.visualize_di import EdgeInfo
 
 
@@ -28,7 +21,7 @@ class DependencyGraphBuilder:
         """
         self.digraph = digraph
         
-    def collect_dependencies(self, deps: list[str]) -> Dict[str, List[str]]:
+    def collect_dependencies(self, deps: list[str]) -> dict[str, list[str]]:
         """
         Collect all dependencies for the given list of dependency keys.
         
@@ -53,7 +46,7 @@ class DependencyGraphBuilder:
                 
         return deps_map
     
-    def create_edge_info(self, key: str, dependencies: List[str], used_by: List[str] = None) -> EdgeInfo:
+    def create_edge_info(self, key: str, dependencies: list[str], used_by: list[str] = None) -> EdgeInfo:
         """
         Create an EdgeInfo object for a dependency key.
         
@@ -67,13 +60,13 @@ class DependencyGraphBuilder:
         """
         return EdgeInfo(
             key=key,
-            dependencies=list(sorted(set(dependencies))),
-            used_by=list(sorted(set(used_by or []))),
+            dependencies=sorted(set(dependencies)),
+            used_by=sorted(set(used_by or [])),
             metadata=self.digraph.get_metadata(key),
             spec=self.digraph.get_spec(key)
         )
     
-    def collect_used_by(self, deps_map: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    def collect_used_by(self, deps_map: dict[str, list[str]]) -> dict[str, list[str]]:
         """
         Collect all keys that use each dependency.
         
@@ -133,8 +126,8 @@ class DependencyGraphBuilder:
         if root_name not in keys:
             edges.append(EdgeInfo(
                 key=root_name,
-                dependencies=list(sorted(set(deps))),
-                used_by=list(sorted(set(used_by_map.get(root_name, [])))),
+                dependencies=sorted(set(deps)),
+                used_by=sorted(set(used_by_map.get(root_name, []))),
                 metadata=self.digraph.get_metadata(root_name),
                 spec=self.digraph.get_spec(root_name)
             ))

@@ -1,10 +1,10 @@
 import asyncio
-import pytest
-import re
 
-from pinjected import design, injected, Injected
-from pinjected.exceptions import DependencyResolutionError, DependencyResolutionFailure
+import pytest
+
+from pinjected import Injected, design
 from pinjected.di.graph import MissingDependencyException
+from pinjected.exceptions import DependencyResolutionError, DependencyResolutionFailure
 from pinjected.v2.async_resolver import AsyncResolver
 
 

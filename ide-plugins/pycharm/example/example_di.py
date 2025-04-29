@@ -1,7 +1,7 @@
 """
 Example Python file to demonstrate dependency injection patterns.
 """
-from typing import Protocol, Any
+from typing import Any
 
 
 class Database:

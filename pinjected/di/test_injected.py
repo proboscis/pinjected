@@ -1,6 +1,6 @@
 import inspect
 
-from pinjected import injected, design
+from pinjected import design, injected
 from pinjected.di.injected import Injected
 from pinjected.di.util import EmptyDesign
 

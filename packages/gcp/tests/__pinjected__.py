@@ -1,9 +1,10 @@
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import loguru
+from pinjected_gcp.api import a_download_gcs, a_upload_gcs
 
 from pinjected import design
-from pinjected_gcp.api import a_upload_gcs, a_download_gcs
 
 
 class MockBlob:

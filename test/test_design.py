@@ -1,4 +1,4 @@
-from pinjected import Injected, EmptyDesign, design
+from pinjected import EmptyDesign, Injected, design
 from pinjected.v2.async_resolver import AsyncResolver
 
 

@@ -1,10 +1,6 @@
-import json
+import os
 import subprocess
 import sys
-import os
-from pathlib import Path
-
-import pytest
 
 
 def test_list_command_exists():
@@ -14,7 +10,7 @@ def test_list_command_exists():
     cli = PinjectedCLI()
     
     assert hasattr(cli, 'list'), "The 'list' command should be available in CLI"
-    list_impl = getattr(cli, 'list')
+    list_impl = cli.list
     assert callable(list_impl), "The 'list' command should be callable"
 
 

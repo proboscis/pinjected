@@ -16,7 +16,7 @@ class IRunner:
 class LocalRunner(IRunner):
     async def run(self, cmd: str) -> str:
         import subprocess
-        return subprocess.run(cmd, shell=True, capture_output=True).stdout.decode()
+        return subprocess.run(cmd, shell=True, capture_output=True, check=False).stdout.decode()
 
 
 TEST_ENV = injected(LocalRunner)()

@@ -1,15 +1,16 @@
 import asyncio
 import importlib.resources
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Callable, Awaitable, Protocol
+from typing import Protocol
 
 from loguru import logger
+from pinjected_openai.openrouter.instances import StructuredLLM
 from tqdm import tqdm
 
 from pinjected import injected, instance
-from pinjected_openai.openrouter.instances import StructuredLLM
-from pinjected_reviewer.schema.types import Approved, FileDiff, Review, GitInfo
+from pinjected_reviewer.schema.types import Approved, FileDiff, GitInfo, Review
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
 
 
@@ -58,7 +59,7 @@ def load_review_material(filename: str) -> str:
             if check_path.exists():
                 logger.debug(f"Found review material at {check_path}")
                 return check_path.read_text()
-        except Exception as e:
+        except Exception:
             continue
 
     raise RuntimeError(f"Could not find review material at {filename}")
@@ -94,7 +95,6 @@ class ExtractApproved(Protocol):
         Returns:
             Approved: The extracted approval status
         """
-        pass
 
 
 @injected
@@ -215,10 +215,9 @@ async def a_pre_commit_review__code_style(
         else:
             review_text = "No code style violations found in Python changes."
         return Review(name="Pinjected Coding Style", review_text=review_text, approved=approved)
-    else:
-        logger.info("No Python changes found in staged files.")
-        return Review(
-            name="Pinjected Coding Style",
-            review_text="No Python changes found in staged files.",
-            approved=True
-        )
+    logger.info("No Python changes found in staged files.")
+    return Review(
+        name="Pinjected Coding Style",
+        review_text="No Python changes found in staged files.",
+        approved=True
+    )

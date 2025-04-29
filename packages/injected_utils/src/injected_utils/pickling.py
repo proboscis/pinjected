@@ -122,7 +122,7 @@ class AsyncPickled(Generic[T]):
             async def timeout_check():
                 logger.info(f"waiting for cache lock for {self.timeout_sec} seconds...")
                 await asyncio.wait_for(acquired.wait(), self.timeout_sec)
-                logger.success(f"cache lock acquired!")
+                logger.success("cache lock acquired!")
                 # hmm, it doesn't rais exception???
 
             tg.create_task(timeout_check())
@@ -158,7 +158,7 @@ class AsyncPickled(Generic[T]):
                 await asyncio.get_event_loop().run_in_executor(None, os.remove, self.path)
                 self.loaded = False
                 logger.info(f"deleted pickled file at {self.path}")
-            except FileNotFoundError as e:
+            except FileNotFoundError:
                 self.loaded = False
                 logger.warning(f"no cache found at {self.path}")
 

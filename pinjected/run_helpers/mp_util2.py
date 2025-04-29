@@ -1,6 +1,7 @@
+import io
 import multiprocessing
 import sys
-import io
+
 
 def redirect_output(queue, func, *args, **kwargs):
     stdout_buffer = io.StringIO()

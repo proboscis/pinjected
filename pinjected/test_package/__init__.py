@@ -1,6 +1,6 @@
 from pinjected import *
-from pinjected.module_inspector import ModuleVarSpec
 from pinjected.helper_structure import IdeaRunConfiguration
+from pinjected.module_inspector import ModuleVarSpec
 from pinjected.test_helper.test_runner import test_tree
 
 

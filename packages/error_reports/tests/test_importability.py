@@ -1,4 +1,3 @@
-import pytest
 
 def test_importability():
     """Test that the package can be imported."""

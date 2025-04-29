@@ -2,32 +2,31 @@ import asyncio
 import copy
 import os
 import subprocess
-from dataclasses import dataclass, replace, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-from typing import Optional
 
 import PIL.Image
 import pyautogui
 from anthropic import Anthropic
-from anthropic.types.beta import BetaMessageParam, BetaImageBlockParam, BetaMessage, BetaTextBlock, BetaToolUseBlock, \
-    BetaUsage
-from anthropic.types.beta.beta_image_block_param import Source
+from anthropic.types.beta import (
+    BetaMessage,
+    BetaTextBlock,
+    BetaToolUseBlock,
+    BetaUsage,
+)
+from pinjected_anthropic.llm import anthropic_client, image_to_base64
 
 from pinjected import *
-from pinjected_anthropic.llm import anthropic_client, image_to_base64
-from returns.result import Result
 
 
 class ChromeActivationError(Exception):
     """Custom exception for Chrome activation errors"""
-    pass
 
 
 class ScreenshotError(Exception):
     """Custom exception for screenshot errors"""
-    pass
 
 
 
@@ -90,14 +89,14 @@ def get_chrome_bbox() -> BrowserBBox:
         ChromeActivationError: If Chrome window info can't be retrieved
         OSError: If not running on macOS
     """
-    apple_script = '''
+    apple_script = """
     tell application "Google Chrome"
         tell application "System Events"
             set chromeWindow to first window of application process "Google Chrome"
             return {position, size} of chromeWindow
         end tell
     end tell
-    '''
+    """
 
     try:
         result = subprocess.run(['osascript', '-e', apple_script],
@@ -124,7 +123,7 @@ def bring_chrome_to_front():
         ChromeActivationError: If there's an error activating Chrome
         OSError: If not running on macOS or osascript is not available
     """
-    apple_script = '''
+    apple_script = """
     tell application "Google Chrome"
         activate
     end tell
@@ -154,7 +153,7 @@ def bring_chrome_to_front():
     tell application "Google Chrome"
         activate
     end tell
-    '''
+    """
 
     try:
         subprocess.run(['osascript', '-e', apple_script], check=True,
@@ -175,7 +174,7 @@ def take_chrome_screenshot(
         get_chrome_bbox,
         logger,
         /,
-        output_path: Optional[Path] = "last_screenshot.png",
+        output_path: Path | None = "last_screenshot.png",
         include_cursor: bool = True) -> tuple[PIL.Image.Image, BrowserBBox]:
     """
     Takes a screenshot of the Chrome window and returns it as a PIL Image.
@@ -198,9 +197,9 @@ def take_chrome_screenshot(
     bring_chrome_to_front()
 
     # Wait a brief moment for window to be fully in front
-    import time
     import tempfile
-    import PIL.Image
+    import time
+
     from PIL import Image
     time.sleep(0.5)
 
@@ -230,7 +229,7 @@ def take_chrome_screenshot(
 
     except subprocess.CalledProcessError as e:
         raise ScreenshotError(f"Failed to take screenshot: {e}")
-    except (IOError, OSError) as e:
+    except OSError as e:
         raise ScreenshotError(f"Failed to process screenshot: {e}")
 
 
@@ -361,15 +360,14 @@ class AnthropicChatContext:
             new_display_tool['display_width_px'] = width
             new_display_tool['display_height_px'] = height
             return replace(self, tools=other_tools + [new_display_tool])
-        else:
-            new_display_tool = {
-                "type": "computer_20241022",
-                "name": "computer",
-                "display_width_px": width,
-                "display_height_px": height,
-                "display_number": 1,
-            }
-            return replace(self, tools=other_tools + [new_display_tool])
+        new_display_tool = {
+            "type": "computer_20241022",
+            "name": "computer",
+            "display_width_px": width,
+            "display_height_px": height,
+            "display_number": 1,
+        }
+        return replace(self, tools=other_tools + [new_display_tool])
 
     async def acall(self):
         return await self._anthropic_client.beta.messages.create(
@@ -451,7 +449,7 @@ def set_chrome_window_size(width: int, height: int, x: int | None = None, y: int
     if x is not None and y is not None:
         position_script = f"set position of chromeWindow to {{{x}, {y}}}"
 
-    apple_script = f'''
+    apple_script = f"""
     tell application "Google Chrome"
         tell application "System Events"
             set chromeWindow to first window of application process "Google Chrome"
@@ -460,7 +458,7 @@ def set_chrome_window_size(width: int, height: int, x: int | None = None, y: int
             return {{position, size}} of chromeWindow
         end tell
     end tell
-    '''
+    """
 
     try:
         result = subprocess.run(['osascript', '-e', apple_script],
@@ -715,7 +713,7 @@ async def a_handle_action_loop(
                         logger.info(f"Mouse moved to {x},{y} ({screen_x},{screen_y})")
                         tool_result = new_AnthropicToolResult(tool_id=_id).add_text(f"Mouse moved to {x},{y}")
                         cxt = cxt.add_tool_result(tool_result)
-                    case {'action': 'left_click', }:
+                    case {'action': 'left_click' }:
                         logger.info(f"Mouse click.")
                         pyautogui.click()
                         cxt = cxt.add_tool_result(new_AnthropicToolResult(_id).add_text(f"Mouse clicked."))

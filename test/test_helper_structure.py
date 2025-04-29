@@ -1,11 +1,13 @@
-import pytest
 import sys
 from pathlib import Path
-from pinjected import Design, EmptyDesign, design
-from pinjected.helper_structure import MetaContext, IdeaRunConfigurations
-from pinjected.v2.keys import StrBindKey
-from pinjected.v2.async_resolver import AsyncResolver
+
+import pytest
+
+from pinjected import design
+from pinjected.helper_structure import MetaContext
 from pinjected.ide_supports.create_configs import create_idea_configurations
+from pinjected.v2.async_resolver import AsyncResolver
+from pinjected.v2.keys import StrBindKey
 
 
 @pytest.mark.asyncio

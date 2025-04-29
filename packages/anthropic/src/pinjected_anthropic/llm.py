@@ -3,15 +3,22 @@ import base64
 import io
 from asyncio import Lock
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Literal, Callable, Awaitable, TypeVar
+from typing import Literal, TypeVar
 
-import PIL
 import pandas as pd
+import PIL
+from anthropic import AsyncAnthropic, InternalServerError, RateLimitError, Stream
+from anthropic.types import (
+    ContentBlockDeltaEvent,
+    ContentBlockStartEvent,
+    Message,
+    MessageStartEvent,
+    Usage,
+)
 from PIL import Image
-from anthropic import AsyncAnthropic, Stream
-from anthropic import RateLimitError, InternalServerError
-from anthropic.types import Message, MessageStartEvent, ContentBlockStartEvent, ContentBlockDeltaEvent, Usage
+
 from pinjected import *
 
 
@@ -157,30 +164,29 @@ async def anthropic_rate_limit_controller():
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        elif 'opus' in key and '3' in key:
+        if 'opus' in key and '3' in key:
             return RateLimitManager(
                 max_tokens=20000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        elif 'sonnet' in key and '3' in key:
+        if 'sonnet' in key and '3' in key:
             return RateLimitManager(
                 max_tokens=40000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        elif 'haiku' in key and '3' in key:
+        if 'haiku' in key and '3' in key:
             return RateLimitManager(
                 max_tokens=50000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        else:
-            return RateLimitManager(
-                max_tokens=20000,
-                max_calls=50,
-                duration=pd.Timedelta(minutes=1),
-            )
+        return RateLimitManager(
+            max_tokens=20000,
+            max_calls=50,
+            duration=pd.Timedelta(minutes=1),
+        )
 
     return AnthropicRateLimitController(factory)
 

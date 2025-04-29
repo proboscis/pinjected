@@ -1,11 +1,14 @@
-from pinjected import *
+from typing import Literal
+
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
+from PIL.Image import Image
+from pinjected_openai.vision_llm import to_content
 from pydantic import BaseModel
 
-from pinjected_openai.vision_llm import to_content
-from openai.types.chat import ChatCompletion
-from openai import AsyncOpenAI
-from typing import Optional,Literal
-from PIL.Image import Image
+from pinjected import *
+
+
 @injected
 async def a_openai_compatible_llm(
         logger,
@@ -13,7 +16,7 @@ async def a_openai_compatible_llm(
         api:AsyncOpenAI,
         model:str,
         text:str,
-        images:Optional[list[Image]]=None,
+        images:list[Image] | None=None,
         response_format=None,
         max_completion_tokens:int = None,
         reasoning_effort=None,

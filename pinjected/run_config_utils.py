@@ -27,33 +27,44 @@ import importlib
 import inspect
 import json
 import os
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-from typing import Optional, List, Dict, OrderedDict, Callable, Any
+from typing import Any
 
-import loguru
 from cytoolz import memoize
-from pinjected.pinjected_logging import logger
 from returns.maybe import Maybe, Some, maybe
-from returns.result import safe, Success, Failure
+from returns.result import Failure, Success, safe
 
-from pinjected import Injected, Design, injected, Designed, DesignSpec, SimpleBindSpec, EmptyDesign
-from pinjected.di.expr_util import Expr, Call, Object
-from pinjected.di.injected import PartialInjectedFunction, InjectedFromFunction
+from pinjected import (
+    Design,
+    Designed,
+    EmptyDesign,
+    Injected,
+    injected,
+)
+from pinjected.di.expr_util import Call, Expr, Object
+from pinjected.di.injected import InjectedFromFunction, PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import design
 from pinjected.exporter.llm_exporter import add_export_config
+
 # from pinjected.ide_supports.create_configs import create_idea_configurations
-from pinjected.helper_structure import IdeaRunConfigurations, RunnablePair, IdeaRunConfiguration
+from pinjected.helper_structure import (
+    IdeaRunConfiguration,
+    IdeaRunConfigurations,
+    RunnablePair,
+)
 from pinjected.helpers import find_default_design_paths
 from pinjected.maybe_patch import patch_maybe
 from pinjected.module_inspector import ModuleVarSpec, inspect_module_for_type
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.pinjected_logging import logger
 from pinjected.run_config_utils_v2 import RunInjected
 from pinjected.run_helpers.config import ConfigCreationArgs
-from pinjected.runnables import get_runnables, RunnableValue
+from pinjected.runnables import RunnableValue, get_runnables
 
 safe_getattr = safe(getattr)
 
@@ -65,7 +76,7 @@ def extract_runnables(
         default_design_path,
         logger,
         /,
-        injecteds: List[ModuleVarSpec[Injected]]
+        injecteds: list[ModuleVarSpec[Injected]]
 ):
     def extract_runnable(i: ModuleVarSpec[Injected], meta):
         match i.var, meta, default_design_path:
@@ -132,14 +143,14 @@ def extract_args_for_runnable(
     return args
 
 
-IdeaConfigCreator = Callable[[ModuleVarSpec], List[IdeaRunConfiguration]]
+IdeaConfigCreator = Callable[[ModuleVarSpec], list[IdeaRunConfiguration]]
 
 
 @injected
 def injected_to_idea_configs(
         runner_script_path: str,
         interpreter_path: str,
-        default_design_paths: List[str],
+        default_design_paths: list[str],
         default_working_dir: Maybe[str],
         extract_args_for_runnable,
         logger,
@@ -412,7 +423,7 @@ def create_main_command(
         targets: OrderedDict[str, Injected],
         design_paths: OrderedDict[str, str],
 ):
-    def main(target: str, design_path: Optional[str] = None):
+    def main(target: str, design_path: str | None = None):
         tgt = targets[target]
         if design_path is None:
             design_path = design_paths[list(design_paths.keys())[0]]
@@ -426,14 +437,14 @@ def create_main_command(
 @injected
 def create_runnable_pair(
         main_targets: OrderedDict[str, Injected],
-        default_design_paths: List[str],
+        default_design_paths: list[str],
         main_override_resolver,
         /,
         target: str,
-        design_path: Optional[str] = None,
+        design_path: str | None = None,
         overrides: str = None,
         show_graph: bool = False
-) -> Optional[RunnablePair]:
+) -> RunnablePair | None:
     logger.info(f"creating runnable pair with {target},{design_path},{overrides}")
     logger.info(f"main targets:{pformat(main_targets.keys())},{target}")
     tgt = main_targets[target]
@@ -459,7 +470,7 @@ def provide_module_path(logger, root_frame):
     return module_path
 
 
-def provide_runnables(logger, module_path) -> Dict[str, Injected]:
+def provide_runnables(logger, module_path) -> dict[str, Injected]:
     tgts = get_runnables(module_path)
     name_to_tgt = {tgt.var_path.split(".")[-1]: tgt.var for tgt in tgts}
     logger.info(f"main targets:{pformat(name_to_tgt.keys())}")
@@ -481,25 +492,25 @@ def main_override_resolver(query, /) -> Design:
     :return:
     """
     import json
+
     from returns.pipeline import is_successful
     if isinstance(query, dict):
         return design(**query)
-    elif query is None:
+    if query is None:
         return EmptyDesign
-    elif query.endswith('.json'):
+    if query.endswith('.json'):
         import json
         if not Path(query).exists():
             raise ValueError(f"cannot find {query} for configuration.")
         return design(**json.load(open(query)))
-    elif query.endswith('.yaml'):
+    if query.endswith('.yaml'):
         import yaml
         if not Path(query).exists():
             raise ValueError(f"cannot find {query} for configuration.")
         return design(**yaml.load(open(query), Loader=yaml.SafeLoader))
-    elif is_successful(safe(json.loads)(query)):
+    if is_successful(safe(json.loads)(query)):
         return design(**json.loads(query))
-    else:
-        return ModuleVarPath(query).load()
+    return ModuleVarPath(query).load()
 
 
 def load_variable_from_script(script_file: Path, varname: str):
@@ -513,8 +524,7 @@ def parse_override_path(p) -> Design:
     if "::" in p:
         file, varname = p.split("::")
         return load_variable_by_module_path(Path(file), varname)
-    else:
-        load_variable_by_module_path(p)
+    load_variable_by_module_path(p)
 
 
 def run_main():
@@ -538,7 +548,9 @@ def run_main():
     :return:
     """
     import inspect
+
     import fire
+
     from pinjected.pinjected_logging import logger
     module_path = provide_module_path(logger, inspect.currentframe().f_back)
     cfg = ConfigCreationArgs(
@@ -561,6 +573,7 @@ def run_main():
 
 def main():
     import fire
+
     # maybe we should switch these commands by Injected, right?
     # we want each implementations to have design...
     # well, we can use python -m pinjected .... for these commands as well ,right?
@@ -598,7 +611,7 @@ def get_designs_from_meta_var(
         var_path_to_file_path,
         /,
         meta: ModuleVarSpec
-) -> List[ModuleVarSpec]:
+) -> list[ModuleVarSpec]:
     return get_designs_from_module(var_path_to_file_path(meta.var_path))
 
 

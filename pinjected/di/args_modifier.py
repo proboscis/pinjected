@@ -1,6 +1,7 @@
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Any
 
 ArgsModifier = Callable[[tuple, dict], tuple[tuple, dict, list["Injected"]]]
 

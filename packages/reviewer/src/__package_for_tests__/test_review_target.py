@@ -83,7 +83,7 @@ async def a_save_dataset_gen_to_dir(
             hf_dataset.save_to_disk(path / f"rust_dataset_{dataset.start_date.strftime('%Y%m%d')}")
             bar.update(1)
         bar.close()
-    paths = list(sorted(list(path.glob("rust_dataset_*"))))
+    paths = sorted(list(path.glob("rust_dataset_*")))
     for item in paths:
         yield load_from_disk(str(item.absolute()))
 

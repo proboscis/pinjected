@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # Example script to get USDJPY data using yfinance with pinjected
+
 import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
-from pinjected import design, instance, injected
+
+from pinjected import design, injected, instance
+
 
 # Define currency pair as a constant
 @instance

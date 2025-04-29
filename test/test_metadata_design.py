@@ -1,9 +1,8 @@
 import asyncio
 
-from pinjected import design, Design
+from pinjected import Design, design
 from pinjected.di.design import AddSummary, AddTags
 from pinjected.pinjected_logging import logger
-
 from pinjected.v2.async_resolver import AsyncResolver
 
 

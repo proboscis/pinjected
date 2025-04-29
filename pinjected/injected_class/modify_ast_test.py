@@ -1,10 +1,9 @@
 import ast
 import inspect
-from dataclasses import dataclass
 
 from pinjected.injected_class.test_module import PClassExample
-
 from pinjected.pinjected_logging import logger
+
 
 class AttributeReplacer(ast.NodeTransformer):
     def __init__(self, attrs_to_replace):
@@ -23,8 +22,7 @@ class AttributeReplacer(ast.NodeTransformer):
                 new_node.args.args.append(new_param)
 
             return new_node
-        else:
-            return self.generic_visit(node)
+        return self.generic_visit(node)
 
     def visit_Attribute(self, node):
         if self.in_method and isinstance(node.value, ast.Name) and node.value.id == 'self':

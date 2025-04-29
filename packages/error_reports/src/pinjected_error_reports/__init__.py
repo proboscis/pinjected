@@ -3,13 +3,20 @@ import hashlib
 from pathlib import Path
 
 from injected_utils import async_cached, lzma_sqlite, sqlite_dict
-from pinjected import *
-from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
-from pinjected.v2.resolver import EvaluationError
-from pinjected_niji_voice.api import a_niji_voice_play, NijiVoiceParam
+from pinjected_niji_voice.api import NijiVoiceParam, a_niji_voice_play
 from pinjected_openai.openrouter.instances import StructuredLLM
-from pinjected_openai.openrouter.util import a_openrouter_chat_completion, a_openrouter_chat_completion__without_fix
+from pinjected_openai.openrouter.util import (
+    a_openrouter_chat_completion,
+    a_openrouter_chat_completion__without_fix,
+)
 from pydantic import BaseModel
+
+from pinjected import *
+from pinjected.schema.handlers import (
+    PinjectedHandleMainException,
+    PinjectedHandleMainResult,
+)
+from pinjected.v2.resolver import EvaluationError
 
 
 class ErrorAnalysis(BaseModel):
@@ -45,8 +52,8 @@ async def a_handle_error_with_llm_voice(
         """
         resp = await a_sllm_for_error_analysis(prompt, response_format=ErrorAnalysis)
         import rich
-        from rich.panel import Panel
         from rich.markdown import Markdown
+        from rich.panel import Panel
         rich.print(Panel(Markdown(resp.cause_md_simple), title="Error Cause"))
         rich.print(Panel(Markdown(resp.summary_md_in_1_sentence), title="Summary"))
         rich.print(Panel(Markdown(resp.solution_md_in_1_sentence), title="Solution", style="bold green"))
@@ -95,8 +102,8 @@ async def a_handle_result_with_llm_voice(
         result: object
 ):
     import rich
-    from rich.panel import Panel
     from rich.errors import MarkupError
+    from rich.panel import Panel
     try:
         rich.print(Panel(f"Result: {result}", title="Result", style="bold green"))
     except MarkupError:

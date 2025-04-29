@@ -1,10 +1,12 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
+
 from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+
 
 class TestObjectWithoutDependencies:
     """Test class without dependencies method."""
-    pass
 
 def test_describe_requires_dependencies():
     """Test that describe command requires dependencies method."""

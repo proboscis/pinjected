@@ -1,12 +1,9 @@
-import pytest
-from unittest.mock import MagicMock, patch, call
-from pinjected.di.util import design
-from pinjected.visualize_di import DIGraph, EdgeInfo
+from unittest.mock import MagicMock
+
+from returns.maybe import Nothing
+
 from pinjected.dependency_graph_builder import DependencyGraphBuilder
-from pinjected.run_helpers.run_injected import generate_dependency_graph_description
-from rich.panel import Panel
-from rich.text import Text
-from returns.maybe import Nothing, Some
+
 
 def test_collect_dependencies_includes_all_keys():
     """Test that collect_dependencies includes all keys in the dependency chain."""

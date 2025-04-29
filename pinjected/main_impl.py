@@ -1,18 +1,25 @@
 import asyncio
-from inspect import isawaitable
 import json
+from inspect import isawaitable
 from pathlib import Path
 
-from pinjected import Design, design, Injected, IProxy
+from pinjected import Design, Injected, design
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.exception_util import unwrap_exception_group
 from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
-from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
-from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
-    a_get_run_context, RunContext, PinjectedRunFailure, a_run_with_notify
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.run_helpers.run_injected import (
+    PinjectedRunFailure,
+    RunContext,
+    a_get_run_context,
+    a_run_with_notify,
+    load_user_default_design,
+    load_user_overrides_design,
+    run_injected,
+)
 
 
 def run(
@@ -39,8 +46,8 @@ def run(
 
     """
     if base64_encoded_json is not None:
-        import json
         import base64
+        import json
         data: dict = json.loads(base64.b64decode(base64_encoded_json).decode())
         var_path = data.pop('var_path')
         design_path = data.pop('design_path', None)
@@ -110,7 +117,7 @@ def parse_overrides(overrides) -> Design:
             var = ModuleVarPath(path).load()
             if isinstance(var, Design):
                 return var
-            elif isinstance(var, (Injected, DelegatedVar)):
+            if isinstance(var, (Injected, DelegatedVar)):
                 resolved = run_injected("get", path, return_result=True)
                 assert isinstance(resolved, Design), f"expected {path} to be a design, but got {resolved}"
                 return resolved
@@ -119,8 +126,8 @@ def parse_overrides(overrides) -> Design:
 
 
 def decode_b64json(text):
-    import json
     import base64
+    import json
     data: dict = json.loads(base64.b64decode(text).decode())
     return data
 
@@ -217,7 +224,7 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
         print("Examples:")
         print("  pinjected describe my_module.my_submodule.my_variable")
         print("  pinjected describe --var_path=my_module.my_submodule.my_variable")
-        return
+        return None
     
     return run_injected("describe", var_path, design_path, **kwargs)
 
@@ -233,17 +240,18 @@ def list(var_path: str = None):
     """
     import importlib
     from pathlib import Path
-    from pinjected.runnables import get_runnables
-    from pinjected.di.proxiable import DelegatedVar
-    from pinjected.di.app_injected import InjectedEvalContext
+
     from pinjected import IProxy
+    from pinjected.di.app_injected import InjectedEvalContext
+    from pinjected.di.proxiable import DelegatedVar
+    from pinjected.runnables import get_runnables
     
     if var_path is None:
         print("Error: You must provide a module path in the format 'full.module.path'")
         print("Examples:")
         print("  pinjected list my_module.my_submodule")
         print("  pinjected list --var_path=my_module.my_submodule")
-        return
+        return None
     
     try:
         module = importlib.import_module(var_path)
@@ -263,10 +271,10 @@ def list(var_path: str = None):
         print(json.dumps(iproxies))
         return 0
     except ImportError as e:
-        print(f"Error: Could not import module '{var_path}': {str(e)}")
+        print(f"Error: Could not import module '{var_path}': {e!s}")
         return 1
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {e!s}")
         return 1
 
 
@@ -310,17 +318,17 @@ class PinjectedCLI:
 
 def main():
     try:
-        import fire
         import inspect
-        import sys
+
+        import fire
         
         try:
             original_info = fire.inspectutils.Info
             
             def patched_info(component):
                 try:
-                    from IPython.core import oinspect
                     import IPython
+                    from IPython.core import oinspect
                     
                     ipython_version = tuple(map(int, IPython.__version__.split('.')))
                     
@@ -359,6 +367,6 @@ def main():
             e = unwrap_exception_group(e.__cause__)
             if isinstance(e, DependencyResolutionError):
                 raise PinjectedRunDependencyResolutionFailure(str(e)) from None
-            elif isinstance(e, DependencyValidationError):
-                raise PinjectedRunDependencyResolutionFailure(f"Dependency validation failed: {str(e)}") from None
+            if isinstance(e, DependencyValidationError):
+                raise PinjectedRunDependencyResolutionFailure(f"Dependency validation failed: {e!s}") from None
         raise

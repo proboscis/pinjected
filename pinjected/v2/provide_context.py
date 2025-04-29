@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from pinjected.v2.keys import IBindKey
@@ -7,7 +7,7 @@ from pinjected.v2.keys import IBindKey
 @dataclass
 class ProvideContext:
     resolver:'AsyncResolver'
-    key: Optional[IBindKey]
+    key: IBindKey | None
     parent: Optional['ProvideContext']
     def __post_init__(self):
         if self.key is not None:
@@ -17,8 +17,7 @@ class ProvideContext:
     def trace(self):
         if self.parent is None:
             return [self]
-        else:
-            return self.parent.trace + [self]
+        return self.parent.trace + [self]
 
     @property
     def trace_str(self):

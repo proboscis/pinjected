@@ -1,10 +1,8 @@
-import pytest
-from pathlib import Path
 import tempfile
-from google.cloud import storage
+from pathlib import Path
 
-from pinjected import design
-from pinjected.test.injected_pytest import injected_pytest
+import pytest
+from google.cloud import storage
 
 
 @pytest.fixture

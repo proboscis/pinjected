@@ -1,10 +1,11 @@
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Callable, Awaitable, Optional
 from uuid import uuid4
 
-from pinjected import *
 import cloudpickle
+
 import wandb
+from pinjected import *
 
 
 @injected
@@ -34,10 +35,10 @@ async def wandb_artifact(
         tgt: Injected,
         identifier: str,
         type: str,
-        writer: Optional[Writer] = None,
-        reader: Optional[Reader] = None,
-        description: Optional[str] = None,
-        metadata: Optional[dict] = None
+        writer: Writer | None = None,
+        reader: Reader | None = None,
+        description: str | None = None,
+        metadata: dict | None = None
 ):
     entity, project, name = identifier.split("/")
     if metadata is None:

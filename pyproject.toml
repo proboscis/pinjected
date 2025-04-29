@@ -163,6 +163,7 @@ lint.ignore = [
     "TRY003", # exception with dynamic message
     "G004", # fstring in logger
     "D", # all doc?
+    "Q000", # prefer double quotes?
 ]
 
 

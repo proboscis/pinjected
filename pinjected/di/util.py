@@ -1,10 +1,11 @@
 import ast
 import inspect
 import textwrap
+from collections.abc import Callable
 from pathlib import Path
 from pprint import pformat
 from types import FrameType
-from typing import TypeVar, Dict, Callable, Any
+from typing import Any, TypeVar
 
 import cloudpickle
 from cytoolz import memoize
@@ -13,13 +14,13 @@ from returns.maybe import Some
 from returns.result import Failure, Success
 
 from pinjected.di.design import DesignImpl
-from pinjected.di.injected import Injected, InjectedPure, InjectedFromFunction
+from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import BindInjected
-from pinjected.v2.keys import StrBindKey, DestructorKey, IBindKey
+from pinjected.v2.keys import DestructorKey, IBindKey, StrBindKey
 
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
@@ -101,7 +102,7 @@ def method_to_function(method):
     argspec = inspect.getfullargspec(method)
     assert not isinstance(argspec.args, str)
     # assert not isinstance(argspec.varargs,str)
-    signature = f"""f_of_{method.__name__}({" ,".join((argspec.args or []))})"""
+    signature = f"""f_of_{method.__name__}({" ,".join(argspec.args or [])})"""
 
     def impl(self, *args, **kwargs):
         return method(*args, **kwargs)  # gets multiple values for self
@@ -148,13 +149,13 @@ def try_import_subject():
     try:
         from rx.subject import Subject
         return Subject
-    except Exception as e:
+    except Exception:
         from rx.subjects import Subject
         return Subject
 
 
 def get_dict_diff(a: dict, b: dict):
-    all_keys = list(sorted(set(a.keys()) | set(b.keys())))
+    all_keys = sorted(set(a.keys()) | set(b.keys()))
     all_keys.remove("opt")
     # TODO check both contains transform design
     # all_keys.remove("base_train_transform_design")
@@ -379,7 +380,7 @@ def try_parse(source: str, trials: int = 3) -> ast.AST:
         return try_parse(textwrap.dedent(source), trials - 1)
 
 
-def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocation]:
+def get_code_locations(keys: list[str], frame: FrameType) -> dict[str, CodeLocation]:
     parent_frame = frame.f_back
     # here, we fail to get locations if its in repl
     lines, start_line = inspect.getsourcelines(parent_frame)

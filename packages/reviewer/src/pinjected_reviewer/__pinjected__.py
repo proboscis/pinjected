@@ -2,10 +2,12 @@ from pathlib import Path
 
 from injected_utils import async_cached, lzma_sqlite
 from injected_utils.progress import a_map_progress__tqdm
-from pinjected import design, instance, injected, Injected
-from pinjected_openai.openrouter.instances import a_cached_structured_llm__gemini_flash_2_0
+from pinjected_openai.openrouter.instances import (
+    a_cached_structured_llm__gemini_flash_2_0,
+)
+
+from pinjected import Injected, design, injected, instance
 from pinjected_reviewer.git_util import git_info
-from pinjected_reviewer.loader import reviewer_paths
 from pinjected_reviewer.models import a_cached_openrouter_chat_completion
 
 
@@ -19,11 +21,14 @@ async def cache_root_path():
 @instance
 def __pinjected_reviewer_default_design():
     # pinjected-reviewer: ignore
-    from pinjected_reviewer.reviewer_v1 import pinjected_guide_md
-    from pinjected_openai.openrouter.util import a_openrouter_chat_completion
-    from pinjected_openai.openrouter.util import a_openrouter_chat_completion__without_fix
-    from pinjected_reviewer.pytest_reviewer.inspect_code import a_symbol_metadata_getter
     from loguru import logger
+    from pinjected_openai.openrouter.util import (
+        a_openrouter_chat_completion,
+        a_openrouter_chat_completion__without_fix,
+    )
+
+    from pinjected_reviewer.pytest_reviewer.inspect_code import a_symbol_metadata_getter
+    from pinjected_reviewer.reviewer_v1 import pinjected_guide_md
     return design(
         a_sllm_for_commit_review=async_cached(
             lzma_sqlite(injected('cache_root_path') / 'a_sllm_for_commit_review.sqlite'))(

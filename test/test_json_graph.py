@@ -1,6 +1,6 @@
-import json
-from pinjected import design, Injected, injected
+from pinjected import design, injected
 from pinjected.visualize_di import DIGraph
+
 
 @injected
 def dep3():

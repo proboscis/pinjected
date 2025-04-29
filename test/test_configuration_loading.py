@@ -1,12 +1,12 @@
-import os
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from pinjected.run_helpers.run_injected import (
+    PinjectedConfigurationLoadFailure,
     load_user_default_design,
     load_user_overrides_design,
-    PinjectedConfigurationLoadFailure,
 )
 
 

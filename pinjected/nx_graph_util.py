@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import networkx as nx
-from pinjected.pinjected_logging import logger
 from networkx.drawing.nx_agraph import graphviz_layout
 from pyvis.network import Network
 

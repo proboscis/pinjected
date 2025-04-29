@@ -1,6 +1,8 @@
+import asyncio
+import functools
 import inspect
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Union, Callable, Annotated
 
 from returns.maybe import Some
 
@@ -9,9 +11,6 @@ from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import PartialInjectedFunction, extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import get_code_location
-import functools
-import asyncio
-
 from pinjected.v2.binds import BindInjected
 from pinjected.v2.keys import StrBindKey
 
@@ -129,7 +128,6 @@ def injected_instance(f) -> Injected:
     sig: inspect.Signature = inspect.signature(f)
     tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
     called_partial = Injected.inject_partially(f, **tgts)()
-    from pinjected.pinjected_logging import logger
 
     # logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
     instance = called_partial.eval()
@@ -148,7 +146,7 @@ def injected_instance(f) -> Injected:
     return instance.proxy
 
 
-def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
+def injected(tgt: str | type | Callable) -> DelegatedVar:
     """
     The ``injected`` decorator automates dependency injection, transforming a target (string, class, or callable)
     into an ``Injected`` instance. It specifically treats positional-only parameters as dependencies,
@@ -192,9 +190,7 @@ def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
     """
     if isinstance(tgt, str):
         return Injected.by_name(tgt).proxy
-    elif isinstance(tgt, type):
-        return injected_function(tgt, parent_frame=inspect.currentframe().f_back)
-    elif callable(tgt):
+    if isinstance(tgt, type) or callable(tgt):
         return injected_function(tgt, parent_frame=inspect.currentframe().f_back)
 
 
@@ -213,7 +209,6 @@ def injected_method(f):
 
 class CachedAwaitable:
     def __init__(self, coro):
-        from pinjected.pinjected_logging import logger
 
         # logger.warning(f'CachedAwaitable created with {coro}')
         self.coro = coro

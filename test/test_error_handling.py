@@ -1,6 +1,8 @@
 import pytest
+
 from pinjected.exceptions import DependencyValidationError
 from pinjected.run_helpers.run_injected import PinjectedRunFailure
+
 
 def test_validation_error_handling():
     """Test that DependencyValidationError is properly handled."""

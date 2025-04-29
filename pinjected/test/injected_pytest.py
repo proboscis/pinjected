@@ -6,14 +6,12 @@ pinjected用のテスト関数モジュール
 import asyncio
 import inspect
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Awaitable, Union, Callable
 
-from pinjected import Injected, Design, EmptyDesign, instance
-from pinjected import instances
-from pinjected.compatibility.task_group import TaskGroup, CompatibleExceptionGroup
+from pinjected import AsyncResolver, Design, EmptyDesign, Injected, instance
+from pinjected.compatibility.task_group import CompatibleExceptionGroup, TaskGroup
 from pinjected.helper_structure import MetaContext
-from pinjected import AsyncResolver
 
 
 def unwrap_exception_group(exc):
@@ -26,7 +24,7 @@ def unwrap_exception_group(exc):
 UNWRAP_EXCEPTIONS = os.environ.get("PINJECTED_UNWRAP_EXCEPTIONS", "True").lower() in ("true", "1", "yes")
 
 
-def injected_pytest(override: Union[Callable, Design] = EmptyDesign):
+def injected_pytest(override: Callable | Design = EmptyDesign):
     """
     pinjectedを使用したテスト関数を作成するデコレータ
     

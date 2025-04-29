@@ -1,11 +1,13 @@
-import pytest
 import re
-from unittest.mock import MagicMock, patch, call
-from pinjected.di.design_spec.impl import SimpleBindSpec
-from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+from unittest.mock import MagicMock, patch
+
+from returns.maybe import Some
 from rich.panel import Panel
 from rich.text import Text
-from returns.maybe import Some
+
+from pinjected.di.design_spec.impl import SimpleBindSpec
+from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+
 
 def format_value_for_test(value):
     """Simplified version of format_value for testing."""

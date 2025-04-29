@@ -1,6 +1,6 @@
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Set, Optional
 
 from pinjected import Injected
 from pinjected.di.args_modifier import ArgsModifier
@@ -27,10 +27,7 @@ def get_final_args_kwargs(
     new_kwargs = {}
 
     def add_by_type(param, value):
-        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
-            # logger.info(f"add {param.name} as args")
-            new_args.append(value)
-        elif param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
+        if param.kind == inspect.Parameter.POSITIONAL_ONLY or param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
             # logger.info(f"add {param.name} as args")
             new_args.append(value)
         elif param.kind == inspect.Parameter.KEYWORD_ONLY:
@@ -107,7 +104,7 @@ class Partial(Injected):
     def __init__(self,
                  src_function: Callable,
                  injection_targets: dict[str, Injected],
-                 modifier: Optional[ArgsModifier] = None
+                 modifier: ArgsModifier | None = None
                  ):
         self.src_function = src_function
         self.injection_targets = injection_targets
@@ -157,10 +154,10 @@ class Partial(Injected):
             func_sig=self.func_sig
         )
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.injections.dependencies()
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.injections.dynamic_dependencies()
 
     def __repr_expr__(self):

@@ -1,13 +1,6 @@
-import io
-import sys
-import subprocess
-from unittest.mock import patch, MagicMock
-from contextlib import redirect_stdout
+from unittest.mock import patch
 
-import pytest
-import fire
-
-from pinjected.main_impl import PinjectedCLI, main
+from pinjected.main_impl import PinjectedCLI
 
 
 def test_run_command_exists_in_cli():
@@ -46,15 +39,15 @@ def test_main_initializes_cli_with_commands():
             
             assert hasattr(cli, 'run'), "The 'run' command should be available"
             assert hasattr(cli, 'describe'), "The 'describe' command should be available"
-        except Exception as e:
+        except Exception:
             assert mock_fire.called, "fire.Fire() should have been called"
 
 
 def test_run_command_function_exists():
     """Test that the run command function exists and has the expected signature."""
-    from pinjected.main_impl import run
-    
     import inspect
+
+    from pinjected.main_impl import run
     sig = inspect.signature(run)
     assert 'var_path' in sig.parameters, "run() should have a var_path parameter"
     assert 'design_path' in sig.parameters, "run() should have a design_path parameter"
@@ -62,9 +55,9 @@ def test_run_command_function_exists():
 
 def test_describe_command_function_exists():
     """Test that the describe command function exists and has the expected signature."""
-    from pinjected.main_impl import describe
-    
     import inspect
+
+    from pinjected.main_impl import describe
     sig = inspect.signature(describe)
     assert 'var_path' in sig.parameters, "describe() should have a var_path parameter"
     assert 'design_path' in sig.parameters, "describe() should have a design_path parameter"

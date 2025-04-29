@@ -1,5 +1,4 @@
-from pinjected import injected, IProxy, Injected, design, instance
-
+from pinjected import Injected, IProxy, design, injected, instance
 
 Model = object
 Dataset = object

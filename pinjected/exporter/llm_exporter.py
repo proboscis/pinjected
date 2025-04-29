@@ -1,18 +1,27 @@
 import inspect
 import sys
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from pprint import pformat
-from typing import Callable, Awaitable, List
 
 import cytoolz
 
-from pinjected import Design, Injected, injected, design, instance
+from pinjected import Design, Injected, design, injected, instance
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.expr_util import Expr, BiOp, Call, Attr, GetItem, Object, UnaryOp
-from pinjected.di.injected import InjectedPure, InjectedFromFunction, PartialInjectedFunction, ZippedInjected, \
-    MappedInjected, InjectedByName, FrameInfo, MZippedInjected, DictInjected
+from pinjected.di.expr_util import Attr, BiOp, Call, Expr, GetItem, Object, UnaryOp
+from pinjected.di.injected import (
+    DictInjected,
+    FrameInfo,
+    InjectedByName,
+    InjectedFromFunction,
+    InjectedPure,
+    MappedInjected,
+    MZippedInjected,
+    PartialInjectedFunction,
+    ZippedInjected,
+)
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.exporter.optimize_import_stmts import fix_imports
 from pinjected.helper_structure import IdeaRunConfiguration, MetaContext
@@ -41,8 +50,7 @@ def add_async_to_function_source(function_source):
         modified_source = ast.unparse(tree)
 
         return modified_source
-    else:
-        return None
+    return None
 
 
 import ast
@@ -157,14 +165,13 @@ class PinjectedCodeExporter:
                 src = await self.extract_lambda(f)
                 src = src.replace("```python", "").replace('```', "").replace("\n", "")
                 return f"{assign_target} = {src}\n"
-            else:
-                #logger.debug(f"parsing function:{assign_target},\n{src}")
-                tree = ast.parse(src)
-                #logger.debug(f"before un_pinjected->\n{src}")
-                PinjectedCodeExporter.un_pinjected(assign_target, tree)
-                unparsed = ast.unparse(tree)
-                #logger.debug(f"un_pinjected->\n{unparsed}")
-                return unparsed
+            #logger.debug(f"parsing function:{assign_target},\n{src}")
+            tree = ast.parse(src)
+            #logger.debug(f"before un_pinjected->\n{src}")
+            PinjectedCodeExporter.un_pinjected(assign_target, tree)
+            unparsed = ast.unparse(tree)
+            #logger.debug(f"un_pinjected->\n{unparsed}")
+            return unparsed
             # return astor.to_source(tree)
         except Exception as e:
             logger.error(f"error in getting source for {f.__name__}:\n{e}")
@@ -204,7 +211,6 @@ class PinjectedCodeExporter:
         return "tmp_" + PinjectedCodeExporter.new_symbol()
 
     def find_matching_mapping(self, data: Injected):
-        from pinjected.pinjected_logging import logger
         #logger.info(f"finding matching mapping for {data}")
         match data:
             case InjectedFromFunction(f, kwargs_mapping):
@@ -484,7 +490,6 @@ class PinjectedCodeExporter:
 
     async def get_blocks_for_func_call(self, assign_target, f: InjectedFromFunction, kwargs_mapping, visited,
                                        call: bool):
-        from pinjected.pinjected_logging import logger
         key_to_symbol = dict()
         dep_blocks = []
         for key, bound in kwargs_mapping.items():
@@ -686,7 +691,7 @@ def add_export_config(
         default_working_dir,
         /,
         tgt: ModuleVarSpec,
-) -> List[IdeaRunConfiguration]:
+) -> list[IdeaRunConfiguration]:
     """
     options to pass secret variables:
     1. set it here as a --ray-job-kwargs

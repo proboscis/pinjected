@@ -1,4 +1,4 @@
-from typing import Protocol, Optional
+from typing import Protocol
 
 from pinjected.v2.keys import StrBindKey
 
@@ -9,7 +9,7 @@ class PinjectedHandleMainException(Protocol):
     """
     key = StrBindKey('__pinjected_handle_main_exception__')
 
-    async def __call__(self, e: Exception) -> Optional[str]:
+    async def __call__(self, e: Exception) -> str | None:
         """
         param e: the exception that was raised
         return: if None, the exception will be raised again.

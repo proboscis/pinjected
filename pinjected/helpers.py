@@ -4,7 +4,6 @@ from pathlib import Path
 
 from beartype import beartype
 from returns.maybe import maybe
-from typing import Optional
 
 from pinjected import injected
 from pinjected.helper_structure import IdeaRunConfigurations
@@ -53,7 +52,7 @@ class RunnableSpec:
         return self.design_path.var_name
 
 
-def get_design_path_from_var_path(var_path: str) -> Optional[str]:
+def get_design_path_from_var_path(var_path: str) -> str | None:
     from pinjected.pinjected_logging import logger
     
     if var_path is None:
@@ -79,19 +78,19 @@ def get_design_path_from_var_path(var_path: str) -> Optional[str]:
         raise ImportError(f"Could not import module path: {module_path}. Please ensure the module exists and is importable.")
 
 
-def find_default_design_path(file_path: str) -> Optional[str]:
+def find_default_design_path(file_path: str) -> str | None:
     from pinjected.pinjected_logging import logger
     logger.info(f"looking for default design_path")
     return find_module_attr(file_path, '__default_design_path__')
 
 
-def find_default_working_dir(file_path: str) -> Optional[str]:
+def find_default_working_dir(file_path: str) -> str | None:
     from pinjected.pinjected_logging import logger
     logger.info(f"looking for default working dir")
     return find_module_attr(file_path, '__default_working_dir__')
 
 
-def find_default_design_paths(module_path, default_design_path: Optional[str]) -> list[str]:
+def find_default_design_paths(module_path, default_design_path: str | None) -> list[str]:
     """
     :param module_path: absolute file path.("/")
     :param default_design_path: absolute module path (".")
@@ -108,7 +107,7 @@ def find_default_design_paths(module_path, default_design_path: Optional[str]) -
     return default_design_paths
 
 
-def find_module_attr(file_path: str, attr_name: str, root_module_path: str = None) -> Optional[str]:
+def find_module_attr(file_path: str, attr_name: str, root_module_path: str = None) -> str | None:
     for item in walk_module_attr(Path(file_path), attr_name, root_module_path):
         return item.var
 

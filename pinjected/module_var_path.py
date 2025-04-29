@@ -43,9 +43,8 @@ class ModuleVarPath:
     def module_file_path(self)->Path:
         if self.module_name in sys.modules:
             return Path(sys.modules[self.module_name].__file__)
-        else:
-            __import__(self.module_name)
-            return Path(sys.modules[self.module_name].__file__)
+        __import__(self.module_name)
+        return Path(sys.modules[self.module_name].__file__)
 
     @staticmethod
     def from_local_variable(var_name):
@@ -118,7 +117,7 @@ def find_var_or_func_definition_code_in_module(module_dot_path, name):
     if module_file_path.endswith('.pyc'):
         module_file_path = module_file_path[:-1]  # convert .pyc to .py
 
-    with open(module_file_path, 'r') as f:
+    with open(module_file_path) as f:
         lines = f.readlines()
         tree = ast.parse(''.join(lines))
 
@@ -146,8 +145,7 @@ def find_var_or_func_definition_code_in_module(module_dot_path, name):
 
     if definition:
         return definition
-    else:
-        raise RuntimeError(f"{name} is not defined in the given module: {module_dot_path}")
+    raise RuntimeError(f"{name} is not defined in the given module: {module_dot_path}")
 
 
 def find_import_statements_in_module(module_dot_path):
@@ -161,7 +159,7 @@ def find_import_statements_in_module(module_dot_path):
     if module_file_path.endswith('.pyc'):
         module_file_path = module_file_path[:-1]  # convert .pyc to .py
 
-    with open(module_file_path, 'r') as f:
+    with open(module_file_path) as f:
         lines = f.readlines()
         tree = ast.parse(''.join(lines))
 

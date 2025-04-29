@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 
 
-
-
 def pytest_addoption(parser):
     group = parser.getgroup("pinjected-reviewer")
     group.addoption(
@@ -45,13 +43,13 @@ async def run_review_for_pytest(session: pytest.Session):
     logger.disable('module.name')
     logger.disable("pinjected_reviewer")
     logger.disable('pinjected')
-    from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import a_pytest_plugin_impl
-    from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import python_files_in_project, \
-        changed_python_files_in_project
-    from pinjected import design
-    from pinjected import AsyncResolver
+    from pinjected import AsyncResolver, design
     from pinjected.helper_structure import MetaContext
-    from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import Diagnostic
+    from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import (
+        Diagnostic,
+        a_pytest_plugin_impl,
+        changed_python_files_in_project,
+    )
 
     mc = await MetaContext.a_gather_bindings_with_legacy(Path(__file__))
 

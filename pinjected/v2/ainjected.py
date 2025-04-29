@@ -2,7 +2,8 @@ import abc
 import asyncio
 import inspect
 from abc import ABC
-from typing import Generic, TypeVar, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -38,7 +39,7 @@ class AInjected(Generic[T], ABC):
     @staticmethod
     def dict(**kwargs: 'AInjected'):
         async def mapper(vs):
-            return dict(zip(kwargs.keys(), vs))
+            return dict(zip(kwargs.keys(), vs, strict=False))
         return ZippedAInjected(*kwargs.values()).map(mapper)
 
 

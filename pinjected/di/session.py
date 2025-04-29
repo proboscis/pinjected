@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 
-
 @dataclass
 class ISessionScope(ABC):
     @abstractmethod
@@ -22,7 +21,7 @@ class SessionScope(ISessionScope):
 
     def provide(self, binding_key, default_provider_fn):
         # logger.info(f"{self} provide {binding_key}")
-        if not binding_key in self.cache:
+        if binding_key not in self.cache:
             from pinjected.pinjected_logging import logger
             self.provide_depth += 1
             indent = "| " * self.provide_depth

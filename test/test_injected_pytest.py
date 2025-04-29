@@ -19,8 +19,8 @@ def test_injected_pytest_usage():
     """
     injected_pytestが正しく動作することを確認するテスト
     """
+    from pinjected import Injected, design
     from pinjected.test import injected_pytest
-    from pinjected import design, instances, EmptyDesign, Injected
 
     # テスト用のロガーモック
     class MockLogger:

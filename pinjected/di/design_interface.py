@@ -11,19 +11,15 @@ Key implementations of this interface can be found in design.py:
 - DesignImpl: Standard implementation with direct bindings management
 """
 
-import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pprint import pformat
-from typing import Dict, Callable, Any, List, Awaitable
 
 from beartype import beartype
 from returns.maybe import Maybe, Nothing
 
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.di.validation import ValResult
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey, StrBindKey
@@ -62,11 +58,11 @@ class Design(ABC):
 
     @property
     @abstractmethod
-    def bindings(self) -> Dict[IBindKey, IBind]:
+    def bindings(self) -> dict[IBindKey, IBind]:
         pass
 
     @staticmethod
-    def from_bindings(bindings: Dict[IBindKey, IBind]):
+    def from_bindings(bindings: dict[IBindKey, IBind]):
         from pinjected.di.design import DesignImpl
         return DesignImpl(_bindings=bindings)
 
@@ -118,7 +114,7 @@ class Design(ABC):
 @dataclass
 class DesignOverridesStore:
     bindings: dict[ModuleVarPath, Design] = field(default_factory=dict)
-    stack: List['DesignOverrideContext'] = field(default_factory=list)
+    stack: list['DesignOverrideContext'] = field(default_factory=list)
 
     def add(self, frame: inspect.FrameInfo, design: "Design"):
         cxt = DesignOverrideContext(design, frame)
@@ -178,4 +174,4 @@ class DesignOverrideContext:
         mod_name = frame.f_globals["__name__"]
         # mod_name = inspect.getmodule(frame).__name__
         # logger.info(f"found targets:\n{pformat(target_vars)}")
-        return [ModuleVarPath(mod_name + "." + v) for v in target_vars.keys()]
+        return [ModuleVarPath(mod_name + "." + v) for v in target_vars]

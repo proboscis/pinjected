@@ -1,4 +1,4 @@
-from pinjected import design, injected, Design, Injected
+from pinjected import Injected, design, injected
 from pinjected.visualize_di import DIGraph
 
 

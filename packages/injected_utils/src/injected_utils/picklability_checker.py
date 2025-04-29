@@ -80,7 +80,7 @@ def dfs_picklability(tgt, trace="root", dumps=cloudpickle.dumps) -> Iterable[Pic
                         visited.add(id(v))
                         yield from dfs(v, trace + f"['{k}']")
             if isinstance(tgt, DelegatedVar):
-                yield from dfs(tgt.value, trace + f".value")
+                yield from dfs(tgt.value, trace + ".value")
             elif isinstance(tgt, Iterable):
                 for i, item in enumerate(tgt):
                     if id(i) not in visited:

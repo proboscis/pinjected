@@ -1,9 +1,7 @@
 import pytest
-import pytest_asyncio
+
 from pinjected import Injected, design
 from pinjected.v2.async_resolver import AsyncResolver
-from pinjected.di.expr_util import show_expr
-from pinjected.v2.resolver import EvaluationError, PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
 
 
 class TestObject:

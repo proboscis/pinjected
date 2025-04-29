@@ -1,12 +1,12 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import List, Callable
 
 from makefun import create_function
 
 
 @dataclass
 class Provider:
-    dependencies: List[str]
+    dependencies: list[str]
     function: Callable
 
     def get_provider_function(self):

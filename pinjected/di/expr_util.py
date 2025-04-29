@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Generic, Tuple, Dict, Any, Callable, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from frozendict import frozendict
 
@@ -40,8 +41,7 @@ class Expr(Generic[T], ABC):
     def _wrap_if_non_expr(self, item) -> "Expr":
         if not isinstance(item, Expr):
             return Object(item)
-        else:
-            return item
+        return item
 
     def __call__(self, *args: "Expr", **kwargs: "Expr"):
         # print(f"{self}->args:{args},kwargs:{kwargs}")
@@ -164,8 +164,8 @@ class UnaryOp(Expr):
 @dataclass
 class Call(Expr):
     func: Expr
-    args: Tuple[Expr] = field(default_factory=tuple)
-    kwargs: Dict[str, Expr] = field(default_factory=dict)
+    args: tuple[Expr] = field(default_factory=tuple)
+    kwargs: dict[str, Expr] = field(default_factory=dict)
 
     def __post_init__(self):
         super().__post_init__()
@@ -252,7 +252,7 @@ class Object(Expr):
             # we also add type_hash since hash(0) == 0 == hash(False)
             type_hash = hash(type(self.data))
             return hash(self.data) * type_hash + type_hash
-        except TypeError as e:
+        except TypeError:
             return hash(id(self.data))
 
 
@@ -274,7 +274,7 @@ class Cache(Expr):
         return hash(f"cached") + hash(self.src)
 
 
-def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:
+def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], str | None] = lambda x: None) -> str:
     from pinjected.di.proxiable import DelegatedVar
     def eval_tuple(e):
         res = tuple(_show_expr(i) for i in e)
@@ -303,7 +303,7 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
             case Object(str() as x):
                 return f'"{x}"'
             case Object(x):
-                return f"{str(x)}"
+                return f"{x!s}"
             case Call(f, args, kwargs):
                 # hmm, this is complicated.
                 func_str = _show_expr(f)

@@ -1,5 +1,4 @@
 from pinjected.test import injected_pytest
-from __package_for_tests__.test_material import some_configuration
 
 
 @injected_pytest()

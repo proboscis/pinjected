@@ -1,12 +1,11 @@
 import inspect
 import re
 from dataclasses import dataclass
-from pprint import pformat
 
-from pinjected.pinjected_logging import logger
 from pinjected import Injected
-from pinjected.v2.binds import IBind, BindInjected, ExprBind
-from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
+from pinjected.pinjected_logging import logger
+from pinjected.v2.binds import BindInjected, ExprBind, IBind
+from pinjected.v2.keys import DestructorKey, IBindKey, StrBindKey
 
 
 def default_get_arg_names_from_class_name(class_name):
@@ -24,8 +23,7 @@ def default_get_arg_names_from_class_name(class_name):
     """
     parts = []
     rest = class_name
-    if rest.startswith('_'):
-        rest = rest[1:]
+    rest = rest.removeprefix('_')
     while True:
         m = re.match(r'([A-Z][a-z]+)(.*)', rest)
         if m is None:

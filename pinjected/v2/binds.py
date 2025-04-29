@@ -2,8 +2,9 @@ import abc
 import asyncio
 import inspect
 from abc import ABC
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from typing import Generic, Dict, Any, Callable, Awaitable, TypeVar
+from typing import Any, Generic, TypeVar
 
 from returns.maybe import Maybe, Nothing, Some
 
@@ -23,7 +24,7 @@ class IBind(Generic[T], ABC):
     """
 
     @abc.abstractmethod
-    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         pass
 
     @property
@@ -67,7 +68,7 @@ class IBind(Generic[T], ABC):
     @staticmethod
     def dict(**targets: 'IBind'):
         async def mapper(data):  # data is a tuple of results
-            return {k: v for k, v in zip(targets.keys(), data)}
+            return {k: v for k, v in zip(targets.keys(), data, strict=False)}
 
         return IBind.zip(*targets).amap(mapper)
 
@@ -90,10 +91,10 @@ class IBind(Generic[T], ABC):
 
 @dataclass
 class JustBind(IBind[T]):
-    impl: Callable[[ProvideContext, Dict[IBindKey, Any]], Awaitable[T]]
+    impl: Callable[[ProvideContext, dict[IBindKey, Any]], Awaitable[T]]
     deps: set[IBindKey]
 
-    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         return await self.impl(cxt, deps)
 
     @property
@@ -112,7 +113,7 @@ class StrBind(IBind[T]):
     def __post_init__(self):
         self.keys = {StrBindKey(d) for d in self.deps}
 
-    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         dep_dict = {d.name: deps[d] for d in self.keys}
         return await self.impl(**dep_dict)
 
@@ -147,8 +148,7 @@ class StrBind(IBind[T]):
     def bind(cls, func: Callable[..., T]) -> 'StrBind[T]':
         if inspect.iscoroutinefunction(func):
             return cls.async_bind(func)
-        else:
-            return cls.func_bind(func)
+        return cls.func_bind(func)
 
 
 @dataclass
@@ -159,7 +159,7 @@ class BindInjected(IBind[T]):
     def __post_init__(self):
         assert isinstance(self.src, Injected), f"src must be an Injected, got {self.src}"
 
-    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         from pinjected.pinjected_logging import logger
         keys = {StrBindKey(d) for d in self.src.dependencies()}
         dep_dict = {d.name: deps[d] for d in keys}
@@ -210,7 +210,7 @@ class ExprBind(IBind):
     def __post_init__(self):
         assert isinstance(self.src, EvaledInjected), f"src must be an Expr, got {self.src}"
 
-    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         return await cxt.resolver._provide_providable(self.src)
 
 
@@ -219,7 +219,7 @@ class MappedBind(IBind[U]):
     src: IBind[T]
     async_f: Callable[[T], Awaitable[U]]
 
-    async def provide(self, cxt: ProvideContext, deps: Dict[IBindKey, Any]) -> T:
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         data = self.src.provide(cxt, deps)
         return await self.async_f(data)
 

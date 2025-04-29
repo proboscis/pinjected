@@ -1,11 +1,10 @@
-from pinjected import injected, design, instance
+from pinjected import design, instance
 
 
 def test_access_session():
     @instance
     async def task(__resolver__):
         print(__resolver__)
-        pass
 
     d = design()
 

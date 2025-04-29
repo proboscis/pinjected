@@ -1,20 +1,21 @@
 import ast
 import shelve
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from pprint import pformat
-from typing import Callable, Literal, Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from beartype import beartype
-from pinjected.pinjected_logging import logger
 
-from pinjected.module_inspector import get_project_root, get_module_path
+from pinjected.module_inspector import get_module_path, get_project_root
 from pinjected.module_var_path import ModuleVarPath
+from pinjected.pinjected_logging import logger
 
 
 def check_meta_design_variable(file_path):
-    with open(file_path, 'r') as file:
+    with open(file_path) as file:
         tree = ast.parse(file.read())
 
     for node in ast.walk(tree):
@@ -82,8 +83,7 @@ class VariableInFile:
     def to_module_var_path(self) -> ModuleVarPath:
         root = get_project_root(str(self.file_path))
         module_path = get_module_path(root, self.file_path)
-        if module_path.startswith("src."):
-            module_path = module_path[4:]
+        module_path = module_path.removeprefix("src.")
         module_var_path = module_path + '.' + self.name
         return ModuleVarPath(module_var_path)
 
@@ -92,7 +92,7 @@ def find_pinjected_annotations(file_path: str) -> list[Annotation]:
     """
     find pinjected related annotations in a file.
     """
-    with open(file_path, 'r') as file:
+    with open(file_path) as file:
         tree = ast.parse(file.read())
 
     results = []
@@ -131,8 +131,7 @@ def find_annotated_vars(file_path: Path) -> list[VariableInFile]:
 def find_run_targets(path: Path) -> list[VariableInFile]:
     if meta_design_acceptor(path):
         return find_annotated_vars(path)
-    else:
-        return []
+    return []
 
 
 def find_test_targets(path: Path) -> list[VariableInFile]:

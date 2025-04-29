@@ -1,6 +1,6 @@
 import pytest
-import pytest_asyncio
-from pinjected import Injected, design, IProxy
+
+from pinjected import Injected, IProxy, design
 from pinjected.v2.async_resolver import AsyncResolver
 
 

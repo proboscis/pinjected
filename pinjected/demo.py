@@ -1,8 +1,7 @@
+from collections.abc import Callable
 from pathlib import Path
-from telnetlib import IP
-from typing import Callable
 
-from pinjected import injected, Design, design, Injected, IProxy
+from pinjected import Design, Injected, IProxy, design, injected
 
 __meta_design__: Design = design(
     default_design_paths=["pinjected.demo.default_design"]

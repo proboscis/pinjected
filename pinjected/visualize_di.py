@@ -2,40 +2,51 @@ import inspect
 import platform
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Union, Any
+from typing import Any
 
 import networkx as nx
 from cytoolz import memoize
-from returns.converters import result_to_maybe
 from returns.maybe import Maybe, Nothing
+from returns.pipeline import is_successful
 from returns.pointfree import bind
+from returns.result import Failure, safe
 
 from pinjected import DesignSpec
-from pinjected.di.design_spec.protocols import BindSpec
-from pinjected.di.metadata.bind_metadata import BindMetadata
-from pinjected.pinjected_logging import logger
-from returns.pipeline import is_successful
-from returns.result import safe, Failure, Result
-
 from pinjected.di.app_injected import EvaledInjected
+from pinjected.di.design_spec.protocols import BindSpec
 from pinjected.di.expr_util import show_expr
-from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure, MappedInjected, \
-    ZippedInjected, MZippedInjected, InjectedByName, extract_dependency, InjectedWithDefaultDesign, \
-    PartialInjectedFunction
+from pinjected.di.injected import (
+    Injected,
+    InjectedByName,
+    InjectedFromFunction,
+    InjectedPure,
+    InjectedWithDefaultDesign,
+    MappedInjected,
+    MZippedInjected,
+    PartialInjectedFunction,
+    ZippedInjected,
+    extract_dependency,
+)
+from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.exceptions import DependencyResolutionFailure, _MissingDepsError, CyclicDependency
+from pinjected.exceptions import (
+    CyclicDependency,
+    DependencyResolutionFailure,
+    _MissingDepsError,
+)
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.nx_graph_util import NxGraphUtil
+from pinjected.pinjected_logging import logger
 from pinjected.providable import Providable
 from pinjected.v2.binds import BindInjected
-from pinjected.v2.keys import StrBindKey
 
 
 def dfs(neighbors: Callable, node: str, trace=[]):
-    nexts: List[str] = neighbors(node)
+    nexts: list[str] = neighbors(node)
     for n in nexts:
         yield node, n, trace
         yield from dfs(neighbors, n, trace + [n])
@@ -141,16 +152,14 @@ class DIGraph:
             if src in self.explicit_mappings:
                 em = self.explicit_mappings[src]
                 return self.resolve_injected(em)
-            elif src in self.direct_injected:
+            if src in self.direct_injected:
                 di = self.direct_injected[src]
                 return self.resolve_injected(di)
-            else:
-                raise MissingKeyError(f"DI key not found!:{src}")
+            raise MissingKeyError(f"DI key not found!:{src}")
 
         self.deps_impl = deps_impl
 
     def get_metadata(self, key: str) -> Maybe[BindMetadata]:
-        from returns.pipeline import flow
         from pinjected.v2.keys import StrBindKey
         
         bind_key = StrBindKey(key)
@@ -161,7 +170,7 @@ class DIGraph:
         
         return Nothing
 
-    def resolve_injected(self, i: Injected) -> List[str]:
+    def resolve_injected(self, i: Injected) -> list[str]:
         "give new name to unknown manual injected values and return dependencies"
         # i needs to be hashable
         if i not in self.injected_to_id:
@@ -189,26 +198,25 @@ class DIGraph:
                 deps.append(dep_name)
             missings = list(sum([list(extract_dependency(m)) for m in i.missings], []))
             return deps + list(missings)
-        elif isinstance(i, MappedInjected):
+        if isinstance(i, MappedInjected):
             dep_name = self.new_name("mapped_src")
             # dep_name = f"mapped_injected_src_{str(uuid.uuid4())[:6]}"
             self.direct_injected[dep_name] = i.src
             return [dep_name]
-        elif isinstance(i, ZippedInjected):
+        if isinstance(i, ZippedInjected):
             a = self.new_name("zipped_src_a")
             b = self.new_name("zipped_src_b")
             self.direct_injected[a] = i.a
             self.direct_injected[b] = i.b
             return [a, b]
-        elif isinstance(i, MZippedInjected):
+        if isinstance(i, MZippedInjected):
             res = []
             for k, src in enumerate(i.srcs):
                 sn = self.new_name(f"mzip_src_{k}")
                 self.direct_injected[sn] = src
                 res.append(sn)
             return res
-        else:
-            return list(i.complete_dependencies)
+        return list(i.complete_dependencies)
 
     def __getitem__(self, key):
         if "provide_" in key:
@@ -239,7 +247,7 @@ class DIGraph:
         def dfs(prev, current, trace=[]):
             assert current not in trace[:-1], f"cycle detected! trace:{trace}, current:{current}"
             try:
-                nexts: List[str] = self.dependencies_of(current)
+                nexts: list[str] = self.dependencies_of(current)
             except Exception as e:
                 import traceback
                 trb = traceback.format_exc()
@@ -270,7 +278,7 @@ class DIGraph:
             # logger.info(f"dfs:{node},{trace}")
             nexts = []
             try:
-                nexts: List[str] = self.dependencies_of(node)
+                nexts: list[str] = self.dependencies_of(node)
             except MissingKeyError as e:
                 yield DependencyResolutionFailure(node, trace, e)
             for n in nexts:
@@ -282,8 +290,7 @@ class DIGraph:
         yield from dfs(src, [src])
 
     def distilled(self, tgt: Providable) -> Any:  # Was "Design", removed to avoid circular import
-        from pinjected import design
-        from pinjected import Design
+        from pinjected import Design, design
         from pinjected.v2.keys import StrBindKey
         
         match tgt:
@@ -393,7 +400,7 @@ class DIGraph:
             replace_missing=replace_missing
         )
 
-    def create_graph_from_nodes(self, nodes: List[str], replace_missing=True):
+    def create_graph_from_nodes(self, nodes: list[str], replace_missing=True):
         from pinjected.pinjected_logging import logger
         logger.info(f"making dependency graph for {nodes}.")
         nx_graph = nx.DiGraph()
@@ -449,8 +456,8 @@ class DIGraph:
         return nx_graph
 
     def to_python_script(self,
-                         root: Union[str, ModuleVarPath, Injected],
-                         design_path: Union[str, ModuleVarPath]
+                         root: str | ModuleVarPath | Injected,
+                         design_path: str | ModuleVarPath
                          ):
         # we assume that __target__ is already added to this design...
         graph = defaultdict(list)
@@ -491,7 +498,7 @@ g = d.to_graph()
                     tgt = self.explicit_mappings[node]
                     match tgt:
                         case InjectedPure(str(value)):
-                            return f"{node} = \"{value}\"\n"
+                            return f'{node} = "{value}"\n'
                         case InjectedPure(value):
                             return f"{node} = {value}\n"
             args = ", ".join(set(args))
@@ -511,10 +518,10 @@ g = d.to_graph()
         return script
 
     def create_dependency_digraph(self,
-                                  roots: Union[str, List[str]],
+                                  roots: str | list[str],
                                   replace_missing=True,
                                   root_group='root',
-                                  ignore_nodes: List[str] = None
+                                  ignore_nodes: list[str] = None
                                   ) -> NxGraphUtil:
         ignore_nodes = set(ignore_nodes or [])
         if isinstance(roots, str):
@@ -539,9 +546,9 @@ g = d.to_graph()
         return NxGraphUtil(nx_graph)
 
     def create_dependency_network(self,
-                                  roots: Union[str, List[str]],
+                                  roots: str | list[str],
                                   replace_missing=True,
-                                  ignore_nodes: List[str] = None
+                                  ignore_nodes: list[str] = None
                                   ):
         nx_graph = self.create_dependency_digraph(
             roots,
@@ -550,7 +557,7 @@ g = d.to_graph()
         )
         return nx_graph.to_physics_network()
 
-    def find_missing_dependencies(self, roots: Union[str, List[str]]) -> List[DependencyResolutionFailure]:
+    def find_missing_dependencies(self, roots: str | list[str]) -> list[DependencyResolutionFailure]:
         if isinstance(roots, str):
             roots = [roots]
         failures = []
@@ -558,7 +565,7 @@ g = d.to_graph()
             failures += self.di_dfs_validation(r)
         return failures
 
-    def show_graph_notebook(self, roots: Union[str, List[str]]):
+    def show_graph_notebook(self, roots: str | list[str]):
         nt = self.create_dependency_network(roots)
         nt.width = 1000
         nt.height = 1000
@@ -591,7 +598,7 @@ g = d.to_graph()
         builder = DependencyGraphBuilder(self)
         return builder.build_edges(root_name, deps)
 
-    def to_json(self, roots: Union[str, List[str]], replace_missing=True):
+    def to_json(self, roots: str | list[str], replace_missing=True):
         """
         Export the dependency graph as JSON with edges and dependencies.
         
@@ -611,6 +618,7 @@ g = d.to_graph()
 
     def get_spec(self, tgt: str) -> Maybe[BindSpec]:
         from returns.pipeline import flow
+
         from pinjected.v2.keys import StrBindKey
         
         return flow(
@@ -618,7 +626,7 @@ g = d.to_graph()
             bind(lambda x: x.get_spec(StrBindKey(tgt)))
         )
 
-    def plot(self, roots: Union[str, List[str]], visualize_missing=True):
+    def plot(self, roots: str | list[str], visualize_missing=True):
         if "darwin" in platform.system().lower():
             G = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
             G.plot_mpl()
@@ -641,7 +649,7 @@ g = d.to_graph()
         self.create_dependency_digraph(roots, replace_missing=True, root_group=None).show_html_temp()
 
 
-def create_dependency_graph(d: Any, roots: List[str],
+def create_dependency_graph(d: Any, roots: list[str],
                             output_file="dependencies.html"):  # Was "Design", removed to avoid circular import
     from pinjected import design
     dig = DIGraph(d + design(

@@ -1,5 +1,4 @@
-from pinjected import design, Injected, IProxy
-
+from pinjected import Injected, IProxy, design
 
 test_test_object:IProxy = Injected.pure('test')
 test_c:IProxy = Injected.pure('c')

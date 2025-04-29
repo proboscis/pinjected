@@ -25,13 +25,12 @@ class Applicative(Generic[T], ABC):
         items = list(kwargs.items())
         keys = [t[0] for t in items]
         values = [t[1] for t in items]
-        from pinjected.pinjected_logging import logger
         # logger.info(f"keys:{keys}")
         # logger.info(f"values:{values}")
         def mapper(vs):
             # logger.info(f"mapping:{vs}")
             # here vs are all coroutines.
-            return dict(zip(keys, vs))
+            return dict(zip(keys, vs, strict=False))
 
         return self.zip(*values).map(mapper)
 

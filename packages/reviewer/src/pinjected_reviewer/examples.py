@@ -1,4 +1,6 @@
 from pinjected import *
+
+
 # pinjected-reviewer: ignore
 @instance
 async def dummy_config():
@@ -7,7 +9,9 @@ async def dummy_config():
 
 @injected
 async def a_misuse_of_injected():
-    from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import a_pytest_plugin_impl
+    from pinjected_reviewer.pytest_reviewer.coding_rule_plugin_impl import (
+        a_pytest_plugin_impl,
+    )
     print(dummy_config)  # mistake, dummy_config is IProxy object so it should be requested (not detected)
     print(dummy_config())  # mistake, dummy_config is IProxy object so it cannot be requested (now detected)
     print(a_pytest_plugin_impl)

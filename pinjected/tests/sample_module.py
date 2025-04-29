@@ -1,4 +1,4 @@
-from pinjected import injected, instance
+from pinjected import instance
 
 leaf1 = "leaf1 value"
 leaf2 = "leaf2 value"

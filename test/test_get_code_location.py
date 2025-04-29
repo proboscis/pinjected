@@ -1,4 +1,4 @@
-from pinjected import design, Design, Injected
+from pinjected import Injected, design
 from pinjected.ide_supports.create_configs import design_metadata
 from pinjected.v2.async_resolver import AsyncResolver
 

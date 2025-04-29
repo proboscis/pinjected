@@ -1,6 +1,5 @@
-from pinjected import injected, instance, Injected, design
+from pinjected import Injected, design, injected
 from pinjected.pinjected_logging import logger
-from pinjected.di.app_injected import await_awaitables
 
 
 @injected

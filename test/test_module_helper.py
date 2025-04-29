@@ -1,11 +1,6 @@
-import importlib
 from pathlib import Path
-from pprint import pprint
 
-import pytest
-
-from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
-from pinjected.module_inspector import get_project_root
+from pinjected.module_helper import walk_module_with_special_files
 
 
 def test_walk_module_with_special_files_single_file():
@@ -305,7 +300,7 @@ def test_multiple_attr_names_order():
                     # This is correct ordering (meta_design then special_config)
                     break
             # If we found a special_config before __meta_design__ in the same module, that's wrong
-            for j in range(0, i):
+            for j in range(i):
                 compare_item = items[j]
                 compare_module = compare_item.var_path.split(".")[0]
                 if module_path == compare_module and "special_config" in compare_item.var_path:

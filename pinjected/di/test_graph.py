@@ -1,6 +1,5 @@
-from returns.result import safe, Failure
 
-from pinjected import design, Injected
+from pinjected import Injected, design
 from pinjected.v2.keys import StrBindKey
 
 

@@ -1,8 +1,7 @@
-from sys import stderr, stdout
+from sys import stdout
 
+from pinjected import Injected, design, injected, instance
 from pinjected.pinjected_logging import logger
-
-from pinjected import instance, injected, design, Injected
 
 
 def test_async_ast():

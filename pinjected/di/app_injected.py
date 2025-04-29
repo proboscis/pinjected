@@ -1,13 +1,22 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Set, Awaitable, TypeVar, Callable
+from typing import TypeVar
 
 from pinjected import Injected
 from pinjected.di.applicative import Applicative
-from pinjected.di.expr_util import Expr, Object, show_expr, UnaryOp, Call, BiOp, Attr, GetItem
-from pinjected.di.injected import InjectedPure, InjectedFromFunction, InjectedByName
-from pinjected.di.proxiable import T, DelegatedVar
-from pinjected.di.static_proxy import eval_applicative, ast_proxy, \
-    AstProxyContextImpl
+from pinjected.di.expr_util import (
+    Attr,
+    BiOp,
+    Call,
+    Expr,
+    GetItem,
+    Object,
+    UnaryOp,
+    show_expr,
+)
+from pinjected.di.injected import InjectedByName, InjectedFromFunction, InjectedPure
+from pinjected.di.proxiable import DelegatedVar, T
+from pinjected.di.static_proxy import AstProxyContextImpl, ast_proxy, eval_applicative
 
 U = TypeVar('U')
 
@@ -89,7 +98,7 @@ class EvaledInjected(Injected[T]):
         assert isinstance(self.ast, Expr)
         self.__expr__ = self.ast
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.value.dependencies()
 
     def get_provider(self):
@@ -108,7 +117,7 @@ class EvaledInjected(Injected[T]):
     def __hash__(self):
         return hash((self.value, self.ast))
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.value.dynamic_dependencies()
 
     def __repr_expr__(self):
@@ -163,7 +172,6 @@ def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
 
 def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
     memo = dict()
-    from pinjected.pinjected_logging import logger
 
     def impl(expr):
         match expr:
@@ -195,7 +203,6 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
 
 
 def await_awaitables(expr: Expr[T]) -> Expr:
-    from pinjected.pinjected_logging import logger
     # logger.info(f"await_awaitables {expr}")
 
     def transformer(expr: Expr):

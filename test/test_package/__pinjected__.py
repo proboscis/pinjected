@@ -1,6 +1,6 @@
 # Test special file at the top level
 
-from pinjected import design, DesignSpec, SimpleBindSpec
+from pinjected import DesignSpec, SimpleBindSpec, design
 
 __meta_design__ = design(
     special_var="from_top_level_pinjected_file",

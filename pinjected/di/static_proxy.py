@@ -1,12 +1,12 @@
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from cytoolz import valmap
 
 from pinjected.di.applicative import Applicative
-from pinjected.di.expr_util import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
-from pinjected.di.func_util import fix_args_kwargs
-from pinjected.di.proxiable import T, DelegatedVar, IProxyContext
+from pinjected.di.expr_util import Attr, BiOp, Call, Expr, GetItem, Object, UnaryOp
+from pinjected.di.proxiable import DelegatedVar, IProxyContext, T
 
 
 @dataclass
@@ -90,25 +90,24 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
             case Object([*items] as x) if isinstance(x, list):
                 t = app.zip(*[ensure_pure(item) for item in items])
                 return app.map(t, en_list)
-            case Object(([*items] as x)) if isinstance(x, tuple):
+            case Object([*items] as x) if isinstance(x, tuple):
                 t = app.zip(*[ensure_pure(item) for item in items])
                 return app.map(t, en_tuple)
             case Object({**items} as x) if isinstance(x, dict):
                 values = app.zip(*[ensure_pure(item) for item in items.values()])
-                return app.map(values, lambda t: {k: v for k, v in zip(items.keys(), t)})
+                return app.map(values, lambda t: {k: v for k, v in zip(items.keys(), t, strict=False)})
 
             case Object(x):
                 return ensure_pure(x)
             case Call(Expr() as f, args, kwargs):
-                injected_func: "T[Callable]" = _eval(f)
+                injected_func: T[Callable] = _eval(f)
                 args = app.zip(*eval_tuple(args))
-                kwargs: "T[dict]" = app.dict(**eval_dict(kwargs))
+                kwargs: T[dict] = app.dict(**eval_dict(kwargs))
 
                 # now we are all in the world of injected. how can I combine them all?
                 # so all the arguments are converted into Injected if not, then combined together
                 # so if you are to pass an Injected as an argument, you must wrap it with Injected.pure
                 def apply(t):
-                    from pinjected.pinjected_logging import logger
                     func, args, kwargs = t
                     # args,kwargs = fix_args_kwargs(func,args,kwargs)
                     return func(*args, **kwargs)

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Callable, Union
+from typing import Generic, TypeVar, Union
 
 from pinjected.di.proxiable import DelegatedVar
 
@@ -32,12 +33,11 @@ class Designed(Generic[T], ABC):
         from pinjected.di.util import EmptyDesign
         if isinstance(target, DelegatedVar):
             return PureDesigned(EmptyDesign, Injected.ensure_injected(target))
-        elif isinstance(target, Injected):
+        if isinstance(target, Injected):
             return PureDesigned(EmptyDesign, target)
-        elif isinstance(target, Callable):
+        if isinstance(target, Callable):
             return Designed.bind(Injected.bind(target))
-        else:
-            raise TypeError("target must be a subclass of Injected")
+        raise TypeError("target must be a subclass of Injected")
 
     def override(self, design: "Design"):
         return PureDesigned(self.design + design, self.internal_injected)
@@ -47,8 +47,7 @@ class Designed(Generic[T], ABC):
 
     @staticmethod
     def zip(*others: "Self"):
-        from pinjected import Injected
-        from pinjected import EmptyDesign
+        from pinjected import EmptyDesign, Injected
         d = sum([o.design for o in others], EmptyDesign)
         return Designed.bind(Injected.mzip(*[o.internal_injected for o in others])).override(d)
 

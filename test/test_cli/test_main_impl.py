@@ -1,9 +1,4 @@
-import io
-import sys
-from unittest.mock import patch
 
-import pytest
-import fire
 
 from pinjected.main_impl import PinjectedCLI
 

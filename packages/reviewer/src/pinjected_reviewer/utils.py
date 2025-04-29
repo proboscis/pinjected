@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
+
 from loguru import logger
+
 
 def check_if_file_should_be_ignored(content: str, src_path: Path) -> bool:
     """

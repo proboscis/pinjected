@@ -1,23 +1,33 @@
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Callable, Union, Awaitable, TypeVar
+from typing import TypeVar
 
+from pinjected_openai.openrouter.instances import StructuredLLM
 from pydantic import BaseModel
-from returns.future import future_safe, Future, future, FutureResultE
+from returns.future import Future, FutureResultE, future, future_safe
 from returns.io import IOResultE
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import is_successful
 from returns.unsafe import unsafe_perform_io
 
-from pinjected import instance, injected, IProxy
+from pinjected import IProxy, injected, instance
 from pinjected.run_config_utils import load_variable_from_script
 from pinjected.v2.async_resolver import create_tb
-from pinjected_openai.openrouter.instances import StructuredLLM
 from pinjected_reviewer.reviewer_v1 import ExtractApproved
-from pinjected_reviewer.schema.reviewer_def import ReviewerAttributes_v4, MarkdownReviewerDefinition, \
-    PreCommitFileDiffInterest, Reviewer, ReviewResult, PreCommitGitInfoInterest, Interests, SkipReasonProvider
-from pinjected_reviewer.schema.types import GitInfo, Review, FileDiff
+from pinjected_reviewer.schema.reviewer_def import (
+    Interests,
+    MarkdownReviewerDefinition,
+    PreCommitFileDiffInterest,
+    PreCommitGitInfoInterest,
+    Reviewer,
+    ReviewerAttributes_v4,
+    ReviewResult,
+    SkipReasonProvider,
+)
+from pinjected_reviewer.schema.types import FileDiff, GitInfo, Review
 from pinjected_reviewer.utils import check_if_file_should_be_ignored
+
 
 # pinjected-reviewer: ignore
 @injected
@@ -26,7 +36,7 @@ async def a_llm_factory_for_reviewer(
         /,
         model_name
 ) -> StructuredLLM:
-    async def impl(text: str, response_format: type[BaseModel] = None) -> Union[str, BaseModel]:
+    async def impl(text: str, response_format: type[BaseModel] = None) -> str | BaseModel:
         return await a_cached_openrouter_chat_completion(
             prompt=text,
             model=model_name,
@@ -135,7 +145,7 @@ async def a_markdown_reviewer_def_to_reviewer(
 
 
 @injected
-def reviewer_paths(logger, /, repo_root: Path) -> List[Path]:
+def reviewer_paths(logger, /, repo_root: Path) -> list[Path]:
     """
     Return a list of paths to load reviewer files from.
 
@@ -156,7 +166,7 @@ def find_reviewer_markdown_files(
         reviewer_paths,
         /,
         repo_root: Path
-) -> List[Path]:
+) -> list[Path]:
     """
     Find all markdown files in the paths provided by reviewer_paths.
 
@@ -188,7 +198,7 @@ async def reviewer_definitions(
         a_reviewer_definition_from_path,
         find_reviewer_markdown_files,
         a_map_progress,
-) -> List[IOResultE[MarkdownReviewerDefinition]]:
+) -> list[IOResultE[MarkdownReviewerDefinition]]:
     """
     Load all reviewer definitions from markdown files.
 
@@ -232,7 +242,7 @@ async def all_reviewers__from_markdowns(
         a_reviewer_definition_from_path,
         find_reviewer_markdown_files,
         a_markdown_reviewer_def_to_reviewer: Callable[[MarkdownReviewerDefinition], Awaitable[Reviewer]],
-) -> List[IOResultE[Reviewer]]:
+) -> list[IOResultE[Reviewer]]:
     """
     Load all reviewers from markdown files.
 
@@ -356,8 +366,9 @@ Otherwise, please provide a detailed review and explain why the change is not ap
         try:
             review = await self.llm(prompt)
         except Exception as e:
-            from loguru import logger
             import traceback
+
+            from loguru import logger
             logger.warning(e)
             logger.warning(traceback.format_exc())
             raise e
@@ -413,6 +424,7 @@ Make sure to only focus on the point where the review material points out.
             print(review)
         except Exception as e:
             import traceback
+
             from loguru import logger
             logger.warning(e)
             logger.warning(traceback.format_exc())
@@ -452,7 +464,6 @@ async def file_diff_reviewers(logger, all_reviewers: list[Reviewer]) -> list[Rev
                 res.append(r)
             case _:
                 logger.warning(f"Reviewer {r.name} has no interest in file diffs")
-                pass
 
     return res
 

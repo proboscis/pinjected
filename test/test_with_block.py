@@ -1,9 +1,12 @@
 import asyncio
 import inspect
-import pytest
 
-from pinjected import design, Injected, injected
-from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE, DesignOverrideContext, DesignOverridesStore
+from pinjected import design, injected
+from pinjected.di.design_interface import (
+    DESIGN_OVERRIDES_STORE,
+    DesignOverrideContext,
+    DesignOverridesStore,
+)
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.run_helpers.run_injected import run_injected
 from pinjected.v2.async_resolver import AsyncResolver

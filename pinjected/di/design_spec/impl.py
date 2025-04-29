@@ -1,14 +1,20 @@
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar, Callable, Optional
+from typing import TypeVar
 
-from returns.future import FutureResultE, future_safe, FutureResult
-from returns.io import IOFailure, IOSuccess, IOResultE
+from returns.future import FutureResult, FutureResultE, future_safe
+from returns.io import IOFailure, IOResultE, IOSuccess
 from returns.maybe import Maybe, Nothing, Some
 from returns.unsafe import unsafe_perform_io
 
-from pinjected.di.design_spec.protocols import BindSpec, DesignSpec, ValidatorType, SpecDocProviderType
-from pinjected.v2.keys import IBindKey, StrBindKey
+from pinjected.di.design_spec.protocols import (
+    BindSpec,
+    DesignSpec,
+    SpecDocProviderType,
+    ValidatorType,
+)
+from pinjected.v2.keys import IBindKey
 
 T = TypeVar('T')
 
@@ -101,8 +107,8 @@ class DesignSpecImpl(DesignSpec):
 
 class SimpleBindSpec(BindSpec[T]):
     def __init__(self,
-                 validator: Optional[Callable[[T], str]] = None,
-                 documentation: Optional[str] = None
+                 validator: Callable[[T], str] | None = None,
+                 documentation: str | None = None
                  ):
         self._validator = validator
         self._documentation = documentation

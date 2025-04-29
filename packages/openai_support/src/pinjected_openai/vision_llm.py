@@ -5,24 +5,26 @@ import json
 import random
 import re
 from asyncio import Lock
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import ceil
 from pathlib import Path
-from typing import Any, Literal, Callable, Optional, Awaitable
+from typing import Any, Literal
 
 import openai.types.chat
 import pandas as pd
 import reactivex
-from PIL.Image import Image
 from injected_utils.injected_cache_utils import async_cached, sqlite_dict
 from loguru import logger
-from math import ceil
-from openai import AsyncOpenAI, RateLimitError, APITimeoutError, APIConnectionError
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 from openai.types.chat import ChatCompletion
-from pydantic import BaseModel
-from pydantic import Field
+from PIL.Image import Image
+from pydantic import BaseModel, Field
+from tenacity import retry, retry_if_exception_type, stop_after_attempt
+
 from pinjected import *
-from tenacity import retry,stop_after_attempt,retry_if_exception_type
+
 
 class ChatCompletionWithCost(BaseModel):
     src: ChatCompletion
@@ -371,7 +373,7 @@ async def a_vision_llm__openai(
     a_call_openai_api,
     /,
     text: str,
-    images: Optional[list[Image]] = None,
+    images: list[Image] | None = None,
     model: str = "gpt-4o",
     max_tokens=None,  # deprecated
     max_completion_tokens=None,  # same as max_tokens

@@ -1,18 +1,15 @@
-import json
+
+from contextlib import redirect_stdout
+from io import StringIO
 
 import loguru
 import pytest
-from io import StringIO
-import sys
-from contextlib import redirect_stdout
+from returns.maybe import Some
 
-from pinjected import design, Injected, injected, DesignSpec, SimpleBindSpec
+from pinjected import DesignSpec, SimpleBindSpec, design, injected
 from pinjected.schema.handlers import PinjectedHandleMainResult
 from pinjected.test.injected_pytest import injected_pytest
 from pinjected.visualize_di import DIGraph
-from pinjected.main_impl import describe
-from pinjected.v2.keys import StrBindKey
-from returns.maybe import Nothing, Some
 
 
 @injected
@@ -129,7 +126,7 @@ def test_describe_command_with_invalid_path():
     with pytest.raises(ValueError) as excinfo:
         describe(var_path="module_with_no_dots")
 
-    assert "Empty module name" == str(excinfo.value)
+    assert str(excinfo.value) == "Empty module name"
 
     with pytest.raises(ImportError) as excinfo:
         describe(var_path="non.existent.module.path")
@@ -137,9 +134,8 @@ def test_describe_command_with_invalid_path():
     assert "Could not import module" in str(excinfo.value)
     assert "Please ensure the module exists" in str(excinfo.value)
 
-    from unittest.mock import patch, MagicMock
     from io import StringIO
-    import sys
+    from unittest.mock import patch
 
     with patch('pinjected.helpers.find_default_design_paths', return_value=[]):
         with patch('sys.stdout', new=StringIO()) as fake_out:

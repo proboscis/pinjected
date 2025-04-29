@@ -4,7 +4,7 @@ import pytest
 from returns.maybe import Nothing, Some
 
 from pinjected import DesignSpec, SimpleBindSpec
-from pinjected.helper_structure import SpecTrace, MetaContext
+from pinjected.helper_structure import MetaContext, SpecTrace
 from pinjected.v2.keys import StrBindKey
 
 
@@ -187,9 +187,7 @@ async def test_multi_level_design_spec_hierarchy():
     test_file = Path(__file__).parent / "test_package/child/module1.py"
     
     # For this test we need to get specs from each location manually
-    import sys
     from pinjected.module_helper import walk_module_with_special_files
-    from pinjected.module_var_path import ModuleVarPath
     
     # Verify that we find specs from both levels
     specs_found = []
@@ -210,9 +208,10 @@ async def test_multi_level_design_spec_hierarchy():
     
     # Directly load and test the specs
     from pinjected.v2.keys import StrBindKey
-    
+
     # Load the top-level spec
     from test.test_package.__pinjected__ import __design_spec__ as top_spec
+
     # Load the child-level spec
     from test.test_package.child.__pinjected__ import __design_spec__ as child_spec
     

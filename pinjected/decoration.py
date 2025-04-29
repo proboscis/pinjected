@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from returns.maybe import Maybe, Nothing
 
@@ -8,7 +8,6 @@ from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.partially_injected import Partial
 from pinjected.v2.binds import BindInjected
 from pinjected.v2.keys import StrBindKey
-
 
 
 def update_if_registered(

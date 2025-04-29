@@ -1,9 +1,9 @@
 from pathlib import Path
 
+from pinjected_reviewer import __pinjected_reviewer_default_design
+
 from pinjected import *
 from pinjected.test import injected_pytest
-
-from pinjected_reviewer import __pinjected_reviewer_default_design
 
 design_for_test = design()
 
