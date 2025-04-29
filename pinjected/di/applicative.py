@@ -25,6 +25,7 @@ class Applicative(Generic[T], ABC):
         items = list(kwargs.items())
         keys = [t[0] for t in items]
         values = [t[1] for t in items]
+
         # logger.info(f"keys:{keys}")
         # logger.info(f"values:{values}")
         def mapper(vs):

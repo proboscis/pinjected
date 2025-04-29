@@ -28,14 +28,21 @@ class KeepArgsPure:  # ArgsModifier
             param = self.signature.parameters[name]
 
             if param.kind == param.VAR_POSITIONAL:
-                new_args.extend(Injected.pure(arg) if name in self.targets else arg for arg in value)
+                new_args.extend(
+                    Injected.pure(arg) if name in self.targets else arg for arg in value
+                )
             elif param.kind == param.VAR_KEYWORD:
-                new_kwargs.update({k: Injected.pure(v) if name in self.targets else v for k, v in value.items()})
+                new_kwargs.update(
+                    {
+                        k: Injected.pure(v) if name in self.targets else v
+                        for k, v in value.items()
+                    }
+                )
             else:
                 if name in self.targets:
                     results.append(value)
                 wrapped_value = Injected.pure(value) if name in self.targets else value
-                if param.kind in (param.POSITIONAL_ONLY,param.POSITIONAL_OR_KEYWORD):
+                if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
                     new_args.append(wrapped_value)
                 elif param.kind == param.KEYWORD_ONLY:
                     new_kwargs[name] = wrapped_value

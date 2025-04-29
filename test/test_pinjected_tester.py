@@ -2,6 +2,7 @@
 Here i test the functionality of testing module in pinjected.
 1.
 """
+
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,9 @@ def test_test_aggregator():
 
 @pytest.mark.asyncio
 async def test_run_test():
-    target = VariableInFile(P_ROOT / "test/test_package/child/module1.py", "test_test_object")
+    target = VariableInFile(
+        P_ROOT / "test/test_package/child/module1.py", "test_test_object"
+    )
     await d[a_pinjected_run_test(target)]
 
 
@@ -58,24 +61,21 @@ async def test_run_test_with_context():
 
 @pytest.mark.asyncio
 async def test_run_all_test():
-    test_runner = await d[a_pinjected_run_all_test(
-            P_ROOT / "test/test_package"
-    )]
+    test_runner = await d[a_pinjected_run_all_test(P_ROOT / "test/test_package")]
     async for res in test_runner:
-        res:PinjectedTestResult
+        res: PinjectedTestResult
         if res.failed():
             logger.error(f"{res.target.to_module_var_path().path} -> {res.value}")
         else:
             logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
 
+
 @pytest.mark.asyncio
 async def test_viz_all_test():
-    test_runner = await d[a_pinjected_run_all_test(
-            P_ROOT / "test/test_package"
-    )]
+    test_runner = await d[a_pinjected_run_all_test(P_ROOT / "test/test_package")]
     visualizer = await d[a_visualize_test_results(test_runner)]
     visualizer
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

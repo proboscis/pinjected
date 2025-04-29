@@ -13,13 +13,16 @@ class RichTaskVisualizer:
     Visualize the tasks in progress in async. No progress bar.
     Shows one line message per task.
     """
+
     statuses: dict[str, ConsoleRenderable | str] = field(default_factory=dict)
     messages: dict[str, ConsoleRenderable | str] = field(default_factory=dict)
     console: Console = field(default_factory=Console)
     live: Live = field(init=False)
 
     def __post_init__(self):
-        self.live = Live(self._generate_table(), console=self.console, refresh_per_second=8)
+        self.live = Live(
+            self._generate_table(), console=self.console, refresh_per_second=8
+        )
 
     def add(self, name: str, status, message: str | ConsoleRenderable):
         """Add a new task with the given message."""
@@ -38,7 +41,6 @@ class RichTaskVisualizer:
         if name in self.messages:
             del self.messages[name]
         self.update()
-
 
     def update_message(self, name: str, message: str | ConsoleRenderable):
         """Update the message for a specific task."""

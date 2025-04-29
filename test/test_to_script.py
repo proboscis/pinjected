@@ -1,4 +1,3 @@
-
 from pinjected import injected, instance
 
 #
@@ -116,8 +115,6 @@ def CONST(g, x):
 @instance
 def alpha(CONST):
     return CONST + 1
-
-
 
 
 # print(f"__________________")

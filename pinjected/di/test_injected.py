@@ -13,11 +13,10 @@ def _factory(a, b, y=0, x=7):
 
 
 def test_partial():
-    d = EmptyDesign.bind_instance(
-        a=1,
-        b=2
-    ).bind_provider(
-        f=Injected.inject_partially(_factory, b=Injected.by_name("b"), x=Injected.pure(5))
+    d = EmptyDesign.bind_instance(a=1, b=2).bind_provider(
+        f=Injected.inject_partially(
+            _factory, b=Injected.by_name("b"), x=Injected.pure(5)
+        )
     )
     assert d.provide("f")(3) == 10
 
@@ -28,11 +27,16 @@ def test_injected_function():
         assert args, "args should be non-empty"
         return x + y + str(args)
 
-    g = design(
-        x='x',
-        y='y',
-    ).to_resolver().to_blocking()
-    assert g[test_func](1, 2, 3, 5, 6) == 'x' + 'y' + '(1, 2, 3, 5, 6)'
+    g = (
+        design(
+            x="x",
+            y="y",
+        )
+        .to_resolver()
+        .to_blocking()
+    )
+    assert g[test_func](1, 2, 3, 5, 6) == "x" + "y" + "(1, 2, 3, 5, 6)"
+
 
 class FunctionWrapper:
     def __init__(self, func):
@@ -43,12 +47,47 @@ class FunctionWrapper:
         bound_args = self.signature.bind(*args, **kwargs)
         bound_args.apply_defaults()
 
-        positional_args = [bound_args.arguments[param.name] for param in self.signature.parameters.values() if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
-        var_positional_args = bound_args.arguments.get(next((param.name for param in self.signature.parameters.values() if param.kind == inspect.Parameter.VAR_POSITIONAL), None), ())
-        keyword_args = {param.name: bound_args.arguments[param.name] for param in self.signature.parameters.values() if param.kind == inspect.Parameter.KEYWORD_ONLY}
-        var_keyword_args = bound_args.arguments.get(next((param.name for param in self.signature.parameters.values() if param.kind == inspect.Parameter.VAR_KEYWORD), None), {})
+        positional_args = [
+            bound_args.arguments[param.name]
+            for param in self.signature.parameters.values()
+            if param.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        var_positional_args = bound_args.arguments.get(
+            next(
+                (
+                    param.name
+                    for param in self.signature.parameters.values()
+                    if param.kind == inspect.Parameter.VAR_POSITIONAL
+                ),
+                None,
+            ),
+            (),
+        )
+        keyword_args = {
+            param.name: bound_args.arguments[param.name]
+            for param in self.signature.parameters.values()
+            if param.kind == inspect.Parameter.KEYWORD_ONLY
+        }
+        var_keyword_args = bound_args.arguments.get(
+            next(
+                (
+                    param.name
+                    for param in self.signature.parameters.values()
+                    if param.kind == inspect.Parameter.VAR_KEYWORD
+                ),
+                None,
+            ),
+            {},
+        )
 
-        return self.func(*positional_args, *var_positional_args, **keyword_args, **var_keyword_args)
+        return self.func(
+            *positional_args, *var_positional_args, **keyword_args, **var_keyword_args
+        )
+
 
 # Test functions with different signatures
 def _test_function1(a, b, /, c, *args, d=10, **kwargs):
@@ -57,7 +96,7 @@ def _test_function1(a, b, /, c, *args, d=10, **kwargs):
     assert c == 3
     assert args == (4, 5)
     assert d == 10
-    assert kwargs == {'x': 7, 'y': 8}
+    assert kwargs == {"x": 7, "y": 8}
 
 
 def _test_function2(a, b, /, c, *args, d=10, e, f=20, **kwargs):
@@ -68,7 +107,7 @@ def _test_function2(a, b, /, c, *args, d=10, e, f=20, **kwargs):
     assert d == 10
     assert e == 6
     assert f == 20
-    assert kwargs == {'x': 7, 'y': 8}
+    assert kwargs == {"x": 7, "y": 8}
 
 
 def _test_function3(*, a, b):
@@ -112,16 +151,16 @@ def test_injected_function_with_defaults():
         return _x, _y, (a, b), z, s
 
     g = design(
-        x='x',
-        y='y',
+        x="x",
+        y="y",
     ).to_graph()
-    expectation = ("x", 'y', (1, 2, 3, 5, 6), {}, 7)
-    expectation2 = ("x", 'y', (1, 2, 3, 5, 6), {}, 9)
-    expectation3 = ("x", 'y', (1, 2, 3, 5, 6), {'p': 42}, 7)
-    expectation4 = ("x", 'y', (1, 2, 3, 5, 6), {'p': 42}, 9)
-    expectation5 = ("x", 'y', (1, 2), {}, 7)
-    expectation6 = ("x", 'y', (1, 2), 7, 10)
-    assert test_pure_func('x', 'y', 1, 2, 3, 5, 6) == expectation
+    expectation = ("x", "y", (1, 2, 3, 5, 6), {}, 7)
+    expectation2 = ("x", "y", (1, 2, 3, 5, 6), {}, 9)
+    expectation3 = ("x", "y", (1, 2, 3, 5, 6), {"p": 42}, 7)
+    expectation4 = ("x", "y", (1, 2, 3, 5, 6), {"p": 42}, 9)
+    expectation5 = ("x", "y", (1, 2), {}, 7)
+    expectation6 = ("x", "y", (1, 2), 7, 10)
+    assert test_pure_func("x", "y", 1, 2, 3, 5, 6) == expectation
     assert g[test_func(1, 2, 3, 5, 6)] == expectation
     assert g[test_func](1, 2, 3, 5, 6) == expectation
     # This error is caused by,, the fact that named args passes as positional are converted to kwargs internally.
@@ -140,5 +179,6 @@ def test_injected_function_with_defaults():
     assert g[test_func2(1, 2)] == expectation6
     assert g[test_func2(1, 2, 7)] == expectation6
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     pass

@@ -1,33 +1,38 @@
 import asyncio
 import hashlib
 import inspect
-import shutil
 import threading
 import time
 from asyncio import Future
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from pprint import pformat
-from typing import Callable, Dict, ParamSpec, Any, TypeVar, Awaitable
+from typing import Any, ParamSpec
 
 import cloudpickle
 import filelock
 import jsonpickle
+import pandas as pd
 from frozendict import frozendict
-from pinjected.di.metadata.bind_metadata import BindMetadata
 from returns.maybe import Some
 from sqlitedict import SqliteDict
 
-from injected_utils.cached_function import AsyncCachedFunction, CachedFunction, KeyEncoder, IStringKeyProtocol, \
-    IKeyEncoder
+from injected_utils.cached_function import (
+    AsyncCachedFunction,
+    CachedFunction,
+    IKeyEncoder,
+    IStringKeyProtocol,
+    KeyEncoder,
+)
+from pinjected import *
 from pinjected import Injected, injected, instance
 from pinjected.decoration import update_if_registered
+from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import get_code_location
 from pinjected.providable import Providable
-import pandas as pd
-from pinjected import *
 
 try:
     from pinjected import AsyncResolver
@@ -36,7 +41,7 @@ except ImportError:
 
 # from data_tree.util import Pickled
 
-P = ParamSpec('P')
+P = ParamSpec("P")
 Hasher = Callable[[P], Any]
 HasherFactory = Callable[[inspect.Signature], Hasher]
 
@@ -59,12 +64,21 @@ def ensure_injected(i: Providable):
 
 def pickled_injected(cache_path, injected: Injected):
     from data_tree.util import Pickled
+
     injected = ensure_injected(injected)
 
     def _impl(__resolver__: AsyncResolver):
-        return Pickled(cache_path, lambda: __resolver__.to_blocking()[injected], backend=cloudpickle).value
+        return Pickled(
+            cache_path,
+            lambda: __resolver__.to_blocking()[injected],
+            backend=cloudpickle,
+        ).value
 
-    return Injected.bind(_impl).add_dynamic_dependencies(*injected.complete_dependencies).proxy
+    return (
+        Injected.bind(_impl)
+        .add_dynamic_dependencies(*injected.complete_dependencies)
+        .proxy
+    )
 
 
 @instance
@@ -77,7 +91,9 @@ class AsyncRunTracker:
         self.bound = self.logger.bind(name="AsyncRunTracker")
 
     def log_status(self):
-        self.bound.info(f"running tasks: {pformat([i[1] for i in self.running_tasks])}\n num:{len(self.running_tasks)}")
+        self.bound.info(
+            f"running tasks: {pformat([i[1] for i in self.running_tasks])}\n num:{len(self.running_tasks)}"
+        )
 
     def register(self, fut: Future, fn, *args, **kwargs):
         self.bound.info(f"adding {fn} to running tasks")
@@ -115,6 +131,7 @@ async def run_in_new_thread(fn, /, *args, **kwargs):
 
     def run_task():
         from loguru import logger
+
         # holy fuck loguru!
         try:
             logger.info(f"running {fn} in new thread :{threading.current_thread()}")
@@ -126,6 +143,7 @@ async def run_in_new_thread(fn, /, *args, **kwargs):
 
     thread = threading.Thread(target=run_task)
     from loguru import logger
+
     logger.info(f"starting thread {thread} for {fn}")
     thread.start()
     try:
@@ -140,6 +158,7 @@ async def run_in_new_thread(fn, /, *args, **kwargs):
 
 def provide_cached(cache, async_run, func: Callable, additional_key: Injected):
     from loguru import logger
+
     async def task(key, *args, **kwargs):
         return await async_run(func, *args, **kwargs)
 
@@ -153,7 +172,7 @@ def provide_cached(cache, async_run, func: Callable, additional_key: Injected):
         value_deserializer=cloudpickle.loads,
         key_serializer=lambda obj: sha256(jsonpickle.dumps(obj).encode()).hexdigest(),
         key_deserializer=None,
-        name=func.__name__
+        name=func.__name__,
     )
 
     async def interface(*args, **kwargs):
@@ -165,17 +184,20 @@ def provide_cached(cache, async_run, func: Callable, additional_key: Injected):
 
 
 def default_key_encoder(func):
-    return KeyEncoder(inspect.signature(func),
-                      key_serializer=lambda obj: sha256(jsonpickle.dumps(obj).encode()).hexdigest())
+    return KeyEncoder(
+        inspect.signature(func),
+        key_serializer=lambda obj: sha256(jsonpickle.dumps(obj).encode()).hexdigest(),
+    )
 
 
-def provide_cached_async(cache,
-                         async_func,
-                         additonal_key,
-                         en_async,
-                         value_invalidator=lambda x: False,
-                         key_encoder_factory: Callable[[inspect.Signature], KeyEncoder] = None
-                         ):
+def provide_cached_async(
+    cache,
+    async_func,
+    additonal_key,
+    en_async,
+    value_invalidator=lambda x: False,
+    key_encoder_factory: Callable[[inspect.Signature], KeyEncoder] = None,
+):
     # @wraps(async_func) holy shit, this changes the signature.
     async def task(added_key, *args, **kwargs):
         return await async_func(*args, **kwargs)
@@ -198,7 +220,7 @@ def provide_cached_async(cache,
         key_encoder=key_encoder,
         key_deserializer=None,
         name=async_func.__name__,
-        value_invalidator=value_invalidator
+        value_invalidator=value_invalidator,
     )
 
     async def interface(*args, **kwargs):
@@ -220,7 +242,7 @@ def run_async(func: Injected[Callable]):
     return to_async(func).eval()
 
 
-def en_async_cached(cache: Injected[Dict], *additional_keys: Injected):
+def en_async_cached(cache: Injected[dict], *additional_keys: Injected):
     """
     decorator for an InjectedFunction to be run with a cache and a thread pool.
     :param cache:
@@ -231,13 +253,11 @@ def en_async_cached(cache: Injected[Dict], *additional_keys: Injected):
 
     def _impl(func: Injected[Callable]):
         from loguru import logger
+
         assert isinstance(func, Injected)
         logger.info(f"en_async_cached called with: {func}")
         return Injected.bind(
-            provide_cached,
-            cache=cache,
-            func=func,
-            additional_key=additional_key
+            provide_cached, cache=cache, func=func, additional_key=additional_key
         )
 
     return _impl
@@ -255,14 +275,15 @@ class HasherKeyEncoder(IKeyEncoder):
         # breturn serialized
 
 
-def async_cached(cache: Injected[Dict],
-                 *additional_key: Injected,
-                 en_async=None,
-                 value_invalidator=None,
-                 hasher_factory: Injected[HasherFactory] = None,
-                 key_hashers: Injected[dict[str, callable]] = None,
-                 replace_binding=True
-                 ):
+def async_cached(
+    cache: Injected[dict],
+    *additional_key: Injected,
+    en_async=None,
+    value_invalidator=None,
+    hasher_factory: Injected[HasherFactory] = None,
+    key_hashers: Injected[dict[str, callable]] = None,
+    replace_binding=True,
+):
     """
     非同期関数の結果をキャッシュするためのデコレータファクトリです。
 
@@ -312,6 +333,7 @@ def async_cached(cache: Injected[Dict],
 
     # logger.info(f"async_cached called in {parent_frame.f_code.co_filename}:{parent_frame.f_lineno}")
     if hasher_factory is not None:
+
         def provide_factory(_factory: HasherFactory):
             def factory(signature: inspect.Signature):
                 hasher: Hasher = _factory(signature)
@@ -322,6 +344,7 @@ def async_cached(cache: Injected[Dict],
 
         key_encoder_factory = Injected.bind(provide_factory, _factory=hasher_factory)
     elif key_hashers is not None:
+
         def provide_key_hasher(_key_hashers: dict[str, callable]):
             def factory(signature: inspect.Signature):
                 key_hasher = dict()
@@ -332,7 +355,9 @@ def async_cached(cache: Injected[Dict],
 
             return factory
 
-        key_encoder_factory = Injected.bind(provide_key_hasher, _key_hashers=key_hashers)
+        key_encoder_factory = Injected.bind(
+            provide_key_hasher, _key_hashers=key_hashers
+        )
     else:
         key_encoder_factory = Injected.pure(None)
 
@@ -343,18 +368,19 @@ def async_cached(cache: Injected[Dict],
             cache=cache,
             async_func=async_func,
             additonal_key=additional_key,
-            value_invalidator=Injected.pure(lambda x: False) if value_invalidator is None else value_invalidator,
-            key_encoder_factory=key_encoder_factory
+            value_invalidator=Injected.pure(lambda x: False)
+            if value_invalidator is None
+            else value_invalidator,
+            key_encoder_factory=key_encoder_factory,
         )
         res.__is_async_function__ = True
         if replace_binding:
             return update_if_registered(
                 async_func,
                 res,
-                Some(BindMetadata(code_location=Some(get_code_location(parent_frame))))
+                Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
             )
-        else:
-            return res
+        return res
 
     return impl
 
@@ -452,7 +478,9 @@ def sqlite_dict_with_backup(cache_path: str | Path, backup_frequency: pd.Timedel
         # shutil.copy(cache_path, tmp_path) # this is to prevent the file from being corrupted.
         # shutil.move(tmp_path, backup_path)
         import os
+
         from loguru import logger
+
         os.system(f"rsync -a {cache_path} {backup_path}")
         logger.info(f"backed up {cache_path} to {backup_path}")
         backup_time = pd.Timestamp.now()
@@ -492,7 +520,7 @@ class CustomKeyHasher:
         bound = self.signature.bind(*args, **kwargs)
         bound.apply_defaults()
         encoded_dict = {}
-        kwargs = bound.arguments['kwargs']
+        kwargs = bound.arguments["kwargs"]
         encoded_kwargs = {}
         for key, v in kwargs.items():
             if key in self.key_hasher:
@@ -501,11 +529,10 @@ class CustomKeyHasher:
                 encoded_kwargs[key] = self.type_hasher[type(v)](v)
             else:
                 encoded_kwargs[key] = v
-        encoded_dict["added_key"] = bound.arguments['added_key']
-        encoded_dict['args'] = bound.arguments['args']
-        encoded_dict['kwargs'] = frozendict(encoded_kwargs)
+        encoded_dict["added_key"] = bound.arguments["added_key"]
+        encoded_dict["args"] = bound.arguments["args"]
+        encoded_dict["kwargs"] = frozendict(encoded_kwargs)
         encoded_dict = frozendict(encoded_dict)
-        from loguru import logger
         # logger.info(f"signature: {self.signature}")
         # logger.info(f"encoded_dict: {encoded_dict}")
         return cloudpickle.dumps(encoded_dict)
@@ -513,10 +540,9 @@ class CustomKeyHasher:
     def encode_key(self, key):
         if key in self.key_hasher:
             return self.key_hasher[key](key)
-        elif type(key) in self.type_hasher:
+        if type(key) in self.type_hasher:
             return self.type_hasher[type(key)](key)
-        else:
-            return key
+        return key
 
 
 default_custom_key_hasher_factory = Injected.pure(CustomKeyHasher)
@@ -524,8 +550,8 @@ default_custom_key_hasher_factory = Injected.pure(CustomKeyHasher)
 
 @injected
 def custom_key_hasher_factory(
-        key_hasher: dict[str, callable] = None,
-        type_hasher: dict[type, callable] = None,
+    key_hasher: dict[str, callable] = None,
+    type_hasher: dict[type, callable] = None,
 ):
     """
     Use this factory along with @sync_cached to provide custom key hasher.
@@ -537,13 +563,10 @@ def custom_key_hasher_factory(
     def impl(signature: inspect.Signature):
         params = dict()
         if key_hasher is not None:
-            params['key_hasher'] = key_hasher
+            params["key_hasher"] = key_hasher
         if type_hasher is not None:
-            params['type_hasher'] = type_hasher
-        return CustomKeyHasher(
-            signature=signature,
-            **params
-        )
+            params["type_hasher"] = type_hasher
+        return CustomKeyHasher(signature=signature, **params)
 
     return impl
 
@@ -559,16 +582,17 @@ class HasherKeyProtocolAdapter(IStringKeyProtocol):
         return self.hasher(*args, **kwargs)
 
     def encode_key(self, key):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def decode_key(self, key):
-        raise NotImplementedError()
+        raise NotImplementedError
 
 
-def sync_cached(cache: Injected[Dict],
-                *deps: Injected,
-                hasher_factory: Injected[HasherFactory] = default_custom_key_hasher_factory,
-                ):
+def sync_cached(
+    cache: Injected[dict],
+    *deps: Injected,
+    hasher_factory: Injected[HasherFactory] = default_custom_key_hasher_factory,
+):
     """
     Decorator factory for synchronously caching the output of functions.
 
@@ -612,6 +636,7 @@ def sync_cached(cache: Injected[Dict],
     def provide_blocking_cache(cache, func, _deps, _hasher_factory):
         def new_impl(deps, *arg, **kwargs):
             from loguru import logger
+
             # deps are just for cache key purposes
             logger.info(f"new_impl called with: {func.__name__, arg, kwargs}")
             res = func(*arg, **kwargs)
@@ -625,7 +650,7 @@ def sync_cached(cache: Injected[Dict],
             new_impl,
             cache_serializer=Some(cloudpickle.dumps),
             cache_deserializer=Some(cloudpickle.loads),
-            protocol=HasherKeyProtocolAdapter(hasher)
+            protocol=HasherKeyProtocolAdapter(hasher),
             # key_serializer=lambda obj: sha256(jsonpickle.dumps(obj).encode()).hexdigest(),
             # key_deserializer=None
         )
@@ -637,20 +662,27 @@ def sync_cached(cache: Injected[Dict],
 
     def impl(func: Injected[Callable]):
         func = ensure_injected(func)
-        res = Injected.bind(provide_blocking_cache,
-                            cache=cache,
-                            func=func,
-                            _deps=Injected.mzip(*deps),
-                            _hasher_factory=hasher_factory)
-        return update_if_registered(func, res, Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))))
+        res = Injected.bind(
+            provide_blocking_cache,
+            cache=cache,
+            func=func,
+            _deps=Injected.mzip(*deps),
+            _hasher_factory=hasher_factory,
+        )
+        return update_if_registered(
+            func,
+            res,
+            Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
+        )
 
     return impl
 
 
-def blocking_cached(cache: Injected[Dict],
-                    *deps: Injected,
-                    protocol: Injected[IStringKeyProtocol] = None
-                    ):
+def blocking_cached(
+    cache: Injected[dict],
+    *deps: Injected,
+    protocol: Injected[IStringKeyProtocol] = None,
+):
     """
     decorator for an InjectedFunction to be run with a cache.
     :param cache:
@@ -672,7 +704,7 @@ def blocking_cached(cache: Injected[Dict],
             new_impl,
             cache_serializer=Some(cloudpickle.dumps),
             cache_deserializer=Some(cloudpickle.loads),
-            protocol=_protocol
+            protocol=_protocol,
             # key_serializer=lambda obj: sha256(jsonpickle.dumps(obj).encode()).hexdigest(),
             # key_deserializer=None
         )
@@ -686,9 +718,18 @@ def blocking_cached(cache: Injected[Dict],
 
     def impl(func: Injected[Callable]):
         func = ensure_injected(func)
-        res = Injected.bind(provide_blocking_cache, cache=cache, func=func, _deps=Injected.mzip(*deps),
-                            _protocol=injected_protocol)
-        return update_if_registered(func, res, Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))))
+        res = Injected.bind(
+            provide_blocking_cache,
+            cache=cache,
+            func=func,
+            _deps=Injected.mzip(*deps),
+            _protocol=injected_protocol,
+        )
+        return update_if_registered(
+            func,
+            res,
+            Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
+        )
 
     return impl
 
@@ -703,6 +744,8 @@ def parse_preference_assignments(res: dict):
 
 __meta_design__ = design(
     overrides=design(
-        injected_utils_default_hasher=lambda item: sha256(jsonpickle.dumps(item).encode()).hexdigest()
+        injected_utils_default_hasher=lambda item: sha256(
+            jsonpickle.dumps(item).encode()
+        ).hexdigest()
     )
 )

@@ -6,12 +6,15 @@ from pinjected.v2.keys import IBindKey
 
 @dataclass
 class ProvideContext:
-    resolver:'AsyncResolver'
+    resolver: "AsyncResolver"
     key: IBindKey | None
-    parent: Optional['ProvideContext']
+    parent: Optional["ProvideContext"]
+
     def __post_init__(self):
         if self.key is not None:
-            assert isinstance(self.key, IBindKey), f"key must be an instance of IBindKey, not {type(self.key)}"
+            assert isinstance(self.key, IBindKey), (
+                f"key must be an instance of IBindKey, not {type(self.key)}"
+            )
 
     @property
     def trace(self):
@@ -23,11 +26,7 @@ class ProvideContext:
     def trace_str(self):
         def key_str(x):
             if x.key is None:
-                return 'None'
+                return "None"
             return x.key.ide_hint_string()
-        return ' -> '.join([key_str(x) for x in self.trace])
 
-
-
-
-
+        return " -> ".join([key_str(x) for x in self.trace])

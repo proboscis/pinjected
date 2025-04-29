@@ -4,17 +4,18 @@ import datetime
 import inspect
 import os
 import pickle
-from abc import ABC, abstractmethod, ABCMeta
+from abc import ABC, ABCMeta, abstractmethod
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from threading import Lock, RLock
-from typing import Callable, Dict, Any, Union, Awaitable, TypeVar
+from typing import Any, TypeVar
 
 import cloudpickle
 from frozendict import frozendict
 from returns._internal.pipeline.flow import flow
-from returns.future import FutureResultE, future_safe, FutureSuccess, FutureFailure
-from returns.maybe import Nothing, Maybe, Some
+from returns.future import FutureFailure, FutureResultE, FutureSuccess, future_safe
+from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import is_successful
 from returns.pointfree import bind
 from returns.unsafe import unsafe_perform_io
@@ -67,7 +68,7 @@ class StringKeyProtocol(IStringKeyProtocol):
 @dataclass
 class ProtocolWrappedDict:
     protocol: StringKeyProtocol
-    cache: Dict
+    cache: dict
 
     def __getitem__(self, item):
         return self.cache[self.protocol.encode_key(item)]
@@ -99,7 +100,8 @@ class CachedFunction:
     """
     Stores both inputs and outputs.
     """
-    cache: Dict
+
+    cache: dict
     func: Callable
     # This is a hack to make sure that the cache is picklable
     cache_serializer: Maybe = field(default=Nothing)
@@ -111,15 +113,16 @@ class CachedFunction:
     def __post_init__(self):
         sig = inspect.signature(self.func)
         # funcの引数が*varargs（可変長引数）のみを持つことを確認
-        assert len(sig.parameters) == 1 and list(sig.parameters.values())[0].kind == inspect.Parameter.VAR_POSITIONAL, \
-            f"func must have only *args parameter, but got {sig}"
+        assert (
+            len(sig.parameters) == 1
+            and list(sig.parameters.values())[0].kind
+            == inspect.Parameter.VAR_POSITIONAL
+        ), f"func must have only *args parameter, but got {sig}"
 
         self.cache_type = type(self.cache)
         if self.protocol is None:
             self.protocol: IStringKeyProtocol = StringKeyProtocol(
-                sig,
-                serializer=pickle.dumps,
-                deserializer=pickle.loads
+                sig, serializer=pickle.dumps, deserializer=pickle.loads
             )
         self.cache_locks = defaultdict(Lock)
 
@@ -128,15 +131,15 @@ class CachedFunction:
             return self.func.__name__
         if hasattr(self.func, "__class__"):
             return self.func.__class__.__name__
-        if hasattr(self.func, "__call__"):
+        if callable(self.func):
             return self.func.__call__.__name__
-        else:
-            raise RuntimeError("cannot get function name")
+        raise RuntimeError("cannot get function name")
 
     def __call__(self, *args, **kwargs):
         key = self.protocol.get_cache_key(*args, **kwargs)
         t = datetime.datetime.now()
         from loguru import logger
+
         # it's that we'll have futures that are waiting on the same key.
         args_repr = [repr(a)[:100] for a in args]
         args_repr += [f"{k}={v!r}" for k, v in kwargs.items()]
@@ -157,7 +160,9 @@ class CachedFunction:
                 logger.debug(f"{self._get_func_name()}: cache miss for {args_repr}")
             result = self.func(*args, **kwargs)
             self.cache[key] = result
-            logger.debug(f"cache miss for {args_repr} took {(datetime.datetime.now() - t).total_seconds()} seconds")
+            logger.debug(
+                f"cache miss for {args_repr} took {(datetime.datetime.now() - t).total_seconds()} seconds"
+            )
             return result
 
     def get_key_lock(self, key):
@@ -199,11 +204,19 @@ class CachedFunction:
         return state
 
     def __setstate__(self, state):
-        self.func, cache, self.cache_type, self.cache_serializer, self.cache_deserializer, self.protocol = state
+        (
+            self.func,
+            cache,
+            self.cache_type,
+            self.cache_serializer,
+            self.cache_deserializer,
+            self.protocol,
+        ) = state
         self.cache = self.cache_deserializer.value_or(lambda x: x)(cache)
         self.cache_locks = defaultdict(Lock)
-        assert isinstance(self.cache,
-                          self.cache_type), f"{self.cache} is not {self.cache_type}. {cache}, {self.cache_type},{self.cache_deserializer}"
+        assert isinstance(self.cache, self.cache_type), (
+            f"{self.cache} is not {self.cache_type}. {cache}, {self.cache_type},{self.cache_deserializer}"
+        )
 
     def __getitem__(self, item):
         key = self.ensure_key_type(item)
@@ -222,15 +235,22 @@ class CachedFunction:
         encode = serializer.value_or(lambda x: x)
         decode = deserializer.value_or(lambda x: x)
         from loguru import logger
+
         logger.info(f"creating sqlite dict at {path}")
         logger.info(f"current working dir is {os.getcwd()}")
         shelf = SqliteDict(path, encode=encode, decode=decode, autocommit=True)
         cache_serializer = Some(lambda sd: sd.filename)
-        cache_deserializer = Some(lambda filename: SqliteDict(filename, encode=encode, decode=decode, autocommit=True))
+        cache_deserializer = Some(
+            lambda filename: SqliteDict(
+                filename, encode=encode, decode=decode, autocommit=True
+            )
+        )
         return CachedFunction(shelf, func, cache_serializer, cache_deserializer)
 
     @staticmethod
-    def create_with_proxy(rif: "RemoteInterpreterFactory", gen_cache: Callable[[], Dict], func):
+    def create_with_proxy(
+        rif: "RemoteInterpreterFactory", gen_cache: Callable[[], dict], func
+    ):
         env = rif.create(num_cpus=0)
         r_cache = env.put(gen_cache)()
         return CachedFunction(RemoteDict(r_cache), func)
@@ -240,7 +260,7 @@ class CachedFunction:
 class TimeCachedFunction:
     func: Callable
     cache_life: datetime.timedelta
-    cache: Dict = field(default_factory=dict)
+    cache: dict = field(default_factory=dict)
     lock: Lock = field(default_factory=Lock)
 
     def __post_init__(self):
@@ -248,6 +268,7 @@ class TimeCachedFunction:
 
     def __call__(self, *args, **kwargs):
         from loguru import logger
+
         t = datetime.datetime.now()
         key = self.protocol.get_cache_key(*args, **kwargs)
         with self.lock:
@@ -256,11 +277,15 @@ class TimeCachedFunction:
                 dt = t - time
                 if dt < self.cache_life:
                     logger.debug(f"cache hit for {args} {kwargs}")
-                    logger.debug(f"cache hit for {args} {kwargs} took {datetime.datetime.now() - t}")
+                    logger.debug(
+                        f"cache hit for {args} {kwargs} took {datetime.datetime.now() - t}"
+                    )
                     return value
             value = self.func(*args, **kwargs)
             self.cache[key] = (t, value)
-            logger.debug(f"cache miss for {args} {kwargs} took {datetime.datetime.now() - t}")
+            logger.debug(
+                f"cache miss for {args} {kwargs} took {datetime.datetime.now() - t}"
+            )
             return value
 
     def __getstate__(self):
@@ -275,11 +300,11 @@ class TimeCachedFunction:
 
 
 def encode_base64_cloudpickle_str(d):
-    return base64.b64encode(cloudpickle.dumps(d)).decode('utf-8')
+    return base64.b64encode(cloudpickle.dumps(d)).decode("utf-8")
 
 
 def decode_base64_cloudpickle_str(s):
-    return cloudpickle.loads(base64.b64decode(s.encode('utf-8')))
+    return cloudpickle.loads(base64.b64decode(s.encode("utf-8")))
 
 
 def no_change(func):
@@ -304,10 +329,13 @@ class KeyEncoder(IKeyEncoder):
         try:
             # this is incosistent across process. why is it?
             encoded = self.key_serializer(key)
-            assert isinstance(encoded, str), f"key_serializer must return str. {encoded} is {type(encoded)}"
+            assert isinstance(encoded, str), (
+                f"key_serializer must return str. {encoded} is {type(encoded)}"
+            )
             return encoded
         except Exception as e:
             from loguru import logger
+
             logger.error(e)
             check_picklable(key)
             raise e
@@ -317,13 +345,13 @@ class KeyEncoder(IKeyEncoder):
         bound.apply_defaults()
 
         key = self._encode_key(frozendict(bound.arguments))
-        assert key is not None, f'key is None. {args},{kwargs}'
+        assert key is not None, f"key is None. {args},{kwargs}"
         return key
 
 
 @dataclass
 class AsyncLockMap:
-    locks: Dict[Any, Lock] = field(default_factory=dict)
+    locks: dict[Any, Lock] = field(default_factory=dict)
 
     def get(self, key):
         if key not in self.locks:
@@ -332,13 +360,15 @@ class AsyncLockMap:
 
 
 class CacheNewValueValidationFailure(Exception):
-    def __init__(self,
-                 name: str,
-                 args: tuple,
-                 kwargs: dict,
-                 function: Callable,
-                 validator: Callable,
-                 msg: str):
+    def __init__(
+        self,
+        name: str,
+        args: tuple,
+        kwargs: dict,
+        function: Callable,
+        validator: Callable,
+        msg: str,
+    ):
         super().__init__(msg)
         self.name = name
         self.args = args
@@ -349,22 +379,28 @@ class CacheNewValueValidationFailure(Exception):
 
 @dataclass
 class AsyncCachedFunction:
-    cache: Dict
+    cache: dict
     func: Callable
     en_async: "func -> async_func" = field(default=no_change)
-    value_serializer: Union[Callable[[Any], bytes], None] = field(default=None)
-    value_deserializer: Union[Callable[[bytes], Any], None] = field(default=None)
+    value_serializer: Callable[[Any], bytes] | None = field(default=None)
+    value_deserializer: Callable[[bytes], Any] | None = field(default=None)
     # key_serializer: Callable[[Any], str] = field(default=encode_base64_cloudpickle_str)
     key_encoder: KeyEncoder = field(default=None)
-    key_deserializer: Union[Callable[[str], Any], None] = field(default=decode_base64_cloudpickle_str)
+    key_deserializer: Callable[[str], Any] | None = field(
+        default=decode_base64_cloudpickle_str
+    )
     name: str = field(default=None)
-    value_invalidator: Callable[[Any], Union[bool, Awaitable[bool]]] = field(default=lambda x: False)
+    value_invalidator: Callable[[Any], bool | Awaitable[bool]] = field(
+        default=lambda x: False
+    )
     _concurrent_validation_count: int = field(default=0)
     _lock_map: AsyncLockMap = field(default_factory=AsyncLockMap)
 
     def __post_init__(self):
         logger.info(f"async cached function created with cache: {self.cache}")
-        assert not isinstance(self.cache, (Injected, DelegatedVar)), f"cache must be a dict, not {type(self.cache)}"
+        assert not isinstance(self.cache, (Injected, DelegatedVar)), (
+            f"cache must be a dict, not {type(self.cache)}"
+        )
         if self.name is None:
             self.name = self.func.__name__
         assert isinstance(self.name, str), f"name must be str, not {type(self.name)}"
@@ -374,7 +410,6 @@ class AsyncCachedFunction:
             self.key_encoder = KeyEncoder(inspect.signature(self.func))
 
     async def _load_value(self, key):
-
         def impl():
             decoder = self.value_deserializer or (lambda x: x)
             start = datetime.datetime.now()
@@ -405,7 +440,7 @@ class AsyncCachedFunction:
     class _CacheValidationFailure(RuntimeError):
         def __init__(self, item, cause, msg):
             super().__init__(msg)
-            self.item = item,
+            self.item = (item,)
             self.cause = cause
 
     @future_safe
@@ -419,20 +454,29 @@ class AsyncCachedFunction:
         key = self.key_encoder.get_key(*args, **kwargs)
         with logger.contextualize(tag=self.name):
             async with self._lock_map.get(key):
-                valid_key: FutureResultE[str] = FutureSuccess(key) if key in self.cache else FutureFailure(
-                    f'key ({key}) not found')
+                valid_key: FutureResultE[str] = (
+                    FutureSuccess(key)
+                    if key in self.cache
+                    else FutureFailure(f"key ({key}) not found")
+                )
                 loaded_value: FutureResultE[T] = flow(
                     valid_key,
                     bind(self._safe_load_value),
                     bind(self._safe_validate),
                 )
-                if is_successful(await valid_key) and not is_successful(await loaded_value):
-                    logger.warning(f"cache hit but invalidated for {self.name}! {str(args)[:100]}...,{str(kwargs)}...")
+                if is_successful(await valid_key) and not is_successful(
+                    await loaded_value
+                ):
+                    logger.warning(
+                        f"cache hit but invalidated for {self.name}! {str(args)[:100]}...,{kwargs!s}..."
+                    )
                 if is_successful(await loaded_value):
                     data = unsafe_perform_io(await loaded_value).unwrap()
                     return data
                 if not is_successful(await valid_key):
-                    logger.debug(f"cache miss for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
+                    logger.debug(
+                        f"cache miss for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}..."
+                    )
                 result = await self.func(*args, **kwargs)
                 if cause := await self._invalidate_value(result):
                     raise CacheNewValueValidationFailure(
@@ -441,9 +485,12 @@ class AsyncCachedFunction:
                         kwargs=kwargs,
                         function=self.func,
                         validator=self.value_invalidator,
-                        msg=cause)
+                        msg=cause,
+                    )
                 await self._write_value(key, result)
-                logger.info(f"cache written for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}...")
+                logger.info(
+                    f"cache written for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}..."
+                )
                 return result
 
     def keys(self):
@@ -451,7 +498,9 @@ class AsyncCachedFunction:
 
     def decode_key(self, key: str):
         if self.key_deserializer is None:
-            raise RuntimeError("key_deserializer is None. so key retrieval is not possible.")
+            raise RuntimeError(
+                "key_deserializer is None. so key retrieval is not possible."
+            )
         return self.key_deserializer(key)
 
 

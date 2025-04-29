@@ -168,7 +168,6 @@ lint.ignore = [
 ]
 
 
-
 # Cyclomatic complexity → C901
 [tool.ruff.lint.mccabe]
 # Flag C901 errors whenever a function's cyclomatic complexity exceeds 6
@@ -204,3 +203,7 @@ exclude = [
     ".eggs",
     "*.egg",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN201"]
+"packages/*/tests/**/*.py" = ["ANN201"]

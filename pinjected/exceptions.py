@@ -11,12 +11,12 @@ class DependencyResolutionFailure:
     cause: Any
 
     def trace_str(self):
-        return ' => '.join(self.trace)
+        return " => ".join(self.trace)
 
     def explanation_str(self):
         """
         Generate a detailed explanation of the dependency resolution failure.
-        
+
         Returns:
             str: A formatted string explaining the dependency resolution failure
                  with trace information.
@@ -32,7 +32,7 @@ class DependencyResolutionError(RuntimeError):
         super().__init__(msg)
         if causes is None:
             causes = []
-        self.msg=msg
+        self.msg = msg
         self.causes = causes.copy()
 
 

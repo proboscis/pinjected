@@ -10,6 +10,7 @@ Using PinjectedTestAggregator, We want to run the tests in organized manner...
 
 
 """
+
 import asyncio
 import multiprocessing
 from abc import ABC
@@ -42,7 +43,9 @@ class PinjectedTestResult:
     trace: str | None
 
     def __str__(self):
-        return f"PinjectedTestResult({self.target.to_module_var_path().path},{self.value})"
+        return (
+            f"PinjectedTestResult({self.target.to_module_var_path().path},{self.value})"
+        )
 
     def __repr__(self):
         return str(self)
@@ -52,7 +55,7 @@ class PinjectedTestResult:
 
 
 def escape_loguru_tags(text):
-    return text.replace('<', r'\<')
+    return text.replace("<", r"\<")
 
 
 class CommandException(Exception):
@@ -69,12 +72,10 @@ class CommandException(Exception):
 
 @injected
 async def a_pinjected_run_test(
-        logger,
-        a_pinjected_test_event_callback,
-        /,
-        target: VariableInFile
+    logger, a_pinjected_test_event_callback, /, target: VariableInFile
 ) -> PinjectedTestResult:
     import sys
+
     interpreter_path = sys.executable
     key = target.to_module_var_path().path
     command = f"{interpreter_path} -m pinjected run {target.to_module_var_path().path} --pinjected_no_notification"
@@ -103,11 +104,11 @@ async def a_pinjected_run_test(
             logger.error(f"read_stream failed with {e}")
             raise e
 
-    await a_pinjected_test_event_callback(TestEvent(key, 'start'))
+    await a_pinjected_test_event_callback(TestEvent(key, "start"))
     async with TaskGroup() as tg:
         # logger.info(f"waiting for command to finish: {command}")
-        read_stdout_task = tg.create_task(read_stream(proc.stdout, 'stdout'))
-        read_stderr_task = tg.create_task(read_stream(proc.stderr, 'stderr'))
+        read_stdout_task = tg.create_task(read_stream(proc.stdout, "stdout"))
+        read_stderr_task = tg.create_task(read_stream(proc.stderr, "stderr"))
         # logger.info(f"waiting for proc.wait()")
         result = await proc.wait()
         # logger.info(f"proc.wait() finished with {result}")
@@ -122,6 +123,7 @@ async def a_pinjected_run_test(
         trace = None
     else:
         import traceback
+
         # logger.error(f"command: <<{command}>> failed with code {result}.")
         trace = traceback.format_exc()
         exc = CommandException(
@@ -130,22 +132,20 @@ async def a_pinjected_run_test(
             # f"\nstderr: {stderr}",
             code=result,
             stdout=stdout,
-            stderr=stderr
+            stderr=stderr,
         )
         result = Failure(exc)
     res = PinjectedTestResult(
-        target=target,
-        stdout=stdout,
-        stderr=stderr,
-        value=result,
-        trace=trace
+        target=target, stdout=stdout, stderr=stderr, value=result, trace=trace
     )
     await a_pinjected_test_event_callback(TestEvent(key, res))
     return res
 
 
 @injected
-async def a_pinjected_run_test__multiprocess(logger, /, target: VariableInFile) -> PinjectedTestResult:
+async def a_pinjected_run_test__multiprocess(
+    logger, /, target: VariableInFile
+) -> PinjectedTestResult:
     """
     1. get the ModuleVarPath from VariableInFile. but how?
     """
@@ -165,11 +165,7 @@ async def a_pinjected_run_test__multiprocess(logger, /, target: VariableInFile) 
     else:
         res = Success(res)
     return PinjectedTestResult(
-        target=target,
-        stdout=stdout,
-        stderr=stderr,
-        value=res,
-        trace=trace
+        target=target, stdout=stdout, stderr=stderr, value=res, trace=trace
     )
 
 
@@ -180,11 +176,11 @@ def pinjected_test_aggregator():
 
 @injected
 async def a_pinjected_run_all_test(
-        pinjected_test_aggregator: PinjectedTestAggregator,
-        a_pinjected_run_test,
-        logger,
-        /,
-        root: Path
+    pinjected_test_aggregator: PinjectedTestAggregator,
+    a_pinjected_run_test,
+    logger,
+    /,
+    root: Path,
 ):
     targets = pinjected_test_aggregator.gather(root)
     tasks = []
@@ -198,6 +194,7 @@ async def a_pinjected_run_all_test(
 @injected
 def ensure_agen(items: list[VariableInFile] | AsyncIterator[VariableInFile]):
     if isinstance(items, list):
+
         async def gen():
             for t in items:
                 yield t
@@ -212,7 +209,7 @@ class ITestEvent(ABC):
 
 @dataclass
 class TestMainEvent(ITestEvent):
-    kind: Literal['start', 'end']
+    kind: Literal["start", "end"]
 
 
 @dataclass
@@ -223,7 +220,7 @@ class TestStatus:
 @dataclass
 class TestEvent(ITestEvent):
     name: str
-    data: Literal['queued', 'start'] | PinjectedTestResult | TestStatus
+    data: Literal["queued", "start"] | PinjectedTestResult | TestStatus
 
 
 @injected
@@ -233,6 +230,7 @@ async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
         case TestEvent(name, PinjectedTestResult() as res):
             import rich
             from rich.panel import Panel
+
             if res.failed():
                 tgt: VariableInFile = res.target
                 mod_path = tgt.to_module_var_path().path
@@ -242,14 +240,18 @@ async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
                 rich.print(panel)
             else:
                 rich.print(
-                    Panel(f"Success: {res.target.to_module_var_path().path}", title="Success", style="bold green")
+                    Panel(
+                        f"Success: {res.target.to_module_var_path().path}",
+                        title="Success",
+                        style="bold green",
+                    )
                 )
                 # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
 
 
 @instance
 async def a_pinjected_test_event_callback(
-        logger,
+    logger,
 ):
     viz_fac = task_visualizer
     viz_iter = None
@@ -269,7 +271,7 @@ async def a_pinjected_test_event_callback(
         rich.print(panel)
 
     async def impl(e: ITestEvent):
-        nonlocal viz,viz_iter, failures, active_tests
+        nonlocal viz, viz_iter, failures, active_tests
         # We must handle a case where TestMainEvent('start') is not called...
         # because the testfunction can be called solely.
 
@@ -282,7 +284,7 @@ async def a_pinjected_test_event_callback(
             #         show_failure(res)
             # case TestEvent(_, 'queued'):
             #     viz.add(e.name, "queued", "")
-            case TestEvent(key, 'start'):
+            case TestEvent(key, "start"):
                 if viz is None:
                     viz_iter = viz_fac()
                     viz = await viz_iter.__aenter__()
@@ -297,7 +299,7 @@ async def a_pinjected_test_event_callback(
                 active_tests.remove(key)
                 if res.failed():
                     viz.update_status(e.name, f"[bold red]Failed[/bold red]")
-                    lines = res.stderr.split('\n')
+                    lines = res.stderr.split("\n")
                     viz.update_message(e.name, f"{lines[-3:]}")
                     failures.append(res)
                 else:
@@ -310,50 +312,48 @@ async def a_pinjected_test_event_callback(
                         show_failure(res)
                     viz = None
 
-
-
     return impl
 
 
 @injected
 async def a_run_tests(
-        a_pinjected_run_test,
-        ensure_agen,
-        a_pinjected_test_event_callback,
-        /,
-        tests: list[VariableInFile] | AsyncIterator[VariableInFile],
+    a_pinjected_run_test,
+    ensure_agen,
+    a_pinjected_test_event_callback,
+    /,
+    tests: list[VariableInFile] | AsyncIterator[VariableInFile],
 ):
     # hmm, i want a queue here...
     from pinjected.pinjected_logging import logger
+
     n_worker = multiprocessing.cpu_count()
     logger.info(f"n_worker={n_worker}")
     queue = asyncio.Queue()
     results = asyncio.Queue()
 
-    await a_pinjected_test_event_callback(TestMainEvent('start'))
+    await a_pinjected_test_event_callback(TestMainEvent("start"))
     async with TaskGroup() as tg:
+
         async def enqueue():
             async for target in ensure_agen(tests):
                 fut = asyncio.Future()
                 key = target.to_module_var_path().path
-                await queue.put(('task', target, fut))
-                await a_pinjected_test_event_callback(
-                    TestEvent(key, 'queued')
-                )
+                await queue.put(("task", target, fut))
+                await a_pinjected_test_event_callback(TestEvent(key, "queued"))
 
             for _ in range(n_worker):
-                await queue.put(('stop', target, None))
+                await queue.put(("stop", target, None))
 
         async def worker(idx):
             while True:
                 task, target, fut = await queue.get()
-                if task == 'stop':
-                    await results.put(('stop', None))
+                if task == "stop":
+                    await results.put(("stop", None))
                     break
                 key = target.to_module_var_path().path
                 res = await a_pinjected_run_test(target)
                 fut.set_result(res)
-                await results.put(('result', res))
+                await results.put(("result", res))
 
         enqueue_task = tg.create_task(enqueue())
         worker_tasks = []
@@ -362,7 +362,7 @@ async def a_run_tests(
         stop_count = 0
         while True:
             task, res = await results.get()
-            if task == 'stop':
+            if task == "stop":
                 stop_count += 1
                 if stop_count == n_worker:
                     break
@@ -372,15 +372,15 @@ async def a_run_tests(
         await enqueue_task
         for wt in worker_tasks:
             await wt
-    await a_pinjected_test_event_callback(TestMainEvent('end'))
+    await a_pinjected_test_event_callback(TestMainEvent("end"))
 
 
 @injected
 async def a_visualize_test_results(
-        logger,
-        ensure_agen,
-        /,
-        tests: list[PinjectedTestResult] | AsyncIterator[PinjectedTestResult],
+    logger,
+    ensure_agen,
+    /,
+    tests: list[PinjectedTestResult] | AsyncIterator[PinjectedTestResult],
 ):
     results = []
     async for res in ensure_agen(tests):
@@ -396,12 +396,15 @@ async def a_visualize_test_results(
 
 pinjected_run_tests_in_file: IProxy = a_visualize_test_results(
     a_run_tests(
-        injected('pinjected_test_aggregator').gather_from_file(injected('pinjected_test_target_file')),
+        injected("pinjected_test_aggregator").gather_from_file(
+            injected("pinjected_test_target_file")
+        ),
     )
 )
 
 with design(
-        pinjected_test_target_file=Path(__file__).parent.parent.parent / "pinjected/test_package/child/module1.py",
+    pinjected_test_target_file=Path(__file__).parent.parent.parent
+    / "pinjected/test_package/child/module1.py",
 ):
     _run_test_in_file = pinjected_run_tests_in_file
 
@@ -409,6 +412,7 @@ with design(
 @instance
 async def __pinjected__internal_design():
     from pinjected.ide_supports.default_design import pinjected_internal_design
+
     return pinjected_internal_design
 
 
@@ -416,14 +420,16 @@ async def __pinjected__internal_design():
 Public interfaces:
 """
 
+
 # This is not a test for pytest, but a user interface
 def test_current_file():
     import inspect
+
     frame = inspect.currentframe().f_back
     file = frame.f_globals["__file__"]
     return a_visualize_test_results(
         a_run_tests(
-            injected('pinjected_test_aggregator').gather_from_file(Path(file)),
+            injected("pinjected_test_aggregator").gather_from_file(Path(file)),
         )
     )
 
@@ -432,15 +438,17 @@ def test_current_file():
 def test_tagged(*tags: str):
     raise NotImplementedError
 
+
 # This is not a test for pytet, but a user interface
 def test_tree():
     import inspect
+
     frame = inspect.currentframe().f_back
     file = frame.f_globals["__file__"]
 
     return a_visualize_test_results(
         a_run_tests(
-            injected('pinjected_test_aggregator').gather(Path(file)),
+            injected("pinjected_test_aggregator").gather(Path(file)),
         )
     )
 
@@ -465,6 +473,4 @@ run_all_child_tests = pintest.test_children()
     
 """
 
-__meta_design__ = design(
-    overrides=__pinjected__internal_design
-)
+__meta_design__ = design(overrides=__pinjected__internal_design)

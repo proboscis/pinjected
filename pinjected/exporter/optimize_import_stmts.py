@@ -50,7 +50,11 @@ def fix_imports(source):
     source_lines = source.split("\n")
 
     # Remove the original import statements
-    source_lines = [line for lineno, line in enumerate(source_lines, start=1) if lineno not in import_line_numbers]
+    source_lines = [
+        line
+        for lineno, line in enumerate(source_lines, start=1)
+        if lineno not in import_line_numbers
+    ]
 
     # Insert the purified import statements at the beginning
     source_lines = import_lines + [""] + source_lines

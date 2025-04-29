@@ -15,12 +15,15 @@ ASSERT_PICKLABLE = False
 
 def assert_picklable(target, name):
     import cloudpickle
+
     if not ASSERT_PICKLABLE:
         return
     try:
         cloudpickle.dumps(target)
     except Exception as e:
-        raise RuntimeError(f"target {name} is not picklable.\ntype={type(target)}\nvalue={target}") from e
+        raise RuntimeError(
+            f"target {name} is not picklable.\ntype={type(target)}\nvalue={target}"
+        ) from e
 
 
 class Expr(Generic[T], ABC):
@@ -31,7 +34,7 @@ class Expr(Generic[T], ABC):
     def __post_init__(self):
         # this takes time so... we need to toggle it
         if pinjected_TRACK_ORIGIN:
-            self.origin_frame = get_instance_origin('pinjected')
+            self.origin_frame = get_instance_origin("pinjected")
         else:
             self.origin_frame = None
 
@@ -45,10 +48,11 @@ class Expr(Generic[T], ABC):
 
     def __call__(self, *args: "Expr", **kwargs: "Expr"):
         # print(f"{self}->args:{args},kwargs:{kwargs}")
-        return Call(self,
-                    tuple([self._wrap_if_non_expr(item) for item in args]),
-                    {k: self._wrap_if_non_expr(v) for k, v in kwargs.items()}
-                    )
+        return Call(
+            self,
+            tuple([self._wrap_if_non_expr(item) for item in args]),
+            {k: self._wrap_if_non_expr(v) for k, v in kwargs.items()},
+        )
 
     def __getitem__(self, item: "Expr"):
         return GetItem(self, self._wrap_if_non_expr(item))
@@ -69,45 +73,46 @@ class Expr(Generic[T], ABC):
 
     def biop(self, op, other):
         match op:
-            case '+':
+            case "+":
                 return BiOp("+", self, self._wrap_if_non_expr(other))
-            case '|':
+            case "|":
                 return BiOp("|", self, self._wrap_if_non_expr(other))
-            case '&':
+            case "&":
                 return BiOp("&", self, self._wrap_if_non_expr(other))
-            case '-':
+            case "-":
                 return BiOp("-", self, self._wrap_if_non_expr(other))
-            case '*':
+            case "*":
                 return BiOp("*", self, self._wrap_if_non_expr(other))
-            case '@':
+            case "@":
                 return BiOp("@", self, self._wrap_if_non_expr(other))
-            case '/':
+            case "/":
                 return BiOp("/", self, self._wrap_if_non_expr(other))
-            case '//':
+            case "//":
                 return BiOp("//", self, self._wrap_if_non_expr(other))
-            case '%':
+            case "%":
                 return BiOp("%", self, self._wrap_if_non_expr(other))
-            case '**':
+            case "**":
                 return BiOp("**", self, self._wrap_if_non_expr(other))
-            case '<<':
+            case "<<":
                 return BiOp("<<", self, self._wrap_if_non_expr(other))
-            case '>>':
+            case ">>":
                 return BiOp(">>", self, self._wrap_if_non_expr(other))
-            case '^':
+            case "^":
                 return BiOp("^", self, self._wrap_if_non_expr(other))
-            case '==':
+            case "==":
                 return BiOp("==", self, self._wrap_if_non_expr(other))
             case _:
                 raise NotImplementedError(f"biop {op} not implemented")
+
     def unary(self, op):
         match op:
-            case '-':
+            case "-":
                 return UnaryOp("-", self)
-            case '~':
+            case "~":
                 return UnaryOp("~", self)
-            case 'not':
+            case "not":
                 return UnaryOp("not", self)
-            case 'await':
+            case "await":
                 return UnaryOp("await", self)
             case _:
                 raise NotImplementedError(f"unary {op} not implemented")
@@ -233,11 +238,12 @@ class Object(Expr):
     """
     Use this to construct an AST and then compile it for any use.
     """
+
     data: Any  # holds user data
 
     def __post_init__(self):
         super().__post_init__()
-        assert_picklable(self.data, 'data')
+        assert_picklable(self.data, "data")
 
     def __getstate__(self):
         return self.data, self.origin_frame
@@ -274,8 +280,11 @@ class Cache(Expr):
         return hash(f"cached") + hash(self.src)
 
 
-def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], str | None] = lambda x: None) -> str:
+def show_expr(
+    expr: Expr[T], custom: Callable[[Expr[T]], str | None] = lambda x: None
+) -> str:
     from pinjected.di.proxiable import DelegatedVar
+
     def eval_tuple(e):
         res = tuple(_show_expr(i) for i in e)
         flag = all(isinstance(i, str) for i in res)
@@ -287,10 +296,10 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], str | None] = lambda x:
         return {k: _show_expr(e) for k, e in e.items()}
 
     def _show_expr(e: Expr):
-
         reduced = custom(e)
         if reduced:
             from pinjected.pinjected_logging import logger
+
             logger.info(f"reduced:{reduced}")
             return reduced
         match e:
@@ -319,7 +328,7 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], str | None] = lambda x:
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
             case DelegatedVar(wrapped, cxt):
                 return f"{_show_expr(wrapped)}"
-            case UnaryOp('await', Expr() as tgt):
+            case UnaryOp("await", Expr() as tgt):
                 return f"(await {_show_expr(tgt)})"
             case UnaryOp(op, Expr() as tgt):
                 return f"{op}({_show_expr(tgt)})"

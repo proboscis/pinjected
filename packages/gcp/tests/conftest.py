@@ -18,7 +18,7 @@ def mock_credentials():
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40example.com"
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40example.com",
     }
 
 
@@ -40,7 +40,9 @@ class MockBlob:
         print(f"Parent directory exists: {path.parent.exists()}")
         with open(filename, "wb") as f:
             f.write(self._content)
-        print(f"File exists after write: {path.exists()}, size: {path.stat().st_size if path.exists() else 0}")
+        print(
+            f"File exists after write: {path.exists()}, size: {path.stat().st_size if path.exists() else 0}"
+        )
         return path
 
 
@@ -69,6 +71,7 @@ class MockStorageClient:
 @pytest.fixture
 def mock_storage_client(monkeypatch):
     """Mock the GCP storage client for testing."""
+
     def mock_client(credentials=None):
         return MockStorageClient(credentials)
 

@@ -71,7 +71,9 @@ def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
             if design_path is None:
                 design_path = get_design_path_from_var_path(var_path)
         except ValueError:
-            logger.warning(f"No default design paths found for {var_path}. Proceeding with None design path.")
+            logger.warning(
+                f"No default design paths found for {var_path}. Proceeding with None design path."
+            )
         logger.info(
             f"run_injected called with cmd:{cmd}, var_path:{var_path}, design_path:{design_path}, args:{args}, kwargs:{kwargs}"
         )
@@ -154,12 +156,12 @@ async def a_run_target__mp(var_path: str):
 
 
 def run_anything(
-        cmd: str,
-        var_path: str,
-        design_path: str | None,
-        overrides=design(),
-        return_result=False,
-        notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
+    cmd: str,
+    var_path: str,
+    design_path: str | None,
+    overrides=design(),
+    return_result=False,
+    notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
 ):
     # with disable_internal_logging():
     # design, meta_overrides, var = asyncio.run(a_get_run_context(design_path, var_path))
@@ -171,14 +173,17 @@ def run_anything(
     logger.info(f"running target:{var_path} with design {design_path}")
     res = None
     if cmd == "get":
+
         async def task(cxt):
             return await cxt.a_run()
     elif cmd == "visualize":
+
         async def task(cxt):
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             DIGraph(D).show_injected_html(cxt.var)
     elif cmd == "export_visualization_html":
+
         async def task(cxt):
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
@@ -186,23 +191,30 @@ def run_anything(
             res_html: Path = DIGraph(D).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
     elif cmd == "to_script":
+
         async def task(cxt):
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             d = D + design(__root__=Injected.bind(cxt.var))
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     elif cmd == "json-graph":
+
         async def task(cxt):
             import json
-            logger.info(f"generating JSON graph for {var_path} with design {design_path}")
-            if hasattr(cxt.var, 'dependencies'):
+
+            logger.info(
+                f"generating JSON graph for {var_path} with design {design_path}"
+            )
+            if hasattr(cxt.var, "dependencies"):
                 logger.info(f"deps:{cxt.var.dependencies()}")
             json_graph = DIGraph(
-                D,
-                spec=Some(cxt.src_meta_context.spec_trace.accumulated)
-            ).to_json_with_root_name(cxt.src_var_spec.var_path.split(".")[-1], list(cxt.var.dependencies()))
+                D, spec=Some(cxt.src_meta_context.spec_trace.accumulated)
+            ).to_json_with_root_name(
+                cxt.src_var_spec.var_path.split(".")[-1], list(cxt.var.dependencies())
+            )
             print(json.dumps(json_graph, indent=2))
     elif cmd == "describe":
+
         async def task(cxt):
             generate_dependency_graph_description(var_path, design_path, cxt, D)
     else:
@@ -216,7 +228,7 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     """
     Generate a human-readable description of the dependency graph for a variable.
     Uses to_edges() of DIGraph to show dependencies with their documentation.
-    
+
     :param var_path: the path to the variable to describe
     :param design_path: the path to the design to be used
     :param cxt: the run context containing variable and design information
@@ -228,24 +240,25 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         DependencyGraphDescriptionGenerator,
     )
     from pinjected.visualize_di import DIGraph
-    
-    logger.info(f"generating dependency graph description for {var_path} with design {design_path}")
 
-    digraph = DIGraph(
-        design,
-        spec=Some(cxt.src_meta_context.spec_trace.accumulated)
+    logger.info(
+        f"generating dependency graph description for {var_path} with design {design_path}"
     )
+
+    digraph = DIGraph(design, spec=Some(cxt.src_meta_context.spec_trace.accumulated))
     root_name = cxt.src_var_spec.var_path.split(".")[-1]
 
-    if hasattr(cxt.var, 'dependencies'):
+    if hasattr(cxt.var, "dependencies"):
         logger.info(f"deps:{cxt.var.dependencies()}")
         deps = list(cxt.var.dependencies())
-        
+
         generator = DependencyGraphDescriptionGenerator(digraph, root_name, deps)
         generator.generate()
     else:
         logger.error(f"Object {root_name} doesn't have dependencies method")
-        raise AttributeError(f"Object {root_name} must have a dependencies() method to use the describe command")
+        raise AttributeError(
+            f"Object {root_name} must have a dependencies() method to use the describe command"
+        )
 
 
 def call_impl(call_args, call_kwargs, cxt, design):
@@ -292,7 +305,7 @@ class RunContext:
         resolver = AsyncResolver(
             dd,
             callbacks=[self.provision_callback] if self.provision_callback else [],
-            spec=self.src_meta_context.spec_trace.accumulated
+            spec=self.src_meta_context.spec_trace.accumulated,
         )
         _res = await resolver.provide(tgt)
 
@@ -315,9 +328,10 @@ class RunContext:
 
 
 async def a_run_with_notify(
-        cxt: RunContext,
-        a_run,
-        notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs)):
+    cxt: RunContext,
+    a_run,
+    notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
+):
     """
     A context manager that runs a function and notifies the result.
     :param notify: A function to notify the result.
@@ -330,26 +344,39 @@ async def a_run_with_notify(
         with logger.contextualize(tag="PINJECTED RUN FAILURE"):
             if PinjectedHandleMainException.key in D:
                 logger.warning(
-                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ...")
+                    f"Run failed with error:\n{e}\nHandling with {PinjectedHandleMainException.key.name} ..."
+                )
                 from pinjected import IProxy
-                handler: IProxy[PinjectedHandleMainException] = injected(PinjectedHandleMainException.key.name)
+
+                handler: IProxy[PinjectedHandleMainException] = injected(
+                    PinjectedHandleMainException.key.name
+                )
                 handling = handler(e)
                 handled: str | None = await cxt.a_provide(handling, show_debug=False)
                 if handled:
-                    logger.info(f"exception is handled by {PinjectedHandleMainException.key.name}")
+                    logger.info(
+                        f"exception is handled by {PinjectedHandleMainException.key.name}"
+                    )
                 raise
-            logger.debug(f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}")
+            logger.debug(
+                f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}"
+            )
             notify(f"Run failed with error:\n{e}", sound="Frog")
             raise
     with logger.contextualize(tag="PINJECTED RUN SUCCESS"):
         logger.success(f"pinjected run result:\n{pformat(res)}")
         if PinjectedHandleMainResult.key in D:
             from pinjected import IProxy
-            handler: IProxy[PinjectedHandleMainResult] = injected(PinjectedHandleMainResult.key.name)
+
+            handler: IProxy[PinjectedHandleMainResult] = injected(
+                PinjectedHandleMainResult.key.name
+            )
             handling = handler(res)
             await cxt.a_provide(handling, show_debug=False)
         else:
-            logger.info(f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}")
+            logger.info(
+                f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}"
+            )
             notify(f"Run result:\n{str(res)[:100]}")
     return res
 
@@ -363,6 +390,7 @@ async def a_resolve_design(design_path, meta_cxt: MetaContext) -> Design:
     if not isinstance(design_obj, Design):
         logger.warning(f"{design_path} is not a Design")
     from pinjected import Injected
+
     logger.debug(f"loaded {design_path}")
     if isinstance(design_obj, Injected):
         logger.warning(f"{design_path} is an Injected")
@@ -402,8 +430,12 @@ async def a_get_run_context(design_path, var_path) -> RunContext:
         # here we add __design__ directly to overrides.
         meta_overrides += meta_cxt.accumulated
         # add overrides from with block
-        contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(ModuleVarPath(var_path))
-        meta_overrides += contextual_overrides  # obtain internal hooks from the meta_design
+        contextual_overrides = DESIGN_OVERRIDES_STORE.get_overrides(
+            ModuleVarPath(var_path)
+        )
+        meta_overrides += (
+            contextual_overrides  # obtain internal hooks from the meta_design
+        )
         if StrBindKey("provision_callback") in meta_design:
             provision_callback = await meta_resolver.provide("provision_callback")
         else:
@@ -456,14 +488,17 @@ def load_design_from_paths(paths, design_name):
             except AttributeError:
                 logger.warning(f"{design_name} is not defined in {path}.")
                 raise PinjectedConfigurationLoadFailure(
-                    f"Failed to load '{design_name}' from {path}: {design_name} is not defined in the file.")
+                    f"Failed to load '{design_name}' from {path}: {design_name} is not defined in the file."
+                )
             except Exception as e:
                 import traceback
 
                 logger.warning(f"failed to load design from {path}:{design_name}.")
                 logger.warning(e)
                 logger.warning(traceback.format_exc())
-                raise PinjectedConfigurationLoadFailure(f"Failed to load '{design_name}' from {path}: {e!s}")
+                raise PinjectedConfigurationLoadFailure(
+                    f"Failed to load '{design_name}' from {path}: {e!s}"
+                )
         else:
             logger.debug(f"design file {path} does not exist.")
     return res
@@ -480,16 +515,15 @@ def load_user_default_design() -> Design:
     """
     design_path = os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
     try:
-        design_result = load_design_from_paths(find_dot_pinjected(), "default_design") + _load_design(
-            design_path).value_or(
-            design()
-        )
+        design_result = load_design_from_paths(
+            find_dot_pinjected(), "default_design"
+        ) + _load_design(design_path).value_or(design())
         # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
         for k, v in design_result.bindings.items():
             logger.info(f"User overrides :{k} -> {type(v)}")
         return design_result
     except PinjectedConfigurationLoadFailure as e:
-        if 'default_design is not defined' in str(e):
+        if "default_design is not defined" in str(e):
             logger.debug(f"default_design is not defined in {design_path}")
             return design()
         raise
@@ -507,9 +541,9 @@ def _load_design(design_path):
         script_path, var_name = pair.split(":")
         design = load_variable_from_script(script_path, var_name)
         if design is not None:
-            assert isinstance(
-                design, Design
-            ), f"design loaded from {script_path}:{var_name} is not a Design instance, but is {type(design)}."
+            assert isinstance(design, Design), (
+                f"design loaded from {script_path}:{var_name} is not a Design instance, but is {type(design)}."
+            )
             res += design
     return res
 
@@ -525,14 +559,13 @@ def load_user_overrides_design():
     """
     design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
     try:
-        design_obj = load_design_from_paths(find_dot_pinjected(), "overrides_design") + _load_design(
-            design_path).value_or(
-            design()
-        )
+        design_obj = load_design_from_paths(
+            find_dot_pinjected(), "overrides_design"
+        ) + _load_design(design_path).value_or(design())
         logger.info(f"loaded override design:{pformat(design_obj.bindings.keys())}")
         return design_obj
     except PinjectedConfigurationLoadFailure as e:
-        if 'overrides_design is not defined' in str(e):
+        if "overrides_design is not defined" in str(e):
             logger.debug(f"overrides_design is not defined in {design_path}")
             return design()
         raise e

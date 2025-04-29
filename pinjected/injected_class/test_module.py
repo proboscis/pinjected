@@ -42,6 +42,7 @@ However, in that case, async dependencies cannot be automatically awaited.
 
 """
 
+
 class PClassUser:
     dep: PClassExample
 

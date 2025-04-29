@@ -35,14 +35,20 @@ def authorize_mlflow(logger, mlflow_client_id, /) -> None:
         "https://www.googleapis.com/auth/cloud-platform",
         "https://www.googleapis.com/auth/sqlservice.login",
     ]
-    source_credentials, project_id = google_auth_default(default_scopes=scopes)  # gcloud auth application-default login
+    source_credentials, project_id = google_auth_default(
+        default_scopes=scopes
+    )  # gcloud auth application-default login
     service_account = f"ailab-mlflow@cyberagent-050.iam.gserviceaccount.com"
-    credentials = impersonated_credentials.Credentials(source_credentials=source_credentials,
-                                                       target_principal=service_account,
-                                                       target_scopes=scopes)
-    id_token = impersonated_credentials.IDTokenCredentials(target_credentials=credentials,
-                                                           target_audience=target_audience,
-                                                           include_email=True)
+    credentials = impersonated_credentials.Credentials(
+        source_credentials=source_credentials,
+        target_principal=service_account,
+        target_scopes=scopes,
+    )
+    id_token = impersonated_credentials.IDTokenCredentials(
+        target_credentials=credentials,
+        target_audience=target_audience,
+        include_email=True,
+    )
     id_token.refresh(AuthRequest())
     environ["MLFLOW_TRACKING_TOKEN"] = id_token.token
     assert environ["MLFLOW_TRACKING_TOKEN"] is not None, "Failed to create token"
@@ -60,6 +66,7 @@ async def mlflow_authentication_session(authorize_mlflow) -> None:
             time.sleep(30 * 60)
 
     import threading
+
     thread = threading.Thread(target=task, daemon=True)
     thread.start()
     await asyncio.to_thread(authenticated.wait)
@@ -69,6 +76,7 @@ async def mlflow_authentication_session(authorize_mlflow) -> None:
 async def mlflow(mlflow_authentication_session, mlflow_tracking_uri):
     # the session is unused but required for keeping mlflow alive
     import mlflow
+
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     return mlflow
 
@@ -85,6 +93,7 @@ def _test_log_artifact(mlflow):
     mlflow.set_experiment("test_experiment")
     with mlflow.start_run():
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(file_path := (Path(tmpdir) / "test.txt"), "w") as f:
                 f.write("test")
@@ -97,23 +106,25 @@ def _test_use_artifact(logger, mlflow):
     mlflow.artifacts.download_artifacts(
         artifact_path="test.txt",
         run_id="09163536d18f4a70a2e1a0abb12c7aba",
-        dst_path="tmp"
+        dst_path="tmp",
     )
     logger.success("Successfully downloaded")
 
 
 @instance
-def _test_log_large_artifact(logger,mlflow):
+def _test_log_large_artifact(logger, mlflow):
     mlflow.set_experiment("test_experiment")
     with mlflow.start_run():
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             logger.info(f"Creating large artifact in {tmpdir}")
             with open(file_path := (Path(tmpdir) / "test.txt"), "w") as f:
-                f.write("test" * 1024 * 1024 * 1024) # 1GB
+                f.write("test" * 1024 * 1024 * 1024)  # 1GB
             logger.info(f"uploading {file_path}")
             mlflow.log_artifact(file_path)
             logger.info("upload done?")
+
 
 @instance
 def _test_use_large_artifact(logger, mlflow):
@@ -122,11 +133,9 @@ def _test_use_large_artifact(logger, mlflow):
     mlflow.artifacts.download_artifacts(
         artifact_path="test.txt",
         run_id="dd3e4ff65ccd47868ba6465d926680c0",
-        dst_path="tmp"
+        dst_path="tmp",
     )
     logger.success("Successfully downloaded")
 
 
-__design__ = design(
-    logger=loguru.logger
-)
+__design__ = design(logger=loguru.logger)

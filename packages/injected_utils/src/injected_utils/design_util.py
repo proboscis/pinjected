@@ -1,13 +1,12 @@
 """
 We store devin specific hacks here.
 """
-import os
-import base64
-import re
-from pathlib import Path
-from typing import Final
 
-from pinjected import instance, design, Injected, injected, IProxy
+import base64
+import os
+from pathlib import Path
+
+from pinjected import IProxy, injected
 
 
 @injected
@@ -20,7 +19,9 @@ async def a_get_env(key: str):
 
 
 @injected
-async def a_env_to_file(key: str, file_path: str | Path, permissions: int | None = None) -> Path:
+async def a_env_to_file(
+    key: str, file_path: str | Path, permissions: int | None = None
+) -> Path:
     """
     Get the environment variable value for the given key and write it to a file.
 
@@ -41,7 +42,9 @@ async def a_env_to_file(key: str, file_path: str | Path, permissions: int | None
 
 
 @injected
-async def a_str_to_file(text: str, file_path: str | Path, permissions: int | None = None) -> Path:
+async def a_str_to_file(
+    text: str, file_path: str | Path, permissions: int | None = None
+) -> Path:
     """
     Write the given content to a file at the specified path.
 
@@ -61,7 +64,9 @@ async def a_str_to_file(text: str, file_path: str | Path, permissions: int | Non
 
 
 @injected
-async def a_base64_to_file(base64_str: str, file_path: str | Path, permissions: int | None = None) -> Path:
+async def a_base64_to_file(
+    base64_str: str, file_path: str | Path, permissions: int | None = None
+) -> Path:
     """
     Decode a base64 string and write it to a file at the specified path.
 
@@ -86,5 +91,3 @@ async def a_base64_to_file(base64_str: str, file_path: str | Path, permissions: 
 
 
 str_to_path = IProxy(Path)
-
-

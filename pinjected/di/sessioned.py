@@ -13,13 +13,14 @@ T = TypeVar("T")
 @dataclass
 class Sessioned(Generic[T]):
     """a value that holds designed instance, and evetually uses this designed to be run on the applied graph"""
+
     parent: "IObjectGraph"
     designed: Designed[T]
 
     def map(self, f):
         return Sessioned(self.parent, self.designed.map(f))
 
-    def zip(self,*others):
+    def zip(self, *others):
         new_d = Designed.zip(*[o.designed for o in [self] + list(others)])
         return Sessioned(self.parent, new_d)
 
@@ -49,7 +50,6 @@ class ApplicativeSesionedImpl(Applicative[Sessioned]):
             return targets[0].zip(*targets[1:])
         return Sessioned(self.parent, Designed.bind(Injected.pure(())))
 
-
     def pure(self, item) -> Sessioned:
         return Sessioned(self.parent, Designed.bind(Injected.pure(item)))
 
@@ -64,6 +64,5 @@ def eval_sessioned(expr: Expr[Sessioned], app: Applicative[Sessioned]) -> Sessio
 def sessioned_ast_context(session: "IObjectGraph"):
     app = ApplicativeSesionedImpl(session)
     return AstProxyContextImpl(
-        lambda expr: eval_sessioned(expr, app),
-        _alias_name="SessionedProxy"
+        lambda expr: eval_sessioned(expr, app), _alias_name="SessionedProxy"
     )

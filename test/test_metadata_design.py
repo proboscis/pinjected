@@ -11,7 +11,7 @@ def test_add_metadata():
     d += AddSummary("This is a test")
     d += AddTags("tag1")
 
-    def get_metadata(__design__:Design):
+    def get_metadata(__design__: Design):
         for d in __design__.dfs_design():
             logger.info(d)
 

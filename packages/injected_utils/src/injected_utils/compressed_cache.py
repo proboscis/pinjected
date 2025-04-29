@@ -1,11 +1,12 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import cloudpickle
 import jsonpickle
-from pinjected import injected
 from sqlitedict import SqliteDict
+
+from pinjected import injected
 
 
 @dataclass
@@ -16,9 +17,12 @@ class CompressedPklSqliteDict:
     loads: Callable[[str], object] = field(default=cloudpickle.loads)
     dumps: Callable[[object], str] = field(default=cloudpickle.dumps)
 
-
     def __reduce__(self):
-        return CompressedPklSqliteDict.from_path, (self.compress, self.decompress, self.src.filename)
+        return CompressedPklSqliteDict.from_path, (
+            self.compress,
+            self.decompress,
+            self.src.filename,
+        )
 
     @classmethod
     def from_path(cls, compress, decompress, path):
@@ -58,17 +62,19 @@ class CompressedPklSqliteDict:
 @injected
 def compress__lzma(logger, /, data: bytes):
     import lzma
+
     src_mb = len(data) / 1024 / 1024
-    #logger.info(f"Compressing {src_mb} MB")
+    # logger.info(f"Compressing {src_mb} MB")
     res = lzma.compress(data)
     res_mb = len(res) / 1024 / 1024
-    #logger.info(f"Compressed: {src_mb} MB -> {res_mb} MB")
+    # logger.info(f"Compressed: {src_mb} MB -> {res_mb} MB")
     return res
 
 
 @injected
 def lzma_sqlite(compress__lzma, /, path: Path):
     import lzma
+
     return CompressedPklSqliteDict(
         src=SqliteDict(path, autocommit=True),
         compress=compress__lzma,

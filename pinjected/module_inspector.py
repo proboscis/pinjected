@@ -16,8 +16,11 @@ T = TypeVar("T")
 class ModuleVarSpec(Generic[T]):
     var: T
     var_path: str
+
     def __post_init__(self):
-        assert isinstance(self.var_path, str), f"var_path must be a string, not {type(self.var_path)}({self.var_path})"
+        assert isinstance(self.var_path, str), (
+            f"var_path must be a string, not {type(self.var_path)}({self.var_path})"
+        )
 
     @property
     def module_file_path(self):

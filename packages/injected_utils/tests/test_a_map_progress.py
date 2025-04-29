@@ -1,19 +1,15 @@
 import asyncio
 
 import loguru
-import pytest
-
 from injected_utils.progress import a_map_progress__tqdm
-from pinjected import design
-from pinjected.test import injected_pytest
-from pinjected.compatibility.task_group import CompatibleExceptionGroup
 
+from pinjected import design
+from pinjected.compatibility.task_group import CompatibleExceptionGroup
+from pinjected.test import injected_pytest
 
 
 @injected_pytest
-async def test_a_map_progress__tqdm(
-        a_map_progress__tqdm
-):
+async def test_a_map_progress__tqdm(a_map_progress__tqdm):
     async def task(item):
         return item
 
@@ -27,11 +23,14 @@ async def test_a_map_progress__tqdm(
     res = [item async for item in agen]
     assert res == items
 
-class DummyException(Exception):pass
+
+class DummyException(Exception):
+    pass
+
 
 @injected_pytest
 async def test_a_map_progress__tqdm_raise_exception(
-        a_map_progress__tqdm,
+    a_map_progress__tqdm,
 ):
     async def task(item):
         await asyncio.sleep(1)
@@ -60,6 +59,7 @@ async def test_a_map_progress__tqdm_raise_exception(
         else:
             raise AssertionError(f"Unexpected exception raised: {e}")
 
+
 def test_exception_group():
     def func():
         raise DummyException("Test exception")
@@ -79,8 +79,4 @@ def test_exception_group():
             raise AssertionError(f"Unexpected exception raised: {e}")
 
 
-
-__design__ = design(
-    a_map_progress__tqdm = a_map_progress__tqdm,
-    logger = loguru.logger
-)
+__design__ = design(a_map_progress__tqdm=a_map_progress__tqdm, logger=loguru.logger)

@@ -18,7 +18,7 @@ def process_runner(func: Callable, args: tuple, result_queue: multiprocessing.Qu
         result_queue.put(("error", str(e)))
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass
@@ -48,7 +48,6 @@ async def run_in_process(func: Callable, *args: Any) -> Any:
     process = multiprocessing.Process(
         target=process_runner,
         args=(func, args, result_queue),
-
     )
 
     # here, I want to capture the stdout and stderr of the process

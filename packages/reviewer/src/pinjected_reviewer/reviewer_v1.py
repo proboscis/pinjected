@@ -33,17 +33,21 @@ def load_review_material(filename: str) -> str:
     try:
         if sys.version_info >= (3, 9):
             # Python 3.9+ approach
-            with importlib.resources.files('review_materials').joinpath(filename).open('r') as f:
+            with (
+                importlib.resources.files("review_materials")
+                .joinpath(filename)
+                .open("r") as f
+            ):
                 return f.read()
         else:
             # Older Python approach
-            return importlib.resources.read_text('review_materials', filename)
+            return importlib.resources.read_text("review_materials", filename)
     except (ImportError, FileNotFoundError, ModuleNotFoundError, ValueError) as e:
         logger.debug(f"Could not load review material via importlib.resources: {e}")
 
     # Try relative to this file
     try:
-        guide_path = Path(__file__).parent.parent / 'review_materials' / filename
+        guide_path = Path(__file__).parent.parent / "review_materials" / filename
         if guide_path.exists():
             return guide_path.read_text()
     except Exception as e:
@@ -51,9 +55,9 @@ def load_review_material(filename: str) -> str:
 
     # Try other common locations
     for check_path in [
-        Path.cwd() / 'review_materials' / filename,
-        Path.cwd() / 'src' / 'review_materials' / filename,
-        Path.home() / '.pinjected-reviewer' / 'review_materials' / filename
+        Path.cwd() / "review_materials" / filename,
+        Path.cwd() / "src" / "review_materials" / filename,
+        Path.home() / ".pinjected-reviewer" / "review_materials" / filename,
     ]:
         try:
             if check_path.exists():
@@ -67,9 +71,7 @@ def load_review_material(filename: str) -> str:
 
 @injected
 async def a_extract_approved(
-        a_sllm_for_approval_extraction: StructuredLLM,
-        /,
-        text: str
+    a_sllm_for_approval_extraction: StructuredLLM, /, text: str
 ) -> Approved:
     prompt = f"""
 Please read the following text and extract if the answer of a text is `approved` or `not approved`.
@@ -82,7 +84,8 @@ The answer must be true if it is approved and false if it is not approved.
 
 @instance
 async def pinjected_guide_md():
-    return load_review_material('how_to_use_pinjected.md')
+    return load_review_material("how_to_use_pinjected.md")
+
 
 class ExtractApproved(Protocol):
     async def __call__(self, text: str) -> Approved:
@@ -99,13 +102,13 @@ class ExtractApproved(Protocol):
 
 @injected
 async def a_review_python_diff(
-        a_sllm_for_commit_review: StructuredLLM,
-        a_extract_approved:ExtractApproved,
-        pinjected_guide_md: str,
-        /,
-        diff: FileDiff
+    a_sllm_for_commit_review: StructuredLLM,
+    a_extract_approved: ExtractApproved,
+    pinjected_guide_md: str,
+    /,
+    diff: FileDiff,
 ):
-    assert diff.filename.name.endswith('.py'), "Not a Python file"
+    assert diff.filename.name.endswith(".py"), "Not a Python file"
 
     # Extract file content from diff to check for ignore comments
     # This is a simple approach to handle the common case where an ignore comment exists in the file
@@ -116,16 +119,18 @@ async def a_review_python_diff(
         return Review(
             name=f"Pinjected Coding Style for {diff.filename}",
             review_text=f"File {diff.filename} is deleted. Skipping review.",
-            approved=True
+            approved=True,
         )
 
     # Check if file should be ignored using our robust function
     if check_if_file_should_be_ignored(file_content, diff.filename):
-        logger.info(f"Ignoring file {diff.filename} due to pinjected-reviewer ignore/skip comment")
+        logger.info(
+            f"Ignoring file {diff.filename} due to pinjected-reviewer ignore/skip comment"
+        )
         return Review(
             name=f"Pinjected Coding Style for {diff.filename}",
             review_text=f"File contains a pinjected-reviewer ignore/skip comment. Skipping review.",
-            approved=True
+            approved=True,
         )
 
     prompt = f"""
@@ -155,14 +160,18 @@ Final approval status: approved
 """
     resp: str = await a_sllm_for_commit_review(prompt)
     approved = await a_extract_approved(resp)
-    return Review(name=f"Pinjected Coding Style for {diff.filename}", review_text=resp, approved=approved.result)
+    return Review(
+        name=f"Pinjected Coding Style for {diff.filename}",
+        review_text=resp,
+        approved=approved.result,
+    )
 
 
 @injected
 async def a_pre_commit_review__code_style(
-        a_review_python_diff: Callable[[FileDiff], Awaitable[Review]],
-        /,
-        git_info: GitInfo,
+    a_review_python_diff: Callable[[FileDiff], Awaitable[Review]],
+    /,
+    git_info: GitInfo,
 ):
     """
     Reviews staged git changes and provides code style feedback.
@@ -177,9 +186,7 @@ async def a_pre_commit_review__code_style(
     if not git_info.has_staged_changes:
         logger.info("No staged changes to review.")
         return Review(
-            name="Code Style",
-            review_text="No staged changes to review.",
-            approved=True
+            name="Code Style", review_text="No staged changes to review.", approved=True
         )
 
     # Check if there's diff content
@@ -188,7 +195,7 @@ async def a_pre_commit_review__code_style(
         return Review(
             name="Code Style",
             review_text="No diff content in staged changes.",
-            approved=True
+            approved=True,
         )
 
     logger.info(f"Found {len(git_info.staged_files)} staged files. Reviewing diff...")
@@ -214,10 +221,12 @@ async def a_pre_commit_review__code_style(
                 review_text += f"{r.name}:\n{r.review_text}\n"
         else:
             review_text = "No code style violations found in Python changes."
-        return Review(name="Pinjected Coding Style", review_text=review_text, approved=approved)
+        return Review(
+            name="Pinjected Coding Style", review_text=review_text, approved=approved
+        )
     logger.info("No Python changes found in staged files.")
     return Review(
         name="Pinjected Coding Style",
         review_text="No Python changes found in staged files.",
-        approved=True
+        approved=True,
     )

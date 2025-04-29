@@ -9,7 +9,7 @@ from pinjected.module_inspector import get_project_root
 
 def test_get_project_root(tmp_path):
     """Test get_project_root with a typical Python project structure.
-    
+
     Project structure:
     test_project/          # Project root (no __init__.py)
     └── package/          # Package root
@@ -19,12 +19,12 @@ def test_get_project_root(tmp_path):
     # Create project root (without __init__.py)
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
-    
+
     # Create package directory with __init__.py
     package_dir = project_dir / "package"
     package_dir.mkdir()
     (package_dir / "__init__.py").touch()
-    
+
     # Create a module file
     test_file = package_dir / "module.py"
     test_file.touch()
@@ -33,7 +33,6 @@ def test_get_project_root(tmp_path):
     # (the directory above the one containing __init__.py)
     root = get_project_root(str(test_file))
     assert root == str(project_dir)
-
 
 
 def test_walk_module_attr():
@@ -47,4 +46,4 @@ def test_walk_module_attr():
 def test_gather_meta_design():
     test_file = Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
     mc: MetaContext = asyncio.run(MetaContext.a_gather_bindings_with_legacy(test_file))
-    assert mc.final_design.provide('name') == "test_package.child.module1"
+    assert mc.final_design.provide("name") == "test_package.child.module1"

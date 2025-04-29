@@ -32,15 +32,13 @@ from pinjected_reviewer.utils import check_if_file_should_be_ignored
 # pinjected-reviewer: ignore
 @injected
 async def a_llm_factory_for_reviewer(
-        a_cached_openrouter_chat_completion,
-        /,
-        model_name
+    a_cached_openrouter_chat_completion, /, model_name
 ) -> StructuredLLM:
-    async def impl(text: str, response_format: type[BaseModel] = None) -> str | BaseModel:
+    async def impl(
+        text: str, response_format: type[BaseModel] = None
+    ) -> str | BaseModel:
         return await a_cached_openrouter_chat_completion(
-            prompt=text,
-            model=model_name,
-            response_format=response_format
+            prompt=text, model=model_name, response_format=response_format
         )
 
     return impl
@@ -48,10 +46,7 @@ async def a_llm_factory_for_reviewer(
 
 @injected
 async def a_reviewer_definition_from_path(
-        a_structured_llm_for_markdown_extraction: StructuredLLM,
-        logger,
-        /,
-        path: Path
+    a_structured_llm_for_markdown_extraction: StructuredLLM, logger, /, path: Path
 ) -> MarkdownReviewerDefinition:
     """
     Create a ReviewerDefinition from a markdown file path using a structured LLM.
@@ -77,8 +72,7 @@ async def a_reviewer_definition_from_path(
     """
 
     attributes = await a_structured_llm_for_markdown_extraction(
-        text=prompt,
-        response_format=ReviewerAttributes_v4
+        text=prompt, response_format=ReviewerAttributes_v4
     )
     return MarkdownReviewerDefinition(
         attributes=attributes,
@@ -89,10 +83,10 @@ async def a_reviewer_definition_from_path(
 
 @injected
 async def a_markdown_reviewer_def_to_reviewer(
-        a_llm_factory_for_reviewer: Callable[[str], Awaitable[StructuredLLM]],
-        a_extract_approved,
-        /,
-        rev_def: MarkdownReviewerDefinition,
+    a_llm_factory_for_reviewer: Callable[[str], Awaitable[StructuredLLM]],
+    a_extract_approved,
+    /,
+    rev_def: MarkdownReviewerDefinition,
 ) -> Reviewer:
     """
     Convert a MarkdownReviewerDefinition to a Reviewer instance.
@@ -107,41 +101,45 @@ async def a_markdown_reviewer_def_to_reviewer(
     no_skip = lambda _: Future.from_value(Nothing)
 
     def get_skipper(ext) -> SkipReasonProvider:
-        if ext == '*':
+        if ext == "*":
             return no_skip
 
         @future
         async def reason_to_skip(file_diff: FileDiff) -> Maybe[str]:
-            _ext = ext.replace('*', '')
+            _ext = ext.replace("*", "")
             if not file_diff.filename.name.endswith(_ext):
-                return Some(f"Skipped review for {file_diff.filename.name} due to file extension {_ext}")
+                return Some(
+                    f"Skipped review for {file_diff.filename.name} due to file extension {_ext}"
+                )
             return Nothing
 
         return reason_to_skip
 
     match (rev_def.attributes.when_to_trigger, rev_def.attributes.review_scope):
-        case ('pre_commit', 'file_diff'):
+        case ("pre_commit", "file_diff"):
             return MarkdownFileDiffReviewer(
                 llm=await a_llm_factory_for_reviewer(rev_def.attributes.llm_name),
                 a_extract_approved=a_extract_approved,
                 name=rev_def.attributes.name,
                 material=rev_def.review_material,
                 reason_to_skip=get_skipper(rev_def.attributes.target_file_extension),
-                interests={PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)},
+                interests={
+                    PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)
+                },
             )
-        case ('pre_commit', 'file_full'):
+        case ("pre_commit", "file_full"):
             return MarkdownFileFullReviewer(
                 llm=await a_llm_factory_for_reviewer(rev_def.attributes.llm_name),
                 a_extract_approved=a_extract_approved,
                 name=rev_def.attributes.name,
                 material=rev_def.review_material,
                 reason_to_skip=get_skipper(rev_def.attributes.target_file_extension),
-                interests={PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)},
+                interests={
+                    PreCommitFileDiffInterest(rev_def.attributes.target_file_extension)
+                },
             )
 
-    raise ValueError(
-        f"Unsupported reviewer definition: {rev_def} "
-    )
+    raise ValueError(f"Unsupported reviewer definition: {rev_def} ")
 
 
 @injected
@@ -162,10 +160,7 @@ def reviewer_paths(logger, /, repo_root: Path) -> list[Path]:
 
 @injected
 def find_reviewer_markdown_files(
-        logger,
-        reviewer_paths,
-        /,
-        repo_root: Path
+    logger, reviewer_paths, /, repo_root: Path
 ) -> list[Path]:
     """
     Find all markdown files in the paths provided by reviewer_paths.
@@ -194,10 +189,10 @@ def find_reviewer_markdown_files(
 
 @instance
 async def reviewer_definitions(
-        repo_root: Path,
-        a_reviewer_definition_from_path,
-        find_reviewer_markdown_files,
-        a_map_progress,
+    repo_root: Path,
+    a_reviewer_definition_from_path,
+    find_reviewer_markdown_files,
+    a_map_progress,
 ) -> list[IOResultE[MarkdownReviewerDefinition]]:
     """
     Load all reviewer definitions from markdown files.
@@ -212,13 +207,15 @@ async def reviewer_definitions(
     markdown_files = find_reviewer_markdown_files(repo_root)
     definitions = []
     safe_get_reviewer = future_safe(a_reviewer_definition_from_path)
-    async for res in a_map_progress(safe_get_reviewer, markdown_files, desc="Loading reviewer definitions"):
+    async for res in a_map_progress(
+        safe_get_reviewer, markdown_files, desc="Loading reviewer definitions"
+    ):
         definitions.append(res)
     return definitions
 
 
-X = TypeVar('X')
-Y = TypeVar('Y')
+X = TypeVar("X")
+Y = TypeVar("Y")
 
 
 def map_io_result(f: Callable[[X], Y], items: list[IOResultE]) -> list[IOResultE]:
@@ -237,11 +234,13 @@ def map_io_result(f: Callable[[X], Y], items: list[IOResultE]) -> list[IOResultE
 
 @instance
 async def all_reviewers__from_markdowns(
-        repo_root,
-        a_map_progress,
-        a_reviewer_definition_from_path,
-        find_reviewer_markdown_files,
-        a_markdown_reviewer_def_to_reviewer: Callable[[MarkdownReviewerDefinition], Awaitable[Reviewer]],
+    repo_root,
+    a_map_progress,
+    a_reviewer_definition_from_path,
+    find_reviewer_markdown_files,
+    a_markdown_reviewer_def_to_reviewer: Callable[
+        [MarkdownReviewerDefinition], Awaitable[Reviewer]
+    ],
 ) -> list[IOResultE[Reviewer]]:
     """
     Load all reviewers from markdown files.
@@ -259,11 +258,15 @@ async def all_reviewers__from_markdowns(
 
     @future_safe
     async def task(file_path: Path) -> Reviewer:
-        r_def: MarkdownReviewerDefinition = await a_reviewer_definition_from_path(file_path)
+        r_def: MarkdownReviewerDefinition = await a_reviewer_definition_from_path(
+            file_path
+        )
         reviewer: Reviewer = await a_markdown_reviewer_def_to_reviewer(r_def)
         return reviewer
 
-    async for res in a_map_progress(task, markdown_files, desc="Loading reviewer definitions"):
+    async for res in a_map_progress(
+        task, markdown_files, desc="Loading reviewer definitions"
+    ):
         reviewers.append(res)
     return reviewers
 
@@ -282,10 +285,10 @@ async def a_py_file_to_reviewer(__resolver__, /, path: Path) -> Reviewer:
 
 @instance
 async def all_reviewers__from_python_files(
-        a_py_file_to_reviewer,
-        a_await_all,
-        repo_root,
-        reviewer_paths,
+    a_py_file_to_reviewer,
+    a_await_all,
+    repo_root,
+    reviewer_paths,
 ) -> list[IOResultE[Reviewer]]:
     """
     Load all reviewers from Python files in the paths provided by reviewer_paths.
@@ -297,9 +300,12 @@ async def all_reviewers__from_python_files(
         if path.exists():
             py_files.extend(list(path.glob("*.py")))
 
-    reviewers: list[FutureResultE[Reviewer]] = [a_py_file_to_reviewer(py_file) for py_file in py_files]
-    reviewers: list[IOResultE[Reviewer]] = await a_await_all(reviewers,
-                                                             desc="Loading reviewer definitions from python files")
+    reviewers: list[FutureResultE[Reviewer]] = [
+        a_py_file_to_reviewer(py_file) for py_file in py_files
+    ]
+    reviewers: list[IOResultE[Reviewer]] = await a_await_all(
+        reviewers, desc="Loading reviewer definitions from python files"
+    )
     return reviewers
 
 
@@ -312,7 +318,9 @@ def log_failure_as_table(items: list[IOResultE]):
 
     if failures:
         console = Console()
-        table = Table(title=f"Results: {len(succeeded)} succeeded, {len(failures)} failed")
+        table = Table(
+            title=f"Results: {len(succeeded)} succeeded, {len(failures)} failed"
+        )
         table.add_column("Status", style="green")
         table.add_column("Error", style="red")
 
@@ -326,8 +334,8 @@ def log_failure_as_table(items: list[IOResultE]):
 
 @instance
 async def all_reviewers(
-        all_reviewers__from_markdowns: list[IOResultE[Reviewer]],
-        all_reviewers__from_python_files: list[IOResultE[Reviewer]],
+    all_reviewers__from_markdowns: list[IOResultE[Reviewer]],
+    all_reviewers__from_python_files: list[IOResultE[Reviewer]],
 ) -> list[Reviewer]:
     src_reviewers = all_reviewers__from_python_files + all_reviewers__from_markdowns
     log_failure_as_table(src_reviewers)
@@ -341,17 +349,21 @@ class MarkdownFileDiffReviewer(Reviewer[FileDiff]):
     a_extract_approved: ExtractApproved
     name: str
     material: str
-    reason_to_skip: SkipReasonProvider = field(default=lambda _: Future.from_value(Nothing))
+    reason_to_skip: SkipReasonProvider = field(
+        default=lambda _: Future.from_value(Nothing)
+    )
     interests: Interests = field(default_factory=lambda: {PreCommitFileDiffInterest()})
 
     async def __call__(self, file_diff: FileDiff) -> Review:
-        skip_reason: Maybe[str] = unsafe_perform_io(await self.reason_to_skip(file_diff))
+        skip_reason: Maybe[str] = unsafe_perform_io(
+            await self.reason_to_skip(file_diff)
+        )
         match skip_reason:
             case Some(reason):
                 return Review(
                     name=self.name,
                     review_text=f"Skipped review: {reason}",
-                    approved=True
+                    approved=True,
                 )
         prompt = f"""
 Review the following file diff and provide feedback.
@@ -369,17 +381,14 @@ Otherwise, please provide a detailed review and explain why the change is not ap
             import traceback
 
             from loguru import logger
+
             logger.warning(e)
             logger.warning(traceback.format_exc())
             raise e
 
         approved = await self.a_extract_approved(review)
 
-        return Review(
-            name=self.name,
-            review_text=review,
-            approved=approved.result
-        )
+        return Review(name=self.name, review_text=review, approved=approved.result)
 
     def __repr__(self) -> str:
         return f"MarkdownFileDiffReviewer(name={self.name}, interests={self.interests} material_length={len(self.material)})"
@@ -391,17 +400,21 @@ class MarkdownFileFullReviewer(Reviewer[FileDiff]):
     a_extract_approved: ExtractApproved
     name: str
     material: str
-    reason_to_skip: SkipReasonProvider = field(default=lambda _: Future.from_value(Nothing))
+    reason_to_skip: SkipReasonProvider = field(
+        default=lambda _: Future.from_value(Nothing)
+    )
     interests: Interests = field(default_factory=lambda: {PreCommitFileDiffInterest()})
 
     async def __call__(self, file_diff: FileDiff) -> Review:
-        skip_reason: Maybe[str] = unsafe_perform_io(await self.reason_to_skip(file_diff))
+        skip_reason: Maybe[str] = unsafe_perform_io(
+            await self.reason_to_skip(file_diff)
+        )
         match skip_reason:
             case Some(reason):
                 return Review(
                     name=self.name,
                     review_text=f"Skipped review: {reason}",
-                    approved=True
+                    approved=True,
                 )
         prompt = f"""
 Read the following review material to provide a detailed review for the code at the end.
@@ -426,17 +439,14 @@ Make sure to only focus on the point where the review material points out.
             import traceback
 
             from loguru import logger
+
             logger.warning(e)
             logger.warning(traceback.format_exc())
             raise e
 
         approved = await self.a_extract_approved(review)
 
-        return Review(
-            name=self.name,
-            review_text=review,
-            approved=approved.result
-        )
+        return Review(name=self.name, review_text=review, approved=approved.result)
 
     def __repr__(self) -> str:
         return f"MarkdownFileFullReviewer(name={self.name}, interests={self.interests} material_length={len(self.material)})"
@@ -455,7 +465,9 @@ async def git_info_reviewers(all_reviewers: list[Reviewer]) -> list[Reviewer[Git
 
 
 @instance
-async def file_diff_reviewers(logger, all_reviewers: list[Reviewer]) -> list[Reviewer[FileDiff]]:
+async def file_diff_reviewers(
+    logger, all_reviewers: list[Reviewer]
+) -> list[Reviewer[FileDiff]]:
     res = []
     for r in all_reviewers:
         logger.info(f"Reviewer: {r.name}, Interests: {r.interests}")
@@ -469,7 +481,9 @@ async def file_diff_reviewers(logger, all_reviewers: list[Reviewer]) -> list[Rev
 
 
 @injected
-async def a_await_all(a_map_progress, /, tasks: list[FutureResultE], desc: str = None) -> list[IOResultE]:
+async def a_await_all(
+    a_map_progress, /, tasks: list[FutureResultE], desc: str = None
+) -> list[IOResultE]:
     """
     Await all tasks and return the results, using a_map_progress for progress tracking.
     Basically converting list of FutureResultE to list of IOResultE
@@ -480,10 +494,10 @@ async def a_await_all(a_map_progress, /, tasks: list[FutureResultE], desc: str =
         return await item
 
     async for item in a_map_progress(
-            awaiter,
-            tasks,
-            desc=desc,
-            total=len(tasks),
+        awaiter,
+        tasks,
+        desc=desc,
+        total=len(tasks),
     ):
         result.append(item)
     return result
@@ -491,10 +505,10 @@ async def a_await_all(a_map_progress, /, tasks: list[FutureResultE], desc: str =
 
 @instance
 async def pre_commit_reviews__phased(
-        a_await_all,
-        git_info,
-        git_info_reviewers: list[Reviewer[GitInfo]],
-        file_diff_reviewers: list[Reviewer[FileDiff]],
+    a_await_all,
+    git_info,
+    git_info_reviewers: list[Reviewer[GitInfo]],
+    file_diff_reviewers: list[Reviewer[FileDiff]],
 ) -> list[ReviewResult]:
     @future_safe
     async def git_info_review(reviewer: Reviewer[GitInfo]):
@@ -513,11 +527,15 @@ async def pre_commit_reviews__phased(
             file_diff: FileDiff
             if not file_diff.filename.exists():
                 continue
-            if check_if_file_should_be_ignored(file_diff.filename.read_text(), file_diff.filename):
+            if check_if_file_should_be_ignored(
+                file_diff.filename.read_text(), file_diff.filename
+            ):
                 continue
             tasks.append(review_file(reviewer, file_diff))
 
-    reviews: list[IOResultE[ReviewResult]] = await a_await_all(tasks, desc="Running reviewers")
+    reviews: list[IOResultE[ReviewResult]] = await a_await_all(
+        tasks, desc="Running reviewers"
+    )
     log_failure_as_table(reviews)
     succeeded = [unsafe_perform_io(r).unwrap() for r in reviews if is_successful(r)]
     return succeeded

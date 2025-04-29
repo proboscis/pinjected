@@ -11,17 +11,17 @@ from pinjected import *
 
 @injected
 async def a_openai_compatible_llm(
-        logger,
-        /,
-        api:AsyncOpenAI,
-        model:str,
-        text:str,
-        images:list[Image] | None=None,
-        response_format=None,
-        max_completion_tokens:int = None,
-        reasoning_effort=None,
-        detail:Literal["auto","low","high"] = "auto"
-)->ChatCompletion:
+    logger,
+    /,
+    api: AsyncOpenAI,
+    model: str,
+    text: str,
+    images: list[Image] | None = None,
+    response_format=None,
+    max_completion_tokens: int = None,
+    reasoning_effort=None,
+    detail: Literal["auto", "low", "high"] = "auto",
+) -> ChatCompletion:
     images = images or []
 
     api_kwargs = dict(
@@ -39,14 +39,13 @@ async def a_openai_compatible_llm(
     )
 
     if max_completion_tokens is not None:
-        api_kwargs['max_completion_tokens'] = max_completion_tokens
+        api_kwargs["max_completion_tokens"] = max_completion_tokens
     if reasoning_effort is not None:
-        api_kwargs['reasoning_effort'] = reasoning_effort
-    if isinstance(response_format,type) and issubclass(response_format,BaseModel):
-        api_kwargs['response_format'] = response_format.model_json_schema()
+        api_kwargs["reasoning_effort"] = reasoning_effort
+    if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+        api_kwargs["response_format"] = response_format.model_json_schema()
         api_object = api.beta.chat.completions.parse
     else:
         api_object = api.chat.completions.create
 
     return await api_object(**api_kwargs)
-

@@ -9,7 +9,6 @@ T = TypeVar("T")
 
 
 class AInjected(Generic[T], ABC):
-
     @property
     @abc.abstractmethod
     def dependencies(self) -> set[str]:
@@ -29,17 +28,20 @@ class AInjected(Generic[T], ABC):
         pass
 
     @staticmethod
-    def zip(*targets: 'AInjected'):
+    def zip(*targets: "AInjected"):
         return ZippedAInjected(*targets)
 
     def map(self, f: Callable[[T], Awaitable[T]]):
-        assert inspect.iscoroutinefunction(f), f"f must be a coroutine function, got {f}"
+        assert inspect.iscoroutinefunction(f), (
+            f"f must be a coroutine function, got {f}"
+        )
         return MappedAInjected(self, f)
 
     @staticmethod
-    def dict(**kwargs: 'AInjected'):
+    def dict(**kwargs: "AInjected"):
         async def mapper(vs):
             return dict(zip(kwargs.keys(), vs, strict=False))
+
         return ZippedAInjected(*kwargs.values()).map(mapper)
 
 

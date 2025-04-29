@@ -31,17 +31,18 @@ class ShortText(BaseModel):
 
 @injected
 async def a_handle_error_with_llm_voice(
-        a_sllm_for_error_analysis: StructuredLLM,
-        a_niji_voice,
-        logger,
-        __pinjected_error_reports_enable_voice__: bool,
-        /,
-        e: Exception
+    a_sllm_for_error_analysis: StructuredLLM,
+    a_niji_voice,
+    logger,
+    __pinjected_error_reports_enable_voice__: bool,
+    /,
+    e: Exception,
 ):
     import traceback
+
     fmt = traceback.format_exception(e)
     fmt = "".join(fmt)
-    #logger.error(f"Error occurred: {e} \n {fmt}")
+    # logger.error(f"Error occurred: {e} \n {fmt}")
 
     async def analysis_task():
         logger.info(f"sending stacktrace to LLM for better message...")
@@ -54,9 +55,16 @@ async def a_handle_error_with_llm_voice(
         import rich
         from rich.markdown import Markdown
         from rich.panel import Panel
+
         rich.print(Panel(Markdown(resp.cause_md_simple), title="Error Cause"))
         rich.print(Panel(Markdown(resp.summary_md_in_1_sentence), title="Summary"))
-        rich.print(Panel(Markdown(resp.solution_md_in_1_sentence), title="Solution", style="bold green"))
+        rich.print(
+            Panel(
+                Markdown(resp.solution_md_in_1_sentence),
+                title="Solution",
+                style="bold green",
+            )
+        )
 
     async def play_sound_task():
         logger.info(f"playing sound for error...")
@@ -71,21 +79,21 @@ async def a_handle_error_with_llm_voice(
             main_e = main_e.src
         err_msg = f"{main_e.__class__.__name__}"
         from pinjected.notification import notify
+
         if __pinjected_error_reports_enable_voice__:
             voices = await asyncio.gather(
-                a_niji_voice(NijiVoiceParam(
-                    actor_name='小夜',
-                    script=f'エラー。',
-                )),
-                a_niji_voice(NijiVoiceParam(
-                    actor_name='小夜',
-                    script=f"{err_msg}"
-                ))
+                a_niji_voice(
+                    NijiVoiceParam(
+                        actor_name="小夜",
+                        script=f"エラー。",
+                    )
+                ),
+                a_niji_voice(NijiVoiceParam(actor_name="小夜", script=f"{err_msg}")),
             )
             for v in voices:
                 await v.a_play()
         else:
-            notify(f"エラー: {err_msg}", sound='Frog')
+            notify(f"エラー: {err_msg}", sound="Frog")
 
     _ = await asyncio.gather(analysis_task(), play_sound_task())
 
@@ -94,29 +102,33 @@ async def a_handle_error_with_llm_voice(
 
 @injected
 async def a_handle_result_with_llm_voice(
-        a_sllm_for_error_analysis: StructuredLLM,
-        a_niji_voice,
-        logger,
-        __pinjected_error_reports_enable_voice__: bool,
-        /,
-        result: object
+    a_sllm_for_error_analysis: StructuredLLM,
+    a_niji_voice,
+    logger,
+    __pinjected_error_reports_enable_voice__: bool,
+    /,
+    result: object,
 ):
     import rich
     from rich.errors import MarkupError
     from rich.panel import Panel
+
     try:
         rich.print(Panel(f"Result: {result}", title="Result", style="bold green"))
     except MarkupError:
         logger.success(f"Result: {result}")
     from pinjected.notification import notify
+
     if __pinjected_error_reports_enable_voice__:
-        voice = await a_niji_voice(NijiVoiceParam(
-            actor_name='小夜',
-            script=f"成功。",
-        ))
+        voice = await a_niji_voice(
+            NijiVoiceParam(
+                actor_name="小夜",
+                script=f"成功。",
+            )
+        )
         await voice.a_play()
     else:
-        notify(f"成功", sound='Glass')
+        notify(f"成功", sound="Glass")
 
 
 @instance
@@ -135,11 +147,17 @@ def test_success_result():
 
 
 a_cached_openrouter_chat_completion = async_cached(
-    lzma_sqlite(injected('error_reports_cache_path') / "openrouter_chat_completion_cache.sqlite"),
-    key_hashers=Injected.dict(
-        response_format=lambda m: hashlib.sha256(str(m.model_json_schema()).encode()).hexdigest() if m is not None else "None"
+    lzma_sqlite(
+        injected("error_reports_cache_path") / "openrouter_chat_completion_cache.sqlite"
     ),
-    replace_binding=False
+    key_hashers=Injected.dict(
+        response_format=lambda m: hashlib.sha256(
+            str(m.model_json_schema()).encode()
+        ).hexdigest()
+        if m is not None
+        else "None"
+    ),
+    replace_binding=False,
 )(
     a_openrouter_chat_completion,
 )
@@ -147,23 +165,17 @@ a_cached_openrouter_chat_completion = async_cached(
 test_get_openrouter_chat_completion: IProxy = a_openrouter_chat_completion
 
 gemini_flash_2_0 = Injected.partial(
-    a_cached_openrouter_chat_completion,
-    model='google/gemini-2.0-flash-001'
+    a_cached_openrouter_chat_completion, model="google/gemini-2.0-flash-001"
 )
 
-a_cached_sllm_gpt4o__openrouter: IProxy = async_cached(sqlite_dict(
-    injected('error_reports_cache_path') / "gpt4o.sqlite")
-)(
-    Injected.partial(
-        a_openrouter_chat_completion__without_fix,
-        model="openai/gpt-4o"
-    )
-)
+a_cached_sllm_gpt4o__openrouter: IProxy = async_cached(
+    sqlite_dict(injected("error_reports_cache_path") / "gpt4o.sqlite")
+)(Injected.partial(a_openrouter_chat_completion__without_fix, model="openai/gpt-4o"))
 
 design_for_error_reports = design(
     **{
         PinjectedHandleMainException.key.name: a_handle_error_with_llm_voice,
-        PinjectedHandleMainResult.key.name: a_handle_result_with_llm_voice
+        PinjectedHandleMainResult.key.name: a_handle_result_with_llm_voice,
     },
     a_sllm_for_error_analysis=gemini_flash_2_0,
     a_niji_voice_play=a_niji_voice_play,

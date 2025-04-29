@@ -10,11 +10,13 @@ class FileDiff:
     """
     Information about a specific file diff in the git repository.
     """
+
     filename: Path
     diff: str
     is_binary: bool = False
     is_new_file: bool = False
     is_deleted: bool = False
+
     def __repr__(self):
         return f"FileDiff(filename={self.filename}, diff_length={len(self.diff)}, is_binary={self.is_binary}, is_new_file={self.is_new_file}, is_deleted={self.is_deleted})"
 
@@ -24,6 +26,7 @@ class GitInfo:
     """
     Structured representation of git repository information.
     """
+
     # Current state
     branch: str
     staged_files: list[Path]
@@ -55,11 +58,17 @@ class GitInfo:
 
     @property
     def has_python_changes(self) -> bool:
-        return any(f.name.endswith('.py') for f in self.staged_files + self.modified_files)
+        return any(
+            f.name.endswith(".py") for f in self.staged_files + self.modified_files
+        )
 
     @property
     def python_diffs(self) -> dict[Path, FileDiff]:
-        return {k: v for k, v in self.file_diffs.items() if k.name.endswith('.py') and v.diff}
+        return {
+            k: v
+            for k, v in self.file_diffs.items()
+            if k.name.endswith(".py") and v.diff
+        }
 
 
 @dataclass
@@ -74,6 +83,7 @@ class Review:
 
 class Approved(BaseModel):
     result: bool
+
 
 class PreCommitReviewer(Protocol):
     async def __call__(self, git_info: GitInfo) -> Review:

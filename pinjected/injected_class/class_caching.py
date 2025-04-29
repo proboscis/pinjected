@@ -48,7 +48,7 @@ Caching is an important feature for a pclass.
 
 def get_class_from_unbound_method(method):
     full_name = method.__qualname__
-    class_name = full_name.split('.')[0]
+    class_name = full_name.split(".")[0]
     return getattr(sys.modules[method.__module__], class_name)
 
 
@@ -77,9 +77,11 @@ def _pcached_impl(method, cache_attr_name, keys: set[str]):
     method_name = method.__name__
     logger.info(f"method:{method}")
     logger.info(f"method sig:{method_sig}")
-    self_keys = {k.replace("self.", "") for k in keys if k.startswith('self.')}
-    arg_keys = {k for k in keys if not k.startswith('self.')}
-    assert inspect.iscoroutinefunction(method), f"Only async methods are supported. {method.__name__}"
+    self_keys = {k.replace("self.", "") for k in keys if k.startswith("self.")}
+    arg_keys = {k for k in keys if not k.startswith("self.")}
+    assert inspect.iscoroutinefunction(method), (
+        f"Only async methods are supported. {method.__name__}"
+    )
     logger.info(f"arg keys:{arg_keys}")
     logger.info(f"self keys:{self_keys}")
 
@@ -115,48 +117,36 @@ class PClassExample:
     a: str
     cache: dict
 
-    @pcached('cache', {'x'})
+    @pcached("cache", {"x"})
     async def test_method(self, x):
         return self._dep1, self.a, x
 
 
 def test_dataclass_caching():
-    cached = _pcached_impl(
-        ExampleClass.test_method,
-        '__cache__',
-        {'self.a', 'x'}
-    )
+    cached = _pcached_impl(ExampleClass.test_method, "__cache__", {"self.a", "x"})
     ExampleClass.test_method = cached
-    instance = ExampleClass(
-        dict(),
-        'value_a'
-    )
+    instance = ExampleClass(dict(), "value_a")
     logger.info(cached)
-    logger.info(asyncio.run(instance.test_method('value_x')))
-    logger.info(asyncio.run(instance.test_method('value_x')))
+    logger.info(asyncio.run(instance.test_method("value_x")))
+    logger.info(asyncio.run(instance.test_method("value_x")))
 
 
 def test_pclass_caching():
     async def impl():
         from pinjected import design, injected
-        d = design(
-            dep1="dep_1",
-            my_cache=dict()
-        )
+
+        d = design(dep1="dep_1", my_cache=dict())
         g = d.to_resolver()
         from pinjected.injected_class.injectable_class import pclass
 
         constructor = pclass(PClassExample)
-        instance = await g[constructor(
-            a="value_a",
-            cache=injected('my_cache')
-        )]
-        logger.info(await instance.test_method('value_x'))
-        logger.info(await instance.test_method('value_x'))
+        instance = await g[constructor(a="value_a", cache=injected("my_cache"))]
+        logger.info(await instance.test_method("value_x"))
+        logger.info(await instance.test_method("value_x"))
 
     return asyncio.run(impl())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_dataclass_caching()
     test_pclass_caching()

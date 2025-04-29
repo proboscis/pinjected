@@ -30,9 +30,7 @@ async def a_system(logger, /, command: str, *args) -> tuple[str, str]:
         cmd.extend(args)
 
     process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     stdout, stderr = await process.communicate()
 
@@ -40,7 +38,9 @@ async def a_system(logger, /, command: str, *args) -> tuple[str, str]:
     stdout_str = stdout.decode().strip()
 
     if process.returncode != 0:
-        error_msg = f"Command {command} failed with code {process.returncode}: {stderr_str}"
+        error_msg = (
+            f"Command {command} failed with code {process.returncode}: {stderr_str}"
+        )
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
@@ -48,10 +48,12 @@ async def a_system(logger, /, command: str, *args) -> tuple[str, str]:
 
 
 @injected
-async def a_file_diff(logger,a_system, /, file_path: Path) -> str:
+async def a_file_diff(logger, a_system, /, file_path: Path) -> str:
     pwd = Path.cwd()
     logger.info(f"current working directory: {pwd}")
-    file_diff, stderr = await a_system("git", "--no-pager", "diff", "--color=never", "--staged", "--", str(file_path))
+    file_diff, stderr = await a_system(
+        "git", "--no-pager", "diff", "--color=never", "--staged", "--", str(file_path)
+    )
     return file_diff
 
 
@@ -108,7 +110,9 @@ async def git_info(a_system) -> GitInfo:
     # Get staged files - critical for our purpose
     try:
         stdout, _ = await a_system("git", "diff", "--name-only", "--staged")
-        staged_files = [Path(repo_root) / f for f in stdout.split('\n') if f] if stdout else []
+        staged_files = (
+            [Path(repo_root) / f for f in stdout.split("\n") if f] if stdout else []
+        )
     except RuntimeError as e:
         logger.error(f"Failed to get staged files: {e}")
         raise RuntimeError("Cannot get staged files information") from e
@@ -116,7 +120,7 @@ async def git_info(a_system) -> GitInfo:
     # Get modified but unstaged files
     try:
         stdout, _ = await a_system("git", "diff", "--name-only")
-        modified_files = [Path(f) for f in stdout.split('\n') if f] if stdout else []
+        modified_files = [Path(f) for f in stdout.split("\n") if f] if stdout else []
     except RuntimeError as e:
         logger.warning(f"Failed to get modified files: {e}")
         modified_files = []
@@ -124,7 +128,7 @@ async def git_info(a_system) -> GitInfo:
     # Get untracked files
     try:
         stdout, _ = await a_system("git", "ls-files", "--others", "--exclude-standard")
-        untracked_files = [Path(f) for f in stdout.split('\n') if f] if stdout else []
+        untracked_files = [Path(f) for f in stdout.split("\n") if f] if stdout else []
     except RuntimeError as e:
         logger.warning(f"Failed to get untracked files: {e}")
         untracked_files = []
@@ -142,17 +146,21 @@ async def git_info(a_system) -> GitInfo:
     for file_path in staged_files:
         try:
             # Check file type
-            file_type_output, _ = await a_system("git", "diff", "--staged", "--name-status", "--", str(file_path))
+            file_type_output, _ = await a_system(
+                "git", "diff", "--staged", "--name-status", "--", str(file_path)
+            )
             if file_type_output:
                 file_type = file_type_output.split()[0]
-                is_new_file = file_type == 'A'
-                is_deleted = file_type == 'D'
+                is_new_file = file_type == "A"
+                is_deleted = file_type == "D"
             else:
                 is_new_file = False
                 is_deleted = False
 
             # Get file diff
-            file_diff, _ = await a_system("git", "diff", "--staged", "--", str(file_path))
+            file_diff, _ = await a_system(
+                "git", "diff", "--staged", "--", str(file_path)
+            )
 
             # Check if it's a binary file
             is_binary = "Binary files" in file_diff
@@ -162,15 +170,13 @@ async def git_info(a_system) -> GitInfo:
                 diff=file_diff,
                 is_binary=is_binary,
                 is_new_file=is_new_file,
-                is_deleted=is_deleted
+                is_deleted=is_deleted,
             )
         except Exception as e:
             logger.warning(f"Failed to get diff for {file_path}: {e}")
             # Add an empty diff entry
             file_diffs[file_path] = FileDiff(
-                filename=file_path,
-                diff=f"[Error: {e!s}]",
-                is_binary=False
+                filename=file_path, diff=f"[Error: {e!s}]", is_binary=False
             )
 
     return GitInfo(
@@ -182,7 +188,7 @@ async def git_info(a_system) -> GitInfo:
         file_diffs=file_diffs,
         repo_root=repo_root,
         author_name=author_name,
-        author_email=author_email
+        author_email=author_email,
     )
 
 

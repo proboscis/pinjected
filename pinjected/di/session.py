@@ -23,16 +23,19 @@ class SessionScope(ISessionScope):
         # logger.info(f"{self} provide {binding_key}")
         if binding_key not in self.cache:
             from pinjected.pinjected_logging import logger
+
             self.provide_depth += 1
             indent = "| " * self.provide_depth
             self.pending.append(binding_key)
-            logger.debug(f'Providing:{"<-".join([k._name for k in self.pending])}')
-            #logger.debug(f"SessionScope: {indent} -> {binding_key._name}")
+            logger.debug(f"Providing:{'<-'.join([k._name for k in self.pending])}")
+            # logger.debug(f"SessionScope: {indent} -> {binding_key._name}")
             value = default_provider_fn()
             self.cache[binding_key] = value
             self.pending.pop()
-            logger.debug(f'Remaining:{"<-".join([k._name for k in self.pending])} {binding_key}={str(value)[:100]}')
-            #logger.debug(f"SessionScope: {indent} <- {binding_key._name}")
+            logger.debug(
+                f"Remaining:{'<-'.join([k._name for k in self.pending])} {binding_key}={str(value)[:100]}"
+            )
+            # logger.debug(f"SessionScope: {indent} <- {binding_key._name}")
             self.provide_depth -= 1
         return self.cache[binding_key]
 
@@ -62,10 +65,13 @@ class ChildScope(ISessionScope):
         # logger.info(f"{self} provide {binding_key}")
         if binding_key not in self.cache:
             from pinjected.pinjected_logging import logger
+
             logger.debug(f"ChildScope: -> {binding_key}")
             if binding_key in self.override_targets:
                 self.cache[binding_key] = default_provider_fn()
-            elif binding_key in self.parent:  # this means that this thing is already cached in the parent
+            elif (
+                binding_key in self.parent
+            ):  # this means that this thing is already cached in the parent
                 return self.parent.provide(binding_key, default_provider_fn)
             else:
                 # things which are not created in parent will be deleted after this scope.

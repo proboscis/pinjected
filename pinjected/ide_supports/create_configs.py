@@ -20,8 +20,10 @@ from pinjected.pinjected_logging import logger
 
 __meta_design__ = design(
     # Legacy design attribute - used with a_gather_from_path
-    default_design_paths=["pinjected.ide_supports.default_design.pinjected_internal_design"],
-    meta_config_value="from_meta_design"
+    default_design_paths=[
+        "pinjected.ide_supports.default_design.pinjected_internal_design"
+    ],
+    meta_config_value="from_meta_design",
 )
 
 # New design attribute - takes precedence when using a_gather_bindings_with_legacy
@@ -29,7 +31,7 @@ __design__ = design(
     # This value should override the one in __meta_design__
     meta_config_value="from_design",
     # Additional configurations
-    additional_config_value="only_in_design"
+    additional_config_value="only_in_design",
 )
 
 from pinjected.run_helpers.run_injected import run_injected
@@ -37,11 +39,11 @@ from pinjected.v2.keys import IBindKey
 
 
 def run_with_meta_context(
-        var_path: str,
-        context_module_file_path: str,
-        design_path: str = None,
-        # TODO add overrides_path
-        **kwargs
+    var_path: str,
+    context_module_file_path: str,
+    design_path: str = None,
+    # TODO add overrides_path
+    **kwargs,
 ):
     """
     This is for running a injected with __meta_design__ integrated.
@@ -54,25 +56,25 @@ def run_with_meta_context(
     # if not "__meta_design__" in Path(context_module_file_path).read_text():
     #     raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
     meta_context = MetaContext.gather_from_path(Path(context_module_file_path))
-    default = design(
-        default_design_paths=[]
-    )
+    default = design(default_design_paths=[])
     instance_overrides = design(
         module_path=Path(context_module_file_path),
         interpreter_path=sys.executable,
         meta_context=meta_context,
-        **kwargs
+        **kwargs,
     )
-    return run_injected("get", var_path, design_path, return_result=True,
-                        overrides=default + meta_context.accumulated + instance_overrides,
-                        notifier=logger.info
-                        )
+    return run_injected(
+        "get",
+        var_path,
+        design_path,
+        return_result=True,
+        overrides=default + meta_context.accumulated + instance_overrides,
+        notifier=logger.info,
+    )
 
 
 @injected
-def load_meta_context(
-        module_path
-):
+def load_meta_context(module_path):
     meta_context = MetaContext.gather_from_path(module_path)
     return meta_context
 
@@ -80,11 +82,11 @@ def load_meta_context(
 @injected
 @beartype
 def create_idea_configurations(
-        inspect_and_make_configurations,
-        module_path: Path,
-        print_to_stdout,
-        /,
-        wrap_output_with_tag=True
+    inspect_and_make_configurations,
+    module_path: Path,
+    print_to_stdout,
+    /,
+    wrap_output_with_tag=True,
 ):
     with logger.contextualize(tag="create_idea_configurations"):
         pinjected.global_configs.pinjected_TRACK_ORIGIN = False
@@ -99,7 +101,7 @@ def create_idea_configurations(
         # so that the caller must parse the output.
 
         if print_to_stdout:
-            data_str = (json.dumps(asdict(configs)))
+            data_str = json.dumps(asdict(configs))
             if wrap_output_with_tag:
                 data_str = f"<pinjected>{data_str}</pinjected>"
             print(data_str)
@@ -108,9 +110,7 @@ def create_idea_configurations(
 
 
 @instance
-def list_injected_keys(
-        default_design_paths: list[str]
-):
+def list_injected_keys(default_design_paths: list[str]):
     helper = DIGraphHelper(ModuleVarPath(default_design_paths[0]).load())
     data_str = json.dumps(sorted(list(helper.total_mappings().keys())))
     print(data_str)
@@ -122,8 +122,9 @@ def get_filtered_signature(func):
 
     # Filter out positional-only parameters
     filtered_params = {
-        name: param for name, param in original_signature.parameters.items() if
-        param.kind != inspect.Parameter.POSITIONAL_ONLY
+        name: param
+        for name, param in original_signature.parameters.items()
+        if param.kind != inspect.Parameter.POSITIONAL_ONLY
     }
 
     # Create a new signature with the filtered parameters
@@ -135,9 +136,7 @@ def get_filtered_signature(func):
 
 
 @instance
-def list_completions(
-        default_design_paths: list[str]
-):
+def list_completions(default_design_paths: list[str]):
     """
     An API to be called from IDE to return completions, based on __meta_design__.
     :param default_design_paths:
@@ -156,18 +155,16 @@ def list_completions(
     def key_to_completion(key):
         tgt = total_mappings[key]
         match tgt:
-            case PartialInjectedFunction(InjectedFromFunction(object(__original__=func), kw_mapping)):
+            case PartialInjectedFunction(
+                InjectedFromFunction(object(__original__=func), kw_mapping)
+            ):
                 name, signature = get_filtered_signature(func)
-                return dict(
-                    name=name,
-                    description="injected function",
-                    tail=signature
-                )
+                return dict(name=name, description="injected function", tail=signature)
 
         return dict(
             name=key,
             description=f"injected {key}",  # the type text
-            tail=f""  # a function signature
+            tail=f"",  # a function signature
         )
 
     # so, I want to extract the return type, and the function signature.
@@ -181,9 +178,7 @@ def list_completions(
 
 
 @instance
-def design_metadata(
-        default_design_paths: list[str]
-):
+def design_metadata(default_design_paths: list[str]):
     d: Design = ModuleVarPath(default_design_paths[0]).load()
     # we load design, so we need to be careful with not to running things...
     """
@@ -204,25 +199,24 @@ def design_metadata(
         k: IBindKey
         match bind.metadata.bind(lambda m: m.code_location):
             case Some(ModuleVarPath(qualified_name)):
-                metas.append(dict(
-                    key=k.ide_hint_string(),
-                    location=dict(
-                        type="path",
-                        value=qualified_name
+                metas.append(
+                    dict(
+                        key=k.ide_hint_string(),
+                        location=dict(type="path", value=qualified_name),
                     )
-                ))
+                )
             case Some(ModuleVarLocation(fp, line, col)):
-                metas.append(dict(
-                    key=k.ide_hint_string(),
-                    location=dict(
-                        type="coordinates",
-                        value=f'{fp}:{line}:{col}'
+                metas.append(
+                    dict(
+                        key=k.ide_hint_string(),
+                        location=dict(type="coordinates", value=f"{fp}:{line}:{col}"),
                     )
-                ))
+                )
     logger.info(f"metas:{metas}")
     data_str = json.dumps(metas)
     data_str = "<pinjected>" + data_str + "</pinjected>"
     print(data_str)
+
 
 # TODO implement a provider of documentations
 # TODO implement a provider for jump to definition, s that I can click on the injected variables to see the definition.

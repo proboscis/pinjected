@@ -18,10 +18,15 @@ class RunInjected:
                 self.design_path = get_design_path_from_var_path(self.var_path)
         except ValueError:
             from pinjected.pinjected_logging import logger
-            logger.warning(f"No default design paths found for {self.var_path}. Proceeding with None design path.")
+
+            logger.warning(
+                f"No default design paths found for {self.var_path}. Proceeding with None design path."
+            )
 
     def _var_design(self):
-        var: Injected = Injected.ensure_injected(load_variable_by_module_path(self.var_path))
+        var: Injected = Injected.ensure_injected(
+            load_variable_by_module_path(self.var_path)
+        )
         design: Design = load_variable_by_module_path(self.design_path)
         return var, design
 
@@ -43,14 +48,17 @@ class RunInjected:
 
     def get(self):
         from pinjected.pinjected_logging import logger
+
         logger.info(f"injected get result\n{self.chain_get()}")
 
     def call(self, *args, **kwargs):
         from pinjected.pinjected_logging import logger
+
         logger.info(f"injected get result\n{self.chain_call(*args, **kwargs)}")
 
     def visualize(self):
         from pinjected.pinjected_logging import logger
+
         logger.info(f"visualizing {self.var_path} with design {self.design_path}")
         var, design = self._var_design()
         design.to_vis_graph().show_injected_html(var)

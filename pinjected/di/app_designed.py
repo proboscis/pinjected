@@ -10,7 +10,6 @@ from pinjected.di.static_proxy import AstProxyContextImpl, ast_proxy, eval_appli
 
 
 class ApplicativeDesignedImpl(Applicative[Designed]):
-
     def map(self, target: Designed, f) -> T:
         return target.map(f)
 
@@ -20,8 +19,8 @@ class ApplicativeDesignedImpl(Applicative[Designed]):
     def pure(self, item) -> T:
         return Designed.bind(Injected.pure(item))
 
-    def is_instance(self, item) ->bool:
-        return isinstance(item,Designed)
+    def is_instance(self, item) -> bool:
+        return isinstance(item, Designed)
 
 
 def reduce_designed_expr(expr: Expr):

@@ -1,32 +1,33 @@
 import asyncio
-from hashlib import sha256
-from typing import TypeVar, Callable, Awaitable
 import inspect
+from collections.abc import Awaitable, Callable
+from hashlib import sha256
+from typing import TypeVar
 
 import jsonpickle
-from returns.future import future_safe, FutureResultE
-from returns.io import IOResultE, IOResult
+from returns.future import future_safe
+from returns.io import IOResult, IOResultE
+from returns.maybe import Some
 from returns.pipeline import is_successful
-from returns.result import safe, ResultE
 from returns.unsafe import unsafe_perform_io
 
 from pinjected import *
 from pinjected.decoration import update_if_registered
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.util import get_code_location
-from returns.maybe import Some
 
-T = TypeVar('T')
-U = TypeVar('U')
+T = TypeVar("T")
+U = TypeVar("U")
+
 
 # pinjected-reviewer: ignore
 @injected
 def _async_batch_cached(
-        injected_utils_default_hasher,
-        logger,
-        /,
-        cache: dict,
-        hasher: Callable[[T], str] = None
+    injected_utils_default_hasher,
+    logger,
+    /,
+    cache: dict,
+    hasher: Callable[[T], str] = None,
 ):
     """
     非同期バッチ処理のための内部キャッシュデコレータ実装。
@@ -61,21 +62,24 @@ def _async_batch_cached(
         # funcの引数が*varargs（可変長引数）を持つことを確認
         sig = inspect.signature(func)
         params = list(sig.parameters.values())
-        assert any(param.kind == inspect.Parameter.VAR_POSITIONAL for param in params), \
-            f"func must have *args parameter, but got {sig}"
+        assert any(
+            param.kind == inspect.Parameter.VAR_POSITIONAL for param in params
+        ), f"func must have *args parameter, but got {sig}"
 
         @future_safe
         async def safe_getitem(key):
-            return await asyncio.to_thread(cache.__getitem__,key)
+            return await asyncio.to_thread(cache.__getitem__, key)
 
         async def impl(*items: list[T]) -> list[U]:
             # 1. 各アイテムのハッシュ値を計算
             keys = [hasher(i) for i in items]
-            key_to_item = dict(zip(keys,items))
+            key_to_item = dict(zip(keys, items, strict=False))
             # 2. 読み込みに失敗するものを特定
-            loaded:list[IOResultE] = list(await asyncio.gather(*[safe_getitem(k) for k in keys]))
-            io_results:dict[str,IOResultE] = dict(zip(keys,loaded))
-            keys_to_calc = [k for k,v in io_results.items() if not is_successful(v)]
+            loaded: list[IOResultE] = list(
+                await asyncio.gather(*[safe_getitem(k) for k in keys])
+            )
+            io_results: dict[str, IOResultE] = dict(zip(keys, loaded, strict=False))
+            keys_to_calc = [k for k, v in io_results.items() if not is_successful(v)]
             for fk in keys_to_calc:
                 logger.info(f"Cache miss: {key_to_item[fk]} {fk[:50]},{io_results[fk]}")
 
@@ -84,16 +88,16 @@ def _async_batch_cached(
             if inputs:  # 計算が必要なアイテムがある場合のみ関数を実行
                 results = await func(*inputs)
                 # 4. 新しい結果をキャッシュに保存
-                for k, r in zip(keys_to_calc, results):
+                for k, r in zip(keys_to_calc, results, strict=False):
                     cache[k] = r
                     io_results[k] = IOResult.from_value(r)
             # 5. すべての結果を返す（キャッシュ + 新規計算）
             return [unsafe_perform_io(io_results[k].unwrap()) for k in keys]
 
-
         return impl
 
     return get_impl
+
 
 def async_batch_cached(cache: IProxy[dict], hasher: Callable[[T], str] = None):
     """
@@ -117,7 +121,7 @@ def async_batch_cached(cache: IProxy[dict], hasher: Callable[[T], str] = None):
     :param cache: IProxy[dict] キャッシュとして使用する辞書オブジェクト。pinjectedのIProxyとして提供する必要があります。
     :param hasher: Callable[[T], str] | None カスタムハッシュ関数。指定しない場合はデフォルトのJSON基準のハッシュ関数が使用されます。
     :return: デコレータ関数
-    
+
     注意:
     - デコレートする関数は可変長引数（*args）を受け取る必要があります
     - デコレートする関数は非同期関数である必要があります
@@ -132,7 +136,7 @@ def async_batch_cached(cache: IProxy[dict], hasher: Callable[[T], str] = None):
         return update_if_registered(
             Injected.ensure_injected(f),
             Injected.ensure_injected(res),
-            Some(BindMetadata(code_location=Some(get_code_location(parent_frame))))
+            Some(BindMetadata(code_location=Some(get_code_location(parent_frame)))),
         )
 
     return impl
@@ -148,6 +152,8 @@ run_test_function_batch_cached: IProxy = _test_function_batch_cached(1, 2, 3, 4,
 
 __meta_design__ = design(
     overrides=design(
-        injected_utils_default_hasher=lambda item: sha256(jsonpickle.dumps(item).encode()).hexdigest()
+        injected_utils_default_hasher=lambda item: sha256(
+            jsonpickle.dumps(item).encode()
+        ).hexdigest()
     )
 )

@@ -10,4 +10,4 @@ def test_distil_design():
         z=Injected.bind(lambda x, y: x + y),
     )
     vg: DIGraph = DIGraph(d)
-    print(vg.distilled('z'))
+    print(vg.distilled("z"))

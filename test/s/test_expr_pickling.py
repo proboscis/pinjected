@@ -1,4 +1,3 @@
-
 from pinjected import *
 
 StyleContentPair = object
@@ -28,7 +27,7 @@ wikiart_realistic_samples = {
     "impressionism": [6],
     "fauvism": [4],
     "expressionism": [85],
-    "baroque": [2]
+    "baroque": [2],
 }
 imagenet_various_absolute_idx = [
     33553,  # ox, 3 cows,
@@ -43,46 +42,50 @@ imagenet_various_absolute_idx = [
     6217,  # hay wheel
 ]
 imagenet_various_samples: Injected = injected("imagenet_val").sample_with_indices(
-    imagenet_various_absolute_idx,
-    injected("image_size")
+    imagenet_various_absolute_idx, injected("image_size")
 )
-abstract_styles = injected("wikiart").sample_with_label_indices(wikiart_abstract_samples, injected("image_size"))
-realistic_styles = injected("wikiart").sample_with_label_indices(wikiart_realistic_samples, injected("image_size"))
-realistic_various_pairs: Injected = zip_image_pairs(realistic_styles, imagenet_various_samples)
+abstract_styles = injected("wikiart").sample_with_label_indices(
+    wikiart_abstract_samples, injected("image_size")
+)
+realistic_styles = injected("wikiart").sample_with_label_indices(
+    wikiart_realistic_samples, injected("image_size")
+)
+realistic_various_pairs: Injected = zip_image_pairs(
+    realistic_styles, imagenet_various_samples
+)
 
 
 def check(tgt: Injected, trace: list[tuple[str, object]] = None):
     if trace is None:
-        trace = [('root', tgt)]
+        trace = [("root", tgt)]
     import cloudpickle
 
     from pinjected.di.app_injected import EvaledInjected
     from pinjected.di.injected import InjectedPure, MappedInjected, MZippedInjected
     from pinjected.pinjected_logging import logger
+
     try:
         cloudpickle.dumps(tgt)
         return
     except Exception:
-        trc_string = '->'.join([f'{k}' for k, v in trace])
-        trc_values = '\n'.join([f'{v}' for k, v in trace])
-        logger.error(f'failed to pickle {tgt} at {trc_string}. \n values:{trc_values}')
+        trc_string = "->".join([f"{k}" for k, v in trace])
+        trc_values = "\n".join([f"{v}" for k, v in trace])
+        logger.error(f"failed to pickle {tgt} at {trc_string}. \n values:{trc_values}")
 
     def new_trace(name: str, value: object):
         return trace + [(name, value)]
 
     match tgt:
         case EvaledInjected(value, ast):
-            check(value, trace=new_trace('value', value))
-            check(ast, trace=new_trace('ast', ast))
+            check(value, trace=new_trace("value", value))
+            check(ast, trace=new_trace("ast", ast))
         case MappedInjected(src, f):
-            check(src, trace=new_trace('src', src))
-            check(f, trace=new_trace('f', f))
+            check(src, trace=new_trace("src", src))
+            check(f, trace=new_trace("f", f))
         case MZippedInjected(srcs):
             for i, src in enumerate(srcs):
-                check(src, trace=new_trace(f'srcs[{i}]', src))
+                check(src, trace=new_trace(f"srcs[{i}]", src))
         case InjectedPure(value):
-            check(value, trace=new_trace('value', value))
+            check(value, trace=new_trace("value", value))
         case _:
-            raise RuntimeError(f'unknown injected type:{tgt}')
-
-
+            raise RuntimeError(f"unknown injected type:{tgt}")

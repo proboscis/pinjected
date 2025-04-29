@@ -6,7 +6,6 @@ T = TypeVar("T")
 
 
 class IProxyContext(Generic[T]):
-
     @abstractmethod
     def getattr(self, tgt: T, name: str):
         pass
@@ -53,7 +52,7 @@ class IProxyContext(Generic[T]):
 
     def magic_method_impl(self, method_name, tgt: T, *args, **kwargs):
         return NotImplemented
-        #raise NotImplementedError()
+        # raise NotImplementedError()
 
 
 @dataclass
@@ -92,22 +91,22 @@ class DelegatedVar(Generic[T]):
         return hash((self.__value__, self.__cxt__))
 
     def __add__(self, other):
-        return self.__cxt__.biop_impl('+', self.__value__, other)
+        return self.__cxt__.biop_impl("+", self.__value__, other)
 
     def __mul__(self, other):
-        return self.__cxt__.biop_impl('*', self.__value__, other)
+        return self.__cxt__.biop_impl("*", self.__value__, other)
 
     def __truediv__(self, other):
-        return self.__cxt__.biop_impl('/', self.__value__, other)
+        return self.__cxt__.biop_impl("/", self.__value__, other)
 
     def __mod__(self, other):
-        return self.__cxt__.biop_impl('%', self.__value__, other)
+        return self.__cxt__.biop_impl("%", self.__value__, other)
 
     def __eq__(self, other):
-        return self.__cxt__.biop_impl('==', self.__value__, other)
+        return self.__cxt__.biop_impl("==", self.__value__, other)
 
     def __invert__(self):
-        return self.__cxt__.unary_impl('~', self.__value__)
+        return self.__cxt__.unary_impl("~", self.__value__)
 
     def await__(self):
-        return self.__cxt__.unary_impl('await', self.__value__)
+        return self.__cxt__.unary_impl("await", self.__value__)

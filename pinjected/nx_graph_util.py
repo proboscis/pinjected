@@ -13,45 +13,47 @@ from pyvis.network import Network
 @dataclass
 class NxGraphUtil:
     graph: nx.DiGraph
+
     def to_physics_network(self):
-        nt = Network('1080px', '100%', directed=True)
+        nt = Network("1080px", "100%", directed=True)
         nt.from_nx(self.graph)
         nt.toggle_physics(True)
         return nt
 
     def plot_mpl(self):
         from matplotlib import pyplot as plt
+
         G = self.graph
         plt.figure(figsize=(20, 20))
-        pos = graphviz_layout(G, prog='dot')
+        pos = graphviz_layout(G, prog="dot")
         nx.draw(G, with_labels=True, pos=pos)
         plt.show()
 
-    def save_as_html(self,name:str,show=True):
-        assert isinstance(name,str)
+    def save_as_html(self, name: str, show=True):
+        assert isinstance(name, str)
         self.to_physics_network().show(name)
         if "darwin" in platform.system().lower() and show:
             os.system(f"open {name}")
 
-    def save_as_html_at(self,dst_dir:Path):
-        assert isinstance(dst_dir,Path)
-        dst_dir.mkdir(parents=True,exist_ok=True)
+    def save_as_html_at(self, dst_dir: Path):
+        assert isinstance(dst_dir, Path)
+        dst_dir.mkdir(parents=True, exist_ok=True)
         org_dir = os.getcwd()
         os.chdir(dst_dir)
-        self.to_physics_network().write_html("graph.html",local=True,notebook=False)
+        self.to_physics_network().write_html("graph.html", local=True, notebook=False)
         os.chdir(org_dir)
-        return dst_dir/"graph.html"
-
-
+        return dst_dir / "graph.html"
 
     def show_html(self):
         if "darwin" in platform.system().lower():
             from pinjected.pinjected_logging import logger
+
             logger.info(f"showing visualization html")
             self.save_as_html("di_visualiztion.html")
             os.system("open di_visualiztion.html")
         else:
             from pinjected.pinjected_logging import logger
+
             logger.warning("visualization of a design is disabled for non mac os.")
 
     def show_html_temp(self):

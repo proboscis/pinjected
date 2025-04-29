@@ -11,10 +11,8 @@ class ModuleVarLocation:
     line: int
     column: int
 
-CodeLocation = Union[
-    ModuleVarPath,
-    ModuleVarLocation
-]
+
+CodeLocation = Union[ModuleVarPath, ModuleVarLocation]
 """
 a class to indicate the location of a python variable.
 1. qualified_name i.e. ModuleVarPath: the qualified name of the variable.

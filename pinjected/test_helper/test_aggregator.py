@@ -19,18 +19,18 @@ def check_meta_design_variable(file_path):
         tree = ast.parse(file.read())
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.Global) and '__meta_design__' in node.names:
+        if isinstance(node, ast.Global) and "__meta_design__" in node.names:
             return True
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == '__meta_design__':
+                if isinstance(target, ast.Name) and target.id == "__meta_design__":
                     return True
 
     return False
 
 
 def meta_design_acceptor(file: Path) -> bool:
-    if file.suffix == '.py':
+    if file.suffix == ".py":
         return check_meta_design_variable(file)
     return False
 
@@ -44,6 +44,7 @@ class TimeCachedFileData(Generic[T]):
     """
     A class to cache data from files, and return the data if the file is newer than the cache.
     """
+
     cache_path: Path
     file_to_data: Callable[[Path], T]
 
@@ -72,7 +73,7 @@ class TimeCachedFileData(Generic[T]):
 @dataclass
 class Annotation:
     name: str
-    value: Literal['@injected', '@instance', ':Injected', ':IProxy']
+    value: Literal["@injected", "@instance", ":Injected", ":IProxy"]
 
 
 @dataclass
@@ -84,7 +85,7 @@ class VariableInFile:
         root = get_project_root(str(self.file_path))
         module_path = get_module_path(root, self.file_path)
         module_path = module_path.removeprefix("src.")
-        module_var_path = module_path + '.' + self.name
+        module_var_path = module_path + "." + self.name
         return ModuleVarPath(module_var_path)
 
 
@@ -102,23 +103,26 @@ def find_pinjected_annotations(file_path: str) -> list[Annotation]:
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             # Check for @injected or @instance decorators
             for decorator in node.decorator_list:
-                if isinstance(decorator, ast.Name) and decorator.id in ['injected', 'instance']:
+                if isinstance(decorator, ast.Name) and decorator.id in [
+                    "injected",
+                    "instance",
+                ]:
                     # prefix = 'async ' if isinstance(node, ast.AsyncFunctionDef) else ''
-                    results.append(Annotation(f"{node.name}", f'@{decorator.id}'))
+                    results.append(Annotation(f"{node.name}", f"@{decorator.id}"))
 
         # Check for variable annotations and assignments
         elif isinstance(node, ast.AnnAssign):
             annotation = node.annotation
             if isinstance(annotation, ast.Name):
-                if annotation.id in ['Injected', 'IProxy']:
-                    results.append(Annotation(node.target.id, f':{annotation.id}'))
+                if annotation.id in ["Injected", "IProxy"]:
+                    results.append(Annotation(node.target.id, f":{annotation.id}"))
 
         # Check for type comments (for Python 3.5+)
         elif isinstance(node, ast.Assign) and node.type_comment:
-            if 'Injected' in node.type_comment or 'IProxy' in node.type_comment:
+            if "Injected" in node.type_comment or "IProxy" in node.type_comment:
                 for target in node.targets:
                     if isinstance(target, ast.Name):
-                        results.append(Annotation(target.id, f':{node.type_comment}'))
+                        results.append(Annotation(target.id, f":{node.type_comment}"))
 
     return results
 
@@ -144,7 +148,7 @@ def find_test_targets(path: Path) -> list[VariableInFile]:
 class PinjectedTestAggregator:
     cached_data = TimeCachedFileData(
         cache_path=Path("~/.cache/pinjected/test_targets.shelve").expanduser(),
-        file_to_data=find_test_targets
+        file_to_data=find_test_targets,
     )
 
     def gather_from_file(self, file: Path) -> list[VariableInFile]:

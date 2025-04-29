@@ -7,7 +7,8 @@ class PinjectedHandleMainException(Protocol):
     """
     Caleld when an exception is raised in the pinjected runner (run_anything)
     """
-    key = StrBindKey('__pinjected_handle_main_exception__')
+
+    key = StrBindKey("__pinjected_handle_main_exception__")
 
     async def __call__(self, e: Exception) -> str | None:
         """
@@ -20,6 +21,8 @@ class PinjectedHandleMainResult(Protocol):
     """
     Called when the run was successful in the pinjected runner (run_anything)
     """
-    key = StrBindKey('__pinjected_handle_main_result__')
 
-    async def __call__(self, result): pass
+    key = StrBindKey("__pinjected_handle_main_result__")
+
+    async def __call__(self, result):
+        pass

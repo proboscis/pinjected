@@ -42,6 +42,5 @@ __all__ = [
     "instances",
     "providers",
     "register",
-    "reload"
+    "reload",
 ]
-

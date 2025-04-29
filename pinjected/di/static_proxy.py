@@ -95,7 +95,10 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                 return app.map(t, en_tuple)
             case Object({**items} as x) if isinstance(x, dict):
                 values = app.zip(*[ensure_pure(item) for item in items.values()])
-                return app.map(values, lambda t: {k: v for k, v in zip(items.keys(), t, strict=False)})
+                return app.map(
+                    values,
+                    lambda t: {k: v for k, v in zip(items.keys(), t, strict=False)},
+                )
 
             case Object(x):
                 return ensure_pure(x)
@@ -121,19 +124,17 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     try:
                         return getattr(x, attr_name)
                     except AttributeError as e:
-                        raise RuntimeError(f"failed to get attribute {attr_name} from {x} in AST:{data}") from e
+                        raise RuntimeError(
+                            f"failed to get attribute {attr_name} from {x} in AST:{data}"
+                        ) from e
 
-                return app.map(
-                    injected_data,
-                    try_get_attr
-                )
+                return app.map(injected_data, try_get_attr)
 
             case GetItem(Expr() as data, Expr() as key):
                 injected_data = _eval(data)
                 injected_key = _eval(key)
                 return app.map(
-                    app.zip(injected_data, injected_key),
-                    lambda t: t[0][t[1]]
+                    app.zip(injected_data, injected_key), lambda t: t[0][t[1]]
                 )
             case BiOp(op, Expr() as left, Expr() as right):
                 injected_left = _eval(left)
@@ -143,11 +144,8 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     x, y = t
                     return eval("x " + op + " y", None, dict(x=x, y=y))
 
-                return app.map(
-                    app.zip(injected_left, injected_right),
-                    eval_biop
-                )
-            case UnaryOp('await', Expr() as tgt):
+                return app.map(app.zip(injected_left, injected_right), eval_biop)
+            case UnaryOp("await", Expr() as tgt):
                 injected_tgt = _eval(tgt)
                 return app._await_(injected_tgt)
             case UnaryOp(op, Expr() as tgt):

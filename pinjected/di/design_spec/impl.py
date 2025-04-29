@@ -16,14 +16,14 @@ from pinjected.di.design_spec.protocols import (
 )
 from pinjected.v2.keys import IBindKey
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
 class BindSpecImpl(BindSpec[T]):
     validator: Maybe[Callable[[IBindKey, T], FutureResultE[str]]] = Nothing
     spec_doc_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = Nothing
-    
+
     def __str__(self) -> str:
         """
         Improved string representation for BindSpecImpl to provide useful information for JSON graphs.
@@ -31,7 +31,7 @@ class BindSpecImpl(BindSpec[T]):
         info = {
             "type": self.__class__.__name__,
             "has_validator": self.validator != Nothing,
-            "has_documentation": self.spec_doc_provider != Nothing
+            "has_documentation": self.spec_doc_provider != Nothing,
         }
         return str(info)
 
@@ -40,22 +40,23 @@ class BindSpecImpl(BindSpec[T]):
 class MergedDesignSpec(DesignSpec):
     """
     A design spec created by merging multiple specs together.
-    
+
     In the current implementation, when looking up a key, the specs are searched
     in the order they appear in the srcs list. The first spec that contains the key
     will be used. This means that the first spec in the list takes precedence.
-    
+
     When using the + operator with DesignSpecImpl, the srcs list is created in the order
     [self, other], so the left-hand spec (self) takes precedence over the right-hand
     spec (other) for duplicate keys.
     """
+
     srcs: list[DesignSpec]
 
     def get_spec(self, key: IBindKey) -> Maybe[BindSpec]:
         """
         Search for a key in all source specs in order.
         Returns the first matching spec found from reverse order, or Nothing if no spec is found.
-        
+
         This means that last specs in the srcs list take precedence over first ones.
         """
         for src in reversed(self.srcs):
@@ -82,16 +83,17 @@ class MergedDesignSpec(DesignSpec):
 class DesignSpecImpl(DesignSpec):
     """
     Implementation of DesignSpec that stores bindings in a dictionary.
-    
+
     When adding this spec to another spec with the + operator, the result is a MergedDesignSpec
     where this spec takes precedence over the other spec for duplicate keys.
     """
+
     specs: dict[IBindKey, BindSpec]
 
     def __add__(self, other: DesignSpec) -> DesignSpec:
         """
         Create a merged spec where this spec takes precedence over the other spec.
-        
+
         The resulting MergedDesignSpec will check this spec first for each key,
         and only if the key is not found will it check the other spec.
         """
@@ -106,10 +108,11 @@ class DesignSpecImpl(DesignSpec):
 
 
 class SimpleBindSpec(BindSpec[T]):
-    def __init__(self,
-                 validator: Callable[[T], str] | None = None,
-                 documentation: str | None = None
-                 ):
+    def __init__(
+        self,
+        validator: Callable[[T], str] | None = None,
+        documentation: str | None = None,
+    ):
         self._validator = validator
         self._documentation = documentation
 
@@ -135,7 +138,7 @@ class SimpleBindSpec(BindSpec[T]):
         if self._documentation is None:
             return Nothing
         return Some(lambda key: FutureResult.from_value(self._documentation))
-    
+
     def __str__(self) -> str:
         """
         Improved string representation for SimpleBindSpec to provide useful information for JSON graphs.
@@ -143,7 +146,7 @@ class SimpleBindSpec(BindSpec[T]):
         info = {
             "type": self.__class__.__name__,
             "has_validator": self._validator is not None,
-            "documentation": self._documentation
+            "documentation": self._documentation,
         }
         return str(info)
 
@@ -153,7 +156,7 @@ Now, we need a way to accumulate specs from repo, so that RunContext can use it 
 
 """
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from loguru import logger
 
     success = IOSuccess("success")
@@ -167,7 +170,6 @@ if __name__ == '__main__':
     logger.info(unsafe_perform_io(success).unwrap())  # success
     logger.info(unsafe_perform_io(success.unwrap()))  # success
 
-
     # so, IOSuccess is a single monad rather than IO[Success[T]]
     # Ah, so we are to use @impure_safe for IOResult
     # @safe for Result
@@ -177,14 +179,12 @@ if __name__ == '__main__':
         logger.warning(f"calling error func")
         raise Exception("error")
 
-
     fut_res: FutureResultE[str] = error_func()
     logger.info(fut_res)  # FutureResultE(Failure(Exception()))
     res: IOResultE[str] = asyncio.run(fut_res.awaitable())
     logger.info(res)  # => <IOResult: <Failure: error>>
     # wait, then..
     logger.info(unsafe_perform_io(res))  # => Failure(Exception('error'))
-
 
     # so, <IOResult: <Success: ...> is actually IOSuccess, while it looks like IO[Result[T]]
     # hmm, but we dont have value_or, for FutureResultE
@@ -193,10 +193,8 @@ if __name__ == '__main__':
     async def recover(fail):
         return "recovered"
 
-
     def recover2(fail):
         return FutureResult.from_value("recovered")
-
 
     logger.info(f"check recovering")
     recovered: FutureResultE = fut_res.lash(recover)
@@ -207,15 +205,19 @@ if __name__ == '__main__':
     logger.info(asyncio.run(recovered_2.awaitable()))  # FutureResultE(Some(recovered))
     logger.info(asyncio.run(recovered_3.awaitable()))  # FutureResultE(Some(recovered))
 
-
     async def await_target(f: FutureResultE):
         return await f
 
-
     logger.info(asyncio.run(await_target(fut_res)))
-    logger.info(asyncio.run(await_target(recovered)))  # FutureResultE(Success(recovered))
-    logger.info(asyncio.run(await_target(recovered_2)))  # FutureResultE(Some(recovered))
-    logger.info(asyncio.run(await_target(recovered_3)))  # FutureResultE(Some(recovered))
+    logger.info(
+        asyncio.run(await_target(recovered))
+    )  # FutureResultE(Success(recovered))
+    logger.info(
+        asyncio.run(await_target(recovered_2))
+    )  # FutureResultE(Some(recovered))
+    logger.info(
+        asyncio.run(await_target(recovered_3))
+    )  # FutureResultE(Some(recovered))
 
     # Checking Maybe Behavior
     some = Some("hello")

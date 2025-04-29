@@ -1,8 +1,8 @@
 from typing import TypeVar
 
-from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.app_injected import InjectedEvalContext
 from pinjected.di.expr_util import Object
+from pinjected.di.proxiable import DelegatedVar
 
 T = TypeVar("T")
 

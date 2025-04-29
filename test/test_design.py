@@ -4,13 +4,12 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 def test_injected_proxy():
     from pinjected.pinjected_logging import logger
+
     hello = Injected.pure("hello").proxy
     func_proxy = Injected.pure(lambda x: x + 1).proxy
     # hmm,
     design = EmptyDesign.bind_provider(
-        x=lambda: 0,
-        y=hello,
-        z=func_proxy(Injected.pure(1))
+        x=lambda: 0, y=hello, z=func_proxy(Injected.pure(1))
     )
     logger.info(design.bindings)
     assert design.provide("y") == "hello"
@@ -18,7 +17,6 @@ def test_injected_proxy():
 
 
 def test_design():
-
     d = design(
         x=0,
         x0=0,
@@ -30,9 +28,8 @@ def test_design():
         x4=Injected.bind(lambda x3: x3 + 1),
         x5=Injected.bind(lambda x4: x4 + 1),
         x6=Injected.bind(lambda x5: x5 + 1),
-        x7=Injected.bind(lambda x6: x6 + 1)
+        x7=Injected.bind(lambda x6: x6 + 1),
     )
     g = AsyncResolver(d).to_blocking()
-    assert g['z'] == 2
-    assert g['x7'] == 7
-
+    assert g["z"] == 2
+    assert g["x7"] == 7

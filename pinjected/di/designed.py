@@ -31,6 +31,7 @@ class Designed(Generic[T], ABC):
     def bind(target: Union["Injected"]):
         from pinjected import Injected
         from pinjected.di.util import EmptyDesign
+
         if isinstance(target, DelegatedVar):
             return PureDesigned(EmptyDesign, Injected.ensure_injected(target))
         if isinstance(target, Injected):
@@ -48,12 +49,16 @@ class Designed(Generic[T], ABC):
     @staticmethod
     def zip(*others: "Self"):
         from pinjected import EmptyDesign, Injected
+
         d = sum([o.design for o in others], EmptyDesign)
-        return Designed.bind(Injected.mzip(*[o.internal_injected for o in others])).override(d)
+        return Designed.bind(
+            Injected.mzip(*[o.internal_injected for o in others])
+        ).override(d)
 
     @property
     def proxy(self):
         from pinjected.di.app_designed import designed_proxy
+
         return designed_proxy(self)
 
 

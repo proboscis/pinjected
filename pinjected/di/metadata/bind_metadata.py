@@ -10,6 +10,7 @@ class BindMetadata:
     """
     This is the metadata of a bind.
     """
+
     code_location: Maybe[CodeLocation] = None
     """
     The location of the binding location, this will be used by the IDE to jump to the binding location.
