@@ -1,0 +1,10 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.7  # use latest tag from https://github.com/astral-sh/ruff-pre-commit/releases
+    hooks:
+      - id: ruff  # lints staged .py files
+        args: ["--config=pyproject.toml", "--fix"]
+        fail_fast: false
+        verbose: true
+      - id: ruff-format  # auto-format staged .py files
+        args: ["--config=pyproject.toml"]
