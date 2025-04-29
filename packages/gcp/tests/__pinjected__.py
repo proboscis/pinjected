@@ -1,9 +1,10 @@
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import loguru
+from pinjected_gcp.api import a_download_gcs, a_upload_gcs
 
 from pinjected import design
-from pinjected_gcp.api import a_upload_gcs, a_download_gcs
 
 
 class MockBlob:
@@ -58,15 +59,13 @@ __design__ = design(
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40example.com"
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40example.com",
     },
-    
     gcp_storage_client=MockStorageClient(),
-    
-    temp_file=Path(tempfile.NamedTemporaryFile(delete=False, suffix='.txt').name).absolute(),
-    
+    temp_file=Path(
+        tempfile.NamedTemporaryFile(delete=False, suffix=".txt").name
+    ).absolute(),
     logger=loguru.logger,
-    
     a_upload_gcs=a_upload_gcs,
-    a_download_gcs=a_download_gcs
+    a_download_gcs=a_download_gcs,
 )

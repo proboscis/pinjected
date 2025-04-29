@@ -1,27 +1,34 @@
 import asyncio
-from inspect import isawaitable
 import json
+from inspect import isawaitable
 from pathlib import Path
 
-from pinjected import Design, design, Injected, IProxy
+from pinjected import Design, Injected, design
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.exception_util import unwrap_exception_group
 from pinjected.exceptions import DependencyResolutionError, DependencyValidationError
 from pinjected.helper_structure import MetaContext
 from pinjected.logging_helper import disable_internal_logging
-from pinjected.module_var_path import load_variable_by_module_path, ModuleVarPath
-from pinjected.run_helpers.run_injected import run_injected, load_user_default_design, load_user_overrides_design, \
-    a_get_run_context, RunContext, PinjectedRunFailure, a_run_with_notify
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.run_helpers.run_injected import (
+    PinjectedRunFailure,
+    RunContext,
+    a_get_run_context,
+    a_run_with_notify,
+    load_user_default_design,
+    load_user_overrides_design,
+    run_injected,
+)
 
 
 def run(
-        var_path: str = None,
-        design_path: str = None,
-        overrides: str = None,
-        meta_context_path: str = None,
-        base64_encoded_json: str = None,
-        **kwargs
+    var_path: str = None,
+    design_path: str = None,
+    overrides: str = None,
+    meta_context_path: str = None,
+    base64_encoded_json: str = None,
+    **kwargs,
 ):
     """
     load the injected variable from var_path and run it with a design at design_path.
@@ -39,13 +46,14 @@ def run(
 
     """
     if base64_encoded_json is not None:
-        import json
         import base64
+        import json
+
         data: dict = json.loads(base64.b64decode(base64_encoded_json).decode())
-        var_path = data.pop('var_path')
-        design_path = data.pop('design_path', None)
-        overrides = data.pop('overrides', None)
-        meta_context_path = data.pop('meta_context_path', None)
+        var_path = data.pop("var_path")
+        design_path = data.pop("design_path", None)
+        overrides = data.pop("overrides", None)
+        meta_context_path = data.pop("meta_context_path", None)
         kwargs = data
 
     async def a_prep():
@@ -53,16 +61,21 @@ def run(
             kwargs_overrides = parse_kwargs_as_design(**kwargs)
             ovr = design()
             if meta_context_path is not None:
-                mc = await MetaContext.a_gather_bindings_with_legacy(Path(meta_context_path))
+                mc = await MetaContext.a_gather_bindings_with_legacy(
+                    Path(meta_context_path)
+                )
                 ovr += await mc.a_final_design
             ovr += parse_overrides(overrides)
             ovr += kwargs_overrides
             cxt: RunContext = await a_get_run_context(design_path, var_path)
             cxt = cxt.add_overrides(ovr)
+
         async def task(cxt: RunContext):
             return await cxt.a_run_with_clean_stacktrace()
+
         res = await a_run_with_notify(cxt, task)
         from pinjected.pinjected_logging import logger
+
         logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
         # now we've got the function to call
 
@@ -71,6 +84,7 @@ def run(
 
 def check_config():
     from pinjected.pinjected_logging import logger
+
     default: Design = load_user_default_design()
     overrides = load_user_overrides_design()
     logger.info(f"displaying default design bindings:")
@@ -85,54 +99,57 @@ def parse_kwargs_as_design(**kwargs):
     """
     res = design()
     for k, v in kwargs.items():
-        if isinstance(v, str) and v.startswith('{') and v.endswith('}'):
+        if isinstance(v, str) and v.startswith("{") and v.endswith("}"):
             v = v[1:-1]
             loaded = load_variable_by_module_path(v)
-            res += design(
-                **{k: loaded}
-            )
+            res += design(**{k: loaded})
         else:
-            res += design(
-                **{k: v}
-            )
+            res += design(**{k: v})
     return res
 
 
 def parse_overrides(overrides) -> Design:
     match overrides:
-        case str() if ':' in overrides:  # this needs to be a complete call to run_injected, at least, we need to take arguments...
+        case str() if (
+            ":" in overrides
+        ):  # this needs to be a complete call to run_injected, at least, we need to take arguments...
             # hmm at this point, we should just run a script ,right?
-            design_path, var = overrides.split(':')
+            design_path, var = overrides.split(":")
             resolved = run_injected("get", var, design_path, return_result=True)
-            assert isinstance(resolved, Design), f"expected {design_path} to be a design, but got {resolved}"
+            assert isinstance(resolved, Design), (
+                f"expected {design_path} to be a design, but got {resolved}"
+            )
             return resolved
         case str() as path:  # a path of a design/injected
             var = ModuleVarPath(path).load()
             if isinstance(var, Design):
                 return var
-            elif isinstance(var, (Injected, DelegatedVar)):
+            if isinstance(var, (Injected, DelegatedVar)):
                 resolved = run_injected("get", path, return_result=True)
-                assert isinstance(resolved, Design), f"expected {path} to be a design, but got {resolved}"
+                assert isinstance(resolved, Design), (
+                    f"expected {path} to be a design, but got {resolved}"
+                )
                 return resolved
         case None:
             return design()
 
 
 def decode_b64json(text):
-    import json
     import base64
+    import json
+
     data: dict = json.loads(base64.b64decode(text).decode())
     return data
 
 
 def call(
-        var_path: str = None,
-        design_path: str = None,
-        overrides: str = None,
-        meta_context_path: str = None,
-        base64_encoded_json: str = None,
-        call_kwargs_base64_json: str = None,
-        **kwargs
+    var_path: str = None,
+    design_path: str = None,
+    overrides: str = None,
+    meta_context_path: str = None,
+    base64_encoded_json: str = None,
+    call_kwargs_base64_json: str = None,
+    **kwargs,
 ):
     """
     Now we have multiples similar functions and having hard time distinguishing them.
@@ -146,21 +163,26 @@ def call(
     - meta_context_path: str # a path to gather meta context from.
     """
     from pinjected.pinjected_logging import logger
+
     if base64_encoded_json is not None:
         data = decode_b64json(base64_encoded_json)
-        var_path = data.pop('var_path')
-        design_path = data.pop('design_path', None)
-        overrides = data.pop('overrides', None)
-        meta_context_path = data.pop('meta_context_path', None)
+        var_path = data.pop("var_path")
+        design_path = data.pop("design_path", None)
+        overrides = data.pop("overrides", None)
+        meta_context_path = data.pop("meta_context_path", None)
         kwargs = data
-        logger.info(f"decoded {var_path=} {design_path=} {overrides=} {meta_context_path=} {kwargs=}")
+        logger.info(
+            f"decoded {var_path=} {design_path=} {overrides=} {meta_context_path=} {kwargs=}"
+        )
 
     # no_notification = kwargs.pop('pinjected_no_notification', False)
     async def a_prep():
         kwargs_overrides = parse_kwargs_as_design(**kwargs)
         ovr = design()
         if meta_context_path is not None:
-            mc = await MetaContext.a_gather_bindings_with_legacy(Path(meta_context_path))
+            mc = await MetaContext.a_gather_bindings_with_legacy(
+                Path(meta_context_path)
+            )
             ovr += await mc.a_final_design
         ovr += parse_overrides(overrides)
         ovr += kwargs_overrides
@@ -193,7 +215,7 @@ def call(
 def json_graph(var_path: str = None, design_path: str = None, **kwargs):
     """
     Generate a JSON representation of the dependency graph for a variable.
-    
+
     :param var_path: the path to the variable to visualize: e.g. "my_module.my_var"
     :param design_path: the path to the design to be used: e.g. "my_module.my_design"
     :param kwargs: additional parameters to pass to run_injected
@@ -205,7 +227,7 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     """
     Generate a human-readable description of the dependency graph for a variable.
     Uses to_edges() of DIGraph to show dependencies with their documentation.
-    
+
     :param var_path: Full module path to the variable to describe in the format 'full.module.path.var.name'.
                     This parameter is required and must point to an importable variable.
     :param design_path: Full module path to the design to be used in the format 'module.path.design'.
@@ -213,69 +235,73 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     :param kwargs: Additional parameters to pass to run_injected.
     """
     if var_path is None:
-        print("Error: You must provide a variable path in the format 'full.module.path.var.name'")
+        print(
+            "Error: You must provide a variable path in the format 'full.module.path.var.name'"
+        )
         print("Examples:")
         print("  pinjected describe my_module.my_submodule.my_variable")
         print("  pinjected describe --var_path=my_module.my_submodule.my_variable")
-        return
-    
+        return None
+
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
 def list(var_path: str = None):
     """
     List all IProxy objects that are runnable in the specified module.
-    
+
     :param var_path: Path to the module containing IProxy objects.
-    
+
     Example:
         python -m pinjected list my.module.path
     """
     import importlib
     from pathlib import Path
-    from pinjected.runnables import get_runnables
-    from pinjected.di.proxiable import DelegatedVar
-    from pinjected.di.app_injected import InjectedEvalContext
+
     from pinjected import IProxy
-    
+    from pinjected.di.app_injected import InjectedEvalContext
+    from pinjected.di.proxiable import DelegatedVar
+    from pinjected.runnables import get_runnables
+
     if var_path is None:
         print("Error: You must provide a module path in the format 'full.module.path'")
         print("Examples:")
         print("  pinjected list my_module.my_submodule")
         print("  pinjected list --var_path=my_module.my_submodule")
-        return
-    
+        return None
+
     try:
         module = importlib.import_module(var_path)
         module_file = Path(module.__file__)
-        
+
         runnables = get_runnables(module_file)
-        
+
         iproxies = []
         for runnable in runnables:
             # Check if it's an IProxy object or a DelegatedVar with InjectedEvalContext
             if isinstance(runnable.var, IProxy) or (
-                isinstance(runnable.var, DelegatedVar) and 
-                getattr(runnable.var, 'context', None) == InjectedEvalContext
+                isinstance(runnable.var, DelegatedVar)
+                and getattr(runnable.var, "context", None) == InjectedEvalContext
             ):
                 iproxies.append(runnable.var_path)
-        
+
         print(json.dumps(iproxies))
         return 0
     except ImportError as e:
-        print(f"Error: Could not import module '{var_path}': {str(e)}")
+        print(f"Error: Could not import module '{var_path}': {e!s}")
         return 1
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {e!s}")
         return 1
 
 
-class PinjectedRunDependencyResolutionFailure(Exception): pass
+class PinjectedRunDependencyResolutionFailure(Exception):
+    pass
 
 
 class PinjectedCLI:
     """Pinjected: Python Dependency Injection Framework
-    
+
     Available commands:
       run            - Run an injected variable with a specified design
       call           - Call a function with injected dependencies
@@ -288,16 +314,16 @@ class PinjectedCLI:
       list           - List all IProxy objects that are runnable in the specified module.
                        Requires a module path in the format: full.module.path
                        Can be used as: list my_module.path or list --var_path=my_module.path
-    
+
     For more information on a specific command, run:
       pinjected COMMAND --help
-    
+
     Example:
       pinjected run --var_path=my_module.my_var
       pinjected describe --var_path=my_module.my_submodule.my_variable
       pinjected list my_module.my_submodule
     """
-    
+
     def __init__(self):
         self.run = run
         self.call = call
@@ -310,47 +336,47 @@ class PinjectedCLI:
 
 def main():
     try:
-        import fire
         import inspect
-        import sys
-        
+
+        import fire
+
         try:
             original_info = fire.inspectutils.Info
-            
+
             def patched_info(component):
                 try:
-                    from IPython.core import oinspect
                     import IPython
-                    
-                    ipython_version = tuple(map(int, IPython.__version__.split('.')))
-                    
+                    from IPython.core import oinspect
+
+                    ipython_version = tuple(map(int, IPython.__version__.split(".")))
+
                     if ipython_version >= (9, 0):
                         inspector = oinspect.Inspector(theme_name="Neutral")
                     else:
                         inspector = oinspect.Inspector()
-                        
+
                     info = inspector.info(component)
-                    
-                    if info['docstring'] == '<no docstring>':
-                        info['docstring'] = None
+
+                    if info["docstring"] == "<no docstring>":
+                        info["docstring"] = None
                 except ImportError:
                     info = fire.inspectutils._InfoBackup(component)
-                
+
                 try:
                     unused_code, lineindex = inspect.findsource(component)
-                    info['line'] = lineindex + 1
+                    info["line"] = lineindex + 1
                 except (TypeError, OSError):
-                    info['line'] = None
-                
-                if 'docstring' in info:
-                    info['docstring_info'] = fire.docstrings.parse(info['docstring'])
-                
+                    info["line"] = None
+
+                if "docstring" in info:
+                    info["docstring_info"] = fire.docstrings.parse(info["docstring"])
+
                 return info
-            
+
             fire.inspectutils.Info = patched_info
         except (ImportError, AttributeError):
             pass
-        
+
         cli = PinjectedCLI()
         fire.Fire(cli)
     except Exception as e:
@@ -359,6 +385,8 @@ def main():
             e = unwrap_exception_group(e.__cause__)
             if isinstance(e, DependencyResolutionError):
                 raise PinjectedRunDependencyResolutionFailure(str(e)) from None
-            elif isinstance(e, DependencyValidationError):
-                raise PinjectedRunDependencyResolutionFailure(f"Dependency validation failed: {str(e)}") from None
+            if isinstance(e, DependencyValidationError):
+                raise PinjectedRunDependencyResolutionFailure(
+                    f"Dependency validation failed: {e!s}"
+                ) from None
         raise

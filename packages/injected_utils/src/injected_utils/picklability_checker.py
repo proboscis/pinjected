@@ -1,12 +1,14 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
-from inspect import ismethod, isbuiltin
-from typing import Iterable, Any, Optional
+from inspect import isbuiltin, ismethod
+from typing import Any
 
 import cloudpickle
+from returns.result import Failure, Result, safe
+from tabulate import tabulate
+
 from pinjected.di.expr_util import Expr
 from pinjected.di.proxiable import DelegatedVar
-from returns.result import safe, Failure, Result
-from tabulate import tabulate
 
 
 def rec_valmap(f, tgt: dict):
@@ -61,7 +63,9 @@ def is_property(obj, attribute):
     return False
 
 
-def dfs_picklability(tgt, trace="root", dumps=cloudpickle.dumps) -> Iterable[PicklingFailure]:
+def dfs_picklability(
+    tgt, trace="root", dumps=cloudpickle.dumps
+) -> Iterable[PicklingFailure]:
     visited = set()
     safe_pickle = safe(dumps)
 
@@ -80,7 +84,7 @@ def dfs_picklability(tgt, trace="root", dumps=cloudpickle.dumps) -> Iterable[Pic
                         visited.add(id(v))
                         yield from dfs(v, trace + f"['{k}']")
             if isinstance(tgt, DelegatedVar):
-                yield from dfs(tgt.value, trace + f".value")
+                yield from dfs(tgt.value, trace + ".value")
             elif isinstance(tgt, Iterable):
                 for i, item in enumerate(tgt):
                     if id(i) not in visited:
@@ -96,7 +100,11 @@ def dfs_picklability(tgt, trace="root", dumps=cloudpickle.dumps) -> Iterable[Pic
                     if k == "_abc_impl":
                         continue
                     attr = getattr(tgt, k)
-                    if not ismethod(attr) and not isbuiltin(attr) and id(attr) not in visited:
+                    if (
+                        not ismethod(attr)
+                        and not isbuiltin(attr)
+                        and id(attr) not in visited
+                    ):
                         new_trace = trace + f".{k}"
                         yield from dfs(attr, new_trace)
             if isinstance(tgt, DelegatedVar) or isinstance(tgt, Expr):
@@ -104,6 +112,7 @@ def dfs_picklability(tgt, trace="root", dumps=cloudpickle.dumps) -> Iterable[Pic
             elif hasattr(tgt, "__closure__") and tgt.__closure__ is not None:
                 for i, cell in enumerate(tgt.__closure__):
                     from loguru import logger
+
                     if id(cell) not in visited:
                         visited.add(id(cell))
                         logger.info(f"trace:{trace}, type:{type(cell)}")
@@ -112,16 +121,22 @@ def dfs_picklability(tgt, trace="root", dumps=cloudpickle.dumps) -> Iterable[Pic
     return dfs(tgt, trace)
 
 
-def assert_picklable(tgt, message: Optional[str] = None, trace="root", dumps=cloudpickle.dumps):
+def assert_picklable(
+    tgt, message: str | None = None, trace="root", dumps=cloudpickle.dumps
+):
     from loguru import logger
+
     failures = [r.truncated_tuple() for r in dfs_picklability(tgt, trace, dumps)]
     if failures:
         logger.info(f"failed to pickle target, traces:\n{tabulate(failures)}")
-        raise AssertionError(f"failed to pickle target, {message} traces:\n{tabulate(failures)}")
+        raise AssertionError(
+            f"failed to pickle target, {message} traces:\n{tabulate(failures)}"
+        )
 
 
 def dig_picklability(tgt, trace="root", dumps=cloudpickle.dumps):
     from loguru import logger
+
     failures = [r.truncated_tuple() for r in dfs_picklability(tgt, trace, dumps)]
     if failures:
         logger.info(f"failed to pickle target, traces:\n{tabulate(failures)}")

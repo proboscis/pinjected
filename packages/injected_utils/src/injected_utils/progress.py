@@ -1,6 +1,6 @@
 import asyncio
-from asyncio import Queue, Future
-from typing import Union, AsyncIterator, Iterable
+from asyncio import Future, Queue
+from collections.abc import AsyncIterator, Iterable
 
 from returns.future import future_safe
 from tqdm import tqdm
@@ -11,15 +11,18 @@ from pinjected.compatibility.task_group import TaskGroup
 
 def ensure_agen(tasks):
     from inspect import isasyncgen
+
     if isinstance(tasks, list):
+
         async def agen():
             for t in tasks:
                 yield t
 
         return agen()
-    elif isasyncgen(tasks):
+    if isasyncgen(tasks):
         return tasks
-    elif hasattr(tasks, '__iter__'):
+    if hasattr(tasks, "__iter__"):
+
         async def agen():
             for t in tasks:
                 yield t
@@ -29,15 +32,17 @@ def ensure_agen(tasks):
 
 @injected
 async def a_map_progress__tqdm(
-        logger,/,
-        async_f: callable,
-        tasks: Union[AsyncIterator, list, Iterable],
-        desc: str,
-        pool_size: int = 16,
-        total=None,
-        wrap_result=False
+    logger,
+    /,
+    async_f: callable,
+    tasks: AsyncIterator | list | Iterable,
+    desc: str,
+    pool_size: int = 16,
+    total=None,
+    wrap_result=False,
 ):
     from returns.result import safe
+
     if total is None:
         total = safe(len)(tasks).value_or(total)
     bar = tqdm(total=total, desc=desc)
@@ -54,17 +59,17 @@ async def a_map_progress__tqdm(
         async for task in tasks:
             fut = Future()
             # logger.info(f"producing:{task}")
-            producer_status = 'submitting'
+            producer_status = "submitting"
             await queue.put((fut, task))
-            producer_status = 'submitted'
+            producer_status = "submitted"
             await result_queue.put(fut)
-            producer_status = 'result future added'
+            producer_status = "result future added"
             await asyncio.sleep(0)
-        producer_status = 'done'
+        producer_status = "done"
         for _ in range(pool_size):
             await queue.put((False, None))
         await result_queue.put(None)
-        producer_status = 'finish signal submitted'
+        producer_status = "finish signal submitted"
         return "producer done"
 
     consumer_status = dict()
@@ -98,7 +103,7 @@ async def a_map_progress__tqdm(
         return "consumer done"
 
     async with TaskGroup() as tg:
-        logger.info(f"starting a_map_progress")
+        logger.info("starting a_map_progress")
         producer_task = tg.create_task(producer())
         consumer_tasks = [tg.create_task(consumer(idx)) for idx in range(pool_size)]
         while True:

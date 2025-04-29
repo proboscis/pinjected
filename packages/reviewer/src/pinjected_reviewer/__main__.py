@@ -24,19 +24,21 @@ from pathlib import Path
 from loguru import logger
 
 from pinjected import IProxy
-from pinjected_reviewer.schema.reviewer_def import ReviewResult, Reviewer
-
+from pinjected_reviewer.schema.reviewer_def import Reviewer, ReviewResult
 
 # We'll keep logging for the main CLI but filter noise
 # The logger in entrypoint.py already handles filtering review process logs
+
 
 async def run_pinjected(tgt: IProxy):
     # Run the review process
     from pinjected.helper_structure import MetaContext
     from pinjected_reviewer import entrypoint
+
     mc = await MetaContext.a_gather_bindings_with_legacy(Path(entrypoint.__file__))
     d = await mc.a_final_design
     from pinjected import AsyncResolver
+
     resolver = AsyncResolver(d)
     return await resolver.provide(tgt)
 
@@ -55,31 +57,28 @@ async def run_review():
     logger.remove()  # Remove all handlers
 
     # Import after logger.remove() to avoid unnecessary log initialization
-    from pinjected import AsyncResolver
     logger.remove()  # Remove all handlers
-    from pinjected.helper_structure import MetaContext
     logger.remove()  # Remove all handlers
-    from pinjected_reviewer import entrypoint
     logger.remove()  # Remove all handlers
-    from pinjected_reviewer.schema.types import Review
     logger.remove()  # Remove all handlers
     from pinjected_reviewer.loader import pre_commit_reviews__phased
-    reviews:list[ReviewResult] = await run_pinjected(pre_commit_reviews__phased)
+
+    reviews: list[ReviewResult] = await run_pinjected(pre_commit_reviews__phased)
     approved = all([r.result.approved for r in reviews])
     approvals = [r for r in reviews if r.result.approved]
     for i, review in enumerate(approvals):
         msg = f"{review.input} -> Approved by {review.result.name}\n"
         print(msg, file=sys.stderr)
     rejections = [review for review in reviews if not review.result.approved]
-    for i,review in enumerate(rejections):
+    for i, review in enumerate(rejections):
         # Show rejection messages
-        msg =  f"================= BEGIN REVIEW({i}) =====================\n"
+        msg = f"================= BEGIN REVIEW({i}) =====================\n"
         msg += f"❌ Changes not approved by {review.result.name}.\n"
         msg += f"Reviewed Target: {review.input}\n"
         msg += f"Reviewer Name: {review.result.name}\n"
         msg += f"{'-' * len(review.result.name)}\n\n{review.result.review_text}\n"
         msg += f"================= END REVIEW({i}) =====================\n"
-        print(msg,file=sys.stderr)
+        print(msg, file=sys.stderr)
     return approved
 
 
@@ -99,7 +98,9 @@ def install_hook():
     """
     try:
         # Find git repo root
-        git_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+        git_root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"], text=True
+        ).strip()
         hooks_dir = Path(git_root) / ".git" / "hooks"
         pre_commit_path = hooks_dir / "pre-commit"
 
@@ -116,7 +117,7 @@ def install_hook():
 """
         # Check if pre-commit already exists
         if pre_commit_path.exists():
-            with open(pre_commit_path, "r") as f:
+            with open(pre_commit_path) as f:
                 existing_content = f.read()
             if "pinjected-reviewer" in existing_content:
                 logger.info("pre-commit hook with pinjected-reviewer already installed")
@@ -155,7 +156,9 @@ def uninstall_hook():
     """
     try:
         # Find git repo root
-        git_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+        git_root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"], text=True
+        ).strip()
         hooks_dir = Path(git_root) / ".git" / "hooks"
         pre_commit_path = hooks_dir / "pre-commit"
 
@@ -163,7 +166,7 @@ def uninstall_hook():
             logger.info("No pre-commit hook found")
             return True
 
-        with open(pre_commit_path, "r") as f:
+        with open(pre_commit_path) as f:
             content = f.read()
 
         if "pinjected-reviewer" not in content:
@@ -202,7 +205,9 @@ def main():
     Returns:
         None. Exits with code 1 if any operation fails.
     """
-    parser = argparse.ArgumentParser(description="Pinjected Reviewer - Git pre-commit code reviewer")
+    parser = argparse.ArgumentParser(
+        description="Pinjected Reviewer - Git pre-commit code reviewer"
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Review command
@@ -233,11 +238,12 @@ def main():
             sys.exit(1)
     elif args.command == "list-reviewers":
         from pinjected_reviewer.loader import all_reviewers
-        reviewers:list[Reviewer] = asyncio.run(run_pinjected(all_reviewers))
+
+        reviewers: list[Reviewer] = asyncio.run(run_pinjected(all_reviewers))
         print("Available reviewers:")
         for r in reviewers:
             print(f"- {r.name}: {type(r)}-{r.interests}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

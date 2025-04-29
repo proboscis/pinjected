@@ -1,28 +1,30 @@
 import asyncio
 import inspect
 import threading
-from abc import ABCMeta, abstractmethod, ABC
+from abc import ABC, ABCMeta, abstractmethod
+from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from pprint import pformat
-from typing import Union, Callable, TypeVar, List, Any, Generic, Set, Dict
+from typing import Any, Generic, TypeVar
 
-from returns.maybe import Nothing, Maybe, Some
-from returns.result import safe, Result, Failure, Success
+from returns.maybe import Maybe, Nothing, Some
+from returns.result import Failure, Result, Success, safe
 from rich.console import Console
 from rich.panel import Panel
+
 from pinjected.di.app_injected import EvaledInjected
-from pinjected.di.expr_util import Expr
 from pinjected.di.designed import Designed
+from pinjected.di.expr_util import Expr
 from pinjected.di.injected import Injected, InjectedByName, InjectedFromFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.sessioned import Sessioned
-from pinjected.exceptions import DependencyResolutionFailure, DependencyResolutionError
+from pinjected.exceptions import DependencyResolutionError, DependencyResolutionFailure
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.providable import Providable
 from pinjected.v2.binds import IBind
@@ -33,43 +35,49 @@ T = TypeVar("T")
 
 class MissingDependencyException(Exception):
     @staticmethod
-    def create_message(deps: List[DependencyResolutionFailure]):
+    def create_message(deps: list[DependencyResolutionFailure]):
         """
         Create a detailed error message for missing dependencies.
-        
+
         Args:
             deps: List of dependency resolution failures
-            
+
         Returns:
             A formatted error message with detailed information about missing dependencies
         """
         if not deps:
             return "Missing dependency, but no specific failures were reported."
-            
+
         message = "========== Missing Dependencies ==========\n"
-        
+
         missing_keys = {drf.key for drf in deps}
         message += f"Missing Dependencies: {missing_keys}\n"
         message += "-" * 45 + "\n"
-        
+
         for i, failure in enumerate(deps):
-            message += f"Failure #{i+1}:\n"
+            message += f"Failure #{i + 1}:\n"
             message += f"  Missing Key: {failure.key}\n"
             message += f"  Dependency Chain: {failure.trace_str()}\n"
-            if hasattr(failure.cause, 'key'):
-                message += f"  Root Cause: Failed to find dependency for {failure.cause.key}\n"
+            if hasattr(failure.cause, "key"):
+                message += (
+                    f"  Root Cause: Failed to find dependency for {failure.cause.key}\n"
+                )
             else:
                 message += f"  Root Cause: {failure.cause}\n"
             message += "-" * 45 + "\n"
-            
+
         message += "=" * 45 + "\n"
-        message += "Use the 'describe' command for more detailed dependency information\n"
-        
+        message += (
+            "Use the 'describe' command for more detailed dependency information\n"
+        )
+
         return message
 
     @staticmethod
-    def create(deps: List[DependencyResolutionFailure]):
-        return MissingDependencyException(MissingDependencyException.create_message(deps))
+    def create(deps: list[DependencyResolutionFailure]):
+        return MissingDependencyException(
+            MissingDependencyException.create_message(deps)
+        )
 
 
 class IObjectGraphFactory(ABC):
@@ -105,7 +113,7 @@ class IObjectGraph(metaclass=ABCMeta):
         :param overrides:
         :return:
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def run(self, f):
         argspec = inspect.getfullargspec(f)
@@ -117,13 +125,15 @@ class IObjectGraph(metaclass=ABCMeta):
 
     def proxied(self, providable: Providable) -> DelegatedVar[Sessioned]:
         from pinjected.di.sessioned import sessioned_ast_context
+
         designed = self._providable_to_designed(providable)
         item = Sessioned(self, designed)
         ctx = sessioned_ast_context(self)
         from pinjected.di.expr_util import Object
+
         return DelegatedVar(Object(item), ctx)
 
-    def sessioned(self, target: Providable) -> DelegatedVar[Union[object, T]]:
+    def sessioned(self, target: Providable) -> DelegatedVar[object | T]:
         match target:
             case str():
                 return self.sessioned(Injected.by_name(target))
@@ -182,12 +192,12 @@ class ProvideEvent:
 
 class IScope:
     @abstractmethod
-    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+    def provide(self, key, provider_func: Callable[[], Any], trace: list) -> Any:
         pass
 
     @abstractmethod
     def __contains__(self, item):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @property
     @abstractmethod
@@ -197,6 +207,7 @@ class IScope:
     @staticmethod
     def default_trace_logger(event: ProvideEvent):
         from pinjected.pinjected_logging import logger
+
         match event:
             case ProvideEvent(trace, "request", data=None):
                 logger.info(f"{' -> '.join(trace)}")
@@ -209,7 +220,9 @@ class IScope:
                     buf = str(data)[:100]
                     logger.info(f"{' <- '.join(trace)} = {buf}")
                 except Exception as e:
-                    logger.error(f"failed to log {trace} with {e}, while providing {' <- '.join(trace)}")
+                    logger.error(
+                        f"failed to log {trace} with {e}, while providing {' <- '.join(trace)}"
+                    )
 
 
 def trace_string(trace: list[str]):
@@ -223,6 +236,7 @@ def trace_string(trace: list[str]):
 @dataclass
 class RichTraceLogger:
     from rich.console import Console
+
     console: Console = field(default_factory=lambda: Console(stderr=True))
 
     def __call__(self, event: ProvideEvent):
@@ -253,7 +267,7 @@ class MScope(IScope):
     def __getstate__(self):
         raise NotImplementedError("MScope is not serializable")
 
-    def provide(self, key, provider: Callable[[], Any], trace: List) -> Any:
+    def provide(self, key, provider: Callable[[], Any], trace: list) -> Any:
         # with self.lock:
         self.trace_logger(ProvideEvent(trace, "request"))
         if key in self.cache:
@@ -289,7 +303,7 @@ class MChildScope(IScope):
     def __getstate__(self):
         raise NotImplementedError("MChildScope is not serializable")
 
-    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+    def provide(self, key, provider_func: Callable[[], Any], trace: list) -> Any:
         if key not in self.cache:
             if key in self.override_targets or key not in self.parent:
                 # logger.info(f"providing from child:{' -> '.join(trace)}")
@@ -313,14 +327,14 @@ class OverridingScope(IScope):
     This class overrides a given scope with a given set of keys.
     The overriden values will be returned if asked, instead of the original scope.
     """
-    src: IScope
-    overrides: Dict[str, Any]
 
-    def provide(self, key, provider_func: Callable[[], Any], trace: List) -> Any:
+    src: IScope
+    overrides: dict[str, Any]
+
+    def provide(self, key, provider_func: Callable[[], Any], trace: list) -> Any:
         if key in self.overrides:
             return self.overrides[key]
-        else:
-            return self.src.provide(key, provider_func, trace)
+        return self.src.provide(key, provider_func, trace)
 
     def __contains__(self, item):
         return item in self.overrides or item in self.src
@@ -338,6 +352,7 @@ class DependencyResolver:
     okey I want to make a variant that uses IMPLICIT_BINDINGS when the target is not in the mapping.
     what we need is actually a str->Injected mapping.
     """
+
     src: "Design"
 
     def _to_injected(self, tgt: Providable):
@@ -346,10 +361,9 @@ class DependencyResolver:
     def __post_init__(self):
         # gather things to build providers graph
         self.helper = DIGraphHelper(self.src)
-        #
         self.mapping: dict[str, Injected] = self.helper.total_mappings()
 
-        @lru_cache()
+        @lru_cache
         def _memoized_provider(tgt: str):
             return self.mapping[tgt].get_provider()
 
@@ -357,12 +371,14 @@ class DependencyResolver:
 
         predefined = {"__final_target__"}
 
-        @lru_cache()
+        @lru_cache
         def _memoized_deps(tgt: str, include_dynamic=False):
             if tgt in predefined:
                 return []
             if tgt not in self.mapping:
-                raise NoMappingError(f"target {tgt} is not in the dependency injection mapping.")
+                raise NoMappingError(
+                    f"target {tgt} is not in the dependency injection mapping."
+                )
 
             deps = self.mapping[tgt].dependencies()
             if include_dynamic:
@@ -371,7 +387,13 @@ class DependencyResolver:
 
         self.memoized_deps = _memoized_deps
 
-    def _dfs(self, tgt: str,trace:list[str]=None, visited: set[str] = None, include_dynamic=False):
+    def _dfs(
+        self,
+        tgt: str,
+        trace: list[str] = None,
+        visited: set[str] = None,
+        include_dynamic=False,
+    ):
         if visited is None:
             visited = set()
         if tgt in visited:
@@ -384,56 +406,76 @@ class DependencyResolver:
             deps = self.memoized_deps(tgt, include_dynamic=include_dynamic)
         except NoMappingError as ke:
             from pinjected.pinjected_logging import logger
+
             logger.error(f"failed to find dependency for {tgt} in {' -> '.join(trace)}")
-            raise NoMappingError(f"failed to find dependency for {tgt} in {' -> '.join(trace)}") from ke
+            raise NoMappingError(
+                f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
+            ) from ke
         yield tgt
         for dep in deps:
-            yield from self._dfs(dep,trace, visited, include_dynamic=include_dynamic)
+            yield from self._dfs(dep, trace, visited, include_dynamic=include_dynamic)
 
-    def required_dependencies(self, providable: Providable, include_dynamic=False) -> Set[str]:
+    def required_dependencies(
+        self, providable: Providable, include_dynamic=False
+    ) -> set[str]:
         tgt: Injected = self._to_injected(providable)
-        first_deps = tgt.complete_dependencies if include_dynamic else tgt.dependencies()
-        return set(chain(*[self._dfs(d, include_dynamic=include_dynamic) for d in first_deps]))
+        first_deps = (
+            tgt.complete_dependencies if include_dynamic else tgt.dependencies()
+        )
+        return set(
+            chain(*[self._dfs(d, include_dynamic=include_dynamic) for d in first_deps])
+        )
 
     def purified_design(self, providable: Providable):
         from pinjected import design
+
         deps = self.required_dependencies(providable, include_dynamic=True)
         deps = {k: self.mapping[k] for k in deps}
-        return design(**{k: Injected.bind(v) if callable(v) else v for k, v in deps.items()})
+        return design(
+            **{k: Injected.bind(v) if callable(v) else v for k, v in deps.items()}
+        )
 
-    def _dependency_tree(self, tgt: str, trace: list[str] = None) -> Result[Dict[str, Result], Exception]:
+    def _dependency_tree(
+        self, tgt: str, trace: list[str] = None
+    ) -> Result[dict[str, Result], Exception]:
         trace = trace or [tgt]
         try:
             res = dict()
             deps = self.memoized_deps(tgt)
             for d in deps:
-                assert d not in trace, f"cycle detected: {d} is requested in {' -> '.join(trace)}"
+                assert d not in trace, (
+                    f"cycle detected: {d} is requested in {' -> '.join(trace)}"
+                )
                 res[d] = self._dependency_tree(d, trace + [d])
             return Success(res)
         except NoMappingError as ke:
-            from pinjected.pinjected_logging import logger
             # msg = f"failed to find dependency for {tgt} in {' -> '.join(trace)}"
             return Failure(DependencyResolutionFailure(tgt, trace, ke))
 
             # raise RuntimeError(msg) from ke
 
-    def dependency_tree(self, providable: Providable) -> Result[Dict[str, Result], Exception]:
+    def dependency_tree(
+        self, providable: Providable
+    ) -> Result[dict[str, Result], Exception]:
         match providable:
             case str():
                 return Success({providable: self._dependency_tree(providable)})
             case _:
                 tgt: Injected = self._to_injected(providable)
 
-                return Success({t: self._dependency_tree(t) for t in tgt.dependencies()})
+                return Success(
+                    {t: self._dependency_tree(t) for t in tgt.dependencies()}
+                )
 
     @staticmethod
-    def unresult_tree(tree: Result[Dict[str, Result], Exception]) -> Dict:
+    def unresult_tree(tree: Result[dict[str, Result], Exception]) -> dict:
         if isinstance(tree, Failure):
             return dict(error=tree)
-        else:
-            return {k: DependencyResolver.unresult_tree(v) for k, v in tree.unwrap().items()}
+        return {
+            k: DependencyResolver.unresult_tree(v) for k, v in tree.unwrap().items()
+        }
 
-    def find_failures(self, tree: Result[Dict[str, Result], Exception]):
+    def find_failures(self, tree: Result[dict[str, Result], Exception]):
         """
         recursively dig into the tree and find all failures
         :param tree:
@@ -449,12 +491,13 @@ class DependencyResolver:
 
         return dig(tree)
 
-    def sorted_dependencies(self, providable: Providable) -> List[Set[str]]:
+    def sorted_dependencies(self, providable: Providable) -> list[set[str]]:
         match self._to_injected(providable):
             case InjectedByName(name):
                 return list(self._dfs(name))
             case tgt:
                 from itertools import chain
+
                 visited = set()
                 return list(chain(*[self._dfs(d, visited) for d in tgt.dependencies()]))
 
@@ -487,6 +530,7 @@ class DependencyResolver:
 
     def _provide(self, tgt: str, scope: IScope, trace: list[str] = None):
         from collections import deque
+
         from pinjected.pinjected_logging import logger
 
         if trace is None:
@@ -519,7 +563,9 @@ class DependencyResolver:
                         continue
 
                 # All dependencies for current_tgt are resolved
-                resolved_deps = resolved_deps or [results[d] for d in self.memoized_deps(current_tgt)]
+                resolved_deps = resolved_deps or [
+                    results[d] for d in self.memoized_deps(current_tgt)
+                ]
 
                 def provider_impl():
                     provider = self.memoized_provider(current_tgt)
@@ -528,14 +574,23 @@ class DependencyResolver:
                     except Exception as e:
                         bind: IBind = self.helper.total_bindings()[current_tgt]
                         match bind.metadata:
-                            case Some(BindMetadata(code_location=Some(ModuleVarLocation(path, line, column)))):
+                            case Some(
+                                BindMetadata(
+                                    code_location=Some(
+                                        ModuleVarLocation(path, line, column)
+                                    )
+                                )
+                            ):
                                 location = f"{path}:{line}:{column}"
                             case _:
-                                logger.warning(f"failed to retrieve code loc for a binding:{bind}")
+                                logger.warning(
+                                    f"failed to retrieve code loc for a binding:{bind}"
+                                )
                                 location = "unknown location"
 
                         logger.error(
-                            f"failed to provide {current_tgt} at {location} from deps:\n{pformat(resolved_deps)}.\n Dependencies: {' -> '.join(current_trace)} \n Exception: {e}")
+                            f"failed to provide {current_tgt} at {location} from deps:\n{pformat(resolved_deps)}.\n Dependencies: {' -> '.join(current_trace)} \n Exception: {e}"
+                        )
                         raise e
 
                 # Using scope.provide to get or create the resource
@@ -543,10 +598,12 @@ class DependencyResolver:
                 results[current_tgt] = res
 
             except NoMappingError as ke:
-                logger.error(f"failed to find dependency for {current_tgt} in {' -> '.join(current_trace)}")
+                logger.error(
+                    f"failed to find dependency for {current_tgt} in {' -> '.join(current_trace)}"
+                )
                 raise DependencyResolutionError(
                     f"failed to find dependency for {current_tgt} in {' -> '.join(current_trace)}",
-                    [DependencyResolutionFailure(ke.key, current_trace, ke)]
+                    [DependencyResolutionFailure(ke.key, current_trace, ke)],
                 )
 
         return results[tgt]
@@ -557,13 +614,20 @@ class DependencyResolver:
         # which means that we cannot use asyncio.run in a cooruntine
         tgt: Injected = self._to_injected(providable)
         # TODO I want to bind a special key that is only available in this 'provide' scope.
-        scope = OverridingScope(scope, overrides=dict(
-            __final_target__=tgt,
-        ))
+        scope = OverridingScope(
+            scope,
+            overrides=dict(
+                __final_target__=tgt,
+            ),
+        )
 
         def provide_injected(tgt: Injected, key: str):
-            assert isinstance(tgt, Injected), f"tgt must be Injected. got {tgt} of type {type(tgt)}"
-            assert isinstance(key, str), f"key must be str. got {key} of type {type(key)}"
+            assert isinstance(tgt, Injected), (
+                f"tgt must be Injected. got {tgt} of type {type(tgt)}"
+            )
+            assert isinstance(key, str), (
+                f"key must be str. got {key} of type {type(key)}"
+            )
             provider = tgt.get_provider()
 
             # TODO handle the case where this provider raises an exception
@@ -571,7 +635,7 @@ class DependencyResolver:
             def get_result():
                 deps = tgt.dependencies()
                 values = [self._provide(d, scope, [key, d]) for d in tgt.dependencies()]
-                kwargs = dict(zip(deps, values))
+                kwargs = dict(zip(deps, values, strict=False))
                 try:
                     return provider(**kwargs)
                 except Exception as e:
@@ -588,45 +652,61 @@ class DependencyResolver:
                 res = self._provide(key, scope, trace=[key])
             case EvaledInjected(value, ast) as e:
                 of = ast.origin_frame
-                assert not isinstance(of, Expr), f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
-                original = ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
+                assert not isinstance(of, Expr), (
+                    f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
+                )
+                original = (
+                    ast.origin_frame.filename + ":" + str(ast.origin_frame.lineno)
+                )
 
-                key = Path(ast.origin_frame.filename).name + ":L" + str(ast.origin_frame.lineno) + "#" + str(id(tgt))[
-                                                                                                         :6]
+                key = (
+                    Path(ast.origin_frame.filename).name
+                    + ":L"
+                    + str(ast.origin_frame.lineno)
+                    + "#"
+                    + str(id(tgt))[:6]
+                )
                 # key = f"EvaledInjected#{str(id(tgt))}"
                 from pinjected.pinjected_logging import logger
+
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
-            case InjectedFromFunction(func, kwargs) as IF if IF.origin_frame is not None:
+            case InjectedFromFunction(func, kwargs) as IF if (
+                IF.origin_frame is not None
+            ):
                 frame = IF.origin_frame
                 original = frame.filename + ":" + str(frame.lineno)
-                key = f"InjectedFunction#{str(id(tgt))}"
+                key = f"InjectedFunction#{id(tgt)!s}"
                 from pinjected.pinjected_logging import logger
+
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(IF, key)
             case DelegatedVar(value, cxt) as dv:
                 res = self.provide(dv.eval(), scope)
             case Injected():
                 from pinjected.pinjected_logging import logger
+
                 logger.info(f"default injected type:{type(tgt)}")
                 provider = tgt.get_provider()
                 key = provider.__name__ + "#" + str(id(tgt))
                 res = provide_injected(tgt, key)
             case _:
-                raise TypeError(f"unhandled providable type:{tgt} with type {type(tgt)}")
+                raise TypeError(
+                    f"unhandled providable type:{tgt} with type {type(tgt)}"
+                )
         # unless we release the block, the coroutine for the remaining task won't get executed.
         # so we must use async provide where 'session' is used
         # one way to prevent this from happening is to use a thread for each provider.
         return res
 
-    def child(self, session_provider, overrides: 'Design' = None):
+    def child(self, session_provider, overrides: "Design" = None):
         if overrides is None:
-            from pinjected import Design,EmptyDesign
+            from pinjected import EmptyDesign
+
             overrides = EmptyDesign()
         from pinjected import design
-        child_design = self.src + design(
-            session=Injected.bind(session_provider)
-        )
+
+        child_design = self.src + design(session=Injected.bind(session_provider))
         child_resolver = DependencyResolver(child_design)
         return child_resolver
 
@@ -638,6 +718,7 @@ def run_coroutine_in_new_thread(coroutine):
     # Function to run the coroutine in a new event loop
     def run_coroutine():
         from pinjected.pinjected_logging import logger
+
         logger.info(f"running coroutine in new thread")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -681,13 +762,17 @@ def providable_to_injected(tgt: Providable) -> Injected:
         case Injected():
             return tgt
         case Designed():
-            raise TypeError(f"cannot use Designed here, since Designed cannot become an Injected.")
+            raise TypeError(
+                f"cannot use Designed here, since Designed cannot become an Injected."
+            )
         case DelegatedVar(value, cxt):
             return providable_to_injected(tgt.eval())
         case f if callable(f):
             return Injected.bind(f)
         case _:
-            raise TypeError(f"target must be either class or a string or Injected. got {tgt}")
+            raise TypeError(
+                f"target must be either class or a string or Injected. got {tgt}"
+            )
 
 
 @dataclass
@@ -698,7 +783,8 @@ class EventDistributor:
     Therefore, we just prepare callback system for the user.
     The instance of this class can be retrieved via __pinjected_events__ in the dependency injection.
     """
-    callbacks: List[Callable[[...], None]] = field(default_factory=list)
+
+    callbacks: list[Callable[[...], None]] = field(default_factory=list)
     event_history: list[object] = field(default_factory=list)
 
     def register(self, callback: Callable[[...], None]):
@@ -747,6 +833,7 @@ class MyObjectGraph(IObjectGraph):
         scope = MScope(_trace_logger=_trace_logger)
         graph = MyObjectGraph(None, design_obj, scope, distributor)
         from pinjected import design
+
         design_obj = design_obj + design(
             session=graph,
             __pinjected_events__=graph.event_distributor,
@@ -762,6 +849,7 @@ class MyObjectGraph(IObjectGraph):
         :return:
         """
         from pinjected.pinjected_logging import logger
+
         # I need to get the filename and line number of the caller
         if isinstance(target, Designed):
             return self.child_session(target.design)[target.internal_injected]
@@ -774,7 +862,9 @@ class MyObjectGraph(IObjectGraph):
             root=target,
             design_path="__dummy__.design",
         )
-        logger.debug(f'Pseudo code of the DI graph for ({str(target)[:100]}):\n{script}')
+        logger.debug(
+            f"Pseudo code of the DI graph for ({str(target)[:100]}):\n{script}"
+        )
         # logger.debug(f"Pseudo code of the DI graph:")
         # console = Console(stderr=True)
         # script = Syntax(script, "python", theme="ansi_dark", line_numbers=True)
@@ -784,7 +874,9 @@ class MyObjectGraph(IObjectGraph):
         failures = self.resolver.find_failures(dep_tree)
         if failures:
             logger.error(f"DI failures: \n{pformat(failures)}")
-            raise DependencyResolutionError(f"DI failures: \n{pformat(failures)}", failures)
+            raise DependencyResolutionError(
+                f"DI failures: \n{pformat(failures)}", failures
+            )
         res = self.resolver.provide(target, self.scope)
         # flattened = list(chain(*self.resolver.sorted_dependencies(target)))
         # resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
@@ -793,10 +885,14 @@ class MyObjectGraph(IObjectGraph):
 
     def child_session(self, overrides: "Design" = None, trace_logger=None):
         if overrides is None:
-            from pinjected import Design, EmptyDesign
+            from pinjected import EmptyDesign
+
             overrides = EmptyDesign()
-        child_scope = MChildScope(self.scope, set(overrides.keys()),
-                                 _trace_logger=trace_logger or self.scope.trace_logger)
+        child_scope = MChildScope(
+            self.scope,
+            set(overrides.keys()),
+            _trace_logger=trace_logger or self.scope.trace_logger,
+        )
         child_graph = MyObjectGraph(None, self.design + overrides, child_scope)
         child_resolver = self.resolver.child(lambda: child_graph, overrides)
         child_graph._resolver = child_resolver
@@ -809,8 +905,11 @@ class MyObjectGraph(IObjectGraph):
     @property
     def design_with_implicits(self):
         from pinjected import design
+
         mappings = DIGraphHelper(self.design).total_mappings()
-        return design(**{k: Injected.bind(v) if callable(v) else v for k, v in mappings.items()}).unbind('session')
+        return design(
+            **{k: Injected.bind(v) if callable(v) else v for k, v in mappings.items()}
+        ).unbind("session")
 
     def __repr__(self):
         return f"MyObjectGraph({self.design})"
@@ -834,6 +933,7 @@ class AutoSyncGraph:
     def __getitem__(self, item):
         item = self.src[item]
         if not self.rejector(item) and inspect.isawaitable(item):
+
             async def waiter():
                 return await item
 
@@ -845,14 +945,11 @@ class AutoSyncGraph:
 
 def sessioned_value_proxy_context(parent: IObjectGraph, session: IObjectGraph):
     from pinjected.di.dynamic_proxy import DynamicProxyContextImpl
+
     return DynamicProxyContextImpl(
         lambda a: a.__value__,
-        lambda x: SessionValue(
-            parent,
-            Designed.bind(Injected.pure(x)),
-            session
-        ),
-        "SessionValueProxy"
+        lambda x: SessionValue(parent, Designed.bind(Injected.pure(x)), session),
+        "SessionValueProxy",
     )
 
 
@@ -865,6 +962,7 @@ class SessionValue(Generic[T]):
     actually, we can access session through delegatedvar.value.session.
     since value shows the internal value, while eval() returns the final semantic value.
     """
+
     parent: IObjectGraph
     designed: Designed[T]
     session: IObjectGraph = field(default=None)

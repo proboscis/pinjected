@@ -11,19 +11,15 @@ Key implementations of this interface can be found in design.py:
 - DesignImpl: Standard implementation with direct bindings management
 """
 
-import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pprint import pformat
-from typing import Dict, Callable, Any, List, Awaitable
 
 from beartype import beartype
 from returns.maybe import Maybe, Nothing
 
 from pinjected.di.graph import DependencyResolver
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.di.validation import ValResult
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey, StrBindKey
@@ -32,6 +28,7 @@ from pinjected.v2.keys import IBindKey, StrBindKey
 class Design(ABC):
     def __add__(self, other: "Design") -> "Design":
         from pinjected.di.design import MergedDesign
+
         return MergedDesign(srcs=[self, other])
 
     @abstractmethod
@@ -45,11 +42,13 @@ class Design(ABC):
 
     def purify(self, target: "Providable"):
         resolver = DependencyResolver(self)
-        return resolver.purified_design(target).unbind(
-            StrBindKey('__resolver__')).unbind(
-            StrBindKey('session')).unbind(
-            StrBindKey('__design__')).unbind(
-            StrBindKey('__task_group__'))
+        return (
+            resolver.purified_design(target)
+            .unbind(StrBindKey("__resolver__"))
+            .unbind(StrBindKey("session"))
+            .unbind(StrBindKey("__design__"))
+            .unbind(StrBindKey("__task_group__"))
+        )
 
     def __enter__(self):
         frame = inspect.currentframe().f_back
@@ -62,17 +61,19 @@ class Design(ABC):
 
     @property
     @abstractmethod
-    def bindings(self) -> Dict[IBindKey, IBind]:
+    def bindings(self) -> dict[IBindKey, IBind]:
         pass
 
     @staticmethod
-    def from_bindings(bindings: Dict[IBindKey, IBind]):
+    def from_bindings(bindings: dict[IBindKey, IBind]):
         from pinjected.di.design import DesignImpl
+
         return DesignImpl(_bindings=bindings)
 
     @staticmethod
     def empty():
         from pinjected.di.design import DesignImpl
+
         return DesignImpl()
 
     @property
@@ -94,23 +95,31 @@ class Design(ABC):
             return default.unwrap()
         from pinjected.pinjected_logging import logger
         from pinjected.v2.async_resolver import AsyncResolver
-        logger.warning(f"Design.provide is deprecated. please use AsyncResolver instead.")
+
+        logger.warning(
+            f"Design.provide is deprecated. please use AsyncResolver instead."
+        )
         return AsyncResolver(self).to_blocking().provide(tgt)
 
     def to_graph(self):
         from pinjected.pinjected_logging import logger
         from pinjected.v2.async_resolver import AsyncResolver
-        logger.warning(f"Design.to_graph is deprecated. please use AsyncResolver instead.")
+
+        logger.warning(
+            f"Design.to_graph is deprecated. please use AsyncResolver instead."
+        )
         return AsyncResolver(self).to_blocking()
 
     def diff(self, other):
         from pinjected.di.util import get_dict_diff
+
         d = get_dict_diff(self.bindings, other.bindings)
         return d
 
     def inspect_picklability(self):
         from pinjected.di.util import check_picklable
         from pinjected.pinjected_logging import logger
+
         logger.info(f"checking picklability of bindings")
         check_picklable(self.bindings)
 
@@ -118,7 +127,7 @@ class Design(ABC):
 @dataclass
 class DesignOverridesStore:
     bindings: dict[ModuleVarPath, Design] = field(default_factory=dict)
-    stack: List['DesignOverrideContext'] = field(default_factory=list)
+    stack: list["DesignOverrideContext"] = field(default_factory=list)
 
     def add(self, frame: inspect.FrameInfo, design: "Design"):
         cxt = DesignOverrideContext(design, frame)
@@ -168,6 +177,7 @@ class DesignOverrideContext:
         # find instance of DelegatedVar and Injected in the changed globals
         target_vars = dict()
         from pinjected import Injected
+
         for k in changed_keys:
             v = parent_globals[k]
             if isinstance(v, DelegatedVar):
@@ -178,4 +188,4 @@ class DesignOverrideContext:
         mod_name = frame.f_globals["__name__"]
         # mod_name = inspect.getmodule(frame).__name__
         # logger.info(f"found targets:\n{pformat(target_vars)}")
-        return [ModuleVarPath(mod_name + "." + v) for v in target_vars.keys()]
+        return [ModuleVarPath(mod_name + "." + v) for v in target_vars]

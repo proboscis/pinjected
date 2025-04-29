@@ -12,9 +12,11 @@ Purpose of this experiment
 - Use the features implemented by devin to update the dataset
 
 """
-datasets_gen: IProxy[AsyncIterator[DailyDataset]] = a_create_rust_dataset_for_date_range(
-    start_date=pd.Timestamp("2025-03-01", tz="UTC"),
-    end_date=pd.Timestamp("2025-04-1", tz="UTC"),
+datasets_gen: IProxy[AsyncIterator[DailyDataset]] = (
+    a_create_rust_dataset_for_date_range(
+        start_date=pd.Timestamp("2025-03-01", tz="UTC"),
+        end_date=pd.Timestamp("2025-04-1", tz="UTC"),
+    )
 )
 
 
@@ -56,7 +58,8 @@ async def log_dataset_stats(logger, /, dataset_gen: AsyncIterator[DailyDataset])
     async for dataset in dataset_gen:
         dataset: DailyDataset
         logger.info(
-            f"Dataset from {dataset.start_date} to {dataset.end_date}, features shape: {dataset.dataset.features.shape}, size in gb:{dataset.dataset.memory_size_gb()}")
+            f"Dataset from {dataset.start_date} to {dataset.end_date}, features shape: {dataset.dataset.features.shape}, size in gb:{dataset.dataset.memory_size_gb()}"
+        )
 
 
 daily_dataset_gen_20250316: IProxy = a_cached_daily_rust_dataset_gen(
@@ -70,20 +73,20 @@ run_log_gen: IProxy = log_dataset_stats(daily_dataset_gen_20250316)
 
 @injected
 async def a_save_dataset_gen_to_dir(
-        rust_dataset_to_hf_dataset,
-        /,
-        gen: AsyncIterator[DailyDataset],
-        path: Path) -> AsyncIterator[Dataset]:
+    rust_dataset_to_hf_dataset, /, gen: AsyncIterator[DailyDataset], path: Path
+) -> AsyncIterator[Dataset]:
     if not path.exists():
         bar = tqdm(desc="save dataset to disk")
         path.mkdir(parents=True, exist_ok=True)
         async for dataset in gen:
             dataset: DailyDataset
             hf_dataset = rust_dataset_to_hf_dataset(dataset.dataset)
-            hf_dataset.save_to_disk(path / f"rust_dataset_{dataset.start_date.strftime('%Y%m%d')}")
+            hf_dataset.save_to_disk(
+                path / f"rust_dataset_{dataset.start_date.strftime('%Y%m%d')}"
+            )
             bar.update(1)
         bar.close()
-    paths = list(sorted(list(path.glob("rust_dataset_*"))))
+    paths = sorted(list(path.glob("rust_dataset_*")))
     for item in paths:
         yield load_from_disk(str(item.absolute()))
 
@@ -96,6 +99,7 @@ class DatasetScaler:
     This scaler fits a StandardScaler for each specified column and provides
     methods to transform data using these scalers.
     """
+
     dataset: Dataset
     columns: list[str]
     batch_size: int = field(default=10000)  # Add batch_size parameter
@@ -106,9 +110,15 @@ class DatasetScaler:
         # Use partial_fit with batches
         num_batches = (len(self.dataset) + self.batch_size - 1) // self.batch_size
 
-        for batch in tqdm(self.dataset.iter(batch_size=self.batch_size), total=num_batches, desc="Fitting scalers"):
+        for batch in tqdm(
+            self.dataset.iter(batch_size=self.batch_size),
+            total=num_batches,
+            desc="Fitting scalers",
+        ):
             for column in self.columns:
-                assert column in batch, f"Column {column} not found in batch:{batch.keys()}"
+                assert column in batch, (
+                    f"Column {column} not found in batch:{batch.keys()}"
+                )
                 # flatten to treat as 1D array
                 data = np.array(batch[column]).reshape(-1, 1)
                 # Filter out NaN or infinite values before fitting
@@ -117,7 +127,9 @@ class DatasetScaler:
                     self.scalers[column].partial_fit(valid_data)
         for col in self.columns:
             if col in self.scalers:
-                logger.info(f"Scaler for {col}: mean={self.scalers[col].mean_}, scale={self.scalers[col].scale_}")
+                logger.info(
+                    f"Scaler for {col}: mean={self.scalers[col].mean_}, scale={self.scalers[col].scale_}"
+                )
 
     def transform(self, batch: dict) -> dict:
         """
@@ -133,7 +145,12 @@ class DatasetScaler:
             if column in self.scalers and column in batch:
                 data = np.array(batch[column])
                 orig_shape = data.shape
-                batch[column] = self.scalers[column].transform(data.reshape(-1, 1)).reshape(orig_shape).tolist()
+                batch[column] = (
+                    self.scalers[column]
+                    .transform(data.reshape(-1, 1))
+                    .reshape(orig_shape)
+                    .tolist()
+                )
         return batch
 
     def transform_dataset(self, dataset: Dataset = None) -> Dataset:
@@ -165,6 +182,7 @@ class BalancedIndexSampler:
     It's a simple alternative to more complex sampling strategies and can be used
     with numpy.random.choice directly.
     """
+
     src: np.ndarray | list  # 1d array with values
     n_buckets: int = field(default=100)
 
@@ -194,10 +212,7 @@ class BalancedIndexSampler:
             Array of sampled indices
         """
         return np.random.choice(
-            len(self.src),
-            size=size,
-            p=self.normalized_weights,
-            replace=replace
+            len(self.src), size=size, p=self.normalized_weights, replace=replace
         )
 
 
@@ -229,10 +244,10 @@ Plan:
 
 @injected
 async def _run_test_sampling(dataset: TypedDataset[RustDatasetItem]):
-    sampler = BalancedIndexSampler(np.array(dataset['labels'])[:, 0], n_buckets=100)
+    sampler = BalancedIndexSampler(np.array(dataset["labels"])[:, 0], n_buckets=100)
     indices = sampler.sample(1000)
     batch = dataset[indices]
-    sampled_labels = np.array(batch['labels'])[:, 0]
+    sampled_labels = np.array(batch["labels"])[:, 0]
     import matplotlib.pyplot as plt
 
     # plot histogram
@@ -274,7 +289,7 @@ async def expanded_inst_columns(n_instrument):
 
 @injected
 async def a_sampling_weight_from_labels(dataset: TypedDataset[RustDatasetItem]):
-    labels = np.array(dataset['labels'])
+    labels = np.array(dataset["labels"])
     buy_labels = np.abs(labels[:, 0])
     sell_labels = np.abs(labels[:, 1])
     weights = (buy_labels + sell_labels) / 2
@@ -288,7 +303,13 @@ async def _test_loader(logger, /, loader: DataLoader):
         assert len(batch) > 0, "Batch is empty"
 
         # Check if the batch contains the expected keys
-        expected_keys = ['inst_0_buy', 'inst_0_sell', 'labels', 'times', 'feature_times']
+        expected_keys = [
+            "inst_0_buy",
+            "inst_0_sell",
+            "labels",
+            "times",
+            "feature_times",
+        ]
         for key in expected_keys:
             assert key in batch, f"Key {key} not found in batch"
 
@@ -306,23 +327,30 @@ class ExpandedDatasetPipeline:
 
     def __post_init__(self):
         self.daily_cache_dir = injected("cache_root_path") / "ema" / "daily_dataset"
-        self.generator_cache_path = injected("cache_root_path") / "ema" / f"cache_{self.version}"
+        self.generator_cache_path = (
+            injected("cache_root_path") / "ema" / f"cache_{self.version}"
+        )
         self.src: IProxy[AsyncIterator[DailyDataset]] = a_cached_daily_rust_dataset_gen(
             start_date=self.start_date,
             end_date=self.end_date,
             cache_dir=self.daily_cache_dir,
             version=self.version,
         )
-        self.cached_src: IProxy[AsyncIterator[TypedDataset[RustDatasetItem]]] = a_save_dataset_gen_to_dir(self.src,
-                                                                                                          self.generator_cache_path)
-        self.cached_datasets: IProxy[list[TypedDataset[RustDatasetItem]]] = alist(self.cached_src)
-        self.cached_dataset: IProxy[TypedDataset[RustDatasetItem]] = injected(concatenate_datasets)(
-            self.cached_datasets)
-        self.expanded_dataset: IProxy[TypedDataset[ExpandedRDItem]] = self.cached_dataset.map(_expand_instrument,
-                                                                                              batched=True,
-                                                                                              batch_size=10000)
-        self.scaled_dataset: IProxy[TypedDataset[ExpandedRDItem]] = a_scale_dataset(self.expanded_dataset,
-                                                                                    expanded_inst_columns)
+        self.cached_src: IProxy[AsyncIterator[TypedDataset[RustDatasetItem]]] = (
+            a_save_dataset_gen_to_dir(self.src, self.generator_cache_path)
+        )
+        self.cached_datasets: IProxy[list[TypedDataset[RustDatasetItem]]] = alist(
+            self.cached_src
+        )
+        self.cached_dataset: IProxy[TypedDataset[RustDatasetItem]] = injected(
+            concatenate_datasets
+        )(self.cached_datasets)
+        self.expanded_dataset: IProxy[TypedDataset[ExpandedRDItem]] = (
+            self.cached_dataset.map(_expand_instrument, batched=True, batch_size=10000)
+        )
+        self.scaled_dataset: IProxy[TypedDataset[ExpandedRDItem]] = a_scale_dataset(
+            self.expanded_dataset, expanded_inst_columns
+        )
         self.sampler: IProxy[SamplerAdapter] = injected(SamplerAdapter)(
             injected(BalancedIndexSampler)(
                 a_sampling_weight_from_labels(self.scaled_dataset), n_buckets=100
@@ -330,7 +358,7 @@ class ExpandedDatasetPipeline:
         )
         self.loader: IProxy[DataLoader] = injected(DataLoader)(
             dataset=self.scaled_dataset,
-            batch_size=injected('batch_size'),
+            batch_size=injected("batch_size"),
             sampler=self.sampler,
             num_workers=0,
         )

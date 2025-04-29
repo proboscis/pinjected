@@ -1,54 +1,81 @@
 import asyncio
 import inspect
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pprint import pformat
 from traceback import FrameSummary
-from typing import Optional, Dict, Any, Callable, Union, ParamSpec, TypeVar
+from typing import Any, Optional, ParamSpec, TypeVar, Union
 
-from returns.future import FutureResultE, FutureResult
-from returns.io import IOSuccess, IOResultE, IOFailure
-from returns.maybe import Nothing, Maybe
+from returns.future import FutureResult, FutureResultE
+from returns.io import IOFailure, IOResultE
+from returns.maybe import Maybe, Nothing
 from returns.pipeline import is_successful
 from returns.primitives.tracing import collect_traces
 from returns.unsafe import unsafe_perform_io
 
 from pinjected import Injected
-from pinjected.compatibility.task_group import TaskGroup, CompatibleExceptionGroup
-from pinjected.di.app_injected import walk_replace, EvaledInjected
-from pinjected.di.design_spec.protocols import DesignSpec, BindSpec
-from pinjected.di.expr_util import Expr, Object, Cache, Call, BiOp, UnaryOp, Attr, GetItem, show_expr
+from pinjected.compatibility.task_group import CompatibleExceptionGroup, TaskGroup
+from pinjected.di.app_injected import EvaledInjected, walk_replace
+from pinjected.di.design_spec.protocols import BindSpec, DesignSpec
+from pinjected.di.expr_util import (
+    Attr,
+    BiOp,
+    Cache,
+    Call,
+    Expr,
+    GetItem,
+    Object,
+    UnaryOp,
+    show_expr,
+)
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
 from pinjected.di.injected import extract_dependency
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.exceptions import DependencyResolutionError, CyclicDependency, DependencyResolutionFailure, \
-    DependencyValidationError
+from pinjected.exceptions import (
+    CyclicDependency,
+    DependencyResolutionError,
+    DependencyResolutionFailure,
+    DependencyValidationError,
+)
 from pinjected.pinjected_logging import logger
 from pinjected.v2.binds import BindInjected, IBind
 from pinjected.v2.callback import IResolverCallback
-from pinjected.v2.events import ResolverEvent, EvalRequestEvent, EvalResultEvent, CallInEvalStart, CallInEvalEnd, \
-    RequestEvent, ProvideEvent, DepsReadyEvent
-from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
+from pinjected.v2.events import (
+    CallInEvalEnd,
+    CallInEvalStart,
+    DepsReadyEvent,
+    EvalRequestEvent,
+    EvalResultEvent,
+    ProvideEvent,
+    RequestEvent,
+    ResolverEvent,
+)
+from pinjected.v2.keys import DestructorKey, IBindKey, StrBindKey
 from pinjected.v2.provide_context import ProvideContext
-from pinjected.v2.resolver import AsyncLockMap, OPERATORS, UNARY_OPS, Providable, EvaluationError
+from pinjected.v2.resolver import (
+    OPERATORS,
+    UNARY_OPS,
+    AsyncLockMap,
+    Providable,
+)
 from pinjected.visualize_di import DIGraph
 
 StaticProvisionError = Union[CyclicDependency, DependencyResolutionFailure]
 
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
+
 
 def maybe_fre_to_fre(
-        f: Maybe[Callable[P, FutureResultE[str]]],
-        default: FutureResultE = FutureResult.from_failure(None)
+    f: Maybe[Callable[P, FutureResultE[str]]],
+    default: FutureResultE = FutureResult.from_failure(None),
 ) -> Callable[P, FutureResultE[str]]:
     def impl(*args: P.args, **kwargs: P.kwargs) -> FutureResultE[str]:
         if f is Nothing:  # Changed == to is for singleton comparison
             return default
-        else:
-            res = f.unwrap()(*args, **kwargs)
-            assert isinstance(res, FutureResult), f"expected FutureResultE got {res}"
-            return res  # Added missing return statement
+        res = f.unwrap()(*args, **kwargs)
+        assert isinstance(res, FutureResult), f"expected FutureResultE got {res}"
+        return res  # Added missing return statement
 
     return impl
 
@@ -62,10 +89,11 @@ def create_tb(failure: IOFailure) -> str:
             filename=frame.filename,
             lineno=frame.lineno,
             name=frame.function,
-            line=frame.line if hasattr(frame, 'line') else None,
+            line=frame.line if hasattr(frame, "line") else None,
         )
         frame_summaries.append(summary)
     import traceback
+
     tb = traceback.format_list(frame_summaries)
     return "".join(tb)
 
@@ -75,7 +103,7 @@ class AsyncResolver:
     # design provides actual bindings for the resolver.
     design: "Design"
     parent: Optional["AsyncResolver"] = None
-    objects: Dict[IBindKey, Any] = field(default_factory=dict)
+    objects: dict[IBindKey, Any] = field(default_factory=dict)
     locks: AsyncLockMap = field(default_factory=AsyncLockMap)
     callbacks: list[IResolverCallback] = field(default=None)
     spec: DesignSpec = field(default=DesignSpec.empty())
@@ -90,6 +118,7 @@ class AsyncResolver:
 
     def __post_init__(self):
         from pinjected import Design
+
         if self.callbacks is None:
             self.callbacks = [
                 # BaseResolverCallback()
@@ -99,8 +128,9 @@ class AsyncResolver:
             self.design = Design.from_bindings(IMPLICIT_BINDINGS) + self.design
 
         from pinjected import design
+
         async def dummy():
-            raise RuntimeError('This should never be instantiated')
+            raise RuntimeError("This should never be instantiated")
 
         dummy = Injected.bind(dummy)
 
@@ -148,10 +178,14 @@ class AsyncResolver:
         # oh wait we can postpone awaiting
         maybe_spec: Maybe[BindSpec] = self.spec.get_spec(key)
         maybe_validator: Maybe[Callable] = maybe_spec.bind(lambda x: x.validator)
-        return maybe_fre_to_fre(maybe_validator, default=FutureResult.from_value("No validation provided"))(key, value)
+        return maybe_fre_to_fre(
+            maybe_validator, default=FutureResult.from_value("No validation provided")
+        )(key, value)
 
     async def eval_expr(self, expr: Expr, cxt: ProvideContext):
-        assert isinstance(expr, Expr), f"expr must be Expr, got {expr} of type {type(expr)}"
+        assert isinstance(expr, Expr), (
+            f"expr must be Expr, got {expr} of type {type(expr)}"
+        )
         self._callback(EvalRequestEvent(cxt, expr))
         """
                     case EvaledInjected(val, ast):
@@ -170,19 +204,27 @@ class AsyncResolver:
                     if k in self.eval_memos:
                         res = self.eval_memos[k]
                     else:
-                        new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{k}"), parent=cxt)
+                        new_cxt = ProvideContext(
+                            self, key=StrBindKey(f"__eval__{k}"), parent=cxt
+                        )
                         res = await self.eval_expr(src, new_cxt)
                         self.eval_memos[k] = res
 
             case Object(DelegatedVar(value, cxt)):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{value}"), parent=cxt)
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{value}"), parent=cxt
+                )
                 res = await self.eval_expr(value, new_cxt)
             case Object(EvaledInjected(val, ast)):
                 expr = await self._optimize(ast)
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{val}"), parent=cxt)
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{val}"), parent=cxt
+                )
                 res = await self.eval_expr(expr, new_cxt)
             case Object(Injected() as _injected):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{_injected}"), parent=cxt)
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{_injected}"), parent=cxt
+                )
                 bind = BindInjected(_injected)
                 deps = await self.resolve_deps(bind.dependencies, new_cxt)
                 res = await bind.provide(new_cxt, deps)
@@ -191,28 +233,43 @@ class AsyncResolver:
             case Call(f, args, kwargs) as call:
                 res = await self._resolve_call_prev(call, cxt)
             case BiOp(op, left, right):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{left}"), parent=cxt)
-                left, right = await asyncio.gather(self.eval_expr(left, new_cxt), self.eval_expr(right, new_cxt))
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{left}"), parent=cxt
+                )
+                left, right = await asyncio.gather(
+                    self.eval_expr(left, new_cxt), self.eval_expr(right, new_cxt)
+                )
                 res = OPERATORS[op](left, right)
-            case UnaryOp('await', data):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+            case UnaryOp("await", data):
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{data}"), parent=cxt
+                )
                 data = await self.eval_expr(data, new_cxt)
                 res = await data
             case UnaryOp(name, data):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{data}"), parent=cxt
+                )
                 data = await self.eval_expr(data, new_cxt)
                 res = UNARY_OPS[name](data)
             case Attr(data, name):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{data}"), parent=cxt
+                )
                 data = await self.eval_expr(data, new_cxt)
                 res = getattr(data, name)
             case GetItem(data, key):
-                new_cxt = ProvideContext(self, key=StrBindKey(f"__eval__{data}"), parent=cxt)
-                data, key = await asyncio.gather(self.eval_expr(data, new_cxt), self.eval_expr(key, new_cxt))
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"__eval__{data}"), parent=cxt
+                )
+                data, key = await asyncio.gather(
+                    self.eval_expr(data, new_cxt), self.eval_expr(key, new_cxt)
+                )
                 res = data[key]
             case _:
                 raise TypeError(
-                    f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}")
+                    f"expr must be Object, Call, BiOp, UnaryOp, Attr or GetItem, got {expr} of type {type(expr)}"
+                )
         self._callback(EvalResultEvent(cxt, expr, res))
 
         # except EvaluationError as e:
@@ -236,7 +293,7 @@ class AsyncResolver:
         keys = list(kwargs.keys())
         values = asyncio.gather(*[self.eval_expr(v, new_cxt) for v in kwargs.values()])
         f, args, values = await asyncio.gather(self.eval_expr(f, new_cxt), args, values)
-        kwargs = dict(zip(keys, values))
+        kwargs = dict(zip(keys, values, strict=False))
         self._callback(CallInEvalStart(cxt, call))
         # we cannot actually do *args **kwargs, due to complicated signature of f.
         # but is there a way to tell how the arguments are passed?
@@ -275,7 +332,7 @@ class AsyncResolver:
                     n_cxt = ProvideContext(self, key=dep_key, parent=cxt)
                     tasks.append(provider(dep_key, n_cxt))
                 res = await asyncio.gather(*tasks)
-                deps = dict(zip(dep_keys, res))
+                deps = dict(zip(dep_keys, res, strict=False))
                 self._callback(DepsReadyEvent(cxt, key, deps))
                 data = await bind.provide(cxt, deps)
                 self.objects[key] = data
@@ -283,24 +340,25 @@ class AsyncResolver:
                 # logger.info(f"{cxt.trace_str} := {show_data}")
                 validation: IOResultE[str] = await self._a_validate(key, data)
                 if not is_successful(validation):
-                    import traceback
                     tb = create_tb(validation)
-                    raise DependencyValidationError(f"Validation failed for {key} {validation.failure()}: {tb}",
-                                                    cause=validation)
+                    raise DependencyValidationError(
+                        f"Validation failed for {key} {validation.failure()}: {tb}",
+                        cause=validation,
+                    )
                 self._callback(ProvideEvent(cxt, key, data))
                 return data
-            else:
-                if self.parent is not None:
-                    return await self.parent._provide(key, cxt, provider)
-                else:
-                    raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
+            if self.parent is not None:
+                return await self.parent._provide(key, cxt, provider)
+            raise KeyError(f"Key {key} not found in design in {cxt.trace_str}")
 
     def child_session(self, overrides: "Design"):
         return AsyncResolver(overrides, parent=self)
 
     async def resolve_deps(self, keys: set[IBindKey], cxt):
-        tasks = [self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys]
-        return {k: v for k, v in zip(keys, await asyncio.gather(*tasks))}
+        tasks = [
+            self._provide(k, ProvideContext(self, key=k, parent=cxt)) for k in keys
+        ]
+        return {k: v for k, v in zip(keys, await asyncio.gather(*tasks), strict=False)}
 
     async def _provide_providable(self, tgt: Providable):
         root_cxt = ProvideContext(self, key=StrBindKey("__root__"), parent=None)
@@ -308,16 +366,22 @@ class AsyncResolver:
         match tgt:
             case str():
                 key = StrBindKey(tgt)
-                res = await self._provide(key, ProvideContext(self, key=key, parent=root_cxt))
+                res = await self._provide(
+                    key, ProvideContext(self, key=key, parent=root_cxt)
+                )
                 return res
             case IBindKey():
-                res = await self._provide(tgt, ProvideContext(self, key=tgt, parent=root_cxt))
+                res = await self._provide(
+                    tgt, ProvideContext(self, key=tgt, parent=root_cxt)
+                )
                 return res
             case DelegatedVar(value, cxt) as dv:
                 # return await self._provide_providable(tgt.eval())
                 expr = await self._optimize(dv.eval().ast)
                 key = StrBindKey(f"{show_expr(value)}")
-                new_cxt = ProvideContext(self, key=StrBindKey(f"{show_expr(value)}"), parent=root_cxt)
+                new_cxt = ProvideContext(
+                    self, key=StrBindKey(f"{show_expr(value)}"), parent=root_cxt
+                )
                 res = await self.eval_expr(expr, new_cxt)
                 return res
             case EvaledInjected(val, ast):
@@ -330,7 +394,9 @@ class AsyncResolver:
                 return await self._provide_providable(BindInjected(i_tgt))
             case IBind():
                 deps = await self.resolve_deps(tgt.dependencies, root_cxt)
-                res = await tgt.provide(ProvideContext(self, key=None, parent=root_cxt), deps)
+                res = await tgt.provide(
+                    ProvideContext(self, key=None, parent=root_cxt), deps
+                )
                 return res
             case func if inspect.isfunction:
                 deps = extract_dependency(func)
@@ -340,45 +406,60 @@ class AsyncResolver:
                 data = tgt(**kwargs)
                 if inspect.iscoroutinefunction(tgt):
                     return await data
-                else:
-                    return data
+                return data
             case _:
-                raise TypeError(f"tgt must be str, IBindKey, Callable or IBind, got {tgt}")
+                raise TypeError(
+                    f"tgt must be str, IBindKey, Callable or IBind, got {tgt}"
+                )
 
     def _design_from_ancestors(self):
         from pinjected import EmptyDesign
+
         if self.parent is None:
             p_design = EmptyDesign
         else:
             p_design = self.parent._design_from_ancestors()
         return p_design + self.design
 
-    async def a_find_provision_errors(self, tgt: Providable) -> list[StaticProvisionError]:
+    async def a_find_provision_errors(
+        self, tgt: Providable
+    ) -> list[StaticProvisionError]:
         from pinjected import design
+
         d = self._design_from_ancestors()
         errors = []
         match tgt:
             case Injected():
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design, use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(
+                    tmp_design, use_implicit_bindings=self.use_implicit_bindings
+                )
                 errors = list(digraph.di_dfs_validation("__root__"))
             case str():
-                digraph: DIGraph = DIGraph(d, use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(
+                    d, use_implicit_bindings=self.use_implicit_bindings
+                )
                 errors = list(digraph.di_dfs_validation(tgt))
             case DelegatedVar() as dv:
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design, use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(
+                    tmp_design, use_implicit_bindings=self.use_implicit_bindings
+                )
                 errors = list(digraph.di_dfs_validation("__root__"))
             case f if callable(f):
                 tmp_design = d + design(__root__=tgt)
-                digraph: DIGraph = DIGraph(tmp_design, use_implicit_bindings=self.use_implicit_bindings)
+                digraph: DIGraph = DIGraph(
+                    tmp_design, use_implicit_bindings=self.use_implicit_bindings
+                )
                 errors = list(digraph.di_dfs_validation("__root__"))
         return errors
 
     async def a_check_resolution(self, tgt: Providable):
         if errors := await self.a_find_provision_errors(tgt):
             # here we can use spec to provide more helpful error messages.
-            drfs = [drf for drf in errors if isinstance(drf, DependencyResolutionFailure)]
+            drfs = [
+                drf for drf in errors if isinstance(drf, DependencyResolutionFailure)
+            ]
             cyclics = [c for c in errors if isinstance(c, CyclicDependency)]
             key_to_docs = {}
             message = ""
@@ -396,12 +477,16 @@ class AsyncResolver:
                     message += f"Trace {e.trace_str()}: {e.cause}\n"
                     key = StrBindKey(key)
                     spec: Maybe[BindSpec] = self.spec.get_spec(key)
-                    maybe_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = spec.bind(
-                        lambda x: x.spec_doc_provider
+                    maybe_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = (
+                        spec.bind(lambda x: x.spec_doc_provider)
                     )
-                    fut_msg: IOResultE[str] = await maybe_fre_to_fre(maybe_provider)(key)
+                    fut_msg: IOResultE[str] = await maybe_fre_to_fre(maybe_provider)(
+                        key
+                    )
                     key_doc = ""
-                    doc_msg = unsafe_perform_io(fut_msg.value_or("No documentation provided"))
+                    doc_msg = unsafe_perform_io(
+                        fut_msg.value_or("No documentation provided")
+                    )
                     key_doc += f"Documentation:\n"
                     key_doc += f"  {doc_msg}\n"
                     key_to_docs[key] = key_doc
@@ -420,7 +505,9 @@ class AsyncResolver:
                     message += f"{c}\n"
                 message += "=" * len_header + "\n"
 
-            raise DependencyResolutionError(f"Errors in dependency resolution:\n{message}", causes=errors)
+            raise DependencyResolutionError(
+                f"Errors in dependency resolution:\n{message}", causes=errors
+            )
 
     async def provide(self, tgt: Providable):
         with collect_traces():
@@ -437,19 +524,25 @@ class AsyncResolver:
                             case _:
                                 repr = str(tgt)
                         if len(repr) > 100:
-                            repr = repr[:50] + "..." + repr[-50:] + f"({len(repr) - 100} more)"
+                            repr = (
+                                repr[:50]
+                                + "..."
+                                + repr[-50:]
+                                + f"({len(repr) - 100} more)"
+                            )
                         logger.info(f"providing {repr}")
-                        tg_key = StrBindKey('__task_group__')
+                        tg_key = StrBindKey("__task_group__")
                         self.objects[tg_key] = tg
                         res = await self._provide_providable(tgt)
                         del self.objects[tg_key]
                     return res
-                else:
-                    return await self._provide_providable(tgt)
+                return await self._provide_providable(tgt)
             except Exception as e:
                 if isinstance(e, CompatibleExceptionGroup):
                     if len(e.exceptions) == 1:
-                        logger.debug(f"raising first exception from {[type(e) for e in e.exceptions]}")
+                        logger.debug(
+                            f"raising first exception from {[type(e) for e in e.exceptions]}"
+                        )
                         raise e.exceptions[0] from None
                 raise e
             finally:
@@ -458,11 +551,12 @@ class AsyncResolver:
     async def provide_or(self, tgt: Providable, default):
         try:
             return await self.provide(tgt)
-        except DependencyResolutionError as e:
+        except DependencyResolutionError:
             return default
 
     def to_blocking(self):
         from pinjected.v2.blocking_resolver import Resolver
+
         return Resolver(self)
 
     def __getitem__(self, item):

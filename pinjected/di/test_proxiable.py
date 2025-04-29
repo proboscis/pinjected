@@ -1,5 +1,4 @@
-from pinjected import Injected, Designed
-from pinjected.di.static_proxy import ast_proxy
+from pinjected import Injected
 from pinjected.di.expr_util import Object
 
 

@@ -5,24 +5,26 @@ import json
 import random
 import re
 from asyncio import Lock
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import ceil
 from pathlib import Path
-from typing import Any, Literal, Callable, Optional, Awaitable
+from typing import Any, Literal
 
 import openai.types.chat
 import pandas as pd
 import reactivex
-from PIL.Image import Image
 from injected_utils.injected_cache_utils import async_cached, sqlite_dict
 from loguru import logger
-from math import ceil
-from openai import AsyncOpenAI, RateLimitError, APITimeoutError, APIConnectionError
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 from openai.types.chat import ChatCompletion
-from pydantic import BaseModel
-from pydantic import Field
+from PIL.Image import Image
+from pydantic import BaseModel, Field
+from tenacity import retry, retry_if_exception_type, stop_after_attempt
+
 from pinjected import *
-from tenacity import retry,stop_after_attempt,retry_if_exception_type
+
 
 class ChatCompletionWithCost(BaseModel):
     src: ChatCompletion
@@ -200,7 +202,9 @@ class PricingModel(BaseModel):
     )
     davinci_002: ModelPricing = ModelPricing(input_cost=0.0020, output_cost=0.0020)
     babbage_002: ModelPricing = ModelPricing(input_cost=0.0004, output_cost=0.0004)
-    gpt_4o_mini_2024_07_18:ModelPricing = ModelPricing(input_cost=0.15*0.001, output_cost=0.6*0.001)
+    gpt_4o_mini_2024_07_18: ModelPricing = ModelPricing(
+        input_cost=0.15 * 0.001, output_cost=0.6 * 0.001
+    )
     gpt_4o: ModelPricing = ModelPricing(input_cost=0.0025, output_cost=0.0150)
     gpt_4o_2024_05_13: ModelPricing = ModelPricing(
         input_cost=0.0025, output_cost=0.0150
@@ -326,10 +330,12 @@ class StructuredLLMNoneException(Exception):
 def __openai_call_stat__():
     return dict()
 
+
 class StructuredLLMRefusalException(Exception):
     def __init__(self, message, completion):
         super().__init__(message)
         self.completion = completion
+
 
 @injected
 async def a_call_openai_api(
@@ -342,6 +348,7 @@ async def a_call_openai_api(
     api_kwargs: dict,
 ) -> ChatCompletionWithCost:
     await a_enable_cost_logging()
+
     async def task():
         __openai_call_stat__["total_calls"] = (
             __openai_call_stat__.get("total_calls", 0) + 1
@@ -356,7 +363,7 @@ async def a_call_openai_api(
         logger.info(
             f"cost: {cost.total_cost_usd:.4f} USD, cumulative: {cumulative_cost:.4f} USD"
         )
-        refusal = chat_completion.choices[0].message.refusal # ココ
+        refusal = chat_completion.choices[0].message.refusal  # ココ
         if refusal is not None:
             raise StructuredLLMRefusalException(f"refusal from llm:{refusal}", cost)
         return cost
@@ -371,7 +378,7 @@ async def a_vision_llm__openai(
     a_call_openai_api,
     /,
     text: str,
-    images: Optional[list[Image]] = None,
+    images: list[Image] | None = None,
     model: str = "gpt-4o",
     max_tokens=None,  # deprecated
     max_completion_tokens=None,  # same as max_tokens
@@ -406,7 +413,7 @@ async def a_vision_llm__openai(
     else:
         API = async_openai_client.chat.completions.create
 
-        def get_result(completion:ChatCompletion):
+        def get_result(completion: ChatCompletion):
             return completion.choices[0].message.content
 
     api_kwargs = dict(
@@ -435,6 +442,7 @@ async def a_vision_llm__openai(
             api_object=API, api_kwargs=api_kwargs
         )
         return get_result(chat_completion.src)
+
     return await task()
 
 
@@ -484,11 +492,9 @@ a_cached_vision_llm__gpt4 = async_cached(
     )
 )(a_vision_llm__gpt4)
 
-a_llm_gpto3_mini = Injected.partial(
-    a_vision_llm__openai, model="o3-mini"
-)
+a_llm_gpto3_mini = Injected.partial(a_vision_llm__openai, model="o3-mini")
 
-test_a_llm_gpto3_mini:IProxy = a_llm_gpto3_mini('hello')
+test_a_llm_gpto3_mini: IProxy = a_llm_gpto3_mini("hello")
 
 
 @injected

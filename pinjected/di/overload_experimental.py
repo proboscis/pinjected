@@ -19,6 +19,7 @@ def data_user(new_data: class[Data])->Data:
     ...
 
 """
+
 from dataclasses import dataclass
 
 from pinjected import injected
@@ -29,6 +30,7 @@ class Data:
     """
     docs for data
     """
+
     x: int = 0
 
 
@@ -44,16 +46,14 @@ class DataFactory:
 
 # new_data:type[Data] = Data
 @injected
-def data_user(new_data: DataFactory,/,msg) -> Data:
+def data_user(new_data: DataFactory, /, msg) -> Data:
     d = new_data(x=0)
-    pass
 
 
 class IDataUser:
-    def __call__(self,msg:str):
+    def __call__(self, msg: str):
         """
         This is a hello world example docstring
         :param msg:
         :return:
         """
-        pass

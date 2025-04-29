@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 
-from pinjected import Design, Designed, Injected, EmptyDesign
 from pinjected.di.dynamic_proxy import DynamicProxyContextImpl
-from pinjected.di.graph import SessionValue
 
 
 @dataclass
@@ -11,15 +9,12 @@ class A:
 
 
 def test_dynamic_proxy_iterator():
-    ctx = DynamicProxyContextImpl(
-        lambda a: a.item,
-        A,
-        "A_Proxy"
-    )
+    ctx = DynamicProxyContextImpl(lambda a: a.item, A, "A_Proxy")
     x = ctx.pure("hello world")
     print(x)
     print(x.split())
     print([i for i in x.split()])
+
 
 # deprecated
 #

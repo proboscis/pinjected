@@ -1,55 +1,50 @@
-from pinjected import injected, IProxy, Injected, design, instance
-
+from pinjected import Injected, IProxy, design, injected, instance
 
 Model = object
 Dataset = object
 
+
 @injected
 def build_model(
-        logger,
-        device,
-        /,
-        model_name: str,
-        n_layers: int,
-        n_features: int,
-        # ...
+    logger,
+    device,
+    /,
+    model_name: str,
+    n_layers: int,
+    n_features: int,
+    # ...
 ):
     from torch import nn
+
     return nn.Module
 
 
-model_1: IProxy[Model] = build_model('model_1', 10, 20)
-model_2: IProxy[Model] = build_model('model_2', 5, 3)
-model_3: IProxy[Model] = build_model('model_3', 7, 8)
+model_1: IProxy[Model] = build_model("model_1", 10, 20)
+model_2: IProxy[Model] = build_model("model_2", 5, 3)
+model_3: IProxy[Model] = build_model("model_3", 7, 8)
 
 
 @injected
 def build_dataset(
-        logger,
-        device,
-        /,
-        dataset_name: str,
-        n_samples: int,
-        # ...
+    logger,
+    device,
+    /,
+    dataset_name: str,
+    n_samples: int,
+    # ...
 ):
     from torch.utils.data import Dataset
+
     return Dataset
 
 
-
-dataset_1: IProxy[Dataset] = build_dataset('dataset_1', 100)
-dataset_2: IProxy[Dataset] = build_dataset('dataset_2', 200)
-dataset_3: IProxy[Dataset] = build_dataset('dataset_3', 300)
+dataset_1: IProxy[Dataset] = build_dataset("dataset_1", 100)
+dataset_2: IProxy[Dataset] = build_dataset("dataset_2", 200)
+dataset_3: IProxy[Dataset] = build_dataset("dataset_3", 300)
 
 
 @injected
-def run_experiment(
-        logger,
-        evaluate,
-        /,
-        model,
-        dataset
-) -> float:
+def run_experiment(logger, evaluate, /, model, dataset) -> float:
     return evaluate(model, dataset)
 
 
@@ -65,27 +60,33 @@ experiment_3_3: IProxy[float] = run_experiment(model_3, dataset_3)
 
 
 run_all_experiments: IProxy[list[float]] = Injected.list(
-    experiment_1_1, experiment_1_2, experiment_1_3,
-    experiment_2_1, experiment_2_2, experiment_2_3,
-    experiment_3_1, experiment_3_2, experiment_3_3
+    experiment_1_1,
+    experiment_1_2,
+    experiment_1_3,
+    experiment_2_1,
+    experiment_2_2,
+    experiment_2_3,
+    experiment_3_1,
+    experiment_3_2,
+    experiment_3_3,
 )
 
+
 @injected
-def evaluate(model,/,dataset):
+def evaluate(model, /, dataset):
     pass
+
 
 @instance
 def logger():
     return None
 
 
-
-
 # Create a __pinjected__.py file in the same directory with:
-# 
+#
 # ```python
 # from pinjected import design
-# 
+#
 # __design__ = design(
 #     device='cpu',
 #     model='model'
@@ -93,9 +94,4 @@ def logger():
 # ```
 #
 # The old __meta_design__ pattern is being deprecated:
-__meta_design__ = design(
-    overrides=design(
-        device='cpu',
-        model='model'
-    )
-)
+__meta_design__ = design(overrides=design(device="cpu", model="model"))

@@ -1,6 +1,7 @@
 import shelve
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Generic, Callable, Any, TypeVar
+from typing import Any, Generic, TypeVar
 
 from filelock import FileLock
 
@@ -30,40 +31,44 @@ class MyShelf(Generic[T]):
 
     def __getitem__(self, item):
         assert isinstance(item, str), f"key must be str, but got {item}"
-        #logger.debug(f"waiting lock for getitem")
+        # logger.debug(f"waiting lock for getitem")
         with self.lock:
-            #logger.debug(f"obtained lock for getitem")
+            # logger.debug(f"obtained lock for getitem")
             with shelve.open(self.path) as shelf:
                 try:
                     value = self.deserializer.value_or(lambda x: x)(shelf[item])
                     # logger.debug(f"value of {item} is {value}")
                     return value
                 except KeyError as e:
-                    logger.warning(f"failed to load value of {item}, due to {e}, from {self.path}")
+                    logger.warning(
+                        f"failed to load value of {item}, due to {e}, from {self.path}"
+                    )
                     raise e
                 except Exception as e:
-                    logger.error(f"failed to load value of {item}, due to {type(e), e}, from {self.path}")
+                    logger.error(
+                        f"failed to load value of {item}, due to {type(e), e}, from {self.path}"
+                    )
                     raise e
-        #logger.debug(f"released lock for getitem")
+        # logger.debug(f"released lock for getitem")
 
     def __setitem__(self, key, value):
         assert isinstance(key, str), f"key must be str, but got {key}"
-        #logger.debug(f"waiting lock for setitem")
+        # logger.debug(f"waiting lock for setitem")
         with self.lock:
-            #logger.debug(f"obtained lock for setitem")
+            # logger.debug(f"obtained lock for setitem")
             with shelve.open(self.path) as shelf:
                 to_save = self.serializer.value_or(lambda x: x)(value)
                 shelf[key] = to_save
                 # make sure the data is deserializeable
                 # but it seems this is done okey...
                 self.deserializer.value_or(lambda x: x)(shelf[key])
-        #logger.debug(f"released lock for setitem")
+        # logger.debug(f"released lock for setitem")
 
     def __contains__(self, item):
         assert isinstance(item, str), f"item must be str, but got {item}"
-        #logger.debug(f"waiting lock for contains")
+        # logger.debug(f"waiting lock for contains")
         with self.lock:
-            #logger.debug(f"obtained lock for contains")
+            # logger.debug(f"obtained lock for contains")
             with shelve.open(self.path) as shelf:
                 return item in shelf
 
@@ -75,12 +80,12 @@ class MyShelf(Generic[T]):
 
     def __delitem__(self, key):
         assert isinstance(key, str), f"key must be str, but got {key}"
-        #logger.debug(f"waiting lock for delitem")
+        # logger.debug(f"waiting lock for delitem")
         with self.lock:
-            #logger.debug(f"obtained lock for delitem")
+            # logger.debug(f"obtained lock for delitem")
             with shelve.open(self.path) as shelf:
                 del shelf[key]
-        #logger.debug(f"released lock for delitem")
+        # logger.debug(f"released lock for delitem")
 
     def items(self):
         keys = list(self.keys())
@@ -97,8 +102,7 @@ class MyShelf(Generic[T]):
         assert isinstance(key, str), f"key must be str, but got {key}"
         if key in self:
             return Some(self[key])
-        else:
-            return Nothing
+        return Nothing
 
     def clear(self):
         with self.lock:

@@ -1,8 +1,9 @@
 import asyncio
 import multiprocessing
 from asyncio import Future
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 """
 This module is to avoid using ProcessPoolExecutor, since it's buggy.
@@ -17,7 +18,7 @@ def process_runner(func: Callable, args: tuple, result_queue: multiprocessing.Qu
         result_queue.put(("error", str(e)))
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass
@@ -47,7 +48,6 @@ async def run_in_process(func: Callable, *args: Any) -> Any:
     process = multiprocessing.Process(
         target=process_runner,
         args=(func, args, result_queue),
-
     )
 
     # here, I want to capture the stdout and stderr of the process
@@ -67,5 +67,4 @@ async def run_in_process(func: Callable, *args: Any) -> Any:
         if status == "error":
             raise RuntimeError(f"Function raised an exception: {result}")
         return result
-    else:
-        raise RuntimeError("Process ended without returning a result")
+    raise RuntimeError("Process ended without returning a result")

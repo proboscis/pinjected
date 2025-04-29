@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
-from pinjected.di.expr_util import Expr, Call
+from pinjected.di.expr_util import Call, Expr
 from pinjected.v2.keys import IBindKey
 from pinjected.v2.provide_context import ProvideContext
 
@@ -25,7 +25,7 @@ class ProvideEvent(ResolverEvent):
 @dataclass
 class DepsReadyEvent(ResolverEvent):
     key: IBindKey
-    deps: Dict[IBindKey, Any]
+    deps: dict[IBindKey, Any]
 
 
 @dataclass

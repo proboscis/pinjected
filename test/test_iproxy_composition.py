@@ -1,21 +1,19 @@
 import pytest
-import pytest_asyncio
+
 from pinjected import Injected, design
 from pinjected.v2.async_resolver import AsyncResolver
-from pinjected.di.expr_util import show_expr
-from pinjected.v2.resolver import EvaluationError, PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS
 
 
 class TestObject:
     """Test object with attributes and methods for IProxy testing."""
-    
+
     def __init__(self, value):
         self.value = value
         self.items = {"a": 1, "b": 2, "c": 3}
-    
+
     def multiply(self, factor):
         return self.value * factor
-    
+
     def __str__(self):
         return f"TestObject({self.value})"
 
@@ -31,21 +29,21 @@ async def test_iproxy_composition():
     test_obj = Injected.pure(TestObject(20)).proxy
     test_dict = Injected.pure({"x": 100, "y": 200, "z": 300}).proxy
     test_func = Injected.pure(lambda x: x * 2).proxy
-    
+
     add_result = num1 + num2  # Should be 15
-    
+
     div_result = num1 / num2  # Should be 2
-    
+
     attr_access = test_obj.value  # Should be 20
-    
+
     method_call = test_obj.multiply(3)  # Should be 60
-    
+
     getitem_result = test_dict[Injected.pure("y").proxy]  # Should be 200
-    
+
     func_call = test_func(num2)  # Should be 10
-    
+
     complex_expr = (num1 + test_obj.value) / num2 + test_dict[Injected.pure("x").proxy]
-    
+
     test_design = design(
         num1=num1,
         num2=num2,
@@ -58,15 +56,15 @@ async def test_iproxy_composition():
         method_call=method_call,
         getitem_result=getitem_result,
         func_call=func_call,
-        complex_expr=complex_expr
+        complex_expr=complex_expr,
     )
-    
+
     resolver = AsyncResolver(test_design)
-    
+
     assert await resolver.provide("num1") == 10
     assert await resolver.provide("num2") == 5
     assert isinstance(await resolver.provide("test_obj"), TestObject)
-    
+
     assert await resolver.provide("add_result") == 15
     assert await resolver.provide("div_result") == 2
     assert await resolver.provide("attr_access") == 20
@@ -78,4 +76,5 @@ async def test_iproxy_composition():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(test_iproxy_composition())

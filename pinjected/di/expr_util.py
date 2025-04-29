@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Generic, Tuple, Dict, Any, Callable, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from frozendict import frozendict
 
@@ -14,12 +15,15 @@ ASSERT_PICKLABLE = False
 
 def assert_picklable(target, name):
     import cloudpickle
+
     if not ASSERT_PICKLABLE:
         return
     try:
         cloudpickle.dumps(target)
     except Exception as e:
-        raise RuntimeError(f"target {name} is not picklable.\ntype={type(target)}\nvalue={target}") from e
+        raise RuntimeError(
+            f"target {name} is not picklable.\ntype={type(target)}\nvalue={target}"
+        ) from e
 
 
 class Expr(Generic[T], ABC):
@@ -30,7 +34,7 @@ class Expr(Generic[T], ABC):
     def __post_init__(self):
         # this takes time so... we need to toggle it
         if pinjected_TRACK_ORIGIN:
-            self.origin_frame = get_instance_origin('pinjected')
+            self.origin_frame = get_instance_origin("pinjected")
         else:
             self.origin_frame = None
 
@@ -40,15 +44,15 @@ class Expr(Generic[T], ABC):
     def _wrap_if_non_expr(self, item) -> "Expr":
         if not isinstance(item, Expr):
             return Object(item)
-        else:
-            return item
+        return item
 
     def __call__(self, *args: "Expr", **kwargs: "Expr"):
         # print(f"{self}->args:{args},kwargs:{kwargs}")
-        return Call(self,
-                    tuple([self._wrap_if_non_expr(item) for item in args]),
-                    {k: self._wrap_if_non_expr(v) for k, v in kwargs.items()}
-                    )
+        return Call(
+            self,
+            tuple([self._wrap_if_non_expr(item) for item in args]),
+            {k: self._wrap_if_non_expr(v) for k, v in kwargs.items()},
+        )
 
     def __getitem__(self, item: "Expr"):
         return GetItem(self, self._wrap_if_non_expr(item))
@@ -69,45 +73,46 @@ class Expr(Generic[T], ABC):
 
     def biop(self, op, other):
         match op:
-            case '+':
+            case "+":
                 return BiOp("+", self, self._wrap_if_non_expr(other))
-            case '|':
+            case "|":
                 return BiOp("|", self, self._wrap_if_non_expr(other))
-            case '&':
+            case "&":
                 return BiOp("&", self, self._wrap_if_non_expr(other))
-            case '-':
+            case "-":
                 return BiOp("-", self, self._wrap_if_non_expr(other))
-            case '*':
+            case "*":
                 return BiOp("*", self, self._wrap_if_non_expr(other))
-            case '@':
+            case "@":
                 return BiOp("@", self, self._wrap_if_non_expr(other))
-            case '/':
+            case "/":
                 return BiOp("/", self, self._wrap_if_non_expr(other))
-            case '//':
+            case "//":
                 return BiOp("//", self, self._wrap_if_non_expr(other))
-            case '%':
+            case "%":
                 return BiOp("%", self, self._wrap_if_non_expr(other))
-            case '**':
+            case "**":
                 return BiOp("**", self, self._wrap_if_non_expr(other))
-            case '<<':
+            case "<<":
                 return BiOp("<<", self, self._wrap_if_non_expr(other))
-            case '>>':
+            case ">>":
                 return BiOp(">>", self, self._wrap_if_non_expr(other))
-            case '^':
+            case "^":
                 return BiOp("^", self, self._wrap_if_non_expr(other))
-            case '==':
+            case "==":
                 return BiOp("==", self, self._wrap_if_non_expr(other))
             case _:
                 raise NotImplementedError(f"biop {op} not implemented")
+
     def unary(self, op):
         match op:
-            case '-':
+            case "-":
                 return UnaryOp("-", self)
-            case '~':
+            case "~":
                 return UnaryOp("~", self)
-            case 'not':
+            case "not":
                 return UnaryOp("not", self)
-            case 'await':
+            case "await":
                 return UnaryOp("await", self)
             case _:
                 raise NotImplementedError(f"unary {op} not implemented")
@@ -164,8 +169,8 @@ class UnaryOp(Expr):
 @dataclass
 class Call(Expr):
     func: Expr
-    args: Tuple[Expr] = field(default_factory=tuple)
-    kwargs: Dict[str, Expr] = field(default_factory=dict)
+    args: tuple[Expr] = field(default_factory=tuple)
+    kwargs: dict[str, Expr] = field(default_factory=dict)
 
     def __post_init__(self):
         super().__post_init__()
@@ -233,11 +238,12 @@ class Object(Expr):
     """
     Use this to construct an AST and then compile it for any use.
     """
+
     data: Any  # holds user data
 
     def __post_init__(self):
         super().__post_init__()
-        assert_picklable(self.data, 'data')
+        assert_picklable(self.data, "data")
 
     def __getstate__(self):
         return self.data, self.origin_frame
@@ -252,7 +258,7 @@ class Object(Expr):
             # we also add type_hash since hash(0) == 0 == hash(False)
             type_hash = hash(type(self.data))
             return hash(self.data) * type_hash + type_hash
-        except TypeError as e:
+        except TypeError:
             return hash(id(self.data))
 
 
@@ -274,8 +280,11 @@ class Cache(Expr):
         return hash(f"cached") + hash(self.src)
 
 
-def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda x: None) -> str:
+def show_expr(
+    expr: Expr[T], custom: Callable[[Expr[T]], str | None] = lambda x: None
+) -> str:
     from pinjected.di.proxiable import DelegatedVar
+
     def eval_tuple(e):
         res = tuple(_show_expr(i) for i in e)
         flag = all(isinstance(i, str) for i in res)
@@ -287,10 +296,10 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
         return {k: _show_expr(e) for k, e in e.items()}
 
     def _show_expr(e: Expr):
-
         reduced = custom(e)
         if reduced:
             from pinjected.pinjected_logging import logger
+
             logger.info(f"reduced:{reduced}")
             return reduced
         match e:
@@ -303,7 +312,7 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
             case Object(str() as x):
                 return f'"{x}"'
             case Object(x):
-                return f"{str(x)}"
+                return f"{x!s}"
             case Call(f, args, kwargs):
                 # hmm, this is complicated.
                 func_str = _show_expr(f)
@@ -319,7 +328,7 @@ def show_expr(expr: Expr[T], custom: Callable[[Expr[T]], Optional[str]] = lambda
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
             case DelegatedVar(wrapped, cxt):
                 return f"{_show_expr(wrapped)}"
-            case UnaryOp('await', Expr() as tgt):
+            case UnaryOp("await", Expr() as tgt):
                 return f"(await {_show_expr(tgt)})"
             case UnaryOp(op, Expr() as tgt):
                 return f"{op}({_show_expr(tgt)})"

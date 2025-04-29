@@ -3,15 +3,22 @@ import base64
 import io
 from asyncio import Lock
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Literal, Callable, Awaitable, TypeVar
+from typing import Literal, TypeVar
 
-import PIL
 import pandas as pd
+import PIL
+from anthropic import AsyncAnthropic, InternalServerError, RateLimitError, Stream
+from anthropic.types import (
+    ContentBlockDeltaEvent,
+    ContentBlockStartEvent,
+    Message,
+    MessageStartEvent,
+    Usage,
+)
 from PIL import Image
-from anthropic import AsyncAnthropic, Stream
-from anthropic import RateLimitError, InternalServerError
-from anthropic.types import Message, MessageStartEvent, ContentBlockStartEvent, ContentBlockDeltaEvent, Usage
+
 from pinjected import *
 
 
@@ -20,7 +27,7 @@ async def anthropic_client(anthropic_api_key):
     return AsyncAnthropic(api_key=anthropic_api_key)
 
 
-IMAGE_FORMAT = Literal['jpeg', 'png']
+IMAGE_FORMAT = Literal["jpeg", "png"]
 
 
 class AnthropicClientCallback:
@@ -30,27 +37,27 @@ class AnthropicClientCallback:
 
 @injected
 async def a_anthropic_llm(
-        anthropic_client,
-        /,
-        messages: list[dict],
-        max_tokens=1024,
-        # model="claude-3-opus-20240229"
-        model="claude-3-5-sonnet-20240620"
+    anthropic_client,
+    /,
+    messages: list[dict],
+    max_tokens=1024,
+    # model="claude-3-opus-20240229"
+    model="claude-3-5-sonnet-20240620",
 ) -> Message:
     msg = await anthropic_client.messages.create(
-        max_tokens=max_tokens,
-        model=model,
-        messages=messages
+        max_tokens=max_tokens, model=model, messages=messages
     )
     return msg
 
 
 def image_to_base64(image: PIL.Image.Image, fmt: IMAGE_FORMAT) -> str:
-    assert isinstance(image, PIL.Image.Image), f"image is not an instance of PIL.Image.Image: {image}"
+    assert isinstance(image, PIL.Image.Image), (
+        f"image is not an instance of PIL.Image.Image: {image}"
+    )
     bytes_io = io.BytesIO()
     image.save(bytes_io, format=fmt)
     bytes_io.seek(0)
-    data = base64.b64encode(bytes_io.getvalue()).decode('utf-8')
+    data = base64.b64encode(bytes_io.getvalue()).decode("utf-8")
     assert data, "data is empty"
     return data
 
@@ -131,7 +138,9 @@ class RateLimitManager:
 
     async def _current_usage(self):
         t = pd.Timestamp.now()
-        self.call_history = [e for e in self.call_history if e.timestamp > t - self.duration]
+        self.call_history = [
+            e for e in self.call_history if e.timestamp > t - self.duration
+        ]
         return sum(e.tokens for e in self.call_history)
 
 
@@ -151,36 +160,35 @@ class AnthropicRateLimitController:
 @instance
 async def anthropic_rate_limit_controller():
     async def factory(key: str):
-        if 'sonnet' in key and '3_5' in key:
+        if "sonnet" in key and "3_5" in key:
             return RateLimitManager(
                 max_tokens=40000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        elif 'opus' in key and '3' in key:
+        if "opus" in key and "3" in key:
             return RateLimitManager(
                 max_tokens=20000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        elif 'sonnet' in key and '3' in key:
+        if "sonnet" in key and "3" in key:
             return RateLimitManager(
                 max_tokens=40000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        elif 'haiku' in key and '3' in key:
+        if "haiku" in key and "3" in key:
             return RateLimitManager(
                 max_tokens=50000,
                 max_calls=50,
                 duration=pd.Timedelta(minutes=1),
             )
-        else:
-            return RateLimitManager(
-                max_tokens=20000,
-                max_calls=50,
-                duration=pd.Timedelta(minutes=1),
-            )
+        return RateLimitManager(
+            max_tokens=20000,
+            max_calls=50,
+            duration=pd.Timedelta(minutes=1),
+        )
 
     return AnthropicRateLimitController(factory)
 
@@ -205,7 +213,7 @@ class AnthropicModelPrices:
         usd_per_million_input_token=3.0,
         usd_per_million_output_token=15.0,
         usd_per_million_cache_write=3.75,
-        usd_per_million_cache_read=0.30
+        usd_per_million_cache_read=0.30,
     )
 
     # Claude 3.5 Haiku prices
@@ -213,7 +221,7 @@ class AnthropicModelPrices:
         usd_per_million_input_token=1.0,
         usd_per_million_output_token=5.0,
         usd_per_million_cache_write=1.25,
-        usd_per_million_cache_read=0.10
+        usd_per_million_cache_read=0.10,
     )
 
     # Claude 3 Opus prices
@@ -221,19 +229,19 @@ class AnthropicModelPrices:
         usd_per_million_input_token=15.0,
         usd_per_million_output_token=75.0,
         usd_per_million_cache_write=18.75,
-        usd_per_million_cache_read=1.50
+        usd_per_million_cache_read=1.50,
     )
     claude__3_sonnet_20240229 = ModelPriceTable(
         usd_per_million_input_token=3.0,
         usd_per_million_output_token=15.0,
-        usd_per_million_cache_write=3.75, # should be NaN
-        usd_per_million_cache_read=0.30 # should be NaN
+        usd_per_million_cache_write=3.75,  # should be NaN
+        usd_per_million_cache_read=0.30,  # should be NaN
     )
     model_prices = {
         "claude-3-5-sonnet-20241022": claude__3_5_20241022,
         "claude-3-5-haiku": claude__3_5_haiku,
         "claude-3-opus": claude__3_opus,
-        "claude-3-sonnet-20240229": claude__3_sonnet_20240229
+        "claude-3-sonnet-20240229": claude__3_sonnet_20240229,
     }
 
     def __getitem__(self, item):
@@ -256,13 +264,20 @@ class AnthropicCumulativeUsageTracker:
     def usage_text(self):
         result = ""
         import pandas as pd
+
         for model in self.usages:
             usage_df = pd.DataFrame([u.dict() for u in self.usages[model]])
             table = self._anthropic_model_prices[model]
-            usage_df['input_cost'] = usage_df['input_tokens'] * table.usd_per_million_input_token / 1_000_000
-            usage_df['output_cost'] = usage_df['output_tokens'] * table.usd_per_million_output_token / 1_000_000
+            usage_df["input_cost"] = (
+                usage_df["input_tokens"] * table.usd_per_million_input_token / 1_000_000
+            )
+            usage_df["output_cost"] = (
+                usage_df["output_tokens"]
+                * table.usd_per_million_output_token
+                / 1_000_000
+            )
             desc = usage_df.describe()
-            desc.loc['total'] = usage_df.sum()
+            desc.loc["total"] = usage_df.sum()
             result += f"Model: {model}\n"
             result += desc.to_string()
             result += "\n"
@@ -276,10 +291,11 @@ async def anthropic_cumulative_usage_tracker(anthropic_model_prices):
 
 @injected
 async def anthropic_client_callback(
-        logger,
-        anthropic_cumulative_usage_tracker: AnthropicCumulativeUsageTracker,
-        /,
-        response: Message):
+    logger,
+    anthropic_cumulative_usage_tracker: AnthropicCumulativeUsageTracker,
+    /,
+    response: Message,
+):
     """
     override this via design so that you can do something with the response globally, like logging, or cost tracking
     :param response:
@@ -290,7 +306,7 @@ async def anthropic_client_callback(
     logger.info(f"Anthropic usage:\n{anthropic_cumulative_usage_tracker.usage_text()}")
 
 
-BaseModelType = TypeVar('T')
+BaseModelType = TypeVar("T")
 
 from pydantic import BaseModel
 
@@ -300,7 +316,9 @@ class TestClass(BaseModel):
 
 
 class IMessageProcessor:
-    def prepare_messages(self, text, images, img_format: IMAGE_FORMAT, response_format) -> list[dict]:
+    def prepare_messages(
+        self, text, images, img_format: IMAGE_FORMAT, response_format
+    ) -> list[dict]:
         pass
 
     def process_response(self, response, response_format):
@@ -308,32 +326,29 @@ class IMessageProcessor:
 
 
 @injected
-def prepare_messages__common(text, images, img_format: Literal['jpeg']):
+def prepare_messages__common(text, images, img_format: Literal["jpeg"]):
     img_blocks = []
     if images is not None:
         for img in images:
-            if img_format == 'jpeg':
-                img = img.convert('RGB')
+            if img_format == "jpeg":
+                img = img.convert("RGB")
             block = {
-                'type': 'image',
-                'source': {
-                    'type': 'base64',
-                    'media_type': f"image/{img_format}",
-                    'data': image_to_base64(img, img_format),
-                }
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": f"image/{img_format}",
+                    "data": image_to_base64(img, img_format),
+                },
             }
             img_blocks.append(block)
 
     messages = [
         {
-            'content': [
+            "content": [
                 *img_blocks,
-                {
-                    'type': 'text',
-                    'text': text
-                },
+                {"type": "text", "text": text},
             ],
-            'role': "user"
+            "role": "user",
         },
     ]
     return messages
@@ -341,36 +356,34 @@ def prepare_messages__common(text, images, img_format: Literal['jpeg']):
 
 @injected
 def prepare_messages__pydantic(
-        prepare_messages__common,
-        /,
-        text, images, img_format, type_var):
+    prepare_messages__common, /, text, images, img_format, type_var
+):
     schema = type_var.model_json_schema()
     messages = prepare_messages__common(text, images, img_format=img_format)
-    contents = messages[0]['content']
-    prompt = text + f"""
+    contents = messages[0]["content"]
+    prompt = (
+        text
+        + f"""
 The answer must follow the following json schema:
 ```json
 {schema}
 ```
 """
-    contents[-1] = {
-        'type': 'text',
-        'text': prompt
-    }
-    messages.append({
-        'role': 'assistant',
-        'content': 'Here is the JSON answer:\n {'
-    })
+    )
+    contents[-1] = {"type": "text", "text": prompt}
+    messages.append({"role": "assistant", "content": "Here is the JSON answer:\n {"})
     return messages
 
 
 @instance
 def message_processor__common(
-        prepare_messages__common,
-        /,
+    prepare_messages__common,
+    /,
 ):
     class CommonMessageProcessor(IMessageProcessor):
-        def prepare_messages(self, text, images, img_format: IMAGE_FORMAT, response_format) -> list[dict]:
+        def prepare_messages(
+            self, text, images, img_format: IMAGE_FORMAT, response_format
+        ) -> list[dict]:
             return prepare_messages__common(text, images, img_format)
 
         def process_response(self, response, response_format):
@@ -381,17 +394,21 @@ def message_processor__common(
 
 @instance
 def message_processor__pydantic(
-        prepare_messages__pydantic,
-        /,
+    prepare_messages__pydantic,
+    /,
 ):
     class PydanticMessageProcessor(IMessageProcessor):
-        def prepare_messages(self, text, images, img_format: IMAGE_FORMAT, response_format) -> list[dict]:
-            return prepare_messages__pydantic(text, images, img_format=img_format, type_var=response_format)
+        def prepare_messages(
+            self, text, images, img_format: IMAGE_FORMAT, response_format
+        ) -> list[dict]:
+            return prepare_messages__pydantic(
+                text, images, img_format=img_format, type_var=response_format
+            )
 
         def process_response(self, response, response_format):
-            json = '{' + response.content[-1].text
-            json_end = json.rfind('}')
-            json = json[:json_end + 1]
+            json = "{" + response.content[-1].text
+            json_end = json.rfind("}")
+            json = json[: json_end + 1]
             return response_format.model_validate_json(json)
 
     return PydanticMessageProcessor()
@@ -399,46 +416,46 @@ def message_processor__pydantic(
 
 @injected
 async def a_vision_llm__anthropic(
-        message_processor__common: IMessageProcessor,
-        message_processor__pydantic: IMessageProcessor,
-        anthropic_client: AsyncAnthropic,
-        logger,
-        anthropic_rate_limit_controller: AnthropicRateLimitController,
-        anthropic_client_callback: AnthropicClientCallback,
-        /,
-        text: str,
-        images: list[PIL.Image.Image] = None,
-        model="claude-3-5-sonnet-20241022",
-        max_tokens: int = 2048,
-        img_format: IMAGE_FORMAT = 'jpeg',
-        response_format: BaseModelType | Literal['text'] = "text"
+    message_processor__common: IMessageProcessor,
+    message_processor__pydantic: IMessageProcessor,
+    anthropic_client: AsyncAnthropic,
+    logger,
+    anthropic_rate_limit_controller: AnthropicRateLimitController,
+    anthropic_client_callback: AnthropicClientCallback,
+    /,
+    text: str,
+    images: list[PIL.Image.Image] = None,
+    model="claude-3-5-sonnet-20241022",
+    max_tokens: int = 2048,
+    img_format: IMAGE_FORMAT = "jpeg",
+    response_format: BaseModelType | Literal["text"] = "text",
 ) -> str | BaseModelType:
-    if response_format == 'text':
+    if response_format == "text":
         message_processor = message_processor__common
     elif isinstance(response_format, type) and issubclass(response_format, BaseModel):
         message_processor = message_processor__pydantic
     else:
         raise RuntimeError(f"Invalid response format {response_format}")
 
-    messages = message_processor.prepare_messages(text, images, img_format, response_format)
+    messages = message_processor.prepare_messages(
+        text, images, img_format, response_format
+    )
 
     expected_tokens = await anthropic_client.beta.messages.count_tokens(
-        messages=messages,
-        model=model
+        messages=messages, model=model
     )
     expected_tokens = expected_tokens.input_tokens
 
     async def attempt():
         msg: Message = await anthropic_client.messages.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens
+            model=model, messages=messages, max_tokens=max_tokens
         )
 
         return msg
 
     manager: RateLimitManager = await anthropic_rate_limit_controller.get_manager(model)
     from anthropic import APIConnectionError
+
     while True:
         try:
             await manager.acquire(expected_tokens)
@@ -446,29 +463,32 @@ async def a_vision_llm__anthropic(
             await anthropic_client_callback(resp)
             return message_processor.process_response(resp, response_format)
         except RateLimitError as rle:
-            logger.warning(f"Rate limit error for model {model}, waiting for {5} seconds :\n{rle}")
+            logger.warning(
+                f"Rate limit error for model {model}, waiting for {5} seconds :\n{rle}"
+            )
             await asyncio.sleep(5)
         except InternalServerError as ise:
-            logger.warning(f"Rate limit error for model {model}, waiting for {5} seconds :\n{ise}")
+            logger.warning(
+                f"Rate limit error for model {model}, waiting for {5} seconds :\n{ise}"
+            )
             await asyncio.sleep(10)
         except APIConnectionError as ace:
-            logger.warning(f"API connection error for model {model}, waiting for {5} seconds :\n{ace}")
+            logger.warning(
+                f"API connection error for model {model}, waiting for {5} seconds :\n{ace}"
+            )
             await asyncio.sleep(10)
 
 
 @injected
 async def a_anthropic_llm_stream(
-        anthropic_client,
-        /,
-        messages: list[dict],
-        max_tokens=1024,
-        model="claude-3-opus-20240229"
+    anthropic_client,
+    /,
+    messages: list[dict],
+    max_tokens=1024,
+    model="claude-3-opus-20240229",
 ) -> Stream:
     msg = await anthropic_client.messages.create(
-        max_tokens=max_tokens,
-        model=model,
-        messages=messages,
-        stream=True
+        max_tokens=max_tokens, model=model, messages=messages, stream=True
     )
     async for item in msg:
         match item:
@@ -481,12 +501,7 @@ async def a_anthropic_llm_stream(
 
 
 test_run_opus: Injected = a_anthropic_llm(
-    messages=[
-        {
-            "content": "What is the meaning of life?",
-            "role": "user"
-        }
-    ],
+    messages=[{"content": "What is the meaning of life?", "role": "user"}],
 )
 
 test_a_vision_llm: IProxy = a_vision_llm__anthropic(
@@ -500,17 +515,14 @@ class MeaningOfLife(BaseModel):
 
 
 test_a_vision_llm__structured: IProxy = a_vision_llm__anthropic(
-    text="What is the meaning of life?",
-    response_format=MeaningOfLife
+    text="What is the meaning of life?", response_format=MeaningOfLife
 )
 sample_image = injected(Image.open)("test_image/test1.jpg")
-test_to_base64: IProxy = injected(image_to_base64)(sample_image, 'jpeg')
+test_to_base64: IProxy = injected(image_to_base64)(sample_image, "jpeg")
 
 test_a_vision_llm_with_image: IProxy = a_vision_llm__anthropic(
     text="What do you see in this image?",
-    images=Injected.list(
-        injected(Image.open)("test_image/test1.jpg")
-    ),
+    images=Injected.list(injected(Image.open)("test_image/test1.jpg")),
 )
 
 
@@ -520,28 +532,22 @@ class ImageContent(BaseModel):
 
 test_a_vision_llm_with_image__structured: IProxy = a_vision_llm__anthropic(
     text="What do you see in this image?",
-    images=Injected.list(
-        injected(Image.open)("test_image/test1.jpg")
-    ),
-    response_format=ImageContent
+    images=Injected.list(injected(Image.open)("test_image/test1.jpg")),
+    response_format=ImageContent,
 )
 
 
 @instance
 async def test_run_opus_stream(a_anthropic_llm_stream):
     stream = a_anthropic_llm_stream(
-        messages=[
-            {
-                "content": "What is the meaning of life?",
-                "role": "user"
-            }
-        ],
+        messages=[{"content": "What is the meaning of life?", "role": "user"}],
     )
     async for msg in stream:
         print(msg)
 
 
-a_vision_llm__claude_3_5_20241022 = Injected.partial(a_vision_llm__anthropic, model="claude-3-5-sonnet-20241022")
-
-__meta_design__ = instances(
+a_vision_llm__claude_3_5_20241022 = Injected.partial(
+    a_vision_llm__anthropic, model="claude-3-5-sonnet-20241022"
 )
+
+__meta_design__ = instances()

@@ -2,20 +2,24 @@
 Here i test the functionality of testing module in pinjected.
 1.
 """
+
 from pathlib import Path
-from pprint import pformat
 
 import pytest
 
 from pinjected import *
-from tqdm import tqdm
-from pinjected.pinjected_logging import logger
-
 from pinjected.ide_supports.default_design import pinjected_internal_design
-from pinjected.test_helper.test_aggregator import meta_design_acceptor, \
-    Annotation, PinjectedTestAggregator, find_pinjected_annotations, VariableInFile
-from pinjected.test_helper.test_runner import a_pinjected_run_all_test, a_pinjected_run_test, PinjectedTestResult, \
-    a_visualize_test_results
+from pinjected.pinjected_logging import logger
+from pinjected.test_helper.test_aggregator import (
+    PinjectedTestAggregator,
+    VariableInFile,
+)
+from pinjected.test_helper.test_runner import (
+    PinjectedTestResult,
+    a_pinjected_run_all_test,
+    a_pinjected_run_test,
+    a_visualize_test_results,
+)
 from pinjected.v2.async_resolver import AsyncResolver
 
 P_ROOT = Path(__file__).parent.parent
@@ -41,7 +45,9 @@ def test_test_aggregator():
 
 @pytest.mark.asyncio
 async def test_run_test():
-    target = VariableInFile(P_ROOT / "test/test_package/child/module1.py", "test_test_object")
+    target = VariableInFile(
+        P_ROOT / "test/test_package/child/module1.py", "test_test_object"
+    )
     await d[a_pinjected_run_test(target)]
 
 
@@ -55,24 +61,21 @@ async def test_run_test_with_context():
 
 @pytest.mark.asyncio
 async def test_run_all_test():
-    test_runner = await d[a_pinjected_run_all_test(
-            P_ROOT / "test/test_package"
-    )]
+    test_runner = await d[a_pinjected_run_all_test(P_ROOT / "test/test_package")]
     async for res in test_runner:
-        res:PinjectedTestResult
+        res: PinjectedTestResult
         if res.failed():
             logger.error(f"{res.target.to_module_var_path().path} -> {res.value}")
         else:
             logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
 
+
 @pytest.mark.asyncio
 async def test_viz_all_test():
-    test_runner = await d[a_pinjected_run_all_test(
-            P_ROOT / "test/test_package"
-    )]
+    test_runner = await d[a_pinjected_run_all_test(P_ROOT / "test/test_package")]
     visualizer = await d[a_visualize_test_results(test_runner)]
     visualizer
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

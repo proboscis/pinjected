@@ -1,6 +1,7 @@
 """
 injected_pytestのインポートテスト
 """
+
 import pytest
 
 
@@ -10,7 +11,10 @@ def test_import_injected_pytest():
     """
     try:
         from pinjected.test import injected_pytest
-        assert callable(injected_pytest), "injected_pytestは呼び出し可能なオブジェクトであるべきです"
+
+        assert callable(injected_pytest), (
+            "injected_pytestは呼び出し可能なオブジェクトであるべきです"
+        )
     except ImportError as e:
         pytest.fail(f"インポートエラー: {e}")
 
@@ -19,8 +23,8 @@ def test_injected_pytest_usage():
     """
     injected_pytestが正しく動作することを確認するテスト
     """
+    from pinjected import Injected, design
     from pinjected.test import injected_pytest
-    from pinjected import design, instances, EmptyDesign, Injected
 
     # テスト用のロガーモック
     class MockLogger:
@@ -32,9 +36,7 @@ def test_injected_pytest_usage():
 
     # テスト用のデザイン
     test_design = design()
-    test_design += design(
-        logger=Injected.pure(MockLogger())
-    )
+    test_design += design(logger=Injected.pure(MockLogger()))
 
     @injected_pytest(test_design)
     def test_func(logger):
@@ -43,7 +45,9 @@ def test_injected_pytest_usage():
 
     # テスト関数を実行
     result = test_func()
-    
+
     # 結果を検証
     assert result == "テスト成功", "テスト関数の戻り値が正しくありません"
-    assert test_design.provide("logger").logs == ["テストメッセージ"], "ロガーが正しく使用されていません"
+    assert test_design.provide("logger").logs == ["テストメッセージ"], (
+        "ロガーが正しく使用されていません"
+    )

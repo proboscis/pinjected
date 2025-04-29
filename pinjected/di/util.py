@@ -1,10 +1,11 @@
 import ast
 import inspect
 import textwrap
+from collections.abc import Callable
 from pathlib import Path
 from pprint import pformat
 from types import FrameType
-from typing import TypeVar, Dict, Callable, Any
+from typing import Any, TypeVar
 
 import cloudpickle
 from cytoolz import memoize
@@ -13,13 +14,13 @@ from returns.maybe import Some
 from returns.result import Failure, Success
 
 from pinjected.di.design import DesignImpl
-from pinjected.di.injected import Injected, InjectedPure, InjectedFromFunction
+from pinjected.di.injected import Injected, InjectedFromFunction, InjectedPure
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import CodeLocation, ModuleVarLocation
 from pinjected.di.monadic import getitem_opt
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import BindInjected
-from pinjected.v2.keys import StrBindKey, DestructorKey, IBindKey
+from pinjected.v2.keys import DestructorKey, IBindKey, StrBindKey
 
 # is it possible to create a binding class which also has an ability to dynamically add..?
 # yes. actually.
@@ -65,12 +66,10 @@ def my_safe(f):
             return Success(f(*args, **kwargs))
         except Exception as e:
             import traceback
+
             trace = "\n".join(traceback.format_exception(e))
 
-            return Failure(ErrorWithTrace(
-                e,
-                trace
-            ))
+            return Failure(ErrorWithTrace(e, trace))
 
     return impl
 
@@ -87,10 +86,15 @@ def check_picklable(tgt: dict):
         # failures = [(k, v, tgt[k]) for k, v in target_check.items() if isinstance(v, Failure)]
 
         from pinjected.pinjected_logging import logger
+
         logger.error(f"Failed to pickle target: {pformat(failures)}")
-        logger.error(f"if the error message contains EncodedFile pickling error, "
-                     f"check whether the logging module is included in the target object or not.")
-        raise RuntimeError("this object is not picklable. check the error messages above.") from res.failure()
+        logger.error(
+            f"if the error message contains EncodedFile pickling error, "
+            f"check whether the logging module is included in the target object or not."
+        )
+        raise RuntimeError(
+            "this object is not picklable. check the error messages above."
+        ) from res.failure()
     # logger.info(res)
 
 
@@ -101,7 +105,7 @@ def method_to_function(method):
     argspec = inspect.getfullargspec(method)
     assert not isinstance(argspec.args, str)
     # assert not isinstance(argspec.varargs,str)
-    signature = f"""f_of_{method.__name__}({" ,".join((argspec.args or []))})"""
+    signature = f"""f_of_{method.__name__}({" ,".join(argspec.args or [])})"""
 
     def impl(self, *args, **kwargs):
         return method(*args, **kwargs)  # gets multiple values for self
@@ -147,14 +151,16 @@ def to_readable_name(o):
 def try_import_subject():
     try:
         from rx.subject import Subject
+
         return Subject
-    except Exception as e:
+    except Exception:
         from rx.subjects import Subject
+
         return Subject
 
 
 def get_dict_diff(a: dict, b: dict):
-    all_keys = list(sorted(set(a.keys()) | set(b.keys())))
+    all_keys = sorted(set(a.keys()) | set(b.keys()))
     all_keys.remove("opt")
     # TODO check both contains transform design
     # all_keys.remove("base_train_transform_design")
@@ -163,7 +169,6 @@ def get_dict_diff(a: dict, b: dict):
     data = []
     Subject = try_import_subject()
     for k in all_keys:
-
         ak = getitem_opt(a, k).map(to_readable_name).value_or(None)
         bk = getitem_opt(b, k).map(to_readable_name).value_or(None)
         match (ak, bk):
@@ -190,10 +195,11 @@ EmptyDesign = DesignImpl()
 # calling to_design converts all lazy mapping into providers
 # so if anything is missing then fails.
 
+
 def _get_external_type_name(thing):
     """patch pinject's _get_external_type_name to accept pickled function"""
     qualifier = thing.__qualname__
-    name = qualifier.rsplit('.', 1)[0]
+    name = qualifier.rsplit(".", 1)[0]
     if hasattr(inspect.getmodule(thing), name):
         cls = getattr(inspect.getmodule(thing), name)
         if isinstance(cls, type):
@@ -251,21 +257,24 @@ def instances(**kwargs):
 
     By enforcing constraints and adding code locations, this function helps maintain a clear and error-resistant
     system design, ensuring that the dependency injection mechanism is used appropriately and effectively.
-    
+
     .. deprecated:: 0.3.0
        Use ``design()`` instead. This function will be removed in a future version.
     """
     import warnings
+
     warnings.warn(
         "'instances' is deprecated and will be removed in a future version. Use 'design' instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     for k, v in kwargs.items():
-        assert not isinstance(v,
-                              DelegatedVar), f"passing delegated var with Injected context is forbidden, to prevent human error."
-        assert not isinstance(v,
-                              Injected), f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
+        assert not isinstance(v, DelegatedVar), (
+            f"passing delegated var with Injected context is forbidden, to prevent human error."
+        )
+        assert not isinstance(v, Injected), (
+            f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
+        )
 
     # Delegate to the newer design() function
     return design(**kwargs)
@@ -314,15 +323,16 @@ def providers(**kwargs):
         # and 'query_executor', respectively, along with their code locations.
 
     This approach consolidates the registration of dependencies, streamlining the setup process and enhancing the traceability and debuggability of the system components.
-    
+
     .. deprecated:: 0.3.0
        Use ``design()`` instead. This function will be removed in a future version.
     """
     import warnings
+
     warnings.warn(
         "'providers' is deprecated and will be removed in a future version. Use 'design' instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     # Convert callable parameters to Injected.bind() if not already Injected
     wrapped_kwargs = {}
@@ -333,14 +343,22 @@ def providers(**kwargs):
             wrapped_kwargs[k] = Injected.bind(v)
         else:
             wrapped_kwargs[k] = v
-    
+
     # Delegate to the newer design() function
     return design(**wrapped_kwargs)
 
 
 def design(**kwargs):
-    _injecteds = {k: v for k, v in kwargs.items() if isinstance(v, Injected) or isinstance(v, DelegatedVar)}
-    _instances = {k: v for k, v in kwargs.items() if not isinstance(v, Injected) and not isinstance(v, DelegatedVar)}
+    _injecteds = {
+        k: v
+        for k, v in kwargs.items()
+        if isinstance(v, Injected) or isinstance(v, DelegatedVar)
+    }
+    _instances = {
+        k: v
+        for k, v in kwargs.items()
+        if not isinstance(v, Injected) and not isinstance(v, DelegatedVar)
+    }
 
     d = DesignImpl().bind_instance(**_instances).bind_provider(**_injecteds)
     return add_code_locations(d, kwargs, inspect.currentframe())
@@ -353,6 +371,7 @@ def add_code_locations(design, kwargs, frame):
         # metas = dict()
     except OSError as ose:
         from pinjected.pinjected_logging import logger
+
         logger.warning(f"failed to get code locations:{ose}")
         metas = dict()
 
@@ -379,11 +398,11 @@ def try_parse(source: str, trials: int = 3) -> ast.AST:
         return try_parse(textwrap.dedent(source), trials - 1)
 
 
-def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocation]:
+def get_code_locations(keys: list[str], frame: FrameType) -> dict[str, CodeLocation]:
     parent_frame = frame.f_back
     # here, we fail to get locations if its in repl
     lines, start_line = inspect.getsourcelines(parent_frame)
-    source = ''.join(lines)
+    source = "".join(lines)
     # logger.info(f"parsing:{source}")
     node = try_parse(source)
 
@@ -391,12 +410,14 @@ def get_code_locations(keys: list[str], frame: FrameType) -> Dict[str, CodeLocat
 
     class ArgumentVisitor(ast.NodeVisitor):
         def visit_Call(self, node: ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == 'design':
+            if isinstance(node.func, ast.Name) and node.func.id == "design":
                 for keyword in node.keywords:
                     if keyword.arg in keys:
                         locations[keyword.arg] = ModuleVarLocation(
                             Path(parent_frame.f_code.co_filename),
-                            keyword.lineno + start_line - 1,  # Adjust for 0-based indexing
+                            keyword.lineno
+                            + start_line
+                            - 1,  # Adjust for 0-based indexing
                             keyword.col_offset + 1,
                         )
 
@@ -445,17 +466,18 @@ def classes(**kwargs):
     Note:
     -----
     The function automatically adds code locations for the classes, making it easier to track the source of each dependency within the system.
-    
+
     .. deprecated:: 0.3.0
        Use ``design()`` instead. This function will be removed in a future version.
     """
     import warnings
+
     warnings.warn(
         "'classes' is deprecated and will be removed in a future version. Use 'design' instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
-    
+
     # Wrap all classes with Injected.bind()
     wrapped_kwargs = {k: Injected.bind(v) for k, v in kwargs.items()}
     # Delegate to the newer design() function

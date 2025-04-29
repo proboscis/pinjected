@@ -1,14 +1,16 @@
 import asyncio
 
-from pinjected import injected, design, instance, IProxy, Injected
-from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
-from pinjected.schema.handlers import PinjectedHandleMainException, PinjectedHandleMainResult
+from pinjected import Injected, IProxy, design, injected, instance
+from pinjected.schema.handlers import (
+    PinjectedHandleMainException,
+    PinjectedHandleMainResult,
+)
 from pinjected.test_helper.test_runner import test_current_file
 
-design01 = design(name='design01')
-design02 = design01 + design(name='design02')
-a = Injected.pure('a')
-b = Injected.pure('b')
+design01 = design(name="design01")
+design02 = design01 + design(name="design02")
+a = Injected.pure("a")
+b = Injected.pure("b")
 
 
 @instance
@@ -31,13 +33,10 @@ async def test_long_test():
     await asyncio.sleep(5)
 
 
-variable_x: IProxy = injected('x')
-variable_y: Injected = injected('y')
+variable_x: IProxy = injected("x")
+variable_y: Injected = injected("y")
 
-viz_target_design = design(
-    a=a,
-    b=b
-)
+viz_target_design = design(a=a, b=b)
 test_runnable: IProxy = Injected.pure("hello world")
 
 
@@ -52,7 +51,7 @@ def test_missing_deps(missing_dep):
 
 
 fail = test_always_failure
-x = injected('x')
+x = injected("x")
 
 
 @injected
@@ -62,14 +61,10 @@ def iadd(x, y):
 
 test_deep_ast_error: IProxy = iadd(x, iadd(x, iadd(x, fail)))
 
-with design(
-        c="c"
-):
-    test_c = injected('c')
-    with design(
-            c="cc"
-    ):
-        test_cc = injected('c')
+with design(c="c"):
+    test_c = injected("c")
+    with design(c="cc"):
+        test_cc = injected("c")
 
 run_test: IProxy = Injected.bind(lambda: test_current_file())
 
@@ -88,15 +83,18 @@ async def __handle_success(result):
 __test_handling_design = design(
     **{
         PinjectedHandleMainException.key.name: __handle_exception,
-        PinjectedHandleMainResult.key.name: __handle_success
+        PinjectedHandleMainResult.key.name: __handle_success,
     }
 )
 
 design03 = design01 + __test_handling_design
 
-__design__ = design(
-    a="a",
-    b="b",
-    x="x",
-    name="test_package.child.module1",
-) + __test_handling_design
+__design__ = (
+    design(
+        a="a",
+        b="b",
+        x="x",
+        name="test_package.child.module1",
+    )
+    + __test_handling_design
+)

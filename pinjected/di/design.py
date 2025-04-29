@@ -1,27 +1,32 @@
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from functools import wraps
-from typing import TypeVar, List, Dict, Union, Callable, Type, Optional
+from typing import TypeVar
 
 from cytoolz import merge
 from makefun import create_function
 
-from pinjected.di.design_interface import Design
-from pinjected.v2.callback import IResolverCallback
 from pinjected.di.app_injected import EvaledInjected
+from pinjected.di.design_interface import Design
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
-from pinjected.di.injected import Injected
-from pinjected.di.injected import extract_dependency_including_self, InjectedPure, InjectedFromFunction
+from pinjected.di.injected import (
+    Injected,
+    InjectedFromFunction,
+    InjectedPure,
+    extract_dependency_including_self,
+)
+
 # from pinjected.di.util import get_class_aware_args, get_dict_diff, check_picklable
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.v2.binds import IBind, BindInjected, ExprBind
+from pinjected.v2.binds import BindInjected, ExprBind, IBind
+from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import IBindKey, StrBindKey
 
 T = TypeVar("T")
 U = TypeVar("U")
 
 
-def remove_kwargs_from_func(f, kwargs: List[str]):
+def remove_kwargs_from_func(f, kwargs: list[str]):
     deps = extract_dependency_including_self(f)
     to_remove = set(kwargs)
     new_kwargs = deps - to_remove
@@ -33,7 +38,7 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
         # for self, you must check whether f is method or not
         if inspect.ismethod(f):
             deleted = deleted - {"self"}
-        d_kwargs = {k: None for k in deleted}
+        d_kwargs = dict.fromkeys(deleted)
         return f(**called_kwargs, **d_kwargs)
 
     return create_function(sig, impl)
@@ -41,7 +46,7 @@ def remove_kwargs_from_func(f, kwargs: List[str]):
 
 @dataclass
 class MergedDesign(Design):
-    srcs: List[Design]
+    srcs: list[Design]
 
     @property
     def children(self):
@@ -54,14 +59,15 @@ class MergedDesign(Design):
         for src in reversed(self.srcs):  # the last one takes precedence
             if item in src:
                 res = src[item]
-                assert isinstance(res, IBind), f"item must be IBind, but got {type(res)}=={res}"
+                assert isinstance(res, IBind), (
+                    f"item must be IBind, but got {type(res)}=={res}"
+                )
                 return res
         raise KeyError(f"{item} not found in any of the sources")
 
     @property
-    def bindings(self) -> Dict[IBindKey, IBind]:
+    def bindings(self) -> dict[IBindKey, IBind]:
         return merge(*[src.bindings for src in self.srcs])
-
 
     def __repr__(self):
         return f"MergedDesign(srcs={len(self.srcs)})"
@@ -89,7 +95,7 @@ class MetaDataDesign(Design):
         raise KeyError(f"no such key {item}")
 
     @property
-    def bindings(self) -> Dict[IBindKey, IBind]:
+    def bindings(self) -> dict[IBindKey, IBind]:
         return dict()
 
     @property
@@ -104,8 +110,7 @@ class AddSummary(MetaDataDesign):
 
 @dataclass
 class AddTags(MetaDataDesign):
-    tags: List[str]
-
+    tags: list[str]
 
 
 @dataclass
@@ -190,14 +195,14 @@ class DesignImpl(Design):
     a robust foundation for building complex, modular applications with dependency injection.
     """
 
-    _bindings: Dict[IBindKey, IBind] = field(default_factory=dict)
+    _bindings: dict[IBindKey, IBind] = field(default_factory=dict)
 
     @property
     def children(self):
         return []
 
     @property
-    def bindings(self) -> Dict[IBindKey, IBind]:
+    def bindings(self) -> dict[IBindKey, IBind]:
         return self._bindings
 
     def __getstate__(self):
@@ -210,7 +215,7 @@ class DesignImpl(Design):
         for k, v in state.items():
             setattr(self, k, v)
 
-    def bind_instance(self, **kwargs, ):
+    def bind_instance(self, **kwargs):
         """
         Here, I need to find the CodeLocation for each binding.
         :param kwargs:
@@ -221,13 +226,17 @@ class DesignImpl(Design):
         for k, v in kwargs.items():
             if isinstance(v, type):
                 from pinjected.pinjected_logging import logger
-                logger.warning(f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?")
+
+                logger.warning(
+                    f"{k} is bound to class {v} with 'bind_instance' do you mean 'bind_class'?"
+                )
             bindings[StrBindKey(k)] = BindInjected(Injected.pure(v))
         return DesignImpl(_bindings=bindings)
 
     @staticmethod
     def to_bind(tgt) -> IBind:
         from pinjected.pinjected_logging import logger
+
         match tgt:
             case IBind():
                 return tgt
@@ -240,14 +249,16 @@ class DesignImpl(Design):
             case Injected():
                 return BindInjected(tgt)
             case non_func if not callable(non_func):
-                logger.warning(f"{tgt}: non-callable or non-injected is passed to bind_provider. fixing automatically.")
+                logger.warning(
+                    f"{tgt}: non-callable or non-injected is passed to bind_provider. fixing automatically."
+                )
                 return BindInjected(Injected.pure(non_func))
             case func if callable(func):
                 return BindInjected(Injected.bind(func))
             case _:
                 raise ValueError(f"cannot bind {tgt}")
 
-    def bind_provider(self, **kwargs: Union[Callable, Injected]):
+    def bind_provider(self, **kwargs: Callable | Injected):
         bindings = self.bindings.copy()
         for k, v in kwargs.items():
             bindings[StrBindKey(k)] = self.to_bind(v)
@@ -258,24 +269,19 @@ class DesignImpl(Design):
         for k, meta in kwargs.items():
             key = StrBindKey(k)
             bind: IBind = self.bindings[key]
-            res += DesignImpl(
-                _bindings={key: bind.update_metadata(meta)}
-            )
+            res += DesignImpl(_bindings={key: bind.update_metadata(meta)})
         return res
 
-    def to_resolver(self, callback: Optional[IResolverCallback] = None):
-        from pinjected.v2.resolver import BaseResolverCallback
+    def to_resolver(self, callback: IResolverCallback | None = None):
         from pinjected.v2.async_resolver import AsyncResolver
+
         bindings = {**IMPLICIT_BINDINGS, **self.bindings}
         if callback is None:
             callbacks = []
         else:
             assert isinstance(callback, IResolverCallback)
             callbacks = [callback]
-        return AsyncResolver(
-            DesignImpl(_bindings=bindings),
-            callbacks=callbacks
-        )
+        return AsyncResolver(DesignImpl(_bindings=bindings), callbacks=callbacks)
 
     def to_graph(self):
         return self.to_resolver().to_blocking()
@@ -283,7 +289,7 @@ class DesignImpl(Design):
     def run(self, f):
         return self.to_graph().run(f)
 
-    def provide(self, target: Union[str, Type[T]]) -> T:
+    def provide(self, target: str | type[T]) -> T:
         """
         :param target: provided name
         :param modules: modules to use for graph construction
@@ -312,9 +318,7 @@ class DesignImpl(Design):
         if key in self.bindings:
             copied = self.bindings.copy()
             del copied[key]
-            return replace(self,
-                           _bindings=copied
-                           )
+            return replace(self, _bindings=copied)
         return self
 
     def __contains__(self, item: IBindKey):
@@ -323,7 +327,9 @@ class DesignImpl(Design):
     def __getitem__(self, item: IBindKey | str):
         if isinstance(item, str):
             item = StrBindKey(item)
-        assert isinstance(item, IBindKey), f"item must be IBindKey, but got {type(item)}=={item}"
+        assert isinstance(item, IBindKey), (
+            f"item must be IBindKey, but got {type(item)}=={item}"
+        )
         return self.bindings[item]
 
     def __str__(self):
@@ -334,6 +340,7 @@ class DesignImpl(Design):
 
     def table_str(self):
         import tabulate
+
         binds = tabulate.tabulate(sorted(list(self.bindings.items())))
         return binds
 
@@ -359,9 +366,12 @@ class DesignImpl(Design):
             try:
                 method.__name__ = name
                 return method
-            except AttributeError as ae:
+            except AttributeError:
                 from pinjected.pinjected_logging import logger
-                logger.warning(f"somehow failed to assign new name to a provider function. trying to wrap.")
+
+                logger.warning(
+                    f"somehow failed to assign new name to a provider function. trying to wrap."
+                )
 
                 def _wrapper(self, *args, **kwargs):
                     return method(*args, **kwargs)

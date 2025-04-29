@@ -1,6 +1,6 @@
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Set, Optional
 
 from pinjected import Injected
 from pinjected.di.args_modifier import ArgsModifier
@@ -8,11 +8,8 @@ from pinjected.di.proxiable import DelegatedVar
 
 
 def get_final_args_kwargs(
-        modified_sig,
-        original_sig,
-        __injected__: dict,
-        *args,
-        **kwargs):
+    modified_sig, original_sig, __injected__: dict, *args, **kwargs
+):
     """
     the target cannot be VAR_POSITIONAL or VAR_KEYWORD, i.e. *args, **kwargs
 
@@ -27,10 +24,10 @@ def get_final_args_kwargs(
     new_kwargs = {}
 
     def add_by_type(param, value):
-        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
-            # logger.info(f"add {param.name} as args")
-            new_args.append(value)
-        elif param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
+        if (
+            param.kind == inspect.Parameter.POSITIONAL_ONLY
+            or param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+        ):
             # logger.info(f"add {param.name} as args")
             new_args.append(value)
         elif param.kind == inspect.Parameter.KEYWORD_ONLY:
@@ -50,10 +47,16 @@ def get_final_args_kwargs(
             # logger.info(f"add {param.name} from default")
             add_by_type(param, param.default)
 
-    bound_vargs = [varg for varg in modified_sig.parameters.values() if
-                   varg.kind == inspect.Parameter.VAR_POSITIONAL]
-    bound_kwargs = [varg for varg in modified_sig.parameters.values() if
-                    varg.kind == inspect.Parameter.VAR_KEYWORD]
+    bound_vargs = [
+        varg
+        for varg in modified_sig.parameters.values()
+        if varg.kind == inspect.Parameter.VAR_POSITIONAL
+    ]
+    bound_kwargs = [
+        varg
+        for varg in modified_sig.parameters.values()
+        if varg.kind == inspect.Parameter.VAR_KEYWORD
+    ]
 
     if bound_vargs:
         # from pinjected.logging import logger
@@ -80,6 +83,7 @@ class PartiallyInjectedFunction:
         pass
     assert type(d.provide(func)) == PartiallyInjectedFunction
     """
+
     injected_params: dict
     name: str
     src_function: Callable
@@ -92,23 +96,19 @@ class PartiallyInjectedFunction:
 
     def __call__(self, *args, **kwargs):
         args, kwargs = get_final_args_kwargs(
-            self.final_sig,
-            self.func_sig,
-            self.injected_params,
-            *args,
-            **kwargs
+            self.final_sig, self.func_sig, self.injected_params, *args, **kwargs
         )
         res = self.src_function(*args, **kwargs)
         return res
 
 
 class Partial(Injected):
-
-    def __init__(self,
-                 src_function: Callable,
-                 injection_targets: dict[str, Injected],
-                 modifier: Optional[ArgsModifier] = None
-                 ):
+    def __init__(
+        self,
+        src_function: Callable,
+        injection_targets: dict[str, Injected],
+        modifier: ArgsModifier | None = None,
+    ):
         self.src_function = src_function
         self.injection_targets = injection_targets
         self.func_sig = inspect.signature(self.src_function)
@@ -126,11 +126,7 @@ class Partial(Injected):
 
     def final_args_kwargs(self, __injected__: dict, *args, **kwargs):
         return get_final_args_kwargs(
-            self.modified_sig,
-            self.func_sig,
-            __injected__,
-            *args,
-            **kwargs
+            self.modified_sig, self.func_sig, __injected__, *args, **kwargs
         )
 
     def call_with_injected(self, __injected__: dict, *args, **kwargs):
@@ -154,17 +150,17 @@ class Partial(Injected):
             name=self.src_function.__name__,
             src_function=self.src_function,
             final_sig=self.modified_sig,
-            func_sig=self.func_sig
+            func_sig=self.func_sig,
         )
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.injections.dependencies()
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.injections.dynamic_dependencies()
 
     def __repr_expr__(self):
-        #return f"{self.src_function.__name__}<{self.injections.__repr_expr__()}>"
+        # return f"{self.src_function.__name__}<{self.injections.__repr_expr__()}>"
         return f"{self.src_function.__name__}"
 
     def __call__(self, *args, **kwargs):
@@ -173,7 +169,9 @@ class Partial(Injected):
             causes: list[Injected]
             dyn_deps = set()
             for c in causes:
-                assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
+                assert isinstance(c, (Injected, DelegatedVar)), (
+                    f"causes:{causes} is not an Injected, but {type(c)}"
+                )
                 if isinstance(c, DelegatedVar):
                     c = c.eval()
                 dyn = c.dynamic_dependencies()

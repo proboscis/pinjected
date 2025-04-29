@@ -1,17 +1,17 @@
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Callable, Awaitable, Optional
 from uuid import uuid4
 
-from pinjected import *
 import cloudpickle
+
 import wandb
+from pinjected import *
 
 
 @injected
 async def cloudpickle_writer(data, path):
     path.write_bytes(cloudpickle.dumps(data))
     return path
-
 
 
 @injected
@@ -25,19 +25,19 @@ Writer = Callable[[object, Path], Awaitable]
 
 @injected
 async def wandb_artifact(
-        logger,
-        wandb: wandb,
-        __resolver__: AsyncResolver,
-        cloudpickle_writer: Writer,
-        cloudpickle_reader: Reader,
-        /,
-        tgt: Injected,
-        identifier: str,
-        type: str,
-        writer: Optional[Writer] = None,
-        reader: Optional[Reader] = None,
-        description: Optional[str] = None,
-        metadata: Optional[dict] = None
+    logger,
+    wandb: wandb,
+    __resolver__: AsyncResolver,
+    cloudpickle_writer: Writer,
+    cloudpickle_reader: Reader,
+    /,
+    tgt: Injected,
+    identifier: str,
+    type: str,
+    writer: Writer | None = None,
+    reader: Reader | None = None,
+    description: str | None = None,
+    metadata: dict | None = None,
 ):
     entity, project, name = identifier.split("/")
     if metadata is None:
@@ -65,19 +65,20 @@ async def wandb_artifact(
         # Artifact doesn't exist, we'll create a new one
         logger.warning(f"Artifact {identifier} not found, creating a new one.")
 
-    assert wandb.run.entity == entity, f"entity mismatch: {wandb.run.entity} != {entity}"
-    assert wandb.run.project == project, f"project mismatch: {wandb.run.project} != {project}"
+    assert wandb.run.entity == entity, (
+        f"entity mismatch: {wandb.run.entity} != {entity}"
+    )
+    assert wandb.run.project == project, (
+        f"project mismatch: {wandb.run.project} != {project}"
+    )
 
     art = wandb.Artifact(
-        name=name,
-        type=type,
-        description=description,
-        metadata=metadata
+        name=name, type=type, description=description, metadata=metadata
     )
     # else, log artifact
     data = await __resolver__[tgt]
     random_path = uuid4().hex[:8]
-    write_dst = Path(wandb.run.path) / 'artifacts' / random_path / "data"
+    write_dst = Path(wandb.run.path) / "artifacts" / random_path / "data"
     write_dst.parent.mkdir(exist_ok=True, parents=True)
     await writer(data, write_dst)
     art.add_file(str(write_dst))

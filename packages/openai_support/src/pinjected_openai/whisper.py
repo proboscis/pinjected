@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pydub
 from beartype import beartype
-from injected_utils.injected_cache_utils import sqlite_cache, async_cached
 from openai import AsyncOpenAI
 from openai.types.audio import Transcription
-from pinjected import *
 from tqdm import tqdm
+
+from pinjected import *
 
 
 def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
@@ -29,13 +29,14 @@ def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
     RuntimeError: If there's an error during the conversion process.
     """
     import moviepy.editor as mp
+
     input_path = Path(input_file)
 
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
     if output_file is None:
-        output_file = input_path.with_suffix('.mp3')
+        output_file = input_path.with_suffix(".mp3")
     else:
         output_file = Path(output_file)
 
@@ -48,10 +49,12 @@ def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
             try:
                 clip = mp.AudioFileClip(str(input_path))
             except Exception as audio_error:
-                raise RuntimeError(f"Failed to load file as video ({str(video_error)}) or audio ({str(audio_error)})")
+                raise RuntimeError(
+                    f"Failed to load file as video ({video_error!s}) or audio ({audio_error!s})"
+                )
 
         # Extract audio (or use the audio directly if it's an audio file)
-        audio = clip.audio if hasattr(clip, 'audio') else clip
+        audio = clip.audio if hasattr(clip, "audio") else clip
 
         # Write audio to file
         audio.write_audiofile(str(output_file))
@@ -63,12 +66,14 @@ def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
 
         return str(output_file)
     except Exception as e:
-        raise RuntimeError(f"Error converting {input_file} to MP3: {str(e)}")
+        raise RuntimeError(f"Error converting {input_file} to MP3: {e!s}")
 
 
 @injected
 @beartype
-async def a_transcribe_bytes(async_openai_client: AsyncOpenAI,logger, /, sound_bytes: BytesIO) -> str:
+async def a_transcribe_bytes(
+    async_openai_client: AsyncOpenAI, logger, /, sound_bytes: BytesIO
+) -> str:
     response: Transcription = await async_openai_client.audio.transcriptions.create(
         model="whisper-1",
         file=sound_bytes,
@@ -78,19 +83,22 @@ async def a_transcribe_bytes(async_openai_client: AsyncOpenAI,logger, /, sound_b
 
 @injected
 async def a_transcribe_audio_segment(
-        a_transcribe_bytes,
-        a_split_segment_to_chunks,
-        logger,
-        /,
-        segment: pydub.AudioSegment,
-        bitrate="96k"
+    a_transcribe_bytes,
+    a_split_segment_to_chunks,
+    logger,
+    /,
+    segment: pydub.AudioSegment,
+    bitrate="96k",
 ) -> str:
     transcription = ""
     bar = tqdm(desc="Transcribing chunks")
     i = 0
     from pinjected.compatibility.task_group import TaskGroup
+
     async def task(i, buffer):
-        logger.info(f"Transcribing chunk of size {len(byte_segment.read()) / 1024 / 1024:.2f} MB")
+        logger.info(
+            f"Transcribing chunk of size {len(byte_segment.read()) / 1024 / 1024:.2f} MB"
+        )
         text = await a_transcribe_bytes(sound_bytes=buffer)
         logger.info(f"Transcribed chunk {i}: {text}")
         bar.update(1)
@@ -109,15 +117,17 @@ async def a_transcribe_audio_segment(
 
 @injected
 async def a_split_segment_to_chunks(
-        logger, /,
-        segment: pydub.AudioSegment,
-        chunk_size_mb: float = 5,
-        bitrate="96k",
+    logger,
+    /,
+    segment: pydub.AudioSegment,
+    chunk_size_mb: float = 5,
+    bitrate="96k",
 ):
     """
     recursively try to split the segment into chunks of size chunk_size_mb
     """
     from io import BytesIO
+
     def export(segment):
         out_bytes = BytesIO()
         out_bytes.name = "exported.mp3"
@@ -129,13 +139,19 @@ async def a_split_segment_to_chunks(
 
     async def impl(segment):
         assert isinstance(segment, pydub.AudioSegment)
-        exported, size_mb = await asyncio.get_running_loop().run_in_executor(None,export,segment)
+        exported, size_mb = await asyncio.get_running_loop().run_in_executor(
+            None, export, segment
+        )
         if size_mb <= chunk_size_mb:
             sec = len(segment) / 1000
-            logger.info(f"Exported chunk of size {size_mb:.2f} MB, duration {sec:.2f} sec")
+            logger.info(
+                f"Exported chunk of size {size_mb:.2f} MB, duration {sec:.2f} sec"
+            )
             yield exported
         else:
-            logger.info(f"Splitting chunk of size {size_mb:.2f} MB, duration {len(segment) / 1000:.2f} sec")
+            logger.info(
+                f"Splitting chunk of size {size_mb:.2f} MB, duration {len(segment) / 1000:.2f} sec"
+            )
             half = len(segment) // 2
             async for item in impl(segment[:half]):
                 yield item
@@ -151,11 +167,12 @@ async def a_split_segment_to_chunks(
 # )
 @injected
 async def a_transcribe_mp3_file(
-        a_transcribe_audio_segment,
-        /,
-        file: Path,
-        start_sec: float = None,
-        end_sec: float = None) -> str:
+    a_transcribe_audio_segment,
+    /,
+    file: Path,
+    start_sec: float = None,
+    end_sec: float = None,
+) -> str:
     segment = await get_audio_segment(file)
 
     if start_sec is None:
@@ -197,5 +214,5 @@ async def __save_text(text: str, path: Path):
 
 cmd_save_transcribe = __save_text(
     a_transcribe_mp3_file(injected("input_file")),
-    injected("input_file").eval().map(Path).proxy.with_suffix(".txt")
+    injected("input_file").eval().map(Path).proxy.with_suffix(".txt"),
 )

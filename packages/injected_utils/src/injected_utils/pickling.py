@@ -4,13 +4,15 @@ import os
 import threading
 from abc import ABC
 from asyncio import Event
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar, Callable, Awaitable, Optional
+from typing import Generic, TypeVar
 
 import cloudpickle
 from filelock import FileLock
 from loguru import logger
+
 from pinjected import Injected
 from pinjected.compatibility.task_group import TaskGroup
 
@@ -42,9 +44,9 @@ class AsyncFileLock:
         logger.success(f"acquired async lock before {self.path}")
 
         def acquire_task():
-            logger.info(f'acquiring file lock at {self.path}')
+            logger.info(f"acquiring file lock at {self.path}")
             self.lock.acquire()
-            logger.success(f'acquired file lock at {self.path}')
+            logger.success(f"acquired file lock at {self.path}")
 
         await asyncio.get_event_loop().run_in_executor(None, acquire_task)
 
@@ -53,7 +55,7 @@ class AsyncFileLock:
         self.alock.release()
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class AsyncSerializationBackend(ABC):
@@ -72,16 +74,18 @@ class ASBCloudpickle(AsyncSerializationBackend):
         return await asyncio.get_event_loop().run_in_executor(None, cloudpickle.load, f)
 
     async def dump(self, f, data):
-        return await asyncio.get_event_loop().run_in_executor(None, cloudpickle.dump, data, f)
+        return await asyncio.get_event_loop().run_in_executor(
+            None, cloudpickle.dump, data, f
+        )
 
 
 class AsyncPickled(Generic[T]):
     def __init__(
-            self,
-            path,
-            proc: Callable[[], Awaitable[T]],
-            backend: AsyncSerializationBackend = None,
-            timeout_sec:Optional[float] = 10
+        self,
+        path,
+        proc: Callable[[], Awaitable[T]],
+        backend: AsyncSerializationBackend = None,
+        timeout_sec: float | None = 10,
     ):
         if backend is None:
             backend = ASBCloudpickle()
@@ -98,7 +102,7 @@ class AsyncPickled(Generic[T]):
         state = dict(
             path=self.path,
             proc=self.proc,  # I think this is preventing pickling.. but it is a must to pickle this.
-            backend=self.backend
+            backend=self.backend,
         )
         # at this point self.proc requires recursive pickling
         return state
@@ -109,40 +113,48 @@ class AsyncPickled(Generic[T]):
         self.path = state["path"]
         self.proc = state["proc"]
         self.lock = AsyncFileLock(self.path + ".lock")
-        self.backend = state['backend']
+        self.backend = state["backend"]
 
     @property
     async def value(self):
         from loguru import logger
+
         # logger.debug(f"cache value access from {callee}")
-        logger.debug(f"{threading.current_thread().name}:trying to aqquire lock:{self.lock.path}")
+        logger.debug(
+            f"{threading.current_thread().name}:trying to aqquire lock:{self.lock.path}"
+        )
         async with TaskGroup() as tg:
             acquired = Event()
 
             async def timeout_check():
                 logger.info(f"waiting for cache lock for {self.timeout_sec} seconds...")
                 await asyncio.wait_for(acquired.wait(), self.timeout_sec)
-                logger.success(f"cache lock acquired!")
+                logger.success("cache lock acquired!")
                 # hmm, it doesn't rais exception???
 
             tg.create_task(timeout_check())
 
             async def write_task():
-
                 async with self.lock:
                     from loguru import logger
+
                     acquired.set()
                     if not self.loaded:
-                        logger.debug(f"{threading.current_thread().name}:aqquired lock:{self.lock.path}")
+                        logger.debug(
+                            f"{threading.current_thread().name}:aqquired lock:{self.lock.path}"
+                        )
                         try:
-                            with open(self.path, 'rb') as f:
+                            with open(self.path, "rb") as f:
                                 data = await self.backend.load(f)
                                 self._value = data
                         except Exception as e:
                             from loguru import logger
-                            logger.warning(f"failed to load cache at {self.path} due to {e}")
+
+                            logger.warning(
+                                f"failed to load cache at {self.path} due to {e}"
+                            )
                             data = await self.proc()
-                            with open(self.path, 'wb') as f:
+                            with open(self.path, "wb") as f:
                                 await self.backend.dump(f, data)
                                 self._value = data
                         self.loaded = True
@@ -153,12 +165,15 @@ class AsyncPickled(Generic[T]):
 
     async def clear(self):
         from loguru import logger
+
         async with self.lock:
             try:
-                await asyncio.get_event_loop().run_in_executor(None, os.remove, self.path)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, os.remove, self.path
+                )
                 self.loaded = False
                 logger.info(f"deleted pickled file at {self.path}")
-            except FileNotFoundError as e:
+            except FileNotFoundError:
                 self.loaded = False
                 logger.warning(f"no cache found at {self.path}")
 
@@ -172,4 +187,8 @@ def pickled(cache_path, injected: Injected):
 
         return await AsyncPickled(cache_path, __impl).value
 
-    return Injected.bind(_impl).add_dynamic_dependencies(*injected.complete_dependencies).proxy
+    return (
+        Injected.bind(_impl)
+        .add_dynamic_dependencies(*injected.complete_dependencies)
+        .proxy
+    )

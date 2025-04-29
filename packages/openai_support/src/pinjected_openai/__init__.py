@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import loguru
-from pinjected import *
-import pinjected
-
 from pinjected_openai.clients import async_openai_client, openai_api_key
+
+import pinjected
+from pinjected import *
 
 __version__ = "0.4.24"
 

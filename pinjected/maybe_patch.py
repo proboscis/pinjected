@@ -1,6 +1,6 @@
 from expression import Nothing
 from returns import maybe as raybe
-from returns.maybe import Some, Maybe
+from returns.maybe import Maybe, Some
 
 
 def patch_maybe():

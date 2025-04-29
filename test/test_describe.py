@@ -1,18 +1,14 @@
-import json
+from contextlib import redirect_stdout
+from io import StringIO
 
 import loguru
 import pytest
-from io import StringIO
-import sys
-from contextlib import redirect_stdout
+from returns.maybe import Some
 
-from pinjected import design, Injected, injected, DesignSpec, SimpleBindSpec
+from pinjected import DesignSpec, SimpleBindSpec, design, injected
 from pinjected.schema.handlers import PinjectedHandleMainResult
 from pinjected.test.injected_pytest import injected_pytest
 from pinjected.visualize_di import DIGraph
-from pinjected.main_impl import describe
-from pinjected.v2.keys import StrBindKey
-from returns.maybe import Nothing, Some
 
 
 @injected
@@ -39,28 +35,20 @@ def main_target(dep1, dep2, /):
     return f"main_with_{dep1()}_and_{dep2()}"
 
 
-test_design = design(
-    dep1=dep1,
-    dep2=dep2,
-    dep3=dep3,
-    main_target=main_target
-)
+test_design = design(dep1=dep1, dep2=dep2, dep3=dep3, main_target=main_target)
 
 test_design_spec = DesignSpec.new(
     dep1=SimpleBindSpec(documentation="Dependency 1 with detailed documentation"),
     dep2=SimpleBindSpec(documentation="Dependency 2 with detailed documentation"),
     dep3=SimpleBindSpec(documentation="Dependency 3 with detailed documentation"),
-    main_target=SimpleBindSpec(documentation="Main target with detailed documentation")
+    main_target=SimpleBindSpec(documentation="Main target with detailed documentation"),
 )
 
 
 @injected_pytest
 def test_describe_command_output():
     """Test that the describe command correctly visualizes dependencies with documentation."""
-    digraph = DIGraph(
-        test_design,
-        spec=Some(test_design_spec)
-    )
+    digraph = DIGraph(test_design, spec=Some(test_design_spec))
 
     root_name = "main_target"
     edges = digraph.to_edges(root_name, ["dep1", "dep2"])
@@ -88,13 +76,10 @@ async def test_describe_command_with_docs():
         dep2=dep2,
         dep3=dep3,
         main_target=main_target,
-        __design_spec__=test_design_spec
+        __design_spec__=test_design_spec,
     )
 
-    digraph = DIGraph(
-        test_design_with_docs,
-        spec=Some(test_design_spec)
-    )
+    digraph = DIGraph(test_design_with_docs, spec=Some(test_design_spec))
 
     root_name = "main_target"
     edges = digraph.to_edges(root_name, ["dep1", "dep2"])
@@ -129,7 +114,7 @@ def test_describe_command_with_invalid_path():
     with pytest.raises(ValueError) as excinfo:
         describe(var_path="module_with_no_dots")
 
-    assert "Empty module name" == str(excinfo.value)
+    assert str(excinfo.value) == "Empty module name"
 
     with pytest.raises(ImportError) as excinfo:
         describe(var_path="non.existent.module.path")
@@ -137,24 +122,25 @@ def test_describe_command_with_invalid_path():
     assert "Could not import module" in str(excinfo.value)
     assert "Please ensure the module exists" in str(excinfo.value)
 
-    from unittest.mock import patch, MagicMock
     from io import StringIO
-    import sys
+    from unittest.mock import patch
 
-    with patch('pinjected.helpers.find_default_design_paths', return_value=[]):
-        with patch('sys.stdout', new=StringIO()) as fake_out:
+    with patch("pinjected.helpers.find_default_design_paths", return_value=[]):
+        with patch("sys.stdout", new=StringIO()) as fake_out:
             describe(var_path="pinjected.test_package.child.module1.test_runnable")
 
             output = fake_out.getvalue()
             assert "Dependency Graph Description" in output
 
+
 @injected
 async def _a_handle_main(result):
     return result
 
+
 __design__ = design(
     **{
-        PinjectedHandleMainResult.key.name:_a_handle_main,
+        PinjectedHandleMainResult.key.name: _a_handle_main,
     },
-    logger=loguru.logger
+    logger=loguru.logger,
 )
