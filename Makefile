@@ -3,7 +3,7 @@
 
 setup-pre-commit:
 	@echo "Setting up pre-commit hooks..."
-	@pre-commit install
+	@uv run pre-commit install
 	@echo "✓ Pre-commit hooks installed"
 
 sync:
