@@ -165,6 +165,9 @@ lint.ignore = [
     "G004", # fstring in logger
     "D", # all doc?
     "Q000", # prefer double quotes?
+    "TRY400",
+    "TRY300",
+    "TRY301"
 ]
 
 
