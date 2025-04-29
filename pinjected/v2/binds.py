@@ -8,14 +8,14 @@ from typing import Any, Generic, TypeVar
 
 from returns.maybe import Maybe, Nothing, Some
 
-from pinjected import Injected
 from pinjected.di.app_injected import EvaledInjected
+from pinjected.di.injected import Injected
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.v2.keys import IBindKey, StrBindKey
 from pinjected.v2.provide_context import ProvideContext
 
-T = TypeVar('T')
-U = TypeVar('U')
+T = TypeVar("T")
+U = TypeVar("U")
 
 
 class IBind(Generic[T], ABC):
@@ -42,11 +42,13 @@ class IBind(Generic[T], ABC):
         return self.dependencies | self.dynamic_dependencies
 
     def amap(self, async_func):
-        assert inspect.iscoroutinefunction(async_func), f"async_func must be a coroutine function, got {async_func}"
+        assert inspect.iscoroutinefunction(async_func), (
+            f"async_func must be a coroutine function, got {async_func}"
+        )
         return MappedBind(self, async_func)
 
     @staticmethod
-    def zip(*targets: 'IBind'):
+    def zip(*targets: "IBind"):
         deps = {d for t in targets for d in t.dependencies}
 
         async def impl(cxt, deps: dict):
@@ -58,7 +60,9 @@ class IBind(Generic[T], ABC):
         return JustBind(impl, deps)
 
     def map(self, func):
-        assert not inspect.iscoroutinefunction(func), f"func must not be a coroutine function, got {func}"
+        assert not inspect.iscoroutinefunction(func), (
+            f"func must not be a coroutine function, got {func}"
+        )
 
         async def async_func(data):
             return func(data)
@@ -66,14 +70,14 @@ class IBind(Generic[T], ABC):
         return self.amap(async_func)
 
     @staticmethod
-    def dict(**targets: 'IBind'):
+    def dict(**targets: "IBind"):
         async def mapper(data):  # data is a tuple of results
             return {k: v for k, v in zip(targets.keys(), data, strict=False)}
 
         return IBind.zip(*targets).amap(mapper)
 
     @staticmethod
-    def list(*targets: 'IBind'):
+    def list(*targets: "IBind"):
         async def mapper(data):
             return list(data)
 
@@ -107,6 +111,7 @@ class StrBind(IBind[T]):
     """
     most basic binding that uses strings as keys.
     """
+
     impl: Callable[[...], Awaitable[T]]
     deps: set[str]
 
@@ -122,21 +127,23 @@ class StrBind(IBind[T]):
         return {StrBindKey(d) for d in self.deps}
 
     @classmethod
-    def pure(cls, value: T) -> 'StrBind[T]':
+    def pure(cls, value: T) -> "StrBind[T]":
         async def impl():
             return value
 
         return cls(impl, set())
 
     @classmethod
-    def async_bind(cls, func: Callable[..., Awaitable[T]]) -> 'StrBind[T]':
+    def async_bind(cls, func: Callable[..., Awaitable[T]]) -> "StrBind[T]":
         # assert inspect.iscoroutinefunction(func), f"func must be a coroutine function, got {func}"
         deps = inspect.signature(func).parameters.keys()
         return cls(func, set(deps))
 
     @classmethod
-    def func_bind(cls, func: Callable[..., T]) -> 'StrBind[T]':
-        assert not inspect.iscoroutinefunction(func), f"func must be ordinal function, got {func}"
+    def func_bind(cls, func: Callable[..., T]) -> "StrBind[T]":
+        assert not inspect.iscoroutinefunction(func), (
+            f"func must be ordinal function, got {func}"
+        )
 
         async def impl(**kwargs):
             return func(**kwargs)
@@ -145,7 +152,7 @@ class StrBind(IBind[T]):
         return cls(impl, set(deps))
 
     @classmethod
-    def bind(cls, func: Callable[..., T]) -> 'StrBind[T]':
+    def bind(cls, func: Callable[..., T]) -> "StrBind[T]":
         if inspect.iscoroutinefunction(func):
             return cls.async_bind(func)
         return cls.func_bind(func)
@@ -157,16 +164,20 @@ class BindInjected(IBind[T]):
     _metadata: Maybe[BindMetadata] = field(default=Nothing)
 
     def __post_init__(self):
-        assert isinstance(self.src, Injected), f"src must be an Injected, got {self.src}"
+        assert isinstance(self.src, Injected), (
+            f"src must be an Injected, got {self.src}"
+        )
 
     async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         from pinjected.pinjected_logging import logger
+
         keys = {StrBindKey(d) for d in self.src.dependencies()}
         dep_dict = {d.name: deps[d] for d in keys}
         func = self.src.get_provider()
         logger.trace(f"provider:{func}")
-        assert inspect.iscoroutinefunction(
-            func), f"provider of an Injected({self.src}) must be a coroutine function, got {func}"
+        assert inspect.iscoroutinefunction(func), (
+            f"provider of an Injected({self.src}) must be a coroutine function, got {func}"
+        )
         data = await func(**dep_dict)
         # assert not inspect.isawaitable(data), f"provider of an Injected({self.src}) must return a non-awaitable, got {data}"
         return data
@@ -208,7 +219,9 @@ class ExprBind(IBind):
         return replace(self, _metadata=Some(metadata))
 
     def __post_init__(self):
-        assert isinstance(self.src, EvaledInjected), f"src must be an Expr, got {self.src}"
+        assert isinstance(self.src, EvaledInjected), (
+            f"src must be an Expr, got {self.src}"
+        )
 
     async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         return await cxt.resolver._provide_providable(self.src)
@@ -226,5 +239,3 @@ class MappedBind(IBind[U]):
     @property
     def dependencies(self) -> set[IBindKey]:
         return self.src.dependencies
-
-

@@ -2,7 +2,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
-from pinjected import Injected
 from pinjected.di.applicative import Applicative
 from pinjected.di.expr_util import (
     Attr,
@@ -14,15 +13,19 @@ from pinjected.di.expr_util import (
     UnaryOp,
     show_expr,
 )
-from pinjected.di.injected import InjectedByName, InjectedFromFunction, InjectedPure
+from pinjected.di.injected import (
+    Injected,
+    InjectedByName,
+    InjectedFromFunction,
+    InjectedPure,
+)
 from pinjected.di.proxiable import DelegatedVar, T
 from pinjected.di.static_proxy import AstProxyContextImpl, ast_proxy, eval_applicative
 
-U = TypeVar('U')
+U = TypeVar("U")
 
 
 class ApplicativeInjectedImpl(Applicative[Injected]):
-
     def map(self, target: Injected, f) -> T:
         return target.map(f)
 
@@ -47,11 +50,11 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
 
     def unary(self, op: str, tgt: T):
         async def unary_op(x):
-            if op == '-':
+            if op == "-":
                 return -x
-            if op == '~':
+            if op == "~":
                 return ~x
-            if op == 'len':
+            if op == "len":
                 return len(x)
             raise NotImplementedError(f"unary op {op} not implemented")
 
@@ -59,29 +62,29 @@ class ApplicativeInjectedImpl(Applicative[Injected]):
 
     def biop(self, op: str, tgt: T, other):
         async def bi_op(x, y):
-            if op == '+':
+            if op == "+":
                 return x + y
-            if op == '-':
+            if op == "-":
                 return x - y
-            if op == '*':
+            if op == "*":
                 return x * y
-            if op == '/':
+            if op == "/":
                 return x / y
-            if op == '%':
+            if op == "%":
                 return x % y
-            if op == '**':
-                return x ** y
-            if op == '<<':
+            if op == "**":
+                return x**y
+            if op == "<<":
                 return x << y
-            if op == '>>':
+            if op == ">>":
                 return x >> y
-            if op == '&':
+            if op == "&":
                 return x & y
-            if op == '^':
+            if op == "^":
                 return x ^ y
-            if op == '|':
+            if op == "|":
                 return x | y
-            if op == '//':
+            if op == "//":
                 return x // y
             raise NotImplementedError(f"bi op {op} not implemented")
 
@@ -105,7 +108,7 @@ class EvaledInjected(Injected[T]):
         return self.value.get_provider()
 
     def __str__(self):
-        #return f"EvaledInjected(value={self.value},ast={show_expr(self.ast, reduce_injected_expr)})"
+        # return f"EvaledInjected(value={self.value},ast={show_expr(self.ast, reduce_injected_expr)})"
         return f"Eval({show_expr(self.ast)})"
 
     def __repr__(self):
@@ -122,7 +125,6 @@ class EvaledInjected(Injected[T]):
 
     def __repr_expr__(self):
         return show_expr(self.ast)
-
 
 
 def reduce_injected_expr(expr: Expr):
@@ -164,6 +166,7 @@ def reduce_injected_expr(expr: Expr):
 #         return isinstance(item, Injected)
 #
 
+
 def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
     expr = await_awaitables(expr)
     return EvaledInjected(eval_applicative(expr, ApplicativeInjected), expr)
@@ -184,7 +187,7 @@ def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
                     Call(
                         impl(f),
                         tuple([impl(a) for a in args]),
-                        {k: impl(v) for k, v in kwargs.items()}
+                        {k: impl(v) for k, v in kwargs.items()},
                     )
                 )
             case BiOp(op, left, right):
@@ -208,17 +211,15 @@ def await_awaitables(expr: Expr[T]) -> Expr:
     def transformer(expr: Expr):
         match expr:
             case Object(object(__is_awaitable__=True)):
-                return UnaryOp('await', expr)
+                return UnaryOp("await", expr)
             case Call(Object(object(__is_async_function__=True)), args, kwargs) as call:
-                return UnaryOp('await', call)
+                return UnaryOp("await", call)
             case Call(object(__is_async_function__=True), args, kwargs) as call:
-                return UnaryOp('await', call)
+                return UnaryOp("await", call)
             case _:
                 return expr
 
     return walk_replace(expr, transformer)
-
-
 
 
 def injected_proxy(injected: Injected) -> DelegatedVar[Injected]:
