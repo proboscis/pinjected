@@ -7,7 +7,7 @@ name = "pinjected-web"
 version = "0.1.0"
 description = "Web UI for pinjected dependency injection visualization"
 authors = [
-    {name = "CyberAgentAILab"}
+    {name = "proboscis"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"
