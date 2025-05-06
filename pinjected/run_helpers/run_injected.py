@@ -352,12 +352,17 @@ async def a_run_with_notify(
                     PinjectedHandleMainException.key.name
                 )
                 handling = handler(e)
-                handled: str | None = await cxt.a_provide(handling, show_debug=False)
-                if handled:
-                    logger.info(
-                        f"exception is handled by {PinjectedHandleMainException.key.name}"
+                try:
+                    handled: str | None = await cxt.a_provide(
+                        handling, show_debug=False
                     )
-                raise
+                    if handled:
+                        logger.info(
+                            f"exception is handled by {PinjectedHandleMainException.key.name}"
+                        )
+                except Exception as handle_error:
+                    raise handle_error from e
+                raise e
             logger.debug(
                 f"Run failed. you can handle the exception with {PinjectedHandleMainException.key.name}"
             )
@@ -368,11 +373,17 @@ async def a_run_with_notify(
         if PinjectedHandleMainResult.key in D:
             from pinjected import IProxy
 
-            handler: IProxy[PinjectedHandleMainResult] = injected(
-                PinjectedHandleMainResult.key.name
-            )
-            handling = handler(res)
-            await cxt.a_provide(handling, show_debug=False)
+            try:
+                handler: IProxy[PinjectedHandleMainResult] = injected(
+                    PinjectedHandleMainResult.key.name
+                )
+                handling = handler(res)
+                await cxt.a_provide(handling, show_debug=False)
+            except Exception:
+                logger.exception(
+                    f"failed to handle result with {PinjectedHandleMainResult.key.name}"
+                )
+                logger.warning(f"still returning the result")
         else:
             logger.info(
                 f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}"
