@@ -23,6 +23,8 @@ jobs:
           # Save the SSH key to a file
           echo "$PROBOSCIS_SSH_KEY" > ~/deploy_key.pem
           chmod 600 ~/deploy_key.pem
+          # Fix newlines in the SSH key
+          sed -i 's/\\n/\n/g' ~/deploy_key.pem
           
           # Configure Git
           git config --global user.name "GitHub Actions"
