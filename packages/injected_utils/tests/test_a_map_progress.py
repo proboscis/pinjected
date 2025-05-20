@@ -1,7 +1,8 @@
 import asyncio
 
 import loguru
-from injected_utils.progress import a_map_progress__tqdm
+import pytest
+from injected_utils.progress import a_map_progress__tqdm, ensure_agen
 
 from pinjected import design
 from pinjected.compatibility.task_group import CompatibleExceptionGroup
@@ -77,6 +78,19 @@ def test_exception_group():
             pass
         else:
             raise AssertionError(f"Unexpected exception raised: {e}")
+
+
+def test_ensure_agen_with_dataframe():
+    """Test that ensure_agen raises TypeError when given a pandas DataFrame."""
+    import pandas as pd
+
+    test_dataframe = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+
+    with pytest.raises(
+        TypeError,
+        match="Iterating over a pandas DataFrame will iterate over column names rather than rows",
+    ):
+        ensure_agen(test_dataframe)
 
 
 __design__ = design(a_map_progress__tqdm=a_map_progress__tqdm, logger=loguru.logger)

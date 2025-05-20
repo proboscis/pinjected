@@ -9,12 +9,36 @@ from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
 
 
-def ensure_agen(tasks):
+def ensure_agen(tasks) -> AsyncIterator:  # noqa: C901
+    """Convert various input types to async generators.
+
+    Args:
+        tasks: List, async generator, or iterable to convert
+
+    Returns:
+        AsyncIterator: An async generator yielding items from tasks
+
+    Raises:
+        TypeError: If tasks is a pandas DataFrame
+    """
     from inspect import isasyncgen
+    from typing import Any
+
+    try:
+        import pandas as pd
+
+        if isinstance(tasks, pd.DataFrame):
+            error_message = (
+                "Iterating over a pandas DataFrame will iterate over column names rather than rows. "
+                "Please convert to a list of rows using .iterrows(), .itertuples(), or .to_dict('records') instead."
+            )
+            raise TypeError(error_message)
+    except ImportError:
+        pass
 
     if isinstance(tasks, list):
 
-        async def agen():
+        async def agen() -> AsyncIterator[Any]:
             for t in tasks:
                 yield t
 
@@ -23,11 +47,13 @@ def ensure_agen(tasks):
         return tasks
     if hasattr(tasks, "__iter__"):
 
-        async def agen():
+        async def agen() -> AsyncIterator[Any]:
             for t in tasks:
                 yield t
 
         return agen()
+
+    return None  # Explicit return at the end of function
 
 
 @injected
