@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinjected-web"
+version = "0.1.0"
+description = "Web UI for pinjected dependency injection visualization"
+authors = [
+    {name = "proboscis"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "pinjected",
+    "pinjected-reviewer"
+]
+
+[project.scripts]
+start = "pinjected_web.main:start"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pinjected_web"]
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+pinjected_reviewer = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "httpx>=0.25.0"
+]
