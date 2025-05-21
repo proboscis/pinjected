@@ -1,11 +1,11 @@
 from injected_utils import async_cached_v2
 from injected_utils.async_caching.async_cache import async_lzma_sqlite
-from pinjected import Injected, IProxy, injected, design
+from pinjected import Injected, IProxy, design, injected
 
 
 @async_cached_v2(cache=async_lzma_sqlite("test.db"))
 @injected
-async def a_test_func(x:int,/,a: int, b: int) -> int:
+async def a_test_func(x: int, /, a: int, b: int) -> int:
     return a + b
 
 
@@ -17,4 +17,4 @@ test_a_test_func: IProxy = Injected.tuple(
 )
 from loguru import logger
 
-__design__ = design(x=0,logger=logger)
+__design__ = design(x=0, logger=logger)
