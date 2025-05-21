@@ -97,7 +97,7 @@ def async_cached_v2(
 
 
 @injected
-async def injected_utils_default_param_to_key(args: tuple, kwargs: dict) -> bytes:
+async def injected_utils_default_param_to_key(*args: tuple, **kwargs: dict) -> bytes:
     data = jsonpickle.dumps((args, kwargs))
     hash = hashlib.md5(data.encode()).hexdigest()
     return hash.encode()
