@@ -6,7 +6,6 @@ from typing import Any
 import jsonpickle
 from returns.maybe import Some
 
-from injected_utils.async_caching.async_cache import async_lzma_sqlite
 from injected_utils.async_caching.async_cached_function import (
     AsyncCachedFunctionV2,
     AsyncCacheProtocol,
@@ -19,7 +18,7 @@ from injected_utils.async_caching.async_cached_function import (
     U,
     ValueMappedAsyncCache,
 )
-from pinjected import Injected, IProxy, design, injected
+from pinjected import Injected, design, injected
 from pinjected.decoration import update_if_registered
 from pinjected.di.injected import PartialInjectedFunction
 from pinjected.di.metadata.bind_metadata import BindMetadata
@@ -128,19 +127,5 @@ async def injected_utils_default_serializer(data: Any) -> bytes:
 async def injected_utils_default_deserializer(data: bytes) -> Any:
     return jsonpickle.loads(data.decode())
 
-
-@async_cached_v2(cache=async_lzma_sqlite("test.db"))
-@injected
-async def a_test_func(a: int, b: int) -> int:
-    return a + b
-
-
-test_call_a_test_func: IProxy = a_test_func(0, 1)
-
-test_a_test_func: IProxy = Injected.tuple(
-    a_test_func(0, 1),
-    a_test_func(0, 1),
-    a_test_func(0, 1),
-)
 
 __meta_design__ = design()
