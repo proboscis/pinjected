@@ -16,7 +16,7 @@ sync:
 	$(MAKE) setup-pre-commit
 
 lint:
-	uv ruff check
+	uvx ruff check
 	flake8
 
 setup-all:
