@@ -8,7 +8,7 @@ def test_pinjected_cli_docstring():
     assert "Pinjected: Python Dependency Injection Framework" in cli.__doc__
     assert "Available commands:" in cli.__doc__
     assert "run" in cli.__doc__
-    assert "call" in cli.__doc__
+    assert "resolve" in cli.__doc__
     assert "check_config" in cli.__doc__
     assert "create_overloads" in cli.__doc__
     assert "json_graph" in cli.__doc__
@@ -22,7 +22,7 @@ def test_fire_help_output():
     assert "Pinjected: Python Dependency Injection Framework" in cli.__doc__
     assert "Available commands:" in cli.__doc__
     assert "run" in cli.__doc__
-    assert "call" in cli.__doc__
+    assert "resolve" in cli.__doc__
     assert "check_config" in cli.__doc__
     assert "create_overloads" in cli.__doc__
     assert "json_graph" in cli.__doc__

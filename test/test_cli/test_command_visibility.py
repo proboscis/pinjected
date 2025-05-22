@@ -22,8 +22,8 @@ def test_cli_commands_availability():
     cli = PinjectedCLI()
     essential_commands = [
         "run",
+        "resolve",
         "describe",
-        "call",
         "check_config",
         "json_graph",
         "create_overloads",
