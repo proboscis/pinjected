@@ -51,98 +51,15 @@ object GutterActionUtil {
     
     /**
      * Creates a list of action items for an injected function/variable.
-     * Follows the specific order: Run action (first), Show action (second), Describe action (third), Other actions (following)
+     * Simply displays raw configuration names from pinjected with only the 
+     * Update Configurations as a static menu item.
      */
     fun createActions(project: Project, name: String): List<ActionItem> {
         // Save modified documents before running actions
         FileDocumentManager.getInstance().saveAllDocuments()
         
         val helper = InjectedFunctionActionHelper(project)
-        val pinjectedUtil = PinjectedConsoleUtil(helper)
         val actions = mutableListOf<ActionItem>()
-        
-        // Basic run action - uses 'run' environment (default) - ALWAYS FIRST
-        val runAction = ActionItem("Run $name") {
-            helper.runInBackground("Running $name") { indicator ->
-                try {
-                    indicator.fraction = 0.1
-                    val filePath = helper.getFilePath() ?: return@runInBackground
-                    val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: return@runInBackground
-                    val runConfig = configs.firstOrNull { !it.name.contains("_viz") && !it.name.contains("describe") }
-                    
-                    indicator.fraction = 0.5
-                    if (runConfig != null) {
-                        helper.runConfig(runConfig)
-                    } else {
-                        // Fallback to console if no run config found
-                        pinjectedUtil.runInjected(filePath, name, null)
-                    }
-                    indicator.fraction = 1.0
-                } catch (e: Exception) {
-                    helper.showNotification(
-                        "Error Running $name",
-                        "Error: ${e.message}",
-                        com.intellij.notification.NotificationType.ERROR
-                    )
-                }
-            }
-        }
-        actions.add(runAction)
-        
-        // Show/Visualize action - ALWAYS SECOND
-        val showAction = ActionItem("Show $name") {
-            helper.runInBackground("Visualizing $name") { indicator ->
-                indicator.fraction = 0.1
-                val filePath = helper.getFilePath() ?: return@runInBackground
-                
-                try {
-                    // Try to find a viz config or use standard config
-                    val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: return@runInBackground
-                    val vizConfig = configs.firstOrNull { it.name.endsWith("_viz") }
-                    
-                    indicator.fraction = 0.5
-                    if (vizConfig != null) {
-                        helper.runConfig(vizConfig)
-                    } else {
-                        // If no viz config, run standard
-                        pinjectedUtil.runInjected(filePath, name, null)
-                    }
-                } catch (e: Exception) {
-                    helper.showNotification(
-                        "Error Visualizing $name",
-                        "Error: ${e.message}",
-                        com.intellij.notification.NotificationType.ERROR
-                    )
-                }
-                
-                indicator.fraction = 1.0
-            }
-        }
-        actions.add(showAction)
-        
-        // Describe action - ALWAYS THIRD (if available)
-        try {
-            val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: emptyList()
-            val describeConfig = configs.firstOrNull { it.name.contains("describe") }
-            
-            if (describeConfig != null) {
-                val describeAction = ActionItem("Describe $name") {
-                    helper.runInBackground("Describing $name") { indicator ->
-                        indicator.fraction = 0.1
-                        helper.runConfig(describeConfig)
-                        indicator.fraction = 1.0
-                    }
-                }
-                actions.add(describeAction)
-            }
-        } catch (e: Exception) {
-            LOG.error("Error loading describe configuration for $name", e)
-            helper.showNotification(
-                "Error Loading Describe Configuration",
-                "Error: ${e.message}",
-                com.intellij.notification.NotificationType.ERROR
-            )
-        }
         
         // Update configuration cache action - ALWAYS AVAILABLE
         val updateConfigAction = ActionItem("Update Configurations") {
@@ -152,61 +69,21 @@ object GutterActionUtil {
         }
         actions.add(updateConfigAction)
         
-        // Make sandbox action
-        val makeSandboxAction = ActionItem("Make Sandbox") {
-            helper.runInBackground("Creating sandbox for $name") { indicator ->
-                val filePath = helper.getFilePath() ?: return@runInBackground
-                
-                try {
-                    // Create sandbox file
-                    indicator.fraction = 0.3
-                    val sandboxPath = helper.runPython(
-                        listOf("-m", "pinjected.ide_supports.console_run_helper", "make-sandbox", filePath, name)
-                    ).trim()
-                    
-                    // Open the sandbox file
-                    indicator.fraction = 0.7
-                    LocalFileSystem.getInstance().refreshIoFiles(listOf(File(sandboxPath)))
-                    val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(File(sandboxPath))
-                        ?: throw Exception("Could not find sandbox file: $sandboxPath")
-                            
-                    ApplicationManager.getApplication().invokeLater {
-                        FileEditorManager.getInstance(project).openFile(virtualFile, true)
-                    }
-                } catch (e: Exception) {
-                    helper.showNotification(
-                        "Error Creating Sandbox",
-                        "Error: ${e.message}",
-                        com.intellij.notification.NotificationType.ERROR
-                    )
-                }
-                
-                indicator.fraction = 1.0
-            }
-        }
-        actions.add(makeSandboxAction)
-        
-        // DYNAMICALLY ADD OTHER ACTIONS FROM CONFIGURATIONS
+        // DYNAMICALLY ADD ALL ACTIONS FROM CONFIGURATIONS WITHOUT FILTERING
         try {
             val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: emptyList()
             
-            // Add all other configurations as actions
+            // Add ALL configurations as actions without filtering
             for (config in configs) {
-                // Skip configs we've already handled (run, viz, describe)
-                if (!config.name.endsWith("_viz") && 
-                    !config.name.contains("describe") && 
-                    config.name != "Run $name") {
-                    
-                    val actionName = config.name
-                    val action = ActionItem(actionName) {
-                        helper.runInBackground("Running $actionName") { indicator ->
-                            indicator.fraction = 0.1
-                            helper.runConfig(config)
-                            indicator.fraction = 1.0
-                        }
+                val actionName = config.name
+                val action = ActionItem(actionName) {
+                    helper.runInBackground("Running $actionName") { indicator ->
+                        indicator.fraction = 0.1
+                        helper.runConfig(config)
+                        indicator.fraction = 1.0
                     }
-                    actions.add(action)
                 }
+                actions.add(action)
             }
         } catch (e: Exception) {
             LOG.error("Error loading configurations for $name", e)
