@@ -147,17 +147,21 @@ if __name__ == "__main__":
 
 # Test for unpicklable parameters with custom key_hashers
 class UnpicklableObject:
-    """A class that cannot be pickled due to threading.Lock"""
+    """A class that cannot be pickled due to an open file handle"""
     def __init__(self, value):
         self.value = value
-        # Make it unpicklable by adding a threading lock
-        self.lock = threading.Lock()
-        # threading.Lock cannot be pickled even with cloudpickle
-        # This demonstrates how key_hashers can bypass pickling issues
+        # Make it unpicklable by adding an open file handle
+        # We use /dev/null so it always exists on Unix systems
+        self.file_handle = open('/dev/null', 'w')
+        # Open file handles cannot be pickled
     
     def get_value(self):
-        with self.lock:
-            return self.value
+        return self.value
+    
+    def __del__(self):
+        # Clean up the file handle
+        if hasattr(self, 'file_handle') and not self.file_handle.closed:
+            self.file_handle.close()
 
 
 # Custom hasher that handles unpicklable objects
@@ -314,3 +318,136 @@ async def test_async_cached_with_multiple_unpicklable_types(cached_complex_unpic
     # Call with different data - should miss cache
     result4 = await cached_complex_unpicklable(obj, file1, lock1, "world")
     assert result4["call_count"] == 2  # Cache miss due to different data
+
+
+# Test that unpicklable objects fail without key_hashers
+@async_cached(
+    cache=injected("test_cache_fail"),
+    # No key_hashers provided - should fail with unpicklable objects
+)
+@instance
+async def cached_fail_unpicklable():
+    """Factory that creates a function that will fail with unpicklable objects"""
+    async def _process(obj: UnpicklableObject):
+        return {"value": obj.value}
+    
+    return _process
+
+
+test_design_fail = design(
+    test_cache_fail={},
+    cached_fail_unpicklable=cached_fail_unpicklable
+)
+
+
+@injected_pytest(test_design_fail)
+async def test_async_cached_fails_with_unpicklable_without_hashers(cached_fail_unpicklable):
+    """
+    Test that demonstrates the behavior of caching with unpicklable parameters.
+    
+    Without key_hashers, jsonpickle may use lossy serialization (e.g., converting file handles to null),
+    which can lead to incorrect cache behavior. This test shows why key_hashers are valuable.
+    """
+    import pickle
+    import cloudpickle
+    import jsonpickle
+    
+    # Create two unpicklable objects with different values but same file handle type
+    obj1 = UnpicklableObject(value=42)
+    obj2 = UnpicklableObject(value=99)
+    
+    # Verify they are unpicklable with standard pickle
+    with pytest.raises((TypeError, pickle.PicklingError)):
+        pickle.dumps(obj1)
+    
+    with pytest.raises((TypeError, pickle.PicklingError)):
+        cloudpickle.dumps(obj1)
+    
+    # Show that jsonpickle handles them with lossy serialization
+    json1 = jsonpickle.dumps(obj1)
+    json2 = jsonpickle.dumps(obj2)
+    print(f"obj1 jsonpickle: {json1}")
+    print(f"obj2 jsonpickle: {json2}")
+    
+    # The problem: both objects might have the same cache key if file handle is serialized as null
+    # This can lead to incorrect cache hits
+    result1 = await cached_fail_unpicklable(obj1)
+    assert result1["value"] == 42
+    
+    # This might incorrectly return the cached result from obj1
+    # because the file handle is serialized as null in both cases
+    result2 = await cached_fail_unpicklable(obj2)
+    
+    # Without proper key_hashers, we might get incorrect cache behavior
+    # The test demonstrates why custom key_hashers are important for unpicklable objects
+    print(f"Result 1: {result1}")
+    print(f"Result 2: {result2}")
+    
+    # Clean up
+    obj1.file_handle.close()
+    obj2.file_handle.close()
+
+
+# Add a test that shows the correct behavior with key_hashers
+@injected_pytest(test_design_unpicklable)
+async def test_async_cached_with_unpicklable_shows_why_hashers_needed(cached_process_unpicklable):
+    """
+    Test that shows why key_hashers are important even when jsonpickle can serialize objects.
+    
+    With proper key_hashers, we can ensure correct cache behavior for objects with unpicklable attributes.
+    """
+    # Create two objects with same file handle type but different values
+    obj1 = UnpicklableObject(value=42)
+    obj2 = UnpicklableObject(value=99)
+    
+    # With our custom hasher that uses the value attribute
+    result1 = await cached_process_unpicklable(obj1, 2)
+    assert result1["result"] == 84  # 42 * 2
+    assert result1["call_count"] == 1
+    
+    # This should be a cache miss because the hasher uses obj.value
+    result2 = await cached_process_unpicklable(obj2, 2)
+    assert result2["result"] == 198  # 99 * 2
+    assert result2["call_count"] == 2  # Cache miss!
+    
+    # Clean up
+    obj1.file_handle.close()
+    obj2.file_handle.close()
+
+
+# Add a standalone test to verify unpicklability
+def test_verify_unpicklable_object():
+    """Standalone test to verify our UnpicklableObject is truly unpicklable"""
+    import pickle
+    import cloudpickle
+    import jsonpickle
+    
+    obj = UnpicklableObject(value=42)
+    
+    # Test pickle
+    try:
+        pickle.dumps(obj)
+        assert False, "pickle should have failed"
+    except (TypeError, pickle.PicklingError) as e:
+        print(f"✓ pickle failed as expected: {e}")
+    
+    # Test cloudpickle
+    try:
+        cloudpickle.dumps(obj)
+        assert False, "cloudpickle should have failed"
+    except (TypeError, pickle.PicklingError) as e:
+        print(f"✓ cloudpickle failed as expected: {e}")
+    
+    # Test jsonpickle
+    try:
+        result = jsonpickle.dumps(obj)
+        print(f"✗ jsonpickle succeeded with: {result}")
+        # Check if it can be decoded properly
+        decoded = jsonpickle.loads(result)
+        print(f"  Decoded value: {decoded.value}")
+        print(f"  Has file_handle: {hasattr(decoded, 'file_handle')}")
+        if hasattr(decoded, 'file_handle'):
+            print(f"  File handle type: {type(decoded.file_handle)}")
+            print(f"  File handle closed: {decoded.file_handle.closed}")
+    except Exception as e:
+        print(f"✓ jsonpickle failed as expected: {type(e).__name__}: {e}")
