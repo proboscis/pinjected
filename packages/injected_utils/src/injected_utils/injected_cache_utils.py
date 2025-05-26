@@ -223,10 +223,12 @@ def provide_cached_async(
        - The cache key changes when using different hashers
 
     Implementation steps:
-    - [ ] Update provide_cached_async to pass original signature
-    - [ ] Refactor CustomKeyHasher.calc_cache_key to handle signature mismatch
-    - [ ] Add unit tests for the fix
-    - [ ] Update documentation if needed
+    - [x] Update provide_cached_async to pass original signature
+    - [x] Refactor CustomKeyHasher.calc_cache_key to handle signature mismatch
+    - [x] Add unit tests for the fix
+    - [x] Update documentation if needed
+
+    Status: COMPLETED - Fix implemented and tested successfully
     """
 
     async def task(added_key, *args, **kwargs):
@@ -549,22 +551,23 @@ class CustomKeyHasher:
 
     def calc_cache_key(self, *args, **kwargs):
         """
-        TODO: Fix for issue #217 - Handle signature mismatch properly
-
-        Current issue: This method receives (added_key, *args, **kwargs) but self.signature
-        is the original function signature, causing binding to fail.
-
-        Fix approach:
+        Fix for issue #217 - Handle signature mismatch properly
+        ✓ COMPLETED
+        
+        This method now correctly handles the signature mismatch where it receives 
+        (added_key, *args, **kwargs) but self.signature is the original function signature.
+        
+        Implementation:
         1. Extract added_key from args[0]
         2. Create a new binding using self.signature with args[1:] and kwargs
         3. Apply key_hasher and type_hasher to the correctly mapped parameters
         4. Include added_key in the final cache key
-
+        
         Example:
         - Original function: async def fetch_data(user_id: str, include_details: bool)
         - Called as: calc_cache_key(added_key_value, "user123", include_details=True)
-        - Should map: user_id="user123", include_details=True
-        - Apply hashers based on these parameter names
+        - Maps correctly: user_id="user123", include_details=True
+        - Applies hashers based on these parameter names
         """
         # Extract added_key from the first argument
         if not args:
