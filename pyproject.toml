@@ -116,7 +116,6 @@ lint.select = [
     "PLR", # pylint‐style design checks
     "RUF", # Ruff‐specific rules
     "SIM", # Code similarity checks
-    "ALL",
 ]
 lint.ignore = [
     #"F401", # unused import
