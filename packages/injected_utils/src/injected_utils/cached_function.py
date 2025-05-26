@@ -148,7 +148,9 @@ class CachedFunction:
         with self.get_key_lock(key):
             # logger.info(f"obtained a lock:{key[:100]}")
             if key in self.cache:
-                # logger.debug(f"{self._get_func_name()}: cache hit for {args_repr}")
+                logger.debug(
+                    f"{self._get_func_name()}: cache HIT for key={key[:50]}... (args: {str(args_repr)[:100]}...)"
+                )
                 try:
                     res = self.cache[key]
                     return res
@@ -157,11 +159,13 @@ class CachedFunction:
                 # logger.debug(f"cache hit for {args_repr} took {(datetime.datetime.now() - t).total_seconds()} seconds")
             else:
                 # release lock and then compute
-                logger.debug(f"{self._get_func_name()}: cache miss for {args_repr}")
+                logger.debug(
+                    f"{self._get_func_name()}: cache MISS for key={key[:50]}... (args: {str(args_repr)[:100]}...)"
+                )
             result = self.func(*args, **kwargs)
             self.cache[key] = result
-            logger.debug(
-                f"cache miss for {args_repr} took {(datetime.datetime.now() - t).total_seconds()} seconds"
+            logger.info(
+                f"{self._get_func_name()}: cache WRITE for key={key[:50]}... took {(datetime.datetime.now() - t).total_seconds():.3f}s"
             )
             return result
 
@@ -471,11 +475,14 @@ class AsyncCachedFunction:
                         f"cache hit but invalidated for {self.name}! {str(args)[:100]}...,{kwargs!s}..."
                     )
                 if is_successful(await loaded_value):
+                    logger.debug(
+                        f"cache HIT for {self.name}: key={key[:50]}... (args: {str(args)[:100]}..., kwargs: {str(kwargs)[:100]}...)"
+                    )
                     data = unsafe_perform_io(await loaded_value).unwrap()
                     return data
                 if not is_successful(await valid_key):
                     logger.debug(
-                        f"cache miss for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}..."
+                        f"cache MISS for {self.name}: key={key[:50]}... (args: {str(args)[:100]}..., kwargs: {str(kwargs)[:100]}...)"
                     )
                 result = await self.func(*args, **kwargs)
                 if cause := await self._invalidate_value(result):
@@ -489,7 +496,7 @@ class AsyncCachedFunction:
                     )
                 await self._write_value(key, result)
                 logger.info(
-                    f"cache written for {self.name}: {str(args)[:100]}...,{str(kwargs)[:100]}..."
+                    f"cache WRITE for {self.name}: key={key[:50]}... (args: {str(args)[:100]}..., kwargs: {str(kwargs)[:100]}...)"
                 )
                 return result
 
