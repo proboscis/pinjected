@@ -5,9 +5,14 @@ This test file demonstrates the bug and will verify the fix.
 """
 
 import asyncio
+import hashlib
+import threading
+from io import StringIO
+from unittest.mock import MagicMock
 
+import pytest
 from injected_utils.injected_cache_utils import async_cached
-from pinjected import instance, design, injected
+from pinjected import Injected, instance, design, injected
 from pinjected.test import injected_pytest
 
 
@@ -142,14 +147,17 @@ if __name__ == "__main__":
 
 # Test for unpicklable parameters with custom key_hashers
 class UnpicklableObject:
-    """A class that cannot be pickled"""
+    """A class that cannot be pickled due to threading.Lock"""
     def __init__(self, value):
         self.value = value
-        # Make it unpicklable by adding a lambda
-        self.unpicklable_attr = lambda x: x * 2
+        # Make it unpicklable by adding a threading lock
+        self.lock = threading.Lock()
+        # threading.Lock cannot be pickled even with cloudpickle
+        # This demonstrates how key_hashers can bypass pickling issues
     
     def get_value(self):
-        return self.value
+        with self.lock:
+            return self.value
 
 
 # Custom hasher that handles unpicklable objects
@@ -262,10 +270,6 @@ async def cached_complex_unpicklable():
         }
     
     return _process
-
-
-import threading
-from io import StringIO
 
 
 test_design_complex = design(
