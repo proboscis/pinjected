@@ -304,7 +304,7 @@ class PinjectedCLI:
 
     Available commands:
       run            - Run an injected variable with a specified design
-      call           - Call a function with injected dependencies
+      resolve        - Alias for 'run' command (dependency resolution and object construction)
       check_config   - Display the current configuration
       create_overloads - Create type hint overloads for injected functions
       json_graph     - Generate a JSON representation of the dependency graph
@@ -320,13 +320,14 @@ class PinjectedCLI:
 
     Example:
       pinjected run --var_path=my_module.my_var
+      pinjected resolve --var_path=my_module.my_var
       pinjected describe --var_path=my_module.my_submodule.my_variable
       pinjected list my_module.my_submodule
     """
 
     def __init__(self):
         self.run = run
-        self.call = call
+        self.resolve = run  # Add 'resolve' as an alias to 'run'
         self.check_config = check_config
         self.create_overloads = process_file
         self.json_graph = json_graph
@@ -379,6 +380,7 @@ def main():
 
         cli = PinjectedCLI()
         fire.Fire(cli)
+        return cli
     except Exception as e:
         e = unwrap_exception_group(e)
         if isinstance(e, PinjectedRunFailure):
