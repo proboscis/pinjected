@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.252 (2025-05-29)
+
+### Changed
+- Bumped version for PyPI publishing
+- Released stable version without beta designation
+
 ## 0.2.251 (2025-03-25)
 
 ### Fixed
