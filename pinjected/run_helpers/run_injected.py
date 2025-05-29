@@ -311,6 +311,25 @@ class RunContext:
 
         if isinstance(_res, Awaitable):
             _res = await _res
+
+        from pinjected.di.partially_injected import PartiallyInjectedFunction
+
+        if isinstance(_res, PartiallyInjectedFunction):
+            logger.warning(
+                f"You're directly requesting a function object '{self.src_var_spec.var_path}' which returns PartiallyInjectedFunction. "
+                f"This is likely not what you intended. Instead, create an IProxy entrypoint variable and request it:\n\n"
+                f"# Example:\n"
+                f"# some.module.py\n"
+                f"from pinjected import injected, IProxy\n"
+                f"@injected\n"
+                f"def something(dep1,/,arg):\n"
+                f"    pass\n"
+                f"entrypoint: IProxy = something('hello')\n\n"
+                f"# Then request:\n"
+                f"pinjected run some.module.entrypoint\n\n"
+                f"Note: Only dependencies can be overridden in the 'pinjected run' command."
+            )
+
         await resolver.destruct()
         return _res
 
