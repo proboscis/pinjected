@@ -24,12 +24,14 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 # I want to use IProxy() as constructor. and also type check. what can i do?
 
-__version__ = "0.2.251"
+__version__ = "0.2.252-beta"
 
 __all__ = [
     "AsyncResolver",
+    "DelegatedVar",
     "Design",
     "DesignSpec",
+    "Designed",
     "EmptyDesign",
     "IProxy",
     "Injected",
@@ -38,6 +40,7 @@ __all__ = [
     "design",
     "destructors",
     "injected",
+    "injected_instance",
     "instance",
     "instances",
     "providers",
