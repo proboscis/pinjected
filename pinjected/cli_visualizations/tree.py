@@ -65,7 +65,7 @@ def design_rich_tree(tgt_design, root):  # noqa: C901
 
     enhanced_design = tgt_design + design(
         __design__=Injected.pure(tgt_design),
-        __resolver__=Injected.pure("dummy_resolver"),
+        __resolver__=Injected.pure("__resolver__"),
     )
 
     d = DIGraph(enhanced_design)

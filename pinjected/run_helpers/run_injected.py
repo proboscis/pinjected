@@ -186,7 +186,7 @@ def run_anything(  # noqa: C901, PLR0912, PLR0915
 
             enhanced_design = D + design_func(
                 __design__=Injected.pure(D),
-                __resolver__=Injected.pure("dummy_resolver"),
+                __resolver__=Injected.pure("__resolver__"),
             )
             DIGraph(enhanced_design).show_injected_html(cxt.var)
     elif cmd == "export_visualization_html":
@@ -200,7 +200,7 @@ def run_anything(  # noqa: C901, PLR0912, PLR0915
 
             enhanced_design = D + design_func(
                 __design__=Injected.pure(D),
-                __resolver__=Injected.pure("dummy_resolver"),
+                __resolver__=Injected.pure("__resolver__"),
             )
             res_html: Path = DIGraph(enhanced_design).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
@@ -215,7 +215,7 @@ def run_anything(  # noqa: C901, PLR0912, PLR0915
             d = D + design_func(
                 __root__=Injected.bind(cxt.var),
                 __design__=Injected.pure(D),
-                __resolver__=Injected.pure("dummy_resolver"),
+                __resolver__=Injected.pure("__resolver__"),
             )
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     elif cmd == "json-graph":
@@ -271,7 +271,7 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
 
     enhanced_design = design + design_func(
         __design__=Injected.pure(design),
-        __resolver__=Injected.pure("dummy_resolver"),
+        __resolver__=Injected.pure("__resolver__"),
     )
     digraph = DIGraph(
         enhanced_design, spec=Some(cxt.src_meta_context.spec_trace.accumulated)
