@@ -20,14 +20,14 @@ from pinjected.di.injected import (
 from pinjected.visualize_di import DIGraph
 
 
-def format_injected_for_tree(injected: Injected) -> str:
+def format_injected_for_tree(injected: Injected) -> str:  # noqa: C901, PLR0911, PLR0912
     """依存関係ツリー表示用にInjectedをフォーマットする"""
     if isinstance(injected, InjectedWithDefaultDesign):
         return format_injected_for_tree(injected.src)
     if isinstance(injected, InjectedFromFunction):
         try:
             return f"<function {injected.original_function.__name__}>"
-        except:
+        except:  # noqa: E722
             return "<function>"
     elif isinstance(injected, InjectedPure):
         v = injected.value
@@ -38,7 +38,7 @@ def format_injected_for_tree(injected: Injected) -> str:
         if callable(v):
             try:
                 return f"<function {v.__name__}>"
-            except:
+            except:  # noqa: E722
                 return "<function>"
         else:
             return str(v)
@@ -58,9 +58,17 @@ def format_injected_for_tree(injected: Injected) -> str:
         return injected.__class__.__name__
 
 
-def design_rich_tree(tgt_design, root):
+def design_rich_tree(tgt_design, root):  # noqa: C901
     """依存関係をリッチなツリー形式で表示する"""
-    d = DIGraph(tgt_design)
+    from pinjected import design
+    from pinjected.di.injected import Injected
+
+    enhanced_design = tgt_design + design(
+        __design__=Injected.pure(tgt_design),
+        __resolver__=Injected.pure("__resolver__"),
+    )
+
+    d = DIGraph(enhanced_design)
     g = d.create_dependency_digraph_rooted(root).graph
 
     def get_node_label(node):
