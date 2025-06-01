@@ -25,33 +25,33 @@ class PinjectedRunFailure(Exception):
     """Raised when a pinjected run fails."""
 
 
-from pinjected import Design, Designed, EmptyDesign, Injected, design, injected
-from pinjected.cli_visualizations import design_rich_tree
-from pinjected.compatibility.task_group import TaskGroup
-from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE
-from pinjected.di.proxiable import DelegatedVar
-from pinjected.helper_structure import MetaContext
-from pinjected.helpers import get_design_path_from_var_path
-from pinjected.logging_helper import disable_internal_logging
-from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
-from pinjected.notification import notify
-from pinjected.pinjected_logging import logger
-from pinjected.run_config_utils import load_variable_from_script
-from pinjected.run_helpers.mp_util import run_in_process
-from pinjected.schema.handlers import (
+from pinjected import Design, Designed, EmptyDesign, Injected, design, injected  # noqa: E402
+from pinjected.cli_visualizations import design_rich_tree  # noqa: E402
+from pinjected.compatibility.task_group import TaskGroup  # noqa: E402
+from pinjected.di.design_interface import DESIGN_OVERRIDES_STORE  # noqa: E402
+from pinjected.di.proxiable import DelegatedVar  # noqa: E402
+from pinjected.helper_structure import MetaContext  # noqa: E402
+from pinjected.helpers import get_design_path_from_var_path  # noqa: E402
+from pinjected.logging_helper import disable_internal_logging  # noqa: E402
+from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path  # noqa: E402
+from pinjected.notification import notify  # noqa: E402
+from pinjected.pinjected_logging import logger  # noqa: E402
+from pinjected.run_config_utils import load_variable_from_script  # noqa: E402
+from pinjected.run_helpers.mp_util import run_in_process  # noqa: E402
+from pinjected.schema.handlers import (  # noqa: E402
     PinjectedHandleMainException,
     PinjectedHandleMainResult,
 )
-from pinjected.v2.async_resolver import AsyncResolver
-from pinjected.v2.callback import IResolverCallback
-from pinjected.v2.keys import StrBindKey
-from pinjected.visualize_di import DIGraph
+from pinjected.v2.async_resolver import AsyncResolver  # noqa: E402
+from pinjected.v2.callback import IResolverCallback  # noqa: E402
+from pinjected.v2.keys import StrBindKey  # noqa: E402
+from pinjected.visualize_di import DIGraph  # noqa: E402
 
 
-def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):
+def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):  # noqa: PLR0912, RUF013
     no_notification = kwargs.pop("no_notification", False)
     if no_notification:
-        notify_impl = lambda msg, *args, **kwargs: None
+        notify_impl = lambda msg, *args, **kwargs: None  # noqa: E731
     else:
         notify_impl = notify
     logger.info(
@@ -155,7 +155,7 @@ async def a_run_target__mp(var_path: str):
     return res
 
 
-def run_anything(
+def run_anything(  # noqa: C901, PLR0912, PLR0915
     cmd: str,
     var_path: str,
     design_path: str | None,
@@ -181,21 +181,42 @@ def run_anything(
         async def task(cxt):
             logger.info(f"visualizing {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
-            DIGraph(D).show_injected_html(cxt.var)
+            from pinjected.di.injected import Injected
+            from pinjected import design as design_func
+
+            enhanced_design = D + design_func(
+                __design__=Injected.pure(D),
+                __resolver__=Injected.pure("dummy_resolver"),
+            )
+            DIGraph(enhanced_design).show_injected_html(cxt.var)
     elif cmd == "export_visualization_html":
 
         async def task(cxt):
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
             dst = Path(".pinjected_visualization/")
-            res_html: Path = DIGraph(D).save_as_html(cxt.var, dst)
+            from pinjected.di.injected import Injected
+            from pinjected import design as design_func
+
+            enhanced_design = D + design_func(
+                __design__=Injected.pure(D),
+                __resolver__=Injected.pure("dummy_resolver"),
+            )
+            res_html: Path = DIGraph(enhanced_design).save_as_html(cxt.var, dst)
             logger.info(f"exported to {res_html}")
     elif cmd == "to_script":
 
         async def task(cxt):
             logger.info(f"exporting visualization {var_path} with design {design_path}")
             logger.info(f"deps:{cxt.var.dependencies()}")
-            d = D + design(__root__=Injected.bind(cxt.var))
+            from pinjected.di.injected import Injected
+            from pinjected import design as design_func
+
+            d = D + design_func(
+                __root__=Injected.bind(cxt.var),
+                __design__=Injected.pure(D),
+                __resolver__=Injected.pure("dummy_resolver"),
+            )
             print(DIGraph(d).to_python_script(var_path, design_path=design_path))
     elif cmd == "json-graph":
 
@@ -245,7 +266,16 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         f"generating dependency graph description for {var_path} with design {design_path}"
     )
 
-    digraph = DIGraph(design, spec=Some(cxt.src_meta_context.spec_trace.accumulated))
+    from pinjected.di.injected import Injected
+    from pinjected import design as design_func
+
+    enhanced_design = design + design_func(
+        __design__=Injected.pure(design),
+        __resolver__=Injected.pure("dummy_resolver"),
+    )
+    digraph = DIGraph(
+        enhanced_design, spec=Some(cxt.src_meta_context.spec_trace.accumulated)
+    )
     root_name = cxt.src_var_spec.var_path.split(".")[-1]
 
     if hasattr(cxt.var, "dependencies"):
@@ -266,7 +296,7 @@ def call_impl(call_args, call_kwargs, cxt, design):
     kwargs = call_kwargs or {}
     var = Injected.ensure_injected(cxt.var).proxy
     logger.info(f"run_injected call with args:{args}, kwargs:{kwargs}")
-    res = _run_target(design, var(*args, **kwargs), cxt)
+    res = _run_target(design, var(*args, **kwargs), cxt)  # noqa: F821
     return res
 
 
@@ -346,7 +376,7 @@ class RunContext:
         return asyncio.run(self.a_run())
 
 
-async def a_run_with_notify(
+async def a_run_with_notify(  # noqa: C901, PLR0912
     cxt: RunContext,
     a_run,
     notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
@@ -564,7 +594,7 @@ def _load_design(design_path):
     if design_path == "":
         return EmptyDesign
     pairs = design_path.split("|")
-    res = design()
+    res = design()  # noqa: F823
     for pair in pairs:
         if pair == "":
             continue
