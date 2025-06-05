@@ -48,8 +48,9 @@ Then define your tests as IProxy objects:
 from pinjected import IProxy, injected, design
 from loguru import logger
 
-# Configure your design
-__meta_design__ = design().bind(
+# Create __pinjected__.py file with design configuration
+# __pinjected__.py
+__design__ = design().bind(
     logger=logger
 )
 
@@ -177,14 +178,15 @@ def pytest_configure(config):
 
 ### Design Configuration
 
-Configure dependency injection in your test modules:
+Configure dependency injection using the new `__pinjected__.py` file approach:
 
 ```python
+# __pinjected__.py
 from pinjected import design
 from loguru import logger
 
 # Configure module design
-__meta_design__ = design().bind(
+__design__ = design().bind(
     logger=logger,
     # Add other dependencies here
 )
@@ -195,10 +197,14 @@ __meta_design__ = design().bind(
 ### Basic Test Example
 
 ```python
-from pinjected import IProxy, injected, design
+# __pinjected__.py
+from pinjected import design
 from loguru import logger
 
-__meta_design__ = design().bind(logger=logger)
+__design__ = design().bind(logger=logger)
+
+# test_basic.py
+from pinjected import IProxy, injected
 
 @injected
 async def a_test_basic(logger):
@@ -214,13 +220,17 @@ test_basic: IProxy = a_test_basic(logger)
 ### Test with Multiple Dependencies
 
 ```python
-from pinjected import IProxy, injected, design
+# __pinjected__.py
+from pinjected import design
 from loguru import logger
 
-__meta_design__ = design().bind(
+__design__ = design().bind(
     logger=logger,
     config={"test_mode": True}
 )
+
+# test_with_config.py
+from pinjected import IProxy, injected
 
 @injected
 async def a_test_with_config(logger, config):

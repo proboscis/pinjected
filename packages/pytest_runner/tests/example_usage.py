@@ -8,7 +8,7 @@ from pinjected import IProxy, injected, design
 from pinjected_pytest_runner.utils import to_pytest
 from loguru import logger
 
-__meta_design__ = design().bind_instance(
+__design__ = design().bind_instance(
     logger=logger, config={"test_mode": True, "debug": False}
 )
 
@@ -71,7 +71,7 @@ async def a_test_manual_conversion(logger):
 
 
 manual_test_iproxy: IProxy = a_test_manual_conversion()
-test_manual_conversion = to_pytest(manual_test_iproxy, __meta_design__)
+test_manual_conversion = to_pytest(manual_test_iproxy, __design__)
 
 
 @injected
