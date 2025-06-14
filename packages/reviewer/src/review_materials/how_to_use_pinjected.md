@@ -4,7 +4,7 @@
 
 ## 1. Pinjectedの概要
 
-Pinjectedは、研究開発向けに設計されたPythonのDependency Injection（DI）ライブラリです。従来の設定管理やコード構造の問題（巨大なcfgオブジェクト依存、if分岐の氾濫、テスト困難性など）を解決するために開発されました。
+Pinjectedは、研究開発向けに設計されたPythonのDependency Injection（DI）ライブラリです。「複数のPythonオブジェクトを組み合わせて最終的なオブジェクトを作成する」ことを自動的な依存関係管理により実現します。従来の設定管理やコード構造の問題（巨大なcfgオブジェクト依存、if分岐の氾濫、テスト困難性など）を解決するために開発されました。
 
 ### 1.1 主な特徴
 
@@ -13,17 +13,27 @@ Pinjectedは、研究開発向けに設計されたPythonのDependency Injection
 - **CLIからの柔軟なパラメータ上書き**: 実行時にコマンドラインから依存関係やパラメータを変更可能
 - **複数エントリーポイントの容易な管理**: 同一ファイル内に複数の実行可能なInjectedオブジェクトを定義可能
 - **IDE統合**: VSCodeやPyCharm用のプラグインによる開発支援
+- **非同期サポート**: asyncio統合による並列依存関係解決
+- **依存グラフ可視化**: `describe`コマンドによる依存関係の視覚化
+- **Python 3.10+対応**: 最新のPython機能を活用
 
 ### 1.2 従来手法との比較
 
 従来のOmegaConfやHydraなどの設定管理ツールでは、以下のような問題がありました：
 
 - cfgオブジェクトへの全体依存
-- 分岐処理の氾濫
+- 分岐処理の氾濫  
 - 単体テストや部分的デバッグの難しさ
 - God class問題と拡張性の限界
+- 手動での依存関係構築の複雑さ
 
 Pinjectedはこれらの問題を解決し、より柔軟で再利用性の高いコード構造を実現します。
+
+### 1.3 インストール
+
+```bash
+pip install pinjected
+```
 
 ## 2. 基本機能
 
@@ -43,19 +53,22 @@ def model__simplecnn(input_size, hidden_units):
 @instance
 def dataset__mnist(batch_size):
     return MNISTDataset(batch_size=batch_size)
+
+# 非同期プロバイダの例
+@instance
+async def async_database_connection(host, port):
+    conn = await asyncpg.connect(host=host, port=port)
+    return conn
 ```
 
+**重要な特徴**:
+- 同じオブジェクトグラフ内ではシングルトンのように振る舞う
+- 非同期関数もサポート（自動的にawaitされる）
+- すべての引数が依存性として注入される
+
 ### 2.2 @injectedデコレータ
-DI後にintやstrではなく、関数を得たいケースはよくあります。
-```python
-from pinjected import instance
-@instance
-def generate_text(llm_model):
-    def impl(prompt: str):
-        return llm_model.generate(prompt)
-    return impl
-```
-しかし、この記法は冗長であるため、@injectedデコレータが糖衣構文として用意されています。
+
+`@injected`デコレータは、依存性注入される引数と実行時に渡される引数の両方を持つ関数を定義するための機能です。これにより、部分的に依存が解決された関数を作成できます。
 
 `@injected`デコレータは、関数引数を「注入対象の引数」と「呼び出し時に指定する引数」に分離できます。`/`の左側が依存として注入され、右側が実行時に渡される引数です。
 ```python
@@ -68,22 +81,6 @@ def generate_text(llm_model, /, prompt: str):
     return llm_model.generate(prompt)
 ```
 これにより、先のimpl関数と等価な関数を簡潔に記述できます。
-
-#### 依存関係のない@injected関数
-依存関係がない関数も@injectedを使って表現できます。
-以下は、他の何にも依存しないが、argを呼び出しに受け取る必要がある関数をwrapしたIProxyです。
-依存関係がない場合、pythonの文法上`/`をつけることができません。従って、`/`をつけずに引数のみ記述します。
-```python
-from pinjected import injected
-# Correct
-@injected
-def simple_func(arg):
-    return arg
-# Wrong, Syntax Error
-@injected
-def simple_func(/,arg):
-    return arg
-```
 
 ### 2.3 design()関数
 
@@ -105,43 +102,30 @@ mnist_design = base_design + design(
     dataset=dataset__mnist,
     trainer=Trainer
 )
+
+# デザインからグラフを作成して実行
+graph = mnist_design.to_graph()
+trainer = graph['trainer']
+trainer.train()
 ```
 
-### 2.4 依存性設定ファイル
+### 2.4 __design__（__meta_design__は非推奨）
 
-Pinjectedでは、以下の2つの方法で依存性を設定できます:
-
-#### 2.4.1 推奨: `__pinjected__.py`ファイル内の`__design__`
-
-`__design__`は`__pinjected__.py`ファイル内で定義する特別なグローバル変数です。これはCLIから実行する際のデフォルトのデザインを指定するために使用されます。
+`__design__`は、`__pinjected__.py`ファイル内で使用する推奨される設定方法です。`__meta_design__`は非推奨となっており、新しいコードでは使用しないでください。
 
 ```python
-# __pinjected__.py
-from pinjected import design
-
+# __pinjected__.py内での推奨される書き方
 __design__ = design(
-    # CLIで指定しなかったときに利用されるデザイン
     learning_rate=0.001,
-    batch_size=128
+    batch_size=128,
+    model=model__simplecnn
 )
+
+# レガシーな書き方（非推奨 - 使用しないでください）
+# __meta_design__ = design(
+#     overrides=mnist_design
+# )
 ```
-
-#### 2.4.2 レガシー: `__meta_design__`
-
-`__meta_design__`は、非推奨となっている特別なグローバル変数です。以前はCLIから実行する際のデフォルトのデザインを指定するために使用されていました。
-
-```python
-# __init__.py や他のモジュールファイル内 (非推奨)
-__meta_design__ = design(
-    overrides=mnist_design  # CLIで指定しなかったときに利用されるデザイン
-)
-```
-
-```python
-# 何もoverrideしない場合 (非推奨)
-__meta_design__ = design()
-```
-
 
 ## 3. 実行方法とCLIオプション
 
@@ -152,6 +136,9 @@ Pinjectedは、`python -m pinjected run <path.to.target>`の形式で実行し�
 ```bash
 # run_trainを実行する例
 python -m pinjected run example.run_train
+
+# 依存グラフを可視化する例
+python -m pinjected describe example.run_train
 ```
 
 ### 3.2 パラメータ上書き
@@ -165,11 +152,14 @@ python -m pinjected run example.run_train --batch_size=64 --learning_rate=0.0001
 
 ### 3.3 依存オブジェクトの差し替え
 
-`{}`で囲んだパスを指定することで、依存オブジェクトを差し替えられます。
+`{}`で囲んだパスを指定することで、依存オブジェクトを動的に差し替えられます。
 
 ```bash
 # modelとdatasetを差し替える例
 python -m pinjected run example.run_train --model='{example.model__another}' --dataset='{example.dataset__cifar10}'
+
+# LLMプロバイダを切り替える例
+python -m pinjected run some.llm.module.chat --llm="{some.llm.module.llm_openai}" "hello!"
 ```
 
 ### 3.4 overridesによるデザイン切り替え
@@ -183,32 +173,41 @@ python -m pinjected run example.run_train --overrides={example.mnist_design}
 
 ## 4. 高度な機能
 
-### 4.1 ~/.pinjected.pyによるユーザーローカル設定
+### 4.1 .pinjected.pyによるローカル設定
 
-`~/.pinjected.py`ファイルを通じて、ユーザーローカルなデザインを定義・注入できます。APIキーやローカルパスなど、ユーザーごとに異なる機密情報やパス設定を管理するのに適しています。
+`.pinjected.py`ファイルは、カレントディレクトリまたはホームディレクトリに配置して、プロジェクト固有またはユーザー固有の設定を管理できます。APIキーやローカルパスなど、ユーザーごとに異なる機密情報やパス設定を管理するのに適しています。
 
 ```python
-# ~/.pinjected.py
+# .pinjected.py（カレントディレクトリまたは~/.pinjected.py）
 from pinjected import design
 
-default_design = design(
-    api_key = "your_api_key_here",
-    cache_dir = "/home/user/.cache/myproject"
+__design__ = design(
+    openai_api_key = "sk-xxxxxx_your_secret_key_here",
+    cache_dir = "/home/user/.cache/myproject",
+    database_url = "postgresql://localhost:5432/mydb"
 )
 ```
 
 ### 4.2 withステートメントによるデザインオーバーライド
 
-`with`ステートメントを用いて、一時的なオーバーライドを行えます。
+`with`ステートメントを用いて、一時的なオーバーライドを行えます。これにより、特定のコンテキスト内でのみ異なる設定を使用できます。
 
 ```python
-from pinjected import IProxy, design
+from pinjected import design, instance
 
-with design(
-        batch_size=64  # 一時的にbatch_sizeを64へ
-):
+# デフォルトのトレーナー
+@instance
+def trainer(learning_rate, batch_size):
+    return Trainer(lr=learning_rate, bs=batch_size)
+
+# 通常の実行
+default_design = design(learning_rate=0.001, batch_size=32)
+
+# 一時的なオーバーライド
+with design(batch_size=64):  # 一時的にbatch_sizeを64へ
     # このwithブロック内ではbatch_sizeは64として解決される
-    train_with_bs_64: IProxy = train()
+    graph = default_design.to_graph()
+    trainer_64 = graph['trainer']  # batch_size=64で作成される
 ```
 
 ### 4.3 InjectedとIProxy
@@ -259,7 +258,10 @@ my_list = Injected.list(
 
 #### 4.3.4 injected()関数
 
-`injected()`関数は`Injected.by_name().proxy`の短縮形で、依存名から直接IProxyオブジェクトを取得するための便利な関数です。また、クラスやコンストラクタ関数に適用して注入関数を作成することもできます。
+`injected()`関数には2つの異なる使用方法があります：
+
+1. **デコレータとして使用**（`@injected`）: 関数に適用して、依存性注入される引数と実行時引数を分離する
+2. **関数として使用**（`injected(MyClass)`）: クラスやコンストラクタに適用して、依存性注入可能なファクトリ関数を作成する
 
 ```python
 from pinjected import injected
@@ -419,11 +421,11 @@ Pinjectedプロジェクトでは、以下のテスト構造が推奨されて�
 # <repo_root>/tests/test_example.py
 from pinjected.test import injected_pytest
 @injected_pytest()
-async def test_some_function(some_function):
+def test_some_function(some_function):
     # some_functionは依存性注入によって提供される
     return some_function("test_input")
 ```
-`async def`と`def`の両方に対応しており、pytest.mark.asyncioを使用する必要がありません。使用しないで下さい。
+
 ### 7.2 依存関係の命名規則
 
 依存関係の命名には、衝突を避けるために以下のようなパターンが推奨されます：
@@ -437,13 +439,40 @@ async def test_some_function(some_function):
 - **適切な粒度で依存を分割**: 大きすぎる依存は再利用性を下げる
 - **テスト容易性を考慮**: 単体テストや部分実行がしやすいよう設計
 
-## 8. 注意点と制限事項
+## 8. 非同期サポート
 
-### 7.4 injected_pytestによるテスト自動化
+### 8.1 非同期プロバイダ
+
+Pinjectedは非同期関数を完全にサポートしています：
+
+```python
+@instance
+async def async_database(host, port):
+    conn = await asyncpg.connect(host=host, port=port)
+    return conn
+
+@injected  
+async def async_query(async_database, /, query: str):
+    result = await async_database.fetch(query)
+    return result
+```
+
+### 8.2 並列依存関係解決
+
+依存関係は並列に収集され、プロバイダ関数は非同期コンテキストで呼び出されます。これにより、I/O操作を含む複数の依存関係を効率的に解決できます。
+
+### 8.3 リゾルバの選択
+
+- `to_graph()`: ブロッキングリゾルバを返す（内部で`asyncio.run()`を使用）
+- `to_resolver()`: 非同期リゾルバを返す（awaitして使用）
+
+## 9. 注意点と制限事項
+
+### 9.1 injected_pytestによるテスト自動化
 
 Pinjectedは`injected_pytest`デコレータを提供しており、pinjectedを使用したテスト関数をpytestで実行可能なテスト関数に変換できます。
 
-#### 7.4.1 基本的な使用方法
+#### 9.1.1 基本的な使用方法
 
 ```python
 from pinjected.test import injected_pytest
@@ -459,14 +488,14 @@ def test_some_function(some_dependency):
 test_design = design(
     some_dependency=MockDependency()
 )
-# test_designを使うように指定
+
 @injected_pytest(test_design)
 def test_with_override(some_dependency):
     # some_dependencyはtest_designで指定されたMockDependencyが注入される
     return some_dependency.do_something()
 ```
 
-#### 7.4.2 内部動作
+#### 9.1.2 内部動作
 
 `injected_pytest`デコレータは、以下のような処理を行います：
 
@@ -475,12 +504,12 @@ def test_with_override(some_dependency):
 3. 非同期処理を含むテストも実行できるよう、asyncioを使用して実行環境を設定
 4. 指定されたデザインでオーバーライドして依存性を解決
 
-#### 7.4.3 実際の使用例
+#### 9.1.3 実際の使用例
 
 ```python
 import pytest
 from pinjected.test import injected_pytest
-from pinjected import design 
+from pinjected import design, instances
 
 # テスト用のモックロガー
 class MockLogger:
@@ -491,7 +520,8 @@ class MockLogger:
         self.logs.append(message)
 
 # テスト用のデザイン
-test_design = design(
+test_design = design()
+test_design += instances(
     logger=MockLogger()
 )
 
@@ -502,7 +532,7 @@ def test_logging_function(logger):
     return "テスト成功"
 ```
 
-#### 7.4.4 通常のpytestテストとの違い
+#### 9.1.4 通常のpytestテストとの違い
 
 `injected_pytest`デコレータを使用したテストと通常のpytestテストには以下のような違いがあります：
 
@@ -511,13 +541,13 @@ def test_logging_function(logger):
 - **非同期サポート**: 非同期処理を含むテストも簡単に実行できます
 - **メタコンテキスト**: 呼び出し元のファイルパスから自動的にメタコンテキストを収集します
 
-#### 7.4.5 非同期処理を含むテストの例
+#### 9.1.5 非同期処理を含むテストの例
 
 `injected_pytest`は内部で`asyncio.run()`を使用しているため、非同期処理を含むテストも簡単に書くことができます：
 
 ```python
 from pinjected.test import injected_pytest
-from pinjected import design 
+from pinjected import design, instances
 import asyncio
 
 # 非同期処理を行うモックサービス
@@ -527,7 +557,8 @@ class AsyncMockService:
         return {"status": "success"}
 
 # テスト用のデザイン
-async_test_design = design(
+async_test_design = design()
+async_test_design += instances(
     service=AsyncMockService()
 )
 
@@ -541,7 +572,7 @@ async def test_async_function(service):
     return "非同期テスト成功"
 ```
 
-#### 7.4.6 注意点とベストプラクティス
+#### 9.1.6 注意点とベストプラクティス
 
 `injected_pytest`を使用する際の注意点とベストプラクティスは以下の通りです：
 
@@ -560,13 +591,13 @@ base_test_design = design(
 )
 ```
 
-#### 7.4.7 複雑な依存関係を持つテストの例
+#### 9.1.7 複雑な依存関係を持つテストの例
 
 実際のプロジェクトでは、複数の依存関係を持つ複雑なテストケースが必要になることがあります。以下は、データベース、キャッシュ、ロガーなど複数の依存関係を持つテストの例です：
 
 ```python
 from pinjected.test import injected_pytest
-from pinjected import design, injected
+from pinjected import design, instances, injected
 
 # モックデータベース
 class MockDatabase:
@@ -628,7 +659,7 @@ def test_fetch_user_data_cache_miss(fetch_user_data):
     assert any("Cache miss" in log for log in logger.logs)
 ```
 
-#### 7.4.8 注意点：pytestフィクスチャとの互換性
+#### 9.1.8 注意点：pytestフィクスチャとの互換性
 
 `injected_pytest`はpytestのフィクスチャ（`@pytest.fixture`）と互換性がありません。pytestフィクスチャを使用する代わりに、Pinjectedの依存性注入メカニズムを活用してテストデータや依存関係を提供することが推奨されます。
 
@@ -639,60 +670,77 @@ def test_data():
     return {"key": "value"}
 ```
 
-#### 7.4.9 標準pytestとの共存
-@injectedや@instanceを使ったプログラムのテストには@injected_pytestを推奨しますが、
-純粋な関数のテストや、既存のpytestフィクスチャを使う場合は通常のpytestを使うことを推奨します。
-
-
-### 8.1 学習コストと開発体制への影響
+### 9.2 学習コストと開発体制への影響
 
 - チームメンバーがDIやDSL的な記法に慣れる必要がある
 - 共通理解の確立が重要
 
-### 8.2 デバッグやエラー追跡
+### 9.3 デバッグやエラー追跡
 
 - 依存解決が遅延されるため、エラー発生タイミングの把握が難しい場合がある
 - スタックトレースが複雑になることがある
 
-### 8.3 メンテナンス性とスケール
+### 9.4 メンテナンス性とスケール
 
 - 大規模プロジェクトでは依存キーの管理が複雑になる可能性
 - バリエーション管理が膨大になる場合がある
 
-### 8.4 グローバル変数の注入に関する注意点
+### 9.5 グローバル変数の注入に関する注意点
 
 グローバル変数（テスト用の`test_*`変数を含む）は、単にグローバルに定義しただけでは注入されません。以下の点に注意が必要です：
 
 - グローバル変数として定義しただけでは、pinjectedの依存解決の対象にならない
 - `@injected`や`@instance`でデコレートされた関数は関数名で注入されるが、グローバル変数は異なる
-- グローバル変数を注入するには、`__meta_design__`を使って明示的に注入する必要がある
+- グローバル変数を注入するには、`__design__`を使って明示的に注入する必要がある（`__meta_design__`は非推奨）
 
 ```python
 # 以下のように単にグローバル変数として定義しても注入されない
 my_global_var = some_function(arg1="value")  # IProxyオブジェクト
 
-# 正しい方法: __meta_design__を使って明示的に注入する
-__meta_design__ = design(
-    overrides=design(
-        my_global_var=some_function(arg1="value")
-        # テストは@injected_pytestを使用することを推奨
-    )
+# 正しい方法: __design__を使って明示的に注入する（__pinjected__.py内で）
+__design__ = design(
+    my_global_var=some_function(arg1="value")
+    # テストは@injected_pytestを使用することを推奨
 )
+
+# 古い方法（非推奨 - __meta_design__は使用しないでください）
+# __meta_design__ = design(
+#     overrides=design(
+#         my_global_var=some_function(arg1="value")
+#     )
+# )
 ```
 
-### 8.5 __meta_design__の正しい使用方法
+### 9.6 __design__の使用方法（__meta_design__は非推奨）
 
-`__meta_design__`を更新する際は、以下の形式を使用する必要があります：
+`__design__`を使用する際は、`__pinjected__.py`ファイル内で以下のように定義します：
 
 ```python
-__meta_design__ = design(
-    overrides=design(key1=value1, key2=value2)
+# __pinjected__.py内で
+__design__ = design(
+    key1=value1,
+    key2=value2
 )
 ```
 
-この形式を守らないと、依存解決が正しく行われない場合があります。特に、`overrides`キーを使用せずに直接`__meta_design__ = design(key=value)`とすると、既存の設定が上書きされてしまう可能性があります。
+**重要**: `__meta_design__`は非推奨です。新しいコードでは必ず`__design__`を使用してください。
 
-### 8.6 @instanceと@injectedの型と使い分け
+古いコードで`__meta_design__`を見つけた場合は、以下のように移行してください：
+
+```python
+# 非推奨（使用しないでください）
+# __meta_design__ = design(
+#     overrides=design(key1=value1, key2=value2)
+# )
+
+# 推奨される方法
+__design__ = design(
+    key1=value1,
+    key2=value2
+)
+```
+
+### 9.7 @instanceと@injectedの型と使い分け
 
 `@instance`と`@injected`は、型の観点から見ると以下のように区別できます：
 
@@ -762,7 +810,7 @@ my_instance = new_MyClass("value")  # OK
 
 これらの型の違いを理解することで、`@instance`と`@injected`の使い分けがより明確になります。
 
-### 8.8 よくある間違いと推奨される書き方
+### 9.8 よくある間違いと推奨される書き方
 
 pinjectedを使用する際によくある間違いと、その推奨される書き方を以下に示します：
 
@@ -779,13 +827,18 @@ result = my_instance(arg1, arg2)  # エラー！
 
 # 推奨される書き方
 # @instanceはIProxy[T]を返すため、直接呼び出せない
-# 依存関係を設定する場合は__meta_design__のoverrideを使用
-__meta_design__ = design(
-    overrides=design(
-        # 依存関係の設定（test_で始まらない変数）
-        my_dependency=my_instance
-    )
+# 依存関係を設定する場合は__design__を使用（__pinjected__.py内で）
+__design__ = design(
+    # 依存関係の設定
+    my_dependency=my_instance
 )
+
+# 非推奨（__meta_design__は使用しないでください）
+# __meta_design__ = design(
+#     overrides=design(
+#         my_dependency=my_instance
+#     )
+# )
 ```
 
 #### 2. `@injected`関数の不完全な使用
@@ -881,17 +934,17 @@ def setup_database(host, port, username):  # × 動詞を含む
 # 良い例
 @injected
 def send_message(channel, /, queue: str, message: str):
-# ...
+    # ...
 
 # 良い例
 @injected
 def process_image(model, preprocessor, /, image_path: str):
-# ...
+    # ...
 
 # 非同期関数の良い例
 @injected
 async def a_fetch_data(api_client, /, user_id: str):
-# ...
+    # ...
 ```
 
 ## 3. design()内のキー命名規則
@@ -909,7 +962,7 @@ config_design = design(
     rabbitmq_host="localhost",
     rabbitmq_port=5672,
     rabbitmq_username="guest",
-
+    
     db_host="localhost",
     db_port=3306,
 )
@@ -935,7 +988,7 @@ async def rabbitmq_connection(host, port, username, password):
 # 悪い例 - 不要なa_接頭辞
 @instance
 async def a_rabbitmq_connection(host, port, username, password):  # × a_接頭辞は不要
-# ...
+    # ...
 ```
 
 ### @injectedデコレータを使用する非同期関数
@@ -952,7 +1005,7 @@ async def a_send_message(rabbitmq_channel, /, routing_key: str, message: str):
 # 悪い例 - a_接頭辞なし
 @injected
 async def fetch_data(api_client, /, user_id: str):  # × a_接頭辞がない
-# ...
+    # ...
 ```
 
 この命名規則に従うことで関数の役割と処理タイプが明確になり、コードの保守性が向上する。
@@ -974,7 +1027,7 @@ def database_connection(host: str, port: int) -> Connection:
 
 @injected
 def fetch_users(db: Connection, /, user_id: Optional[int] = None) -> List[Dict[str, any]]:
-# ...
+    # ...
 ```
 
 ## 2. Protocolを活用した依存関係の型定義
@@ -1008,11 +1061,11 @@ async def a_process_image__v2(preprocessor, enhancer, /, image) -> Image.Image:
 # プロトコルを型として使用する関数
 @injected
 async def a_use_image_processor(
-        image_processor: ImageProcessor,  # Protocolを型として使用
-        logger,
-        /,
-        image,
-        additional_args: dict
+    image_processor: ImageProcessor,  # Protocolを型として使用
+    logger,
+    /,
+    image,
+    additional_args: dict
 ) -> Image.Image:
     logger.info(f"Processing image with args: {additional_args}")
     # image_processorは__call__を実装していることが保証されている
@@ -1090,15 +1143,15 @@ if __name__ == "__main__":
         username="guest",
         password="guest"
     )
-
+    
     resolver = AsyncResolver(d)
-
+    
     channel_proxy: IProxy = rabbitmq_channel
     channel = resolver.provide(channel_proxy)
-
+    
     send_message_proxy: IProxy = send_message
     send_func = resolver.provide(send_message_proxy)
-
+    
     result = send_func("hello", "Hello World!")
     print(f"送信結果: {result}")
 ```
@@ -1121,12 +1174,12 @@ python -m pinjected run my_module.my_function --param1=value1 --param2=value2
 `@instance`と`@injected`は異なる抽象を表す:
 
 - **@instance**: 「値」を抽象化するIProxy
-- 関数実行結果を表す
-- すべての引数が依存解決済み
+    - 関数実行結果を表す
+    - すべての引数が依存解決済み
 
 - **@injected**: 「関数」を抽象化するIProxy
-- 部分適用された関数を表す
-- `/`左側は依存解決済み、右側はまだ必要
+    - 部分適用された関数を表す
+    - `/`左側は依存解決済み、右側はまだ必要
 
 `@instance`関数はDIシステムが呼び出し、ユーザーは直接呼び出さないため、デフォルト引数は不適切:
 
@@ -1143,8 +1196,8 @@ def database_client(host, port, user):  # デフォルト引数なし
 
 # 設定はdesign()で提供
 base_design = design(
-    host="localhost",
-    port=5432,
+    host="localhost", 
+    port=5432, 
     user="default"
 )
 ```
@@ -1232,7 +1285,7 @@ run_train_v2: IProxy = trainer.run(model)
 # @instanceを使ったエントリポイントの実行
 python -m pinjected run my_module.run_train_v1
 
-# IProxy変数を使ったエントリポイントの実行
+# IProxy変数を使ったエントリポイントの実行 
 python -m pinjected run my_module.run_train_v2
 ```
 
@@ -1251,12 +1304,6 @@ def run_something(dep1, dep2, /, arg1, arg2):
 
 @injectedは主に、依存性を注入した上で追加の引数を受け取るような「部分適用関数」を定義する場合に適している。
 
-# Deprecations
-- `instances`,`providers`,`classes`を用いたDesignの作成はdeprecated. 代わりに`design`関数を使用する。
-- `@injected_function`はdeprecated, 代わりに`@injected`を使用する。`@injected`では依存性を表す引数は`/`の左側に配置する。
-
-
-
 ## エントリポイントの命名規則
 
 エントリポイントには明確な命名規則を使用するべき:
@@ -1264,72 +1311,32 @@ def run_something(dep1, dep2, /, arg1, arg2):
 - 推奨: `run_training`, `run_evaluation`, `run_inference`
 - 避けるべき: 具体的動作を表す一般的名前（`train`, `evaluate`, `predict`）
 
-## Pipeline Pattern with dataclass
-IProxyを用いたデータセットパイプラインの作成など、複雑な構築を行う際には
-@dataclassやclassを用いてパイプラインを作成することが推奨されます。
+## 10. バージョン更新情報
 
-```python
-#典型的な例
+### 最新バージョンの主な変更点
 
-@dataclass
-class ExpandedDatasetPipeline:
-    start_date: pd.Timestamp
-    end_date: pd.Timestamp
-    version: str
+- **v0.2.115**: ドキュメント構造の改善、`describe`コマンドの追加
+- **設計の柔軟性向上**: `with`ステートメントによるネストされた設定のオーバーライド
+- **`__pinjected__.py`の導入**: `__design__`を使用する推奨される新しい設定方法（`__meta_design__`は非推奨）
+- **非同期サポートの強化**: 並列依存関係解決の改善
 
-    def __post_init__(self):
-        self.daily_cache_dir = injected("cache_root_path") / "ema" / "daily_dataset"
-        self.generator_cache_path = injected("cache_root_path") / "ema" / f"cache_{self.version}"
-        self.src: IProxy[AsyncIterator[DailyDataset]] = a_cached_daily_rust_dataset_gen(
-            start_date=self.start_date,
-            end_date=self.end_date,
-            cache_dir=self.daily_cache_dir,
-            version=self.version,
-        )
-        self.cached_src: IProxy[AsyncIterator[TypedDataset[RustDatasetItem]]] = a_save_dataset_gen_to_dir(self.src,
-                                                                                                          self.generator_cache_path)
-        self.cached_datasets: IProxy[list[TypedDataset[RustDatasetItem]]] = alist(self.cached_src)
-        self.cached_dataset: IProxy[TypedDataset[RustDatasetItem]] = injected(concatenate_datasets)(
-            self.cached_datasets)
-        self.expanded_dataset: IProxy[TypedDataset[ExpandedRDItem]] = self.cached_dataset.map(_expand_instrument,
-                                                                                              batched=True,
-                                                                                              batch_size=10000)
-        self.scaled_dataset: IProxy[TypedDataset[ExpandedRDItem]] = a_scale_dataset(self.expanded_dataset,
-                                                                                    expanded_inst_columns)
-        self.sampler: IProxy[SamplerAdapter] = injected(SamplerAdapter)(
-            injected(BalancedIndexSampler)(
-                a_sampling_weight_from_labels(self.scaled_dataset), n_buckets=100
-            )
-        )
-        self.loader: IProxy[DataLoader] = injected(DataLoader)(
-            dataset=self.scaled_dataset,
-            batch_size=injected('batch_size'),
-            sampler=self.sampler,
-            num_workers=0,
-        )
-
-
-pipeline_20250316: ExpandedDatasetPipeline = ExpandedDatasetPipeline(
-    start_date=pd.Timestamp("2025-03-01", tz="UTC"),
-    end_date=pd.Timestamp("2025-03-31", tz="UTC"),
-    version="20250316",
-)
-```
-上記の様に、クラスメンバーや関数がIProxyを返すように明示的に設計することで、
-データセットなど静的な情報の構築を行うことができます。
-
-
-
-
-## 9. まとめ
+## 11. まとめ
 
 Pinjectedは研究開発コードの問題(大きなcfg依存、多数のif分岐、テスト困難性)の解決策。
 
 主なメリット:
 
-- **設定管理**: design()によるDI定義、CLIオプション、~/.pinjected.pyでローカル設定対応
+- **設定管理**: design()によるDI定義、CLIオプション、.pinjected.pyでローカル設定対応
 - **コード構造改善**: @instanceと@injectedによるオブジェクト注入でif分岐削減
 - **テスト容易性**: コンポーネント単体実行・検証が簡単
 - **宣言的記述**: Injected/IProxyによるDSL的表現
+- **非同期対応**: asyncio統合による効率的な依存関係解決
+- **依存グラフ可視化**: `describe`コマンドによる理解しやすい依存関係表示
 
 結果として開発速度向上、コード再利用性が高まる。
+
+## リソース
+
+- [公式ドキュメント](https://pinjected.readthedocs.io/en/latest/)
+- [GitHubリポジトリ](https://github.com/proboscis/pinjected)
+- [VSCode拡張機能](https://marketplace.visualstudio.com/items?itemName=proboscis.pinjected-runner)
