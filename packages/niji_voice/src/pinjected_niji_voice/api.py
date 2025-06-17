@@ -265,6 +265,7 @@ _test_play_voice: IProxy = a_niji_voice_play(
     )
 )
 
+
 _test_play_voice2: IProxy = a_niji_voice_play(
     param=NijiVoiceParam(
         actor_name="小夜",

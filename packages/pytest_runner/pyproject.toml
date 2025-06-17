@@ -3,9 +3,9 @@ requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pinjected-niji-voice"
-version = "0.1.3"
-description = "Niji voice API bindings for pinjected dependency injection framework"
+name = "pinjected-pytest-runner"
+version = "0.1.0"
+description = "Pytest runner with automatic IProxy test discovery for pinjected"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -20,33 +20,22 @@ classifiers = [
 
 dependencies = [
     "pinjected",
-    "httpx>=0.28.1",
-    "tenacity>=9.0.0",
-    "pydub>=0.25.1",
-    "returns",
-    "cloudpickle",
-    "frozendict",
-    "makefun",
-    "cytoolz",
-    "beartype",
-    "rich",
+    "pytest>=8.1.1",
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pinjected_niji_voice"]
+packages = ["src/pinjected_pytest_runner"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src/pinjected_niji_voice"]
+pythonpath = ["src"]
 
 [tool.uv.sources]
 pinjected = { workspace = true }
-injected-utils = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.2.0",
-    "pytest>=8.1.1,<9",
+    "pytest>=8.1.1,<9"
 ]

@@ -48,6 +48,15 @@ def remove_kwargs_from_func(f, kwargs: list[str]):
 class MergedDesign(Design):
     srcs: list[Design]
 
+    def __post_init__(self):
+        assert isinstance(self.srcs, list), (
+            f"srcs must be a list of Design, but got {type(self.srcs)}=={self.srcs}"
+        )
+        for src in self.srcs:
+            assert isinstance(src, Design), (
+                f"srcs must be a list of Design, but got {type(src)}=={src}"
+            )
+
     @property
     def children(self):
         return self.srcs

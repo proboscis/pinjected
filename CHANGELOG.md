@@ -1,11 +1,9 @@
 # Changelog
 
-## 0.2.252 (2025-05-29)
+## 0.2.252-beta (2025-05-29)
 
 ### Changed
-- Bumped version for PyPI publishing
-- Released stable version without beta designation
-
+- Bumped version with beta prefix for PyPI publishing
 ## 0.2.251 (2025-03-25)
 
 ### Fixed

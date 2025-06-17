@@ -365,7 +365,8 @@ def async_cached(
 
     from loguru import logger
 
-    logger.debug(f"async_cached called with key_hashers: {key_hashers}")
+    if key_hashers is not None:
+        logger.debug(f"async_cached called with key_hashers: {key_hashers}")
 
     # logger.info(f"async_cached called in {parent_frame.f_code.co_filename}:{parent_frame.f_lineno}")
     if hasher_factory is not None:
@@ -553,16 +554,16 @@ class CustomKeyHasher:
         """
         Fix for issue #217 - Handle signature mismatch properly
         ✓ COMPLETED
-        
-        This method now correctly handles the signature mismatch where it receives 
+
+        This method now correctly handles the signature mismatch where it receives
         (added_key, *args, **kwargs) but self.signature is the original function signature.
-        
+
         Implementation:
         1. Extract added_key from args[0]
         2. Create a new binding using self.signature with args[1:] and kwargs
         3. Apply key_hasher and type_hasher to the correctly mapped parameters
         4. Include added_key in the final cache key
-        
+
         Example:
         - Original function: async def fetch_data(user_id: str, include_details: bool)
         - Called as: calc_cache_key(added_key_value, "user123", include_details=True)
