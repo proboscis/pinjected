@@ -55,7 +55,7 @@ def run_with_meta_context(
     """
     # if not "__meta_design__" in Path(context_module_file_path).read_text():
     #     raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
-    meta_context = MetaContext.gather_from_path(Path(context_module_file_path))
+    meta_context = asyncio.run(MetaContext.a_gather_bindings_with_legacy(Path(context_module_file_path)))
     default = design(default_design_paths=[])
     instance_overrides = design(
         module_path=Path(context_module_file_path),
