@@ -28,7 +28,7 @@ def dummy_config_creator_for_test(
 run_test_module: IProxy = Injected.bind(lambda: test_tree())
 
 
-__meta_design__ = design(
+__design__ = design(
     name="test_package.child.__init__",
     # custom_idea_config_creator = 'dummy'
     custom_idea_config_creator=Injected.bind(dummy_config_creator_for_test),
