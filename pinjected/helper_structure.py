@@ -8,7 +8,7 @@ from pinjected import DelegatedVar, Design, EmptyDesign, Injected, design
 from pinjected.di.design_spec.protocols import DesignSpec
 from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
 from pinjected.module_inspector import ModuleVarSpec
-from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.pinjected_logging import logger
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.keys import IBindKey, StrBindKey
@@ -199,22 +199,18 @@ class MetaContext:
             )
 
             acc = self.accumulated
-            
+
             # Check for deprecated default_design_paths
             if StrBindKey("default_design_paths") in acc:
                 raise DeprecationWarning(
                     "Use of 'default_design_paths' is no longer supported. "
                     "Please migrate to using __design__ in __pinjected__.py files to define your designs directly."
                 )
-            
+
             # Simply return the accumulated design plus user configurations
             # Note: 'overrides' is no longer a special pre-defined key, but users can still
             # have their own 'overrides' binding if they want
-            return (
-                load_user_default_design()
-                + acc
-                + load_user_overrides_design()
-            )
+            return load_user_default_design() + acc + load_user_overrides_design()
 
     @staticmethod
     async def a_load_default_design_for_variable(var: ModuleVarPath | str):
