@@ -72,8 +72,8 @@ async def a_map_progress__tqdm(
     if total is None:
         total = safe(len)(tasks).value_or(total)
     bar = tqdm(total=total, desc=desc)
-    queue = Queue()
-    result_queue = Queue()
+    queue = Queue(pool_size)
+    result_queue = Queue(pool_size)
     tasks = ensure_agen(tasks)
 
     producer_status = "not started"
@@ -84,7 +84,6 @@ async def a_map_progress__tqdm(
         producer_status = "started"
         async for task in tasks:
             fut = Future()
-            # logger.info(f"producing:{task}")
             producer_status = "submitting"
             await queue.put((fut, task))
             producer_status = "submitted"
@@ -129,9 +128,12 @@ async def a_map_progress__tqdm(
         return "consumer done"
 
     async with TaskGroup() as tg:
-        logger.info("starting a_map_progress")
-        producer_task = tg.create_task(producer())
-        consumer_tasks = [tg.create_task(consumer(idx)) for idx in range(pool_size)]
+        logger.info(
+            f"starting a_map_progress with pool_size={pool_size}, total={total}"
+        )
+        tg.create_task(producer())
+        for idx in range(pool_size):
+            tg.create_task(consumer(idx))
         while True:
             done: Future = await result_queue.get()
             if done is None:
