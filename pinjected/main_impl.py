@@ -33,11 +33,11 @@ def run(
     """
     load the injected variable from var_path and run it with a design at design_path.
     If design_path is not provided, it will be inferred from var_path.
-    design_path is inferred by looking at the module of var_path for a __meta_design__ attribute.
-    This command will ask __meta_design__ to provide 'default_design_paths', and uses the first one.
-    if __meta_design__ is not found, it will recursively look for a __meta_design__ attribute in the parent module.
-    by default, __meta_design__ is accumulated from all parent modules.
-    Therefore, if any parent module has a __meta_design__ attribute with a 'default_design_paths' attribute, it will be used.
+    design_path is inferred by looking at the module of var_path for a __design__ attribute in __pinjected__.py files.
+    This command will ask __design__ to provide 'default_design_paths', and uses the first one.
+    if __design__ is not found, it will recursively look for a __design__ attribute in the parent module.
+    by default, __design__ is accumulated from all parent modules.
+    Therefore, if any parent module has a __design__ attribute with a 'default_design_paths' attribute, it will be used.
 
     :param var_path: the path to the variable to be injected: e.g. "my_module.my_var"
     :param design_path: the path to the design to be used: e.g. "my_module.my_design"
@@ -295,6 +295,149 @@ def list(var_path: str = None):
         return 1
 
 
+async def a_trace_key(key_name: str, var_path: str | None = None):
+    """
+    Async implementation of trace_key using MetaContext.
+    """
+    from pinjected.v2.keys import StrBindKey
+    from pinjected.run_helpers.run_injected import (
+        load_user_default_design,
+        load_user_overrides_design,
+    )
+
+    # Convert string key to IBindKey
+    bind_key = StrBindKey(key_name)
+
+    # Determine the path to use
+    if var_path:
+        path = Path(ModuleVarPath(var_path).module_file_path)
+    else:
+        path = Path.cwd()
+
+    # Use MetaContext to gather bindings and trace information
+    meta_context = await MetaContext.a_gather_bindings_with_legacy(path)
+
+    # Extract trace information for the specific key
+    key_traces = []
+    seen_paths = set()
+
+    # First check user default design
+    user_default = load_user_default_design()
+    if bind_key in user_default.bindings:
+        key_traces.append(
+            {
+                "path": "user_default_design (e.g., ~/.pinjected/defaults.py)",
+                "has_key": True,
+                "overrides_previous": False,
+            }
+        )
+
+    # Go through the trace to find where this key is defined in module hierarchy
+    for var_spec in meta_context.trace:
+        if var_spec.var_path in seen_paths:
+            continue
+        seen_paths.add(var_spec.var_path)
+
+        # Check if this var_spec contains our key
+        # Skip __meta_design__ since it's deprecated - only trace __design__
+        if var_spec.var_path.endswith("__design__"):
+            design_obj = await _a_resolve_design(var_spec)
+            if design_obj and bind_key in design_obj.bindings:
+                key_traces.append(
+                    {
+                        "path": var_spec.var_path,
+                        "has_key": True,
+                        "overrides_previous": len(key_traces) > 0,
+                    }
+                )
+        elif var_spec.var_path.endswith("__meta_design__"):
+            # Skip __meta_design__ entries since they're deprecated
+            continue
+
+    # Finally check user overrides design
+    user_overrides = load_user_overrides_design()
+    if bind_key in user_overrides.bindings:
+        key_traces.append(
+            {
+                "path": "user_overrides_design (e.g., ~/.pinjected/overrides.py)",
+                "has_key": True,
+                "overrides_previous": len(key_traces) > 0,
+            }
+        )
+
+    # Check if key exists in final design
+    final_design = await meta_context.a_final_design
+    found_in_final = bind_key in final_design.bindings
+
+    return key_traces, found_in_final
+
+
+async def _a_resolve_design(var_spec):
+    """Helper to resolve a design from a var spec."""
+    from pinjected import EmptyDesign
+    from pinjected.helper_structure import _a_resolve
+
+    try:
+        ovr = await _a_resolve(var_spec.var)
+        return ovr
+    except Exception:
+        return EmptyDesign
+
+
+def trace_key(key_name: str, var_path: str | None = None):
+    """
+    Trace where a binding key is defined and overridden in the design hierarchy.
+
+    :param key_name: The binding key to trace
+    :param var_path: Optional module path to use as context (defaults to current directory)
+
+    Example:
+        pinjected trace-key logger
+        pinjected trace-key logger --var_path=my.module.path
+    """
+    from pinjected.pinjected_logging import logger
+
+    if not key_name:
+        _print_trace_key_error()
+        return 1
+
+    try:
+        logger.info(f"Tracing key: '{key_name}'")
+        key_traces, found = asyncio.run(a_trace_key(key_name, var_path))
+        return _handle_trace_results(key_name, key_traces, found)
+    except Exception as e:
+        print(f"Error: {e!s}")
+        return 1
+
+
+def _print_trace_key_error():
+    """Print error message for missing key name."""
+    print("Error: You must provide a key name to trace")
+    print("Examples:")
+    print("  pinjected trace-key logger")
+    print("  pinjected trace-key --key_name=database_connection")
+
+
+def _handle_trace_results(key_name: str, key_traces: list, found: bool) -> int:
+    """Handle and display trace results."""
+    if not found:
+        print(f"Key '{key_name}' not found in the design hierarchy")
+        return 0
+
+    if not key_traces:
+        print(f"Key '{key_name}' exists but no trace information available")
+        return 0
+
+    print(f"\nTracing key: '{key_name}'")
+    print("Found in:")
+    for i, trace in enumerate(key_traces, 1):
+        override_note = " (overrides previous)" if trace["overrides_previous"] else ""
+        print(f"  {i}. {trace['path']}{override_note}")
+
+    print(f"\nFinal binding source: {key_traces[-1]['path']}")
+    return 0
+
+
 class PinjectedRunDependencyResolutionFailure(Exception):
     pass
 
@@ -314,6 +457,9 @@ class PinjectedCLI:
       list           - List all IProxy objects that are runnable in the specified module.
                        Requires a module path in the format: full.module.path
                        Can be used as: list my_module.path or list --var_path=my_module.path
+      trace_key      - Trace where a binding key is defined and overridden in the design hierarchy
+                       Requires a key name and optional module path
+                       Can be used as: trace_key logger or trace_key logger --var_path=my.module.path
 
     For more information on a specific command, run:
       pinjected COMMAND --help
@@ -323,6 +469,8 @@ class PinjectedCLI:
       pinjected resolve --var_path=my_module.my_var
       pinjected describe --var_path=my_module.my_submodule.my_variable
       pinjected list my_module.my_submodule
+      pinjected trace_key logger
+      pinjected trace_key database --var_path=my_module.path
     """
 
     def __init__(self):
@@ -333,6 +481,7 @@ class PinjectedCLI:
         self.json_graph = json_graph
         self.describe = describe
         self.list = list
+        self.trace_key = trace_key
 
 
 def main():
