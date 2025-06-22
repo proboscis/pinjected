@@ -12,7 +12,7 @@ from returns.pipeline import is_successful
 from returns.unsafe import unsafe_perform_io
 
 from pinjected import IProxy, injected, instance
-from pinjected.run_config_utils import load_variable_from_script
+from pinjected.module_var_path import load_variable_from_script
 from pinjected.v2.async_resolver import create_tb
 from pinjected_reviewer.reviewer_v1 import ExtractApproved
 from pinjected_reviewer.schema.reviewer_def import (

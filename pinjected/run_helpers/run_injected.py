@@ -36,7 +36,7 @@ from pinjected.logging_helper import disable_internal_logging  # noqa: E402
 from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path  # noqa: E402
 from pinjected.notification import notify  # noqa: E402
 from pinjected.pinjected_logging import logger  # noqa: E402
-from pinjected.run_config_utils import load_variable_from_script  # noqa: E402
+from pinjected.module_var_path import load_variable_from_script  # noqa: E402
 from pinjected.run_helpers.mp_util import run_in_process  # noqa: E402
 from pinjected.schema.handlers import (  # noqa: E402
     PinjectedHandleMainException,
