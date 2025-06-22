@@ -30,9 +30,7 @@ class IProxyModule(Module):
     def _collect_iproxy_items(self):
         """Collect IProxy objects and convert them to pytest functions"""
         module = self.obj
-        module_design = getattr(
-            module, "__design__", getattr(module, "__meta_design__", design())
-        )
+        module_design = getattr(module, "__design__", design())
         module_file = str(self.path)
 
         for name in dir(module):

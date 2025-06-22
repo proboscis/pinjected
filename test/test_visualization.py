@@ -17,6 +17,6 @@ def c(b, /):
 d: Injected = c() + "d"
 
 
-__meta_design__ = design(
+__design__ = design(
     overrides=design(a="some injected value" * 10, api_key="some secret key")
 )

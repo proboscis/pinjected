@@ -187,6 +187,4 @@ def add_overload(file_path: str) -> int:
 
 
 design_obj = design()
-__meta_design__ = design(
-    default_design_paths=["pinjected.di.tools.add_overload.design_obj"]
-)
+__design__ = design()

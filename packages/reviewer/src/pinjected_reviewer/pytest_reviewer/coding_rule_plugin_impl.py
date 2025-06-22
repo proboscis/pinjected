@@ -331,4 +331,4 @@ async def a_review_python_pinjected(src_path: Path):
     pass
 
 
-__meta_design__ = design()
+__design__ = design()

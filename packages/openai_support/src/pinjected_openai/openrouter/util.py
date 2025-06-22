@@ -1039,4 +1039,4 @@ def __debug_design():
     )
 
 
-__meta_design__ = design(overrides=__debug_design)
+__design__ = design(overrides=__debug_design)

@@ -550,4 +550,4 @@ a_vision_llm__claude_3_5_20241022 = Injected.partial(
     a_vision_llm__anthropic, model="claude-3-5-sonnet-20241022"
 )
 
-__meta_design__ = instances()
+__design__ = instances()

@@ -641,7 +641,7 @@ def get_designs_from_module(module_path: Path):
     logger.info(f"trying to import designs from {module_path}")
 
     def accept(name, x):
-        return isinstance(x, Design) and name != "__meta_design__"
+        return isinstance(x, Design) and name != "__design__"
 
     return inspect_module_for_type(module_path, accept)
 
@@ -662,7 +662,6 @@ def var_path_to_file_path(project_root: Path, /, var_path: str) -> Path:
 if __name__ == "__main__":
     main()
 
-__meta_design__ = design(
-    default_design_paths=["pinjected.run_config_utils.__meta_design__"],
+__design__ = design(
     internal_idea_config_creator=add_export_config,
 )

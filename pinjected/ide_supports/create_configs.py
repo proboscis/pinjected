@@ -46,7 +46,7 @@ def run_with_meta_context(
     **kwargs,
 ):
     """
-    This is for running a injected with __meta_design__ integrated.
+    This is for running a injected with __design__ integrated.
     :param var_path:
     :param context_module_file_path:
     :param design_path:
@@ -138,7 +138,7 @@ def get_filtered_signature(func):
 @instance
 def list_completions(default_design_paths: list[str]):
     """
-    An API to be called from IDE to return completions, based on __meta_design__.
+    An API to be called from IDE to return completions, based on __design__.
     :param default_design_paths:
     :return:[
         {name,description,tail}

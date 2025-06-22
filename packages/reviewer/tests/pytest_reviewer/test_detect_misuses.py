@@ -114,7 +114,7 @@ async def test_detect_misuse_in_entrypoint(
     )
 
 
-__meta_design__ = design(overrides=__pinjected_reviewer_default_design)
+__design__ = design(overrides=__pinjected_reviewer_default_design)
 
 # if __name__ == '__main__':
 #     test_detect_misuse()

@@ -35,7 +35,7 @@ def to_pytest(iproxy: IProxy, module_design: Optional[Any] = None) -> Any:
     file_path = frame.f_globals.get("__file__", "<unknown>")
 
     if module_design is None:
-        module_design = frame.f_globals.get("__meta_design__", design())
+        module_design = frame.f_globals.get("__design__", design())
 
     return _to_pytest(iproxy, module_design, file_path)
 

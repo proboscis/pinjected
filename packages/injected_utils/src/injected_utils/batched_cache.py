@@ -150,7 +150,7 @@ async def _test_function_batch_cached(*items):
 
 run_test_function_batch_cached: IProxy = _test_function_batch_cached(1, 2, 3, 4, 5)
 
-__meta_design__ = design(
+__design__ = design(
     overrides=design(
         injected_utils_default_hasher=lambda item: sha256(
             jsonpickle.dumps(item).encode()

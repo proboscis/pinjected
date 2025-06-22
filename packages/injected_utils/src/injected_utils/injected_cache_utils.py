@@ -845,7 +845,7 @@ def parse_preference_assignments(res: dict):
     """
 
 
-__meta_design__ = design(
+__design__ = design(
     overrides=design(
         injected_utils_default_hasher=lambda item: sha256(
             jsonpickle.dumps(item).encode()
