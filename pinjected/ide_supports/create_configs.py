@@ -270,6 +270,10 @@ def injected_to_idea_configs(
     name = tgt.var_path.split(".")[-1]
     # runner_script_path corresponds to the script's path which gets passed to idea.
     # so it must be the path which has run_injected command
+    # Ensure runner_script_path is a string, not a function
+    if callable(runner_script_path):
+        runner_script_path = runner_script_path()
+
     config_args = {
         "script_path": runner_script_path,
         "interpreter_path": interpreter_path,
