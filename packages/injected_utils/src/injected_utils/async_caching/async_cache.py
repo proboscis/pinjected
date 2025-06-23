@@ -70,4 +70,4 @@ async def test_lzma_sqlite(async_lzma_sqlite):
     path.unlink()
 
 
-__meta_design__ = design()
+__design__ = design()

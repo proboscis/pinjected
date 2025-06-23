@@ -13,7 +13,7 @@ def test_walk_module_with_special_files_single_file():
     items = list(
         walk_module_with_special_files(
             test_file,
-            "__meta_design__",
+            "__design__",
             ["__pinjected__.py", "__init__.py"],
             root_module_path=root_module_path,
         )
@@ -24,23 +24,23 @@ def test_walk_module_with_special_files_single_file():
     for item in items:
         print(f"  - {item.var_path}")
 
-    # Check if we find the module's __meta_design__
+    # Check if we find the module's __design__
     module_found = False
     for item in items:
-        if "module1.__meta_design__" in item.var_path:
+        if "module1.__design__" in item.var_path:
             module_found = True
             assert item.var.provide("name") == "test_package.child.module1"
 
-    assert module_found, "Should find __meta_design__ from module1.py"
+    assert module_found, "Should find __design__ from module1.py"
 
-    # Check if we find the child __pinjected__'s __meta_design__
+    # Check if we find the child __pinjected__'s __design__
     pinjected_found = False
     for item in items:
-        if "test_package.child.__pinjected__.__meta_design__" in item.var_path:
+        if "test_package.child.__pinjected__.__design__" in item.var_path:
             pinjected_found = True
             assert item.var.provide("special_var") == "from_pinjected_file"
 
-    assert pinjected_found, "Should find __meta_design__ from child/__pinjected__.py"
+    assert pinjected_found, "Should find __design__ from child/__pinjected__.py"
 
 
 def test_walk_module_with_special_files_multiple_files():
@@ -53,7 +53,7 @@ def test_walk_module_with_special_files_multiple_files():
     items = list(
         walk_module_with_special_files(
             test_file,
-            "__meta_design__",
+            "__design__",
             special_files,
             root_module_path=root_module_path,
         )
@@ -64,20 +64,20 @@ def test_walk_module_with_special_files_multiple_files():
     for item in items:
         print(f"  - {item.var_path}")
 
-    # Check for __meta_design__ from both special files
+    # Check for __design__ from both special files
     pinjected_found = False
     config_found = False
 
     for item in items:
-        if "test_package.child.__pinjected__.__meta_design__" in item.var_path:
+        if "test_package.child.__pinjected__.__design__" in item.var_path:
             pinjected_found = True
             assert item.var.provide("special_var") == "from_pinjected_file"
-        elif "config.__meta_design__" in item.var_path:
+        elif "config.__design__" in item.var_path:
             config_found = True
             assert item.var.provide("special_var") == "from_config_file"
 
-    assert pinjected_found, "Should find __meta_design__ from __pinjected__.py"
-    assert config_found, "Should find __meta_design__ from config.py"
+    assert pinjected_found, "Should find __design__ from __pinjected__.py"
+    assert config_found, "Should find __design__ from config.py"
 
 
 def test_walk_module_with_special_files_string_param():
@@ -152,7 +152,7 @@ def test_without_init_file():
     items = list(
         walk_module_with_special_files(
             test_file,
-            "__meta_design__",
+            "__design__",
             ["__pinjected__.py", "config.py"],  # No __init__.py
             root_module_path=root_module_path,
         )
@@ -163,14 +163,14 @@ def test_without_init_file():
     for item in items:
         print(f"  - {item.var_path}")
 
-    # We should only find module1's __meta_design__ (current file) and the special files,
+    # We should only find module1's __design__ (current file) and the special files,
     # but not from any __init__.py files
     init_found = False
     for item in items:
-        if "__init__.__meta_design__" in item.var_path:
+        if "__init__.__design__" in item.var_path:
             init_found = True
 
-    assert not init_found, "Should not find __meta_design__ from __init__.py files"
+    assert not init_found, "Should not find __design__ from __init__.py files"
 
 
 def test_yielding_order():
@@ -182,7 +182,7 @@ def test_yielding_order():
     items = list(
         walk_module_with_special_files(
             test_file,
-            "__meta_design__",
+            "__design__",
             ["__pinjected__.py", "config.py", "__init__.py"],
             root_module_path=root_module_path,
         )
@@ -241,7 +241,7 @@ def test_no_duplicates():
     items = list(
         walk_module_with_special_files(
             test_file,
-            "__meta_design__",
+            "__design__",
             ["__pinjected__.py", "config.py", "__init__.py"],
             root_module_path=root_module_path,
         )
@@ -285,7 +285,7 @@ def test_multiple_attr_names_order():
     root_module_path = Path(__file__).parent
 
     # Test with multiple attribute names
-    attr_names = ["__meta_design__", "special_config"]
+    attr_names = ["__design__", "special_config"]
     items = list(
         walk_module_with_special_files(
             test_file,
@@ -301,19 +301,19 @@ def test_multiple_attr_names_order():
         print(f"  {i}. {item.var_path}")
 
     # Group items by their attribute name
-    meta_design_items = [item for item in items if "__meta_design__" in item.var_path]
+    meta_design_items = [item for item in items if "__design__" in item.var_path]
     special_config_items = [item for item in items if "special_config" in item.var_path]
 
     # Check that we found both attribute types
-    assert len(meta_design_items) > 0, "Should find __meta_design__ attributes"
+    assert len(meta_design_items) > 0, "Should find __design__ attributes"
     assert len(special_config_items) > 0, "Should find special_config attributes"
 
     # Check ordering by attribute name
-    # In each directory, __meta_design__ items should come before special_config items
+    # In each directory, __design__ items should come before special_config items
     for i, item in enumerate(items):
         # Find first special_config in same directory
-        if "__meta_design__" in item.var_path:
-            module_path = item.var_path.split(".__meta_design__")[0]
+        if "__design__" in item.var_path:
+            module_path = item.var_path.split(".__design__")[0]
             for j in range(i + 1, len(items)):
                 compare_item = items[j]
                 compare_module = compare_item.var_path.split(".")[0]
@@ -324,7 +324,7 @@ def test_multiple_attr_names_order():
                 ):
                     # This is correct ordering (meta_design then special_config)
                     break
-            # If we found a special_config before __meta_design__ in the same module, that's wrong
+            # If we found a special_config before __design__ in the same module, that's wrong
             for j in range(i):
                 compare_item = items[j]
                 compare_module = compare_item.var_path.split(".")[0]
@@ -344,7 +344,7 @@ def test_multiple_attr_names_complex_order():
 
     # Define a non-standard order to verify ordering is respected
     # This order is different from the typical order they would be found in files
-    attr_names = ["special_config", "test_test_object", "__meta_design__"]
+    attr_names = ["special_config", "test_test_object", "__design__"]
 
     items = list(
         walk_module_with_special_files(
@@ -367,8 +367,8 @@ def test_multiple_attr_names_complex_order():
             attr_types.append("special_config")
         elif "test_test_object" in item.var_path:
             attr_types.append("test_test_object")
-        elif "__meta_design__" in item.var_path:
-            attr_types.append("__meta_design__")
+        elif "__design__" in item.var_path:
+            attr_types.append("__design__")
 
     # Group items by module
     modules = {}
@@ -379,9 +379,9 @@ def test_multiple_attr_names_complex_order():
         elif "test_test_object" in item.var_path:
             module_path = item.var_path.split(".test_test_object")[0]
             attr_type = "test_test_object"
-        elif "__meta_design__" in item.var_path:
-            module_path = item.var_path.split(".__meta_design__")[0]
-            attr_type = "__meta_design__"
+        elif "__design__" in item.var_path:
+            module_path = item.var_path.split(".__design__")[0]
+            attr_type = "__design__"
         else:
             continue
 
@@ -412,7 +412,7 @@ def test_multiple_attr_names_complex_order():
 
     # Check strict global ordering across modules too
     # For all "special_config" attributes, they should all come before any "test_test_object" attributes,
-    # which should all come before any "__meta_design__" attributes
+    # which should all come before any "__design__" attributes
     last_attr_index = {}
     for i, attr_type in enumerate(attr_types):
         if attr_type not in last_attr_index:
@@ -448,14 +448,11 @@ def test_multiple_attr_names_complex_order():
             reverse_attr_types.append("special_config")
         elif "test_test_object" in item.var_path:
             reverse_attr_types.append("test_test_object")
-        elif "__meta_design__" in item.var_path:
-            reverse_attr_types.append("__meta_design__")
+        elif "__design__" in item.var_path:
+            reverse_attr_types.append("__design__")
 
     # Verify we got a different order with the reversed input
-    if (
-        "special_config" in reverse_attr_types
-        and "__meta_design__" in reverse_attr_types
-    ):
+    if "special_config" in reverse_attr_types and "__design__" in reverse_attr_types:
         # Find index of first occurrence of each
         first_special_config = (
             reverse_attr_types.index("special_config")
@@ -463,13 +460,13 @@ def test_multiple_attr_names_complex_order():
             else -1
         )
         first_meta_design = (
-            reverse_attr_types.index("__meta_design__")
-            if "__meta_design__" in reverse_attr_types
+            reverse_attr_types.index("__design__")
+            if "__design__" in reverse_attr_types
             else -1
         )
 
         if first_special_config != -1 and first_meta_design != -1:
-            # In the reversed order, __meta_design__ should come before special_config
+            # In the reversed order, __design__ should come before special_config
             assert first_meta_design < first_special_config, (
-                "Reversed order not respected. __meta_design__ should come before special_config"
+                "Reversed order not respected. __design__ should come before special_config"
             )

@@ -4,8 +4,9 @@ from pinjected_reviewer import __pinjected_reviewer_default_design
 
 from pinjected import *
 from pinjected.test import injected_pytest
+from loguru import logger
 
-design_for_test = design()
+design_for_test = design(logger=logger)
 
 
 @injected_pytest(design_for_test)
@@ -114,7 +115,7 @@ async def test_detect_misuse_in_entrypoint(
     )
 
 
-__meta_design__ = design(overrides=__pinjected_reviewer_default_design)
+__design__ = design(overrides=__pinjected_reviewer_default_design)
 
 # if __name__ == '__main__':
 #     test_detect_misuse()

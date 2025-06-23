@@ -109,7 +109,7 @@ test_gemini_flash_2_0_structured: IProxy = a_cached_structured_llm__gemini_flash
     text="What is the capital of Japan? v2", response_format=Text
 )
 
-__meta_design__ = design(
+__design__ = design(
     overrides=design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
         a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,

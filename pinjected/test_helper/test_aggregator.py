@@ -14,24 +14,24 @@ from pinjected.module_var_path import ModuleVarPath
 from pinjected.pinjected_logging import logger
 
 
-def check_meta_design_variable(file_path):
+def check_design_variable(file_path):
     with open(file_path) as file:
         tree = ast.parse(file.read())
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.Global) and "__meta_design__" in node.names:
+        if isinstance(node, ast.Global) and "__design__" in node.names:
             return True
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "__meta_design__":
+                if isinstance(target, ast.Name) and target.id == "__design__":
                     return True
 
     return False
 
 
-def meta_design_acceptor(file: Path) -> bool:
+def design_acceptor(file: Path) -> bool:
     if file.suffix == ".py":
-        return check_meta_design_variable(file)
+        return check_design_variable(file)
     return False
 
 
@@ -133,7 +133,7 @@ def find_annotated_vars(file_path: Path) -> list[VariableInFile]:
 
 
 def find_run_targets(path: Path) -> list[VariableInFile]:
-    if meta_design_acceptor(path):
+    if design_acceptor(path):
         return find_annotated_vars(path)
     return []
 

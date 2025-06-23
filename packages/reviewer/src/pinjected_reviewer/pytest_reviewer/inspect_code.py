@@ -609,4 +609,4 @@ class DetectMisuseOfPinjectedProxies(Protocol):
     async def __call__(self, src_path: Path) -> list[Misuse]: ...
 
 
-__meta_design__ = design()
+__design__ = design()

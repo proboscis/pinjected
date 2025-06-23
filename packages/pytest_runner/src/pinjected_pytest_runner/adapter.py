@@ -32,7 +32,7 @@ def convert_module_iproxy_tests(module_path: str) -> Dict[str, Any]:
         module = importlib.import_module(module_path)
         file_path = getattr(module, "__file__", module_path)
 
-    module_design = getattr(module, "__meta_design__", design())
+    module_design = getattr(module, "__design__", design())
 
     pytest_tests = {}
 
@@ -96,7 +96,7 @@ def as_pytest_test(iproxy: IProxy, module_design: Optional[Any] = None):
     file_path = frame.f_globals.get("__file__", "<unknown>")
 
     if module_design is None:
-        module_design = frame.f_globals.get("__meta_design__", design())
+        module_design = frame.f_globals.get("__design__", design())
 
     return _to_pytest(iproxy, module_design, file_path)
 
@@ -114,7 +114,7 @@ def convert_current_module():
     frame = inspect.currentframe().f_back
     module_globals = frame.f_globals
     module_file = module_globals.get("__file__", "<unknown>")
-    module_design = module_globals.get("__meta_design__", design())
+    module_design = module_globals.get("__design__", design())
 
     for name, obj in module_globals.items():
         if name.startswith("test_") and isinstance(obj, IProxy):

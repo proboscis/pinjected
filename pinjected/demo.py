@@ -3,9 +3,7 @@ from pathlib import Path
 
 from pinjected import Design, Injected, IProxy, design, injected
 
-__meta_design__: Design = design(default_design_paths=["pinjected.demo.default_design"])
-
-default_design: Design = design(
+__design__: Design = design(
     openai_api_key="my secret key",
     model="text-davinci-003",
     max_tokens=1000,
@@ -13,6 +11,9 @@ default_design: Design = design(
         lambda: Path("~/openai_api_key.txt").expanduser().read_text().strip()
     ),
 )
+
+# This was previously referenced by default_design_paths, now merged into __design__
+default_design: Design = __design__
 
 
 @injected

@@ -275,4 +275,4 @@ _test_play_voice2: IProxy = a_niji_voice_play(
 )
 
 
-__meta_design__ = design(overrides=design())
+__design__ = design(overrides=design())

@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 from pinjected import *
 from pinjected.helper_structure import MetaContext
 from pinjected.ide_supports.create_configs import create_idea_configurations
@@ -9,7 +11,6 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 p_root = Path(__file__).parent.parent
 TEST_MODULE = p_root / "pinjected/test_package/child/module1.py"
-import pytest
 
 
 @pytest.mark.asyncio
@@ -76,7 +77,7 @@ async def test_create_configurations():
         assert key in config_dict, f"Should have configuration for '{key}'"
 
     # Verify the structure of a configuration
-    first_key = list(config_dict.keys())[0]
+    first_key = next(iter(config_dict.keys()))
     first_config = config_dict[first_key][0]
 
     # Verify the configuration has all required fields
@@ -89,165 +90,8 @@ async def test_create_configurations():
     assert hasattr(first_config, "working_dir"), "Config should have a working_dir"
 
 
-@pytest.mark.asyncio
-async def test_create_configurations_legacy_comparison():
-    """
-    Legacy comparison test showing the differences between a_gather_from_path and a_gather_bindings_with_legacy.
-    This test is kept for reference to understand the behavior of the deprecated method.
-    """
-    from pinjected.helper_structure import IdeaRunConfigurations
-    from pinjected.ide_supports.default_design import pinjected_internal_design
-
-    # Create configurations injected object
-    configs = create_idea_configurations(wrap_output_with_tag=False)
-
-    # Using the deprecated a_gather_from_path for comparison
-    legacy_mc = await MetaContext.a_gather_from_path(
-        p_root / "pinjected/ide_supports/create_configs.py"
-    )
-
-    # Print diagnostic information for the legacy method
-    print(f"Legacy method trace count: {len(legacy_mc.trace)}")
-    print(f"Legacy method trace paths:")
-    for i, var in enumerate(legacy_mc.trace):
-        print(f"  {i}. {var.var_path}")
-
-    # Using the non-deprecated a_gather_bindings_with_legacy method
-    new_mc = await MetaContext.a_gather_bindings_with_legacy(
-        p_root / "pinjected/ide_supports/create_configs.py"
-    )
-
-    # Print diagnostic information for the new method
-    print(f"New method trace count: {len(new_mc.trace)}")
-    print(f"New method trace paths:")
-    for i, var in enumerate(new_mc.trace):
-        print(f"  {i}. {var.var_path}")
-
-    # Create designs with both legacy and new methods
-    legacy_dd = (
-        (await legacy_mc.a_final_design)
-        + design(module_path=TEST_MODULE, interpreter_path=sys.executable)
-        + pinjected_internal_design
-        + design(print_to_stdout=False)
-    )
-
-    new_dd = (
-        (await new_mc.a_final_design)
-        + design(module_path=TEST_MODULE, interpreter_path=sys.executable)
-        + pinjected_internal_design
-        + design(print_to_stdout=False)
-    )
-
-    # Create resolvers for both designs
-    legacy_rr = AsyncResolver(legacy_dd)
-    new_rr = AsyncResolver(new_dd)
-
-    # Compare meta_config_value from both methods
-    legacy_meta_value = await legacy_rr.provide("meta_config_value")
-    new_meta_value = await new_rr.provide("meta_config_value")
-
-    print(f"meta_config_value with legacy method: {legacy_meta_value}")
-    print(f"meta_config_value with new method: {new_meta_value}")
-
-    # Legacy method should get value from __meta_design__
-    assert legacy_meta_value == "from_meta_design", (
-        "Legacy method should get value from __meta_design__"
-    )
-
-    # New method should get value from __design__ which overrides __meta_design__
-    assert new_meta_value == "from_design", (
-        "New method should get value from __design__"
-    )
-
-    # Check if additional_config_value is accessible with each method
-    try:
-        legacy_add_value = await legacy_rr.provide("additional_config_value")
-        print(f"additional_config_value with legacy method: {legacy_add_value}")
-        legacy_has_additional = True
-    except Exception as e:
-        print(f"Legacy method can't access additional_config_value: {e!s}")
-        legacy_has_additional = False
-
-    new_add_value = await new_rr.provide("additional_config_value")
-    print(f"additional_config_value with new method: {new_add_value}")
-
-    # Legacy method should not have access to values only in __design__
-    assert not legacy_has_additional, (
-        "Legacy method should not have access to values only in __design__"
-    )
-
-    # New method should have access to values only in __design__
-    assert new_add_value == "only_in_design", (
-        "New method should have access to values only in __design__"
-    )
-
-    # Run configurations using both methods
-    legacy_res = await legacy_rr[configs]
-    new_res = await new_rr[configs]
-
-    # Both should return actual configuration objects (with print_to_stdout=False)
-    assert legacy_res is not None and new_res is not None, (
-        "Both methods should return configuration objects"
-    )
-    assert isinstance(legacy_res, IdeaRunConfigurations) and isinstance(
-        new_res, IdeaRunConfigurations
-    ), "Both methods should return IdeaRunConfigurations objects"
-
-    # Both should generate identical configurations
-    legacy_configs = legacy_res.configs
-    new_configs = new_res.configs
-
-    # Compare the keys first
-    legacy_keys = set(legacy_configs.keys())
-    new_keys = set(new_configs.keys())
-
-    print(f"Legacy method configuration keys: {sorted(list(legacy_keys))}")
-    print(f"New method configuration keys: {sorted(list(new_keys))}")
-
-    # The key sets should be identical since they use the same module
-    assert legacy_keys == new_keys, (
-        "Both methods should generate the same configuration keys"
-    )
-
-    # Now do a deep comparison of the actual configuration contents
-    print("Comparing individual configurations for each key...")
-    for key in legacy_keys:
-        legacy_items = legacy_configs[key]
-        new_items = new_configs[key]
-
-        # Check if the number of configurations for each key is the same
-        assert len(legacy_items) == len(new_items), (
-            f"Key '{key}' has different number of configurations"
-        )
-
-        # Compare each configuration item
-        for i, (legacy_item, new_item) in enumerate(
-            zip(legacy_items, new_items, strict=False)
-        ):
-            # Compare each field
-            assert legacy_item.name == new_item.name, (
-                f"Configuration {i} for '{key}' has different name"
-            )
-            assert legacy_item.script_path == new_item.script_path, (
-                f"Configuration {i} for '{key}' has different script_path"
-            )
-            assert legacy_item.interpreter_path == new_item.interpreter_path, (
-                f"Configuration {i} for '{key}' has different interpreter_path"
-            )
-            assert legacy_item.working_dir == new_item.working_dir, (
-                f"Configuration {i} for '{key}' has different working_dir"
-            )
-
-            # For arguments, we need to compare the lists
-            assert legacy_item.arguments == new_item.arguments, (
-                f"Configuration {i} for '{key}' has different arguments"
-            )
-
-    print("All configurations identical between legacy and new method!")
-
-    # The important difference is that the new method gets access to both __meta_design__
-    # and __design__ attributes, with __design__ taking precedence, while maintaining
-    # identical configuration generation
+# Legacy comparison test removed since __meta_design__ was removed from create_configs.py
+# The main test_create_configurations already validates the functionality
 
 
 test_design = design(x=0)
@@ -278,7 +122,7 @@ def test_run_injected_with_handle():
 
 def test_run_injected_exception_with_handle():
     with pytest.raises(Exception):
-        res = run_injected(
+        run_injected(
             "get",
             "pinjected.test_package.child.module1.test_always_failure",
             "pinjected.test_package.child.module1.design03",

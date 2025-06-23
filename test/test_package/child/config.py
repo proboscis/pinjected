@@ -1,6 +1,6 @@
 from pinjected import design
 
-__meta_design__ = design(
+__design__ = design(
     name="test_package.child.config", special_var="from_config_file"
 )
 

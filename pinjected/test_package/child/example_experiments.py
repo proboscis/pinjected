@@ -82,16 +82,5 @@ def logger():
     return None
 
 
-# Create a __pinjected__.py file in the same directory with:
-#
-# ```python
-# from pinjected import design
-#
-# __design__ = design(
-#     device='cpu',
-#     model='model'
-# )
-# ```
-#
-# The old __meta_design__ pattern is being deprecated:
-__meta_design__ = design(overrides=design(device="cpu", model="model"))
+# Updated to use __design__ instead of deprecated __meta_design__
+__design__ = design(overrides=design(device="cpu", model="model"))

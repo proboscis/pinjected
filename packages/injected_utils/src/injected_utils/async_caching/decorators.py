@@ -128,4 +128,4 @@ async def injected_utils_default_deserializer(data: bytes) -> Any:
     return jsonpickle.loads(data.decode())
 
 
-__meta_design__ = design()
+__design__ = design()

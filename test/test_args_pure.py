@@ -26,4 +26,4 @@ def run_test(dep1, dep2):
     return 0
 
 
-__meta_design__ = design()
+__design__ = design()

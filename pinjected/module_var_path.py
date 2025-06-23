@@ -1,5 +1,6 @@
 import ast
 import importlib
+import importlib.util
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -186,3 +187,22 @@ def find_import_statements_in_module(module_dot_path):
             import_statements.append("".join(lines[start_line - 1 : end_line]).strip())
 
     return import_statements
+
+
+def load_variable_from_script(script_file: Path, varname: str):
+    """Load a variable from a Python script file.
+
+    Args:
+        script_file: Path to the Python script file
+        varname: Name of the variable to load from the script
+
+    Returns:
+        The value of the variable from the script
+
+    Raises:
+        AttributeError: If the variable is not found in the script
+    """
+    spec = importlib.util.spec_from_file_location("module.name", script_file)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, varname)

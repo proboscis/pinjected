@@ -1,12 +1,16 @@
+import asyncio
 import inspect
 import json
+import os
 import sys
-from collections.abc import Mapping
+from collections import defaultdict
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
 
 from beartype import beartype
-from returns.maybe import Some
+from returns.maybe import Maybe, Some
+from returns.result import Success, safe
 
 import pinjected
 import pinjected.global_configs
@@ -14,21 +18,16 @@ from pinjected import Design, Injected, design, injected, instance
 from pinjected.di.injected import InjectedFromFunction, PartialInjectedFunction
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
-from pinjected.helper_structure import IdeaRunConfigurations, MetaContext
+from pinjected.helper_structure import (
+    IdeaRunConfiguration,
+    IdeaRunConfigurations,
+    MetaContext,
+)
+from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.pinjected_logging import logger
 
-__meta_design__ = design(
-    # Legacy design attribute - used with a_gather_from_path
-    default_design_paths=[
-        "pinjected.ide_supports.default_design.pinjected_internal_design"
-    ],
-    meta_config_value="from_meta_design",
-)
-
-# New design attribute - takes precedence when using a_gather_bindings_with_legacy
 __design__ = design(
-    # This value should override the one in __meta_design__
     meta_config_value="from_design",
     # Additional configurations
     additional_config_value="only_in_design",
@@ -41,12 +40,12 @@ from pinjected.v2.keys import IBindKey
 def run_with_meta_context(
     var_path: str,
     context_module_file_path: str,
-    design_path: str = None,
+    design_path: str | None = None,
     # TODO add overrides_path
     **kwargs,
 ):
     """
-    This is for running a injected with __meta_design__ integrated.
+    This is for running a injected with __design__ integrated.
     :param var_path:
     :param context_module_file_path:
     :param design_path:
@@ -55,7 +54,9 @@ def run_with_meta_context(
     """
     # if not "__meta_design__" in Path(context_module_file_path).read_text():
     #     raise ValueError(f"{context_module_file_path} does not contain __meta_design__")
-    meta_context = MetaContext.gather_from_path(Path(context_module_file_path))
+    meta_context: MetaContext = asyncio.run(
+        MetaContext.a_gather_bindings_with_legacy(Path(context_module_file_path))
+    )
     default = design(default_design_paths=[])
     instance_overrides = design(
         module_path=Path(context_module_file_path),
@@ -68,15 +69,9 @@ def run_with_meta_context(
         var_path,
         design_path,
         return_result=True,
-        overrides=default + meta_context.accumulated + instance_overrides,
+        overrides=default + meta_context.final_design + instance_overrides,
         notifier=logger.info,
     )
-
-
-@injected
-def load_meta_context(module_path):
-    meta_context = MetaContext.gather_from_path(module_path)
-    return meta_context
 
 
 @injected
@@ -138,7 +133,7 @@ def get_filtered_signature(func):
 @instance
 def list_completions(default_design_paths: list[str]):
     """
-    An API to be called from IDE to return completions, based on __meta_design__.
+    An API to be called from IDE to return completions, based on __design__.
     :param default_design_paths:
     :return:[
         {name,description,tail}
@@ -156,7 +151,7 @@ def list_completions(default_design_paths: list[str]):
         tgt = total_mappings[key]
         match tgt:
             case PartialInjectedFunction(
-                InjectedFromFunction(object(__original__=func), kw_mapping)
+                InjectedFromFunction(object(__original__=func), _)
             ):
                 name, signature = get_filtered_signature(func)
                 return dict(name=name, description="injected function", tail=signature)
@@ -171,7 +166,7 @@ def list_completions(default_design_paths: list[str]):
     # for this, we can utilize the llm.
     # the bindings are mostly PartialInjectedFunction and its proxy.
 
-    completions = [key_to_completion(key) for key in helper.total_mappings().keys()]
+    completions = [key_to_completion(key) for key in helper.total_mappings()]
     data_str = json.dumps(completions)
     data_str = "<pinjected>" + data_str + "</pinjected>"
     print(data_str)
@@ -224,3 +219,136 @@ def design_metadata(default_design_paths: list[str]):
 # TODO show a list of injectable variables in the side bar, or the structure view
 # TODO detect a variable assign ment from 'injected' functions and any calls that involve DelegatedVar or injected functions
 # TODO make a PartialInjectedAsyncFunction and a proxy for it.
+
+
+# Type alias for IDE configuration creators
+IdeaConfigCreator = Callable[[ModuleVarSpec], list[IdeaRunConfiguration]]
+
+
+@injected
+def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dict):
+    args = None
+    match tgt.var, meta:
+        case (_, Success({"kind": "callable"})):
+            args = ["call", tgt.var_path, ddp]
+        case (_, Success({"kind": "object"})):
+            args = ["run", tgt.var_path, ddp]
+        case (PartialInjectedFunction(), _):
+            args = ["call", tgt.var_path, ddp]
+        case (InjectedFromFunction(), _):
+            args = ["call", tgt.var_path, ddp]
+        case (Injected(), _):
+            args = ["run", tgt.var_path, ddp]
+        case _:
+            args = None
+    if args is not None:
+        logger.info(f"args for {tgt.var_path} is {args}")
+    else:
+        logger.warning(f"could not extract args for {tgt.var_path}, {tgt.var}")
+    return args
+
+
+@injected
+def injected_to_idea_configs(
+    runner_script_path: str,
+    interpreter_path: str,
+    default_design_paths: list[str],
+    default_working_dir: Maybe[str],
+    extract_args_for_runnable,
+    logger,
+    internal_idea_config_creator: IdeaConfigCreator,
+    custom_idea_config_creator: IdeaConfigCreator,
+    /,
+    tgt: ModuleVarSpec,
+):
+    from pinjected import __main__
+
+    # question is: how can we pass the override to run_injected?
+    logger.info(
+        f"using custom_idea_config_creator {custom_idea_config_creator} for {tgt}"
+    )
+    name = tgt.var_path.split(".")[-1]
+    # runner_script_path corresponds to the script's path which gets passed to idea.
+    # so it must be the path which has run_injected command
+    # Ensure runner_script_path is a string, not a function
+    if callable(runner_script_path):
+        runner_script_path = runner_script_path()
+
+    config_args = {
+        "script_path": runner_script_path,
+        "interpreter_path": interpreter_path,
+        "working_dir": default_working_dir.value_or(os.getcwd()),
+    }
+
+    assert isinstance(tgt, ModuleVarSpec)
+    meta = safe(getattr)(tgt.var, "__runnable_metadata__")
+    # so we need to gather the possible design paths from the metadata too.
+    ddps = []
+    match meta:
+        case Success({"default_design_path": ddp}):
+            ddps.append(ddp)
+    ddps += default_design_paths
+    results = defaultdict(list)
+
+    if not ddps:
+        logger.warning(
+            f"no default design path provided for {tgt.var_path}, using pinjected.EmptyDesign"
+        )
+        ddps.append("pinjected.EmptyDesign")
+
+    for ddp in ddps:
+        args = extract_args_for_runnable(tgt, ddp, meta)
+        # this, viz_branch should not be created by this function, but an injected function.
+        if args is not None:
+            ddp_name = ddp.split(".")[-1]
+            config = dict(
+                script_path=__main__.__file__,
+                interpreter_path=interpreter_path,
+                working_dir=default_working_dir.value_or(os.getcwd()),
+                arguments=["run"] + args[1:],
+                name=f"{name}({ddp_name})",
+            )
+            viz_config = dict(
+                **config_args,
+                arguments=["run_injected", "visualize"] + args[1:],
+                name=f"{name}({ddp_name})_viz",
+            )
+            describe_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["describe"] + args[1:],
+                "name": f"describe {name}",
+            }
+            results[name].append(IdeaRunConfiguration(**config))
+            results[name].append(IdeaRunConfiguration(**viz_config))
+            results[name].append(IdeaRunConfiguration(**describe_config))
+        else:
+            logger.warning(
+                f"skipping {tgt.var_path} because it has no __runnable_metadata__"
+            )
+    try:
+        cfgs = custom_idea_config_creator(tgt)
+        assert cfgs is not None, (
+            f"custom_idea_config_creator {custom_idea_config_creator} returned None for {tgt}. return [] if you have no custom configs."
+        )
+        for configs in cfgs:
+            results[name].append(configs)
+    except Exception as e:
+        logger.warning(f"Failed to create custom idea configs for {tgt} because {e}")
+        raise RuntimeError(
+            f"Failed to create custom idea configs for {tgt} because {e}"
+        ) from e
+    try:
+        cfgs = internal_idea_config_creator(tgt)
+        assert cfgs is not None, (
+            f"internal_idea_config_creator {internal_idea_config_creator} returned None for {tgt}. return [] if you have no internal configs."
+        )
+        for configs in cfgs:
+            results[name].append(configs)
+    except Exception as e:
+        logger.warning(f"Failed to create internal idea configs for {tgt} because {e}")
+        raise RuntimeError(
+            f"Failed to create internal idea configs for {tgt} because {e}"
+        ) from e
+    return IdeaRunConfigurations(configs=results)

@@ -2,12 +2,11 @@
 
 from pinjected import DesignSpec, SimpleBindSpec, design
 
-__meta_design__ = design(
-    special_var="from_top_level_pinjected_file", meta_name="test_package.__pinjected__"
-)
-
 __design__ = design(
-    design_name="test_package.__pinjected__", design_var="from_top_level_design"
+    design_name="test_package.__pinjected__",
+    design_var="from_top_level_design",
+    special_var="from_top_level_pinjected_file",
+    meta_name="test_package.__pinjected__",
 )
 
 __design_spec__ = DesignSpec.new(

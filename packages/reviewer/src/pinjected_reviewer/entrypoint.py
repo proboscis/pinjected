@@ -30,4 +30,4 @@ async def pre_commit_reviews(
     return res
 
 
-__meta_design__ = design(overrides=design())
+__design__ = design(overrides=design())

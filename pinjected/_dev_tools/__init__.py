@@ -11,4 +11,4 @@ def generate_merged_doc(logger):
     Path("merged_doc.md").write_text(merged_text)
 
 
-__meta_design__ = design(overrides=design())
+__design__ = design(overrides=design())

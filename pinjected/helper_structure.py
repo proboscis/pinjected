@@ -8,7 +8,7 @@ from pinjected import DelegatedVar, Design, EmptyDesign, Injected, design
 from pinjected.di.design_spec.protocols import DesignSpec
 from pinjected.module_helper import walk_module_attr, walk_module_with_special_files
 from pinjected.module_inspector import ModuleVarSpec
-from pinjected.module_var_path import ModuleVarPath, load_variable_by_module_path
+from pinjected.module_var_path import ModuleVarPath
 from pinjected.pinjected_logging import logger
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.keys import IBindKey, StrBindKey
@@ -152,9 +152,9 @@ class MetaContext:
             trace.append(var)
             ovr = EmptyDesign
             if var.var_path.endswith("__meta_design__"):
-                # Add migration warning for __meta_design__
-                logger.warning(
-                    f"Use of __meta_design__ in {var.var_path} is deprecated. "
+                # Raise deprecation error for __meta_design__
+                raise DeprecationWarning(
+                    f"Use of __meta_design__ in {var.var_path} is deprecated and no longer supported. "
                     f"Please migrate to using __design__ in __pinjected__.py file instead. "
                     f"Create a __pinjected__.py file in the same directory with a __design__ variable."
                 )
@@ -199,26 +199,18 @@ class MetaContext:
             )
 
             acc = self.accumulated
-            # g = acc.to_resolver()
-            r = AsyncResolver(acc)
-            # First get any overrides from the accumulated design
-            overrides = await r.provide_or("overrides", EmptyDesign)
 
-            # Then load design from default_design_paths if specified
+            # Check for deprecated default_design_paths
             if StrBindKey("default_design_paths") in acc:
-                module_path = (await r["default_design_paths"])[0]
-                design = load_variable_by_module_path(module_path)
-            else:
-                design = EmptyDesign
+                raise DeprecationWarning(
+                    "Use of 'default_design_paths' is no longer supported. "
+                    "Please migrate to using __design__ in __pinjected__.py files to define your designs directly."
+                )
 
-            # Apply in order: user defaults, loaded design, accumulated design (for name binding), overrides, user overrides
-            return (
-                load_user_default_design()
-                + design
-                + acc
-                + overrides
-                + load_user_overrides_design()
-            )
+            # Simply return the accumulated design plus user configurations
+            # Note: 'overrides' is no longer a special pre-defined key, but users can still
+            # have their own 'overrides' binding if they want
+            return load_user_default_design() + acc + load_user_overrides_design()
 
     @staticmethod
     async def a_load_default_design_for_variable(var: ModuleVarPath | str):
@@ -283,6 +275,4 @@ try:
 except ImportError:
     pass
 
-__meta_design__ = design(
-    default_design_paths=["pinjected.helper_structure.__meta_design__"]
-)
+__design__ = design()

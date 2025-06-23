@@ -5,7 +5,7 @@ from pinjected import injected
 from pinjected.helper_structure import IdeaRunConfiguration
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import ModuleVarPath
-from pinjected.run_config_utils import IdeaConfigCreator
+from pinjected.ide_supports.create_configs import IdeaConfigCreator
 
 
 class IRunner:
