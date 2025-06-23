@@ -4,8 +4,9 @@ from pinjected_reviewer import __pinjected_reviewer_default_design
 
 from pinjected import *
 from pinjected.test import injected_pytest
+from loguru import logger
 
-design_for_test = design()
+design_for_test = design(logger=logger)
 
 
 @injected_pytest(design_for_test)
