@@ -14,8 +14,9 @@ from returns.result import Success, safe
 
 import pinjected
 import pinjected.global_configs
-from pinjected import Design, Injected, design, injected, instance
+from pinjected import Design, Designed, Injected, design, injected, instance
 from pinjected.di.injected import InjectedFromFunction, PartialInjectedFunction
+from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import (
@@ -263,6 +264,11 @@ def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dic
         case (InjectedFromFunction(), _):
             args = ["call", tgt.var_path, ddp]
         case (Injected(), _):
+            args = ["run", tgt.var_path, ddp]
+        case (DelegatedVar(), _):
+            # This handles both @instance decorated functions and IProxy
+            args = ["run", tgt.var_path, ddp]
+        case (Designed(), _):
             args = ["run", tgt.var_path, ddp]
         case _:
             args = None
