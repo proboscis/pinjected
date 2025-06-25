@@ -134,7 +134,7 @@ def test_describe_command_with_invalid_path():
 
 
 @injected
-async def _a_handle_main(result):
+async def _a_handle_main(context, result):
     return result
 
 
