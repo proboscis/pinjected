@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.0-beta (2025-06-25)
+
+### Breaking Changes
+- **DEPRECATED**: `__meta_design__` is now deprecated in favor of `__design__`
+  - All test files and modules should migrate from `__meta_design__` to `__design__`
+  - The `__meta_design__` will be removed in a future version
+
+### Added
+- Added comprehensive IDE configuration creation tests
+- Added subprocess tests for IDE integration commands
+- Added backward compatibility for IDE plugins that don't pass `design_path` parameter
+  - `run_with_meta_context` now uses `pinjected_internal_design` by default when `design_path` is None
+  - This ensures PyCharm/IntelliJ and VSCode plugins continue to work without modification
+
+### Changed
+- Updated all test modules to use `__design__` instead of `__meta_design__`
+- Added deprecation warning to `meta_main` entry point
+- Improved error messages when IDE plugins fail to provide required dependencies
+
+### Fixed
+- Fixed missing `@injected` decorator on `dummy_config_creator_for_test` 
+- Fixed `runner_script_path` in internal design to correctly handle `__main__` module import
+- Fixed IDE plugin compatibility issue where required dependencies were missing
+
+### Migration Guide
+To migrate from `__meta_design__` to `__design__`:
+1. Replace all occurrences of `__meta_design__` with `__design__` in your modules
+2. The API remains the same - only the variable name has changed
+3. IDE plugins will continue to work without changes due to backward compatibility
+
+### Notes
+- Created GitHub issue #231 to track migration of IDE plugins from `meta_main` to direct `pinjected run` commands
+- IDE plugins (PyCharm/IntelliJ and VSCode) should be updated in the future to:
+  - Use `pinjected run` instead of `pinjected.meta_main`
+  - Pass explicit `design_path` parameter when creating configurations
+
 ## 0.2.252-beta (2025-05-29)
 
 ### Changed
