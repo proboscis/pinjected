@@ -417,7 +417,7 @@ async def a_run_with_notify(  # noqa: C901, PLR0912
                 handler: IProxy[PinjectedHandleMainException] = injected(
                     PinjectedHandleMainException.key.name
                 )
-                handling = handler(e)
+                handling = handler(cxt, e)
                 try:
                     handled: str | None = await cxt.a_provide(
                         handling, show_debug=False
@@ -443,7 +443,7 @@ async def a_run_with_notify(  # noqa: C901, PLR0912
                 handler: IProxy[PinjectedHandleMainResult] = injected(
                     PinjectedHandleMainResult.key.name
                 )
-                handling = handler(res)
+                handling = handler(cxt, res)
                 await cxt.a_provide(handling, show_debug=False)
             except Exception:
                 logger.exception(

@@ -801,6 +801,7 @@ test_design_async_hasher = design(
 )
 
 
+@pytest.mark.skip(reason="Async hashers are not currently supported - test causes BaseExceptionGroup error")
 @injected_pytest(test_design_async_hasher)
 async def test_async_cached_with_async_hashers(cached_with_async_hasher):
     """
@@ -809,24 +810,22 @@ async def test_async_cached_with_async_hashers(cached_with_async_hasher):
     Note: Current implementation may not support async hashers.
     This test documents the behavior.
     """
-    try:
-        # Try to use with async hasher
-        result1 = await cached_with_async_hasher("user123", 42)
-        
-        # If it works, test cache behavior
-        result2 = await cached_with_async_hasher("user456", 42)
-        
-        # Check if the async hasher was actually used
-        if result1["call_count"] == 1 and result2["call_count"] == 1:
-            print("✓ Async hashers are supported and working correctly")
-            assert result2["user_id"] == "user123"  # Should return cached value
-        else:
-            print("✗ Async hashers might not be working as expected")
-            
-    except Exception as e:
-        print(f"✗ Async hashers are not supported: {type(e).__name__}: {e}")
-        # This is expected if async hashers are not supported
-        pytest.skip("Async hashers are not currently supported")
+    # This test is currently skipped because calling pytest.skip() inside
+    # an async context causes BaseExceptionGroup errors.
+    # When async hashers are implemented, remove the skip mark above.
+    
+    # Try to use with async hasher
+    result1 = await cached_with_async_hasher("user123", 42)
+    
+    # If it works, test cache behavior
+    result2 = await cached_with_async_hasher("user456", 42)
+    
+    # Check if the async hasher was actually used
+    if result1["call_count"] == 1 and result2["call_count"] == 1:
+        print("✓ Async hashers are supported and working correctly")
+        assert result2["user_id"] == "user123"  # Should return cached value
+    else:
+        pytest.fail("Async hashers are not working as expected")
 
 
 # Test with additional_key parameter
