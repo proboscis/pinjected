@@ -577,7 +577,8 @@ def load_design_from_paths(paths, design_name):
                     f"Failed to load '{design_name}' from {path}: {e!s}"
                 )
         else:
-            logger.debug(f"design file {path} does not exist.")
+            # logger.debug(f"design file {path} does not exist.")
+            pass
     return res
 
 
@@ -599,7 +600,7 @@ def load_user_default_design() -> Design:
         return design_result
     except PinjectedConfigurationLoadFailure as e:
         if "default_design is not defined" in str(e):
-            logger.debug(f"default_design is not defined in {design_path}")
+            # logger.debug(f"default_design is not defined in {design_path}")
             return design()
         raise
 
@@ -641,6 +642,6 @@ def load_user_overrides_design():
         return design_obj
     except PinjectedConfigurationLoadFailure as e:
         if "overrides_design is not defined" in str(e):
-            logger.debug(f"overrides_design is not defined in {design_path}")
+            # logger.debug(f"overrides_design is not defined in {design_path}")
             return design()
         raise e
