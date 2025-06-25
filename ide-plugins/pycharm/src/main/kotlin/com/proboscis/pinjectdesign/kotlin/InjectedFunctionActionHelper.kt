@@ -57,10 +57,10 @@ object InjectedFunctionActionHelperObject {
     }
 }
 
-class InjectedFunctionActionHelper(val project: Project) {
+open class InjectedFunctionActionHelper(val project: Project) {
     val first_module: Module = ModuleManager.getInstance(project).sortedModules[0]
     val sdk: Sdk? = PythonSdkUtil.findPythonSdk(first_module)
-    val interpreterPath = sdk?.homePath ?: run {
+    open val interpreterPath = sdk?.homePath ?: run {
         val error = ErrorContext(
             ErrorType.PYTHON_NOT_FOUND,
             "No Python interpreter configured for the project",
@@ -77,8 +77,8 @@ class InjectedFunctionActionHelper(val project: Project) {
     val app = ApplicationManager.getApplication()
     
     // Store last command output for error reporting
-    private var lastStdout: String? = null
-    private var lastStderr: String? = null
+    var lastStdout: String? = null
+    var lastStderr: String? = null
 
     private fun getYourRunConfigurationType(): PythonConfigurationType {
         return PythonConfigurationType.getInstance()
@@ -96,7 +96,7 @@ class InjectedFunctionActionHelper(val project: Project) {
         config.setEnvs(mapOf("PYTHONPATH" to deps.joinToString(":")))
     }
 
-    fun findConfigurations(modulePath: String): Map<String, List<PyConfiguration>> {
+    open fun findConfigurations(modulePath: String): Map<String, List<PyConfiguration>> {
         log.info("=== findConfigurations START ===")
         log.info("Module path: $modulePath")
         log.info("Python interpreter: $interpreterPath")
@@ -176,7 +176,7 @@ class InjectedFunctionActionHelper(val project: Project) {
         return runPythonJson<List<DesignMetadata>>(args)
     }
 
-    fun runPython(pythonArgs: List<String>): String {
+    open fun runPython(pythonArgs: List<String>): String {
         val command = "$interpreterPath ${pythonArgs.joinToString(" ")}"
         log.info("=== runPython START ===")
         log.info("Full command: $command")

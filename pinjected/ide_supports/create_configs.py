@@ -91,14 +91,22 @@ def run_with_meta_context(
     )
 
 
-@injected
+@instance
+def __pinjected__wrap_output_with_tag():
+    """
+    A flag to control whether the output should be wrapped with <pinjected>...</pinjected> tags.
+    This is used to differentiate pinjected output from other outputs in the same stdout stream.
+    """
+    return True
+
+
+@instance
 @beartype
 def create_idea_configurations(
     inspect_and_make_configurations,
     module_path: Path,
     print_to_stdout,
-    /,
-    wrap_output_with_tag=True,
+    __pinjected__wrap_output_with_tag,
 ):
     with logger.contextualize(tag="create_idea_configurations"):
         pinjected.global_configs.pinjected_TRACK_ORIGIN = False
@@ -114,7 +122,7 @@ def create_idea_configurations(
 
         if print_to_stdout:
             data_str = json.dumps(asdict(configs))
-            if wrap_output_with_tag:
+            if __pinjected__wrap_output_with_tag:
                 data_str = f"<pinjected>{data_str}</pinjected>"
             print(data_str)
         else:
@@ -243,7 +251,7 @@ IdeaConfigCreator = Callable[[ModuleVarSpec], list[IdeaRunConfiguration]]
 
 
 @injected
-def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dict):
+def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dict):  # noqa: C901, PLR0912
     args = None
     match tgt.var, meta:
         case (_, Success({"kind": "callable"})):
@@ -266,7 +274,7 @@ def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dic
 
 
 @injected
-def injected_to_idea_configs(
+def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
     runner_script_path: str,
     interpreter_path: str,
     default_design_paths: list[str],
