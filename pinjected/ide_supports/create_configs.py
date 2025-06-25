@@ -286,6 +286,16 @@ def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
     /,
     tgt: ModuleVarSpec,
 ):
+    """
+    Creates IDE run configurations for injected targets.
+
+    NOTE: This function currently relies on __runnable_metadata__ which is deprecated.
+    Functions decorated with @instance don't automatically get this metadata anymore,
+    so they won't appear in IDE configurations unless they explicitly have __runnable_metadata__.
+
+    TODO: Update to use a new metadata system that works with @instance decorators.
+    See: https://github.com/proboscis/pinjected/issues/93
+    """
     from pinjected import __main__
 
     # question is: how can we pass the override to run_injected?
@@ -349,6 +359,9 @@ def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
             results[name].append(IdeaRunConfiguration(**viz_config))
             results[name].append(IdeaRunConfiguration(**describe_config))
         else:
+            # NOTE: __runnable_metadata__ is deprecated. @instance decorated functions
+            # don't automatically get this metadata anymore, which is why they're skipped.
+            # TODO: Update to use new metadata system
             logger.warning(
                 f"skipping {tgt.var_path} because it has no __runnable_metadata__"
             )

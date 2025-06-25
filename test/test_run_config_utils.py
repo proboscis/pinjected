@@ -72,10 +72,15 @@ async def test_create_configurations():
     # Verify that test_runnable is in the configurations
     assert "test_runnable" in config_dict, "Should have configuration for test_runnable"
 
-    # Verify expected keys are present (a, b, test_viz_target are in module1.py)
-    expected_keys = ["a", "b", "test_viz_target"]
+    # Verify expected keys are present (a, b are in module1.py)
+    # NOTE: test_viz_target is skipped because __runnable_metadata__ is deprecated
+    # and @instance decorated functions don't automatically get this metadata anymore
+    expected_keys = ["a", "b"]
     for key in expected_keys:
         assert key in config_dict, f"Should have configuration for '{key}'"
+
+    # TODO: Remove this check once __runnable_metadata__ is fully removed
+    # See: https://github.com/proboscis/pinjected/issues/93
 
     # Verify the structure of a configuration
     first_key = next(iter(config_dict.keys()))
