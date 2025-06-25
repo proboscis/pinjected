@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import json
+from datetime import datetime
 from pathlib import Path
 
 from injected_utils import async_cached, lzma_sqlite, sqlite_dict
@@ -29,6 +31,35 @@ class ShortText(BaseModel):
     short_jp_msg: str
 
 
+def _log_run_context(context, result=None, error=None):
+    """Log the run context and result/error to .pinjected_last_run.log"""
+    log_path = Path(".pinjected_last_run.log")
+    
+    log_data = {
+        "timestamp": datetime.now().isoformat(),
+        "context": {
+            "var_path": context.src_var_spec.var_path,
+            "design_bindings": list(context.design.bindings.keys()),
+            "meta_overrides_bindings": list(context.meta_overrides.bindings.keys()),
+            "overrides_bindings": list(context.overrides.bindings.keys()),
+        },
+    }
+    
+    if result is not None:
+        log_data["result"] = str(result)
+        log_data["status"] = "success"
+    
+    if error is not None:
+        import traceback
+        log_data["error"] = str(error)
+        log_data["error_type"] = type(error).__name__
+        log_data["traceback"] = traceback.format_exception(error)
+        log_data["status"] = "error"
+    
+    with open(log_path, "w") as f:
+        json.dump(log_data, f, indent=2, default=str)
+
+
 @injected
 async def a_handle_error_with_llm_voice(
     a_sllm_for_error_analysis: StructuredLLM,
@@ -36,9 +67,13 @@ async def a_handle_error_with_llm_voice(
     logger,
     __pinjected_error_reports_enable_voice__: bool,
     /,
+    context,
     e: Exception,
 ):
     import traceback
+
+    # Log the run context and error
+    _log_run_context(context, error=e)
 
     fmt = traceback.format_exception(e)
     fmt = "".join(fmt)
@@ -107,8 +142,12 @@ async def a_handle_result_with_llm_voice(
     logger,
     __pinjected_error_reports_enable_voice__: bool,
     /,
+    context,
     result: object,
 ):
+    # Log the run context and result
+    _log_run_context(context, result=result)
+    
     import rich
     from rich.errors import MarkupError
     from rich.panel import Panel

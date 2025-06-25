@@ -70,13 +70,13 @@ run_test: IProxy = Injected.bind(lambda: test_current_file())
 
 
 @injected
-async def __handle_exception(e: Exception):
+async def __handle_exception(context, e: Exception):
     print(f"Exception: {e}")
     return "handled"
 
 
 @injected
-async def __handle_success(result):
+async def __handle_success(context, result):
     print(f"Success: {result}")
 
 
