@@ -369,8 +369,16 @@ def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
         assert cfgs is not None, (
             f"internal_idea_config_creator {internal_idea_config_creator} returned None for {tgt}. return [] if you have no internal configs."
         )
-        for configs in cfgs:
-            results[name].append(configs)
+        logger.info(
+            f"internal_idea_config_creator returned {len(cfgs)} configs for {name}"
+        )
+        for config in cfgs:
+            logger.info(f"  Adding internal config: {config.name}")
+            # Skip export script configs
+            if "export" in config.name.lower():
+                logger.info(f"  Skipping export config: {config.name}")
+                continue
+            results[name].append(config)
     except Exception as e:
         logger.warning(f"Failed to create internal idea configs for {tgt} because {e}")
         raise RuntimeError(
