@@ -39,6 +39,8 @@ class PinjectedToolWindowPanel(private val project: Project) : JPanel(BorderLayo
     private var helper: InjectedFunctionActionHelper? = null
     private var allConfigs: Map<String, List<PyConfiguration>> = emptyMap()
     private val searchField = SearchTextField()
+    private val loadedFiles = mutableSetOf<String>() // Track files that have been initially loaded
+    private val statusLabel = JLabel("Double-click to run configuration")
     
     init {
         setupUI()
@@ -105,7 +107,6 @@ class PinjectedToolWindowPanel(private val project: Project) : JPanel(BorderLayo
         add(scrollPane, BorderLayout.CENTER)
         
         // Add status label at bottom
-        val statusLabel = JLabel("Double-click to run configuration")
         statusLabel.border = BorderFactory.createEmptyBorder(2, 5, 2, 5)
         add(statusLabel, BorderLayout.SOUTH)
     }
@@ -114,14 +115,14 @@ class PinjectedToolWindowPanel(private val project: Project) : JPanel(BorderLayo
         val actionGroup = DefaultActionGroup()
         
         // Refresh action
-        actionGroup.add(object : AnAction("Refresh", "Reload configurations", AllIcons.Actions.Refresh) {
+        actionGroup.add(object : AnAction("Refresh", "Reload configurations from cache", AllIcons.Actions.Refresh) {
             override fun actionPerformed(e: AnActionEvent) {
-                refreshConfigurations()
+                loadFromCache()
             }
         })
         
         // Update cache action
-        actionGroup.add(object : AnAction("Update Cache", "Clear cache and reload", AllIcons.Actions.ForceRefresh) {
+        actionGroup.add(object : AnAction("Update Cache", "Clear cache and reload from Python", AllIcons.Actions.ForceRefresh) {
             override fun actionPerformed(e: AnActionEvent) {
                 updateCache()
             }
@@ -199,7 +200,17 @@ class PinjectedToolWindowPanel(private val project: Project) : JPanel(BorderLayo
             return
         }
         
-        refreshConfigurations()
+        val filePath = file.path
+        val isInitialLoad = !loadedFiles.contains(filePath)
+        
+        if (isInitialLoad) {
+            log.info("Initial load for file: $filePath")
+            loadedFiles.add(filePath)
+            refreshConfigurations()
+        } else {
+            log.info("Using cached configurations for: $filePath")
+            loadFromCache()
+        }
     }
     
     private fun refreshConfigurations() {
@@ -212,23 +223,54 @@ class PinjectedToolWindowPanel(private val project: Project) : JPanel(BorderLayo
         SwingUtilities.invokeLater {
             val root = DefaultMutableTreeNode("Loading configurations...")
             treeModel.setRoot(root)
+            statusLabel.text = "Loading configurations from Python..."
         }
         
         // Load configurations in background
         h.runInBackground("Loading configurations") { indicator ->
             try {
-                val configs = InjectedFunctionActionHelperObject.cache[file.path] 
-                    ?: h.findConfigurations(file.path)
+                // Always load fresh when refreshing
+                val configs = h.findConfigurations(file.path)
+                
+                // Update cache
+                InjectedFunctionActionHelperObject.cache[file.path] = configs
                 
                 SwingUtilities.invokeLater {
                     updateTreeWithConfigurations(file.name, configs)
+                    statusLabel.text = "Configurations loaded (fresh)"
                 }
             } catch (e: Exception) {
                 log.error("Failed to load configurations", e)
                 SwingUtilities.invokeLater {
                     updateTreeForError(e.message ?: "Unknown error")
+                    statusLabel.text = "Error loading configurations"
                 }
             }
+        }
+    }
+    
+    private fun loadFromCache() {
+        val file = currentFile ?: return
+        
+        log.info("Loading configurations from cache for: ${file.path}")
+        
+        // Update status
+        SwingUtilities.invokeLater {
+            statusLabel.text = "Loading from cache..."
+        }
+        
+        // Try to get from cache
+        val cachedConfigs = InjectedFunctionActionHelperObject.cache[file.path]
+        
+        if (cachedConfigs != null) {
+            log.info("Found ${cachedConfigs.size} configuration groups in cache")
+            SwingUtilities.invokeLater {
+                updateTreeWithConfigurations(file.name, cachedConfigs)
+                statusLabel.text = "Configurations loaded from cache (use Update Cache to refresh)"
+            }
+        } else {
+            log.info("No cached configurations found, loading fresh")
+            refreshConfigurations()
         }
     }
     
@@ -241,9 +283,15 @@ class PinjectedToolWindowPanel(private val project: Project) : JPanel(BorderLayo
                 // Clear cache
                 InjectedFunctionActionHelperObject.cache.remove(file.path)
                 
+                // Mark file as needing reload
+                loadedFiles.remove(file.path)
+                
                 // Reload
                 val configs = h.findConfigurations(file.path)
                 InjectedFunctionActionHelperObject.cache[file.path] = configs
+                
+                // Mark as loaded again
+                loadedFiles.add(file.path)
                 
                 SwingUtilities.invokeLater {
                     updateTreeWithConfigurations(file.name, configs)
