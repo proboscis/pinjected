@@ -3,7 +3,6 @@ from pathlib import Path
 from returns.maybe import Some
 
 from pinjected import Design, Injected, design, IProxy
-from pinjected.exporter.llm_exporter import add_export_config
 from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_inspector import get_project_root
 from pinjected.pinjected_logging import logger
@@ -28,5 +27,7 @@ pinjected_internal_design: Design = design(
     # ),
     project_root=Injected.bind(lambda module_path: Path(get_project_root(module_path))),
     default_working_dir=Injected.bind(lambda project_root: Some(str(project_root))),
-    internal_idea_config_creator=add_export_config,
+    internal_idea_config_creator=Injected.pure(
+        lambda spec: []
+    ),  # Removed export feature
 )

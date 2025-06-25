@@ -5,7 +5,6 @@ import pytest
 
 from pinjected import design
 from pinjected.helper_structure import MetaContext
-from pinjected.ide_supports.create_configs import create_idea_configurations
 from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.keys import StrBindKey
 
@@ -129,22 +128,21 @@ async def test_create_configurations_with_design():
         default_design_paths=[],  # Add required dependency
     )
 
-    # Create the full design
-    full_design = mc.accumulated + test_design + pinjected_internal_design
+    # Create the full design with print_to_stdout=True and __pinjected__wrap_output_with_tag=False
+    full_design = (
+        mc.accumulated
+        + test_design
+        + pinjected_internal_design
+        + design(print_to_stdout=True)
+        + design(__pinjected__wrap_output_with_tag=False)
+    )
 
     # Create a resolver with the combined design
     resolver = AsyncResolver(full_design)
 
-    # First we need to add print_to_stdout=True to the design
-    stdout_design = design(print_to_stdout=True)
-    full_design = full_design + stdout_design
-    resolver = AsyncResolver(full_design)
-
-    # Get the configurations injected object
-    configs_injected = create_idea_configurations(wrap_output_with_tag=False)
-
-    # When resolved, this will print JSON to stdout instead of returning an object
-    configs_result = await resolver[configs_injected]
+    # Now resolve create_idea_configurations through the resolver
+    # When resolved with print_to_stdout=True, this will print JSON to stdout instead of returning an object
+    configs_result = await resolver.provide("create_idea_configurations")
 
     # Verify that it printed configurations to stdout (None is returned)
     assert configs_result is None, "Should print JSON and return None"
