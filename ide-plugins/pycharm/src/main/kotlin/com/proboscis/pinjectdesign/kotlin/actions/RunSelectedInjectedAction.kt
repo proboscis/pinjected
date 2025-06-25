@@ -1,17 +1,14 @@
 package com.proboscis.pinjectdesign.kotlin.actions
 
 import com.proboscis.pinjectdesign.kotlin.InjectedFunctionActionHelper
-import com.proboscis.pinjectdesign.kotlin.util.PinjectedConsoleUtil
+import com.proboscis.pinjectdesign.kotlin.util.GutterActionUtil
+import com.proboscis.pinjectdesign.kotlin.util.PinjectedDetectionUtil
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.psi.PsiFile
-import com.intellij.psi.util.PsiTreeUtil
-import com.jetbrains.python.psi.PyAssignmentStatement
-import com.jetbrains.python.psi.PyTargetExpression
+import com.intellij.openapi.diagnostic.Logger
 
 fun saveModifiedDocuments() {
     val fileDocumentManager = FileDocumentManager.getInstance()
@@ -19,47 +16,49 @@ fun saveModifiedDocuments() {
 }
 
 open class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
+    private val log = Logger.getInstance("com.proboscis.pinjectdesign.kotlin.actions.RunSelectedInjectedAction")
+    
     override fun actionPerformed(e: AnActionEvent) {
         saveModifiedDocuments()
         val project = e.project ?: return
         val helper = createHelper(project)
-        val pinjectedUtil = createConsoleUtil(helper)
-        val editor: Editor? = e.getData(CommonDataKeys.EDITOR)
-        val file: PsiFile? = e.getData(CommonDataKeys.PSI_FILE)
-        var found = false
+        val editor = e.getData(CommonDataKeys.EDITOR)
+        val file = e.getData(CommonDataKeys.PSI_FILE)
 
         if (editor != null && file != null) {
             val offset = editor.caretModel.offset
             val elementAt = file.findElementAt(offset)
-            val assignmentStatement = PsiTreeUtil.getParentOfType(elementAt, PyAssignmentStatement::class.java)
-            assignmentStatement?.let { stmt ->
-                val targets = stmt.targets
-                if (targets.isNotEmpty()) {
-                    val target = targets[0] as? PyTargetExpression
-                    target?.let {
-                        found = true
-                        val variableName = it.name
-                        val filePath = file.virtualFile.path
-                        pinjectedUtil.runInjected(
-                                filePath,
-                                variableName!!,
-                                editor
-                        )
-                    }
+            
+            if (elementAt != null) {
+                // Use the same detection logic as the gutter icon
+                val targetName = PinjectedDetectionUtil.getInjectedTargetName(elementAt)
+                
+                if (targetName != null) {
+                    log.debug("Found injected target: $targetName")
+                    
+                    // Show the same popup menu as the gutter icon
+                    val actions = GutterActionUtil.createActions(project, targetName)
+                    log.debug("Created ${actions.size} actions for $targetName")
+                    GutterActionUtil.showPopupChooser(e.inputEvent as? java.awt.event.MouseEvent, actions)
+                } else {
+                    helper.showNotification(
+                        "No Injected Found", 
+                        "No injected function or variable found at the current cursor position", 
+                        NotificationType.INFORMATION
+                    )
                 }
             }
-        }
-        if (!found){
-            helper.showNotification("No Injected Found", "No injected found at the current cursor position", NotificationType.INFORMATION)
+        } else {
+            helper.showNotification(
+                "Invalid Context", 
+                "Unable to determine context from editor", 
+                NotificationType.WARNING
+            )
         }
     }
     
     // Factory methods for testing
     open fun createHelper(project: com.intellij.openapi.project.Project): InjectedFunctionActionHelper {
         return InjectedFunctionActionHelper(project)
-    }
-    
-    open fun createConsoleUtil(helper: InjectedFunctionActionHelper): PinjectedConsoleUtil {
-        return PinjectedConsoleUtil(helper)
     }
 }
