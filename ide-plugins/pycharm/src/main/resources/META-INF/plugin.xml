@@ -23,6 +23,13 @@
         <notificationGroup id="Pinjected Plugin" 
                          displayType="BALLOON" 
                          key="notification.group.pinjected"/>
+                         
+        <!-- Tool Window -->
+        <toolWindow id="Pinjected"
+                    secondary="false"
+                    icon="AllIcons.Actions.Execute"
+                    anchor="left"
+                    factoryClass="com.proboscis.pinjectdesign.kotlin.toolwindow.PinjectedToolWindowFactory"/>
     </extensions>
 
     <actions>

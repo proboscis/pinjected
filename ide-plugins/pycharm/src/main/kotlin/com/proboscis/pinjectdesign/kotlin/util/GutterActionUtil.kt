@@ -112,7 +112,53 @@ object GutterActionUtil {
             LOG.debug("Loaded ${configs.size} configurations for '$name'")
             
             if (configs.isEmpty()) {
-                LOG.warn("No configurations found for '$name' - user should see a notification about key mismatch")
+                LOG.warn("No configurations found for '$name' - showing debug notification")
+                
+                // Get all available configurations to show what's actually available
+                val filePath = helper.getFilePath()
+                val allConfigs = if (filePath != null) {
+                    InjectedFunctionActionHelperObject.cache[filePath] ?: emptyMap()
+                } else {
+                    emptyMap()
+                }
+                
+                val availableKeys = allConfigs.keys.sorted()
+                val totalConfigs = allConfigs.values.sumOf { it.size }
+                
+                // Create detailed debug message
+                val message = buildString {
+                    appendLine("Gutter Icon Configuration Mismatch!")
+                    appendLine()
+                    appendLine("Gutter icon clicked for: \"$name\"")
+                    appendLine("File: ${filePath ?: "unknown"}")
+                    appendLine()
+                    appendLine("Total configurations in cache: $totalConfigs")
+                    appendLine("Configuration groups found: ${availableKeys.size}")
+                    appendLine()
+                    appendLine("Available configuration keys:")
+                    if (availableKeys.isEmpty()) {
+                        appendLine("  (none - cache might be empty)")
+                    } else {
+                        availableKeys.forEach { key ->
+                            val count = allConfigs[key]?.size ?: 0
+                            appendLine("  • $key ($count configs)")
+                        }
+                    }
+                    appendLine()
+                    appendLine("Possible causes:")
+                    appendLine("• Function/variable name doesn't match configuration key")
+                    appendLine("• Configuration extraction failed")
+                    appendLine("• Cache needs updating (try 'Update Configurations')")
+                }
+                
+                val notification = NotificationGroupManager.getInstance()
+                    .getNotificationGroup("Pinjected Plugin")
+                    .createNotification(
+                        "Configuration Not Found for Gutter Icon",
+                        message,
+                        NotificationType.WARNING
+                    )
+                notification.notify(project)
             }
             
             // Check for duplicate names
