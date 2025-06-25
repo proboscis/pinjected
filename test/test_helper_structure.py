@@ -123,7 +123,11 @@ async def test_create_configurations_with_design():
     )
 
     # Create a design with our test requirements
-    test_design = design(module_path=test_file, interpreter_path=sys.executable)
+    test_design = design(
+        module_path=test_file,
+        interpreter_path=sys.executable,
+        default_design_paths=[],  # Add required dependency
+    )
 
     # Create the full design
     full_design = mc.accumulated + test_design + pinjected_internal_design

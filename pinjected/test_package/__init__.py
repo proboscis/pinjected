@@ -4,6 +4,7 @@ from pinjected.module_inspector import ModuleVarSpec
 from pinjected.test_helper.test_runner import test_tree
 
 
+@injected
 def dummy_config_creator_for_test(
     runner_script_path,
     interpreter_path,
@@ -31,5 +32,5 @@ run_test_module: IProxy = Injected.bind(lambda: test_tree())
 __design__ = design(
     name="test_package.child.__init__",
     # custom_idea_config_creator = 'dummy'
-    custom_idea_config_creator=Injected.bind(dummy_config_creator_for_test),
+    custom_idea_config_creator=dummy_config_creator_for_test,
 )

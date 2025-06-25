@@ -36,7 +36,11 @@ async def test_create_configurations():
     # Test that we can access meta_config_value from __design__ (which overrides __meta_design__)
     dd = (
         (await mc.a_final_design)
-        + design(module_path=TEST_MODULE, interpreter_path=sys.executable)
+        + design(
+            module_path=TEST_MODULE,
+            interpreter_path=sys.executable,
+            default_design_paths=[],  # Add required dependency
+        )
         + pinjected_internal_design
         + design(print_to_stdout=False)
     )
