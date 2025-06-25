@@ -839,8 +839,8 @@ def get_required_imports(module_or_source, module_name=None) -> Imports:
 
 default_design = design(a_llm=injected("a_llm__gpt4_turbo"))
 
-__meta_design__ = design(
-    default_design_paths=["pinjected.exporter.llm_exporter.default_design"],
-    overrides=design(),
-    # custom_idea_config_creator=add_export_config,
-)
+# __meta_design__ = design(
+#     default_design_paths=["pinjected.exporter.llm_exporter.default_design"],
+#     overrides=design(),
+#     # custom_idea_config_creator=add_export_config,
+# )

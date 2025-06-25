@@ -473,4 +473,4 @@ run_all_child_tests = pintest.test_children()
     
 """
 
-__meta_design__ = design(overrides=__pinjected__internal_design)
+# __meta_design__ = design(overrides=__pinjected__internal_design)

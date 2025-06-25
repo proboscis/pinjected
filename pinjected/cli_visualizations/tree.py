@@ -58,8 +58,14 @@ def format_injected_for_tree(injected: Injected) -> str:  # noqa: C901, PLR0911,
         return injected.__class__.__name__
 
 
-def design_rich_tree(tgt_design, root):  # noqa: C901
-    """依存関係をリッチなツリー形式で表示する"""
+def design_rich_tree(tgt_design, root, binding_sources=None):  # noqa: C901
+    """依存関係をリッチなツリー形式で表示する
+
+    Args:
+        tgt_design: The design to visualize
+        root: The root dependency to start from
+        binding_sources: Optional dict mapping bind keys to their source locations
+    """
     from pinjected import design
     from pinjected.di.injected import Injected
 
@@ -71,7 +77,7 @@ def design_rich_tree(tgt_design, root):  # noqa: C901
     d = DIGraph(enhanced_design)
     g = d.create_dependency_digraph_rooted(root).graph
 
-    def get_node_label(node):
+    def get_node_label(node):  # noqa: C901, PLR0912
         try:
             value = d[node]
             if isinstance(value, Injected):
@@ -83,12 +89,30 @@ def design_rich_tree(tgt_design, root):  # noqa: C901
             typ = type(value)
             # if 'key' in node.lower() or 'secret' in node.lower():
             #     value_str = "********"
+
+            # Add source information if available
+            source_info = ""
+            if binding_sources:
+                from pinjected.v2.keys import StrBindKey
+
+                key = StrBindKey(node)
+                if key in binding_sources:
+                    source = binding_sources[key]
+                    # Shorten long paths for readability
+                    if source.startswith("/") and len(source) > 50:
+                        # Show last part of path
+                        parts = source.split("/")
+                        if len(parts) > 3:
+                            source = "..." + "/".join(parts[-3:])
+                    source_info = f" [from {source}]"
+
             return Text.assemble(
                 (node, Style(color="cyan", bold=True)),
                 (" -> ", Style(color="white")),
                 (typ.__name__, Style(color="blue")),
                 (" : ", Style(color="white")),
                 (value_str, Style(color="yellow")),
+                (source_info, Style(color="green", dim=True)),
             )
         except Exception as e:
             return Text(f"{node} (Error: {e!s})", style="red")

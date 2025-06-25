@@ -46,9 +46,15 @@ def run_with_meta_context(
 ):
     """
     This is for running a injected with __design__ integrated.
+
+    IMPORTANT: This function is primarily used by IDE plugins and will use
+    pinjected_internal_design by default if no design_path is provided.
+
+    TODO: Deprecate meta_main entry point in favor of direct pinjected commands.
+
     :param var_path:
     :param context_module_file_path:
-    :param design_path:
+    :param design_path: Optional design path. If None, uses pinjected_internal_design
     :param kwargs:
     :return:
     """
@@ -57,6 +63,17 @@ def run_with_meta_context(
     meta_context: MetaContext = asyncio.run(
         MetaContext.a_gather_bindings_with_legacy(Path(context_module_file_path))
     )
+
+    # Use pinjected_internal_design by default if no design_path is provided
+    # This is needed because IDE plugins (PyCharm, VSCode) don't pass design_path
+    if design_path is None:
+        logger.warning(
+            "No design_path provided to run_with_meta_context. "
+            "Using pinjected_internal_design by default. "
+            "This behavior is for backward compatibility with IDE plugins."
+        )
+        design_path = "pinjected.ide_supports.default_design.pinjected_internal_design"
+
     default = design(default_design_paths=[])
     instance_overrides = design(
         module_path=Path(context_module_file_path),

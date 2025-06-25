@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -64,9 +64,10 @@ class MetaContext:
     trace: list[ModuleVarSpec[Design]]
     accumulated: Design
     spec_trace: SpecTrace
+    key_to_path: dict[IBindKey, str] = field(default_factory=dict)
 
     @staticmethod
-    async def a_gather_from_path(
+    async def a_gather_from_path(  # noqa: C901
         file_path: Path, meta_design_name: str = "__meta_design__"
     ):
         """
@@ -132,10 +133,11 @@ class MetaContext:
                 trace=designs,
                 accumulated=res,
                 spec_trace=SpecTrace(trace=[], accumulated=DesignSpec.empty()),
+                key_to_path=key_to_src,
             )
 
     @staticmethod
-    async def a_gather_bindings_with_legacy(file_path):
+    async def a_gather_bindings_with_legacy(file_path):  # noqa: C901
         """
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__ and __design__.
         __pinjected__.py and __design__ will override the deprecated __meta_design__ and __init__.py
@@ -175,7 +177,9 @@ class MetaContext:
 
         spec = await SpecTrace.a_gather_from_path(file_path)
 
-        return MetaContext(trace=trace, accumulated=acc, spec_trace=spec)
+        return MetaContext(
+            trace=trace, accumulated=acc, spec_trace=spec, key_to_path=key_to_path
+        )
 
     @staticmethod
     @beartype
@@ -263,16 +267,12 @@ class RunnablePair:
         logger.info(f"result: {result}")
         return result
 
-    def save_html(self, name: str = None, show=True):
+    def save_html(self, name: str | None = None, show=True):
         if name is None:
             name = "graph.html"
         self.design.to_vis_graph().save_as_html(self.target, name, show=show)
 
 
-try:
-    # pydantic over version 2
-    from pydantic import field_validator
-except ImportError:
-    pass
+# Removed unused import check for pydantic field_validator
 
 __design__ = design()
