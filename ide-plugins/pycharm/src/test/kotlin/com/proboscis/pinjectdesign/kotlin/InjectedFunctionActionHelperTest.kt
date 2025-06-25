@@ -2,9 +2,9 @@ package com.proboscis.pinjectdesign.kotlin
 
 import com.proboscis.pinjectdesign.kotlin.data.PyConfiguration
 import org.junit.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 
 /**
  * Unit tests for PyConfiguration handling in InjectedFunctionActionHelper.
@@ -50,10 +50,10 @@ class InjectedFunctionActionHelperTest {
         // Verify that all configuration names are preserved
         val configNames = configurations.map { it.name }
         
-        assertTrue(configNames.contains("test_function(EmptyDesign)"), "Regular configuration name should be preserved")
-        assertTrue(configNames.contains("test_function(EmptyDesign)_viz"), "Visualization configuration name should be preserved")
-        assertTrue(configNames.contains("describe test_function"), "Describe configuration name should be preserved")
-        assertTrue(configNames.contains("Export script"), "Export script configuration name should be preserved")
+        assertTrue("Regular configuration name should be preserved", configNames.contains("test_function(EmptyDesign)"))
+        assertTrue("Visualization configuration name should be preserved", configNames.contains("test_function(EmptyDesign)_viz"))
+        assertTrue("Describe configuration name should be preserved", configNames.contains("describe test_function"))
+        assertTrue("Export script configuration name should be preserved", configNames.contains("Export script"))
     }
     
     @Test
@@ -79,7 +79,7 @@ class InjectedFunctionActionHelperTest {
         // Verify that custom configuration names are preserved
         val configNames = configurations.map { it.name }
         
-        assertTrue(configNames.contains("Custom Action Name"), "Custom action name should be preserved")
-        assertTrue(configNames.contains("Another Custom Action"), "Another custom action name should be preserved")
+        assertTrue("Custom action name should be preserved", configNames.contains("Custom Action Name"))
+        assertTrue("Another custom action name should be preserved", configNames.contains("Another Custom Action"))
     }
 }

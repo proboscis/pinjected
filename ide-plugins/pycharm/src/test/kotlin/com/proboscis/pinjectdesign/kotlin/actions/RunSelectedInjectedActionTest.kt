@@ -3,12 +3,14 @@ package com.proboscis.pinjectdesign.kotlin.actions
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.CaretModel
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.jetbrains.python.psi.PyAssignmentStatement
-import com.jetbrains.python.psi.PyTargetExpression
 import com.proboscis.pinjectdesign.kotlin.InjectedFunctionActionHelper
-import com.proboscis.pinjectdesign.kotlin.util.PinjectedConsoleUtil
+import com.proboscis.pinjectdesign.kotlin.util.PinjectedDetectionUtil
+import com.proboscis.pinjectdesign.kotlin.util.GutterActionUtil
+import com.intellij.notification.NotificationType
 import org.junit.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
@@ -16,6 +18,9 @@ import org.mockito.Mockito.`when`
 import org.mockito.Mockito.any
 import org.mockito.Mockito.eq
 import org.mockito.Mockito.never
+import org.mockito.MockedStatic
+import org.mockito.Mockito.mockStatic
+import java.awt.event.MouseEvent
 
 class RunSelectedInjectedActionTest {
 
@@ -25,34 +30,46 @@ class RunSelectedInjectedActionTest {
         val mockEvent = mock(AnActionEvent::class.java)
         val mockProject = mock(Project::class.java)
         val mockEditor = mock(Editor::class.java)
+        val mockCaretModel = mock(CaretModel::class.java)
         val mockFile = mock(PsiFile::class.java)
         val mockHelper = mock(InjectedFunctionActionHelper::class.java)
-        val mockConsoleUtil = mock(PinjectedConsoleUtil::class.java)
+        val mockElement = mock(PsiElement::class.java)
+        val mockMouseEvent = mock(MouseEvent::class.java)
         
         // Configure mocks
         `when`(mockEvent.project).thenReturn(mockProject)
         `when`(mockEvent.getData(CommonDataKeys.EDITOR)).thenReturn(mockEditor)
         `when`(mockEvent.getData(CommonDataKeys.PSI_FILE)).thenReturn(mockFile)
-        `when`(mockFile.virtualFile).thenReturn(mock(com.intellij.openapi.vfs.VirtualFile::class.java))
-        `when`(mockFile.virtualFile.path).thenReturn("/test/path/test_file.py")
+        `when`(mockEvent.inputEvent).thenReturn(mockMouseEvent)
+        `when`(mockEditor.caretModel).thenReturn(mockCaretModel)
+        `when`(mockCaretModel.offset).thenReturn(100)
+        `when`(mockFile.findElementAt(100)).thenReturn(mockElement)
         
         // Create action with mocked dependencies
         val action = object : RunSelectedInjectedAction() {
             override fun createHelper(project: Project): InjectedFunctionActionHelper {
                 return mockHelper
             }
-            
-            override fun createConsoleUtil(helper: InjectedFunctionActionHelper): PinjectedConsoleUtil {
-                return mockConsoleUtil
-            }
         }
         
-        // Execute action
-        action.actionPerformed(mockEvent)
-        
-        // Verify console util was called with correct parameters
-        // Note: This is a simplified test that doesn't fully simulate the PSI tree traversal
-        // In a real test, we would need to mock more complex behavior
+        // Mock static methods
+        mockStatic(PinjectedDetectionUtil::class.java).use { mockedDetectionUtil ->
+            mockStatic(GutterActionUtil::class.java).use { mockedGutterUtil ->
+                // Configure static mocks
+                mockedDetectionUtil.`when`<String?> { PinjectedDetectionUtil.getInjectedTargetName(mockElement) }
+                    .thenReturn("test_injected")
+                
+                // Execute action
+                action.actionPerformed(mockEvent)
+                
+                // Verify that GutterActionUtil methods were called
+                mockedGutterUtil.verify { GutterActionUtil.createActions(mockProject, "test_injected") }
+                mockedGutterUtil.verify { GutterActionUtil.showPopupChooser(eq(mockMouseEvent), any()) }
+                
+                // Verify no notification was shown
+                verify(mockHelper, never()).showNotification(any(), any(), any())
+            }
+        }
     }
 
     @Test
@@ -61,37 +78,73 @@ class RunSelectedInjectedActionTest {
         val mockEvent = mock(AnActionEvent::class.java)
         val mockProject = mock(Project::class.java)
         val mockEditor = mock(Editor::class.java)
+        val mockCaretModel = mock(CaretModel::class.java)
         val mockFile = mock(PsiFile::class.java)
         val mockHelper = mock(InjectedFunctionActionHelper::class.java)
-        val mockConsoleUtil = mock(PinjectedConsoleUtil::class.java)
+        val mockElement = mock(PsiElement::class.java)
         
         // Configure mocks
         `when`(mockEvent.project).thenReturn(mockProject)
         `when`(mockEvent.getData(CommonDataKeys.EDITOR)).thenReturn(mockEditor)
         `when`(mockEvent.getData(CommonDataKeys.PSI_FILE)).thenReturn(mockFile)
+        `when`(mockEditor.caretModel).thenReturn(mockCaretModel)
+        `when`(mockCaretModel.offset).thenReturn(100)
+        `when`(mockFile.findElementAt(100)).thenReturn(mockElement)
         
         // Create action with mocked dependencies
         val action = object : RunSelectedInjectedAction() {
             override fun createHelper(project: Project): InjectedFunctionActionHelper {
                 return mockHelper
             }
+        }
+        
+        // Mock static methods
+        mockStatic(PinjectedDetectionUtil::class.java).use { mockedDetectionUtil ->
+            // Configure static mocks to return null (no injected found)
+            mockedDetectionUtil.`when`<String?> { PinjectedDetectionUtil.getInjectedTargetName(mockElement) }
+                .thenReturn(null)
             
-            override fun createConsoleUtil(helper: InjectedFunctionActionHelper): PinjectedConsoleUtil {
-                return mockConsoleUtil
+            // Execute action
+            action.actionPerformed(mockEvent)
+            
+            // Verify notification was shown for no injected found
+            verify(mockHelper).showNotification(
+                eq("No Injected Found"), 
+                eq("No injected function or variable found at the current cursor position"), 
+                eq(NotificationType.INFORMATION)
+            )
+        }
+    }
+    
+    @Test
+    fun testActionPerformedWithNullElement() {
+        // Create mocks
+        val mockEvent = mock(AnActionEvent::class.java)
+        val mockProject = mock(Project::class.java)
+        val mockEditor = mock(Editor::class.java)
+        val mockCaretModel = mock(CaretModel::class.java)
+        val mockFile = mock(PsiFile::class.java)
+        val mockHelper = mock(InjectedFunctionActionHelper::class.java)
+        
+        // Configure mocks
+        `when`(mockEvent.project).thenReturn(mockProject)
+        `when`(mockEvent.getData(CommonDataKeys.EDITOR)).thenReturn(mockEditor)
+        `when`(mockEvent.getData(CommonDataKeys.PSI_FILE)).thenReturn(mockFile)
+        `when`(mockEditor.caretModel).thenReturn(mockCaretModel)
+        `when`(mockCaretModel.offset).thenReturn(100)
+        `when`(mockFile.findElementAt(100)).thenReturn(null)
+        
+        // Create action with mocked dependencies
+        val action = object : RunSelectedInjectedAction() {
+            override fun createHelper(project: Project): InjectedFunctionActionHelper {
+                return mockHelper
             }
         }
         
         // Execute action
         action.actionPerformed(mockEvent)
         
-        // Verify notification was shown for no injected found
-        verify(mockHelper).showNotification(
-            eq("No Injected Found"), 
-            eq("No injected found at the current cursor position"), 
-            any()
-        )
-        
-        // Verify console util was not called
-        verify(mockConsoleUtil, never()).runInjected(any(), any(), any())
+        // Verify no notification was shown (since elementAt is null, the outer if condition will handle it)
+        verify(mockHelper, never()).showNotification(any(), any(), any())
     }
 }

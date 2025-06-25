@@ -18,6 +18,18 @@
         <codeInsight.lineMarkerProvider 
             language="Python" 
             implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
+            
+        <!-- Notification Group -->
+        <notificationGroup id="Pinjected Plugin" 
+                         displayType="BALLOON" 
+                         key="notification.group.pinjected"/>
+                         
+        <!-- Tool Window -->
+        <toolWindow id="Pinjected"
+                    secondary="false"
+                    icon="AllIcons.Actions.Execute"
+                    anchor="left"
+                    factoryClass="com.proboscis.pinjectdesign.kotlin.toolwindow.PinjectedToolWindowFactory"/>
     </extensions>
 
     <actions>
@@ -28,6 +40,14 @@
                 description="Run the selected injected function">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
+        </action>
+        
+        <!-- Diagnostics Action -->
+        <action id="PInjectDesign.RunDiagnostics"
+                class="com.proboscis.pinjectdesign.kotlin.actions.RunDiagnosticsAction"
+                text="Run Pinjected Diagnostics"
+                description="Check Pinjected plugin configuration and troubleshoot issues">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>
