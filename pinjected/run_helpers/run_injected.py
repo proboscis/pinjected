@@ -323,13 +323,30 @@ class RunContext:
     def get_final_design(self):
         return self.design + self.meta_overrides + self.overrides
 
-    async def a_provide(self, tgt, show_debug=True):
+    async def a_provide(self, tgt, show_debug=True):  # noqa: C901, PLR0912
         final_design = self.get_final_design()
         if show_debug:
             logger.info(f"loaded design:{final_design}")
             logger.info(f"meta_overrides:{self.meta_overrides}")
             logger.info(f"running target:{self.var} with design {final_design}")
-            tree_str = design_rich_tree(final_design, self.var)
+
+            # Combine binding sources from different origins
+            binding_sources = {}
+
+            # Module hierarchy bindings from MetaContext
+            if hasattr(self.src_meta_context, "key_to_path"):
+                binding_sources.update(self.src_meta_context.key_to_path)
+
+            # Mark user default design bindings
+            for key in self.meta_overrides.bindings:
+                if key not in binding_sources or key in self.meta_overrides.bindings:
+                    binding_sources[key] = "user default design"
+
+            # Mark user override design bindings (these take precedence)
+            for key in self.overrides.bindings:
+                binding_sources[key] = "user overrides design"
+
+            tree_str = design_rich_tree(final_design, self.var, binding_sources)
             logger.info(f"Dependency Tree:\n{tree_str}")
         dd = final_design
         resolver = AsyncResolver(
@@ -579,8 +596,6 @@ def load_user_default_design() -> Design:
             find_dot_pinjected(), "default_design"
         ) + _load_design(design_path).value_or(design())
         # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
-        for k, v in design_result.bindings.items():
-            logger.info(f"User overrides :{k} -> {type(v)}")
         return design_result
     except PinjectedConfigurationLoadFailure as e:
         if "default_design is not defined" in str(e):

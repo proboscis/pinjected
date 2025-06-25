@@ -28,7 +28,7 @@ def test_warning_for_partially_injected_function() -> None:
         spec_trace = SpecTrace(trace=[], accumulated=DesignSpec.empty())
         context = RunContext(
             src_meta_context=MetaContext(
-                trace=[], accumulated=design(), spec_trace=spec_trace
+                trace=[], accumulated=design(), spec_trace=spec_trace, key_to_path={}
             ),
             design=d,
             meta_overrides=design(),
