@@ -510,6 +510,26 @@ open class InjectedFunctionActionHelper(val project: Project) {
             if (configList == null) {
                 log.error("Configuration '$name' not found even after reload")
                 log.error("Available configurations: ${configs.keys}")
+                
+                // Show user-friendly notification about the mismatch
+                val availableKeys = configs.keys.sorted().joinToString("\n• ", prefix = "• ")
+                val message = """
+                    |Configuration key mismatch!
+                    |
+                    |Looking for: "$name"
+                    |
+                    |Available configurations:
+                    |$availableKeys
+                    |
+                    |This may happen if the function name doesn't match the configuration key.
+                """.trimMargin()
+                
+                showNotification(
+                    "Configuration Not Found", 
+                    message,
+                    NotificationType.WARNING
+                )
+                
                 return@runInBackground emptyList<PyConfiguration>()
             }
             
@@ -558,9 +578,14 @@ open class InjectedFunctionActionHelper(val project: Project) {
                 log.info("  $path -> ${configs.size} groups")
             }
             
+            // Show detailed notification about what was found
+            val totalConfigs = confs.values.sumOf { it.size }
+            val configKeys = confs.keys.sorted().take(10).joinToString(", ")
+            val moreText = if (confs.size > 10) " (and ${confs.size - 10} more)" else ""
+            
             showNotification(
                 "Configurations Updated",
-                "Found ${confs.size} configuration groups",
+                "Found $totalConfigs configurations in ${confs.size} groups: $configKeys$moreText",
                 NotificationType.INFORMATION
             )
             

@@ -107,8 +107,13 @@ object GutterActionUtil {
         
         // DYNAMICALLY ADD ALL ACTIONS FROM CONFIGURATIONS WITHOUT FILTERING
         try {
+            LOG.debug("Fetching configurations for key: '$name'")
             val configs = helper.cachedConfigurations(name).blockingGet(5000) ?: emptyList()
-            LOG.debug("Loaded ${configs.size} configurations for $name")
+            LOG.debug("Loaded ${configs.size} configurations for '$name'")
+            
+            if (configs.isEmpty()) {
+                LOG.warn("No configurations found for '$name' - user should see a notification about key mismatch")
+            }
             
             // Check for duplicate names
             val configNames = configs.map { it.name }
