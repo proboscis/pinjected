@@ -21,7 +21,6 @@ open class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
     override fun actionPerformed(e: AnActionEvent) {
         saveModifiedDocuments()
         val project = e.project ?: return
-        val helper = createHelper(project)
         val editor = e.getData(CommonDataKeys.EDITOR)
         val file = e.getData(CommonDataKeys.PSI_FILE)
 
@@ -41,7 +40,8 @@ open class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
                     log.debug("Created ${actions.size} actions for $targetName")
                     GutterActionUtil.showPopupChooser(e.inputEvent as? java.awt.event.MouseEvent, actions)
                 } else {
-                    helper.showNotification(
+                    showNotification(
+                        project,
                         "No Injected Found", 
                         "No injected function or variable found at the current cursor position", 
                         NotificationType.INFORMATION
@@ -49,12 +49,20 @@ open class RunSelectedInjectedAction : AnAction("Run Selected Injected") {
                 }
             }
         } else {
-            helper.showNotification(
+            showNotification(
+                project,
                 "Invalid Context", 
                 "Unable to determine context from editor", 
                 NotificationType.WARNING
             )
         }
+    }
+    
+    private fun showNotification(project: Project?, title: String, content: String, type: NotificationType) {
+        val notification = com.intellij.notification.NotificationGroupManager.getInstance()
+            .getNotificationGroup("Pinjected Plugin")
+            .createNotification(title, content, type)
+        notification.notify(project)
     }
     
     // Factory methods for testing

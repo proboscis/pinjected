@@ -1,7 +1,12 @@
 package com.proboscis.pinjectdesign.kotlin.util
 
 import com.proboscis.pinjectdesign.kotlin.InjectedFunctionActionHelper
+import com.proboscis.pinjectdesign.kotlin.InjectedFunctionActionHelperObject
 import com.proboscis.pinjectdesign.kotlin.data.ActionItem
+import com.proboscis.pinjectdesign.kotlin.error.DiagnosticRunner
+import com.proboscis.pinjectdesign.kotlin.error.ErrorHandler
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -70,8 +75,26 @@ object GutterActionUtil {
         // Save modified documents before running actions
         FileDocumentManager.getInstance().saveAllDocuments()
         
-        val helper = InjectedFunctionActionHelper(project)
+        val helper = InjectedFunctionActionHelperObject.createSafely(project)
         val actions = mutableListOf<ActionItem>()
+        
+        // If no helper available (Python not configured), show diagnostic action
+        if (helper == null) {
+            actions.add(ActionItem("Configure Python Interpreter") {
+                val notification = NotificationGroupManager.getInstance()
+                    .getNotificationGroup("Pinjected Plugin")
+                    .createNotification(
+                        "Configure Python",
+                        "Please configure a Python interpreter in Project Settings",
+                        NotificationType.INFORMATION
+                    )
+                notification.notify(project)
+            })
+            actions.add(ActionItem("Run Diagnostics") {
+                DiagnosticRunner.runDiagnostics(project)
+            })
+            return actions
+        }
         
         // Update configuration cache action - ALWAYS AVAILABLE
         val updateConfigAction = ActionItem("Update Configurations") {
@@ -119,11 +142,12 @@ object GutterActionUtil {
             }
         } catch (e: Exception) {
             LOG.error("Error loading configurations for $name", e)
-            helper.showNotification(
-                "Error Loading Configurations",
-                "Error: ${e.message}",
-                com.intellij.notification.NotificationType.ERROR
-            )
+            
+            // The error is already shown by cachedConfigurations or findConfigurations
+            // Just add a fallback action for users to diagnose the issue
+            actions.add(ActionItem("Run Diagnostics") {
+                com.proboscis.pinjectdesign.kotlin.error.DiagnosticRunner.runDiagnostics(project)
+            })
         }
         
         LOG.debug("Total actions created: ${actions.size}")

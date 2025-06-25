@@ -6,6 +6,9 @@ import com.proboscis.pinjectdesign.kotlin.data.ConfigurationWrapper
 import com.proboscis.pinjectdesign.kotlin.data.CustomCompletion
 import com.proboscis.pinjectdesign.kotlin.data.DesignMetadata
 import com.proboscis.pinjectdesign.kotlin.data.PyConfiguration
+import com.proboscis.pinjectdesign.kotlin.error.ErrorHandler
+import com.proboscis.pinjectdesign.kotlin.error.ErrorHandler.ErrorContext
+import com.proboscis.pinjectdesign.kotlin.error.ErrorHandler.ErrorType
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.configurations.ConfigurationFactory
@@ -37,19 +40,45 @@ import java.util.concurrent.Executors
 
 object InjectedFunctionActionHelperObject {
     val cache = mutableMapOf<String, Map<String, List<PyConfiguration>>>()
+    
+    /**
+     * Safely creates an InjectedFunctionActionHelper or returns null if Python is not configured.
+     * Shows appropriate error messages to the user.
+     */
+    fun createSafely(project: Project?): InjectedFunctionActionHelper? {
+        if (project == null) return null
+        
+        return try {
+            InjectedFunctionActionHelper(project)
+        } catch (e: Exception) {
+            // Error is already shown by InjectedFunctionActionHelper constructor
+            null
+        }
+    }
 }
 
 class InjectedFunctionActionHelper(val project: Project) {
     val first_module: Module = ModuleManager.getInstance(project).sortedModules[0]
     val sdk: Sdk? = PythonSdkUtil.findPythonSdk(first_module)
-    val interpreterPath = sdk?.homePath
-            ?: throw IllegalStateException("Python interpreter not found for the module:$first_module")
+    val interpreterPath = sdk?.homePath ?: run {
+        val error = ErrorContext(
+            ErrorType.PYTHON_NOT_FOUND,
+            "No Python interpreter configured for the project",
+            details = "Module: ${first_module.name}"
+        )
+        ErrorHandler.handleError(project, error)
+        throw IllegalStateException("Python interpreter not found for the module:$first_module")
+    }
     val runManager = RunManager.getInstance(project)
     val runConfigurationType = getYourRunConfigurationType() // Replace this with your RunConfigurationType
     val factory: ConfigurationFactory = runConfigurationType.configurationFactories[0]
     val moduleManager = ModuleManager.getInstance(project)
     val log = Logger.getInstance("com.proboscis.pinjectdesign.kotlin")
     val app = ApplicationManager.getApplication()
+    
+    // Store last command output for error reporting
+    private var lastStdout: String? = null
+    private var lastStderr: String? = null
 
     private fun getYourRunConfigurationType(): PythonConfigurationType {
         return PythonConfigurationType.getInstance()
@@ -68,9 +97,73 @@ class InjectedFunctionActionHelper(val project: Project) {
     }
 
     fun findConfigurations(modulePath: String): Map<String, List<PyConfiguration>> {
-        assert(modulePath != "")
+        log.info("=== findConfigurations START ===")
+        log.info("Module path: $modulePath")
+        log.info("Python interpreter: $interpreterPath")
+        
+        assert(modulePath != "") { "Module path cannot be empty" }
+        
+        // Check if file exists
+        val moduleFile = File(modulePath)
+        if (!moduleFile.exists()) {
+            log.error("Module file does not exist: $modulePath")
+            val error = ErrorContext(
+                ErrorType.MODULE_NOT_FOUND,
+                "The Python file does not exist",
+                details = modulePath
+            )
+            ErrorHandler.handleError(project, error)
+            throw IllegalArgumentException("Module file does not exist: $modulePath")
+        }
+        
         val args = "-m pinjected.meta_main pinjected.ide_supports.create_configs.create_idea_configurations $modulePath".split(" ")
-        return runPythonJson<ConfigurationWrapper>(args).configs
+        val command = "$interpreterPath ${args.joinToString(" ")}"
+        log.info("Python command args: $args")
+        
+        try {
+            log.info("Executing Python command...")
+            val wrapper = runPythonJson<ConfigurationWrapper>(args)
+            val configs = wrapper.configs
+            
+            log.info("Successfully parsed configurations")
+            log.info("Found ${configs.size} configuration groups")
+            
+            // Log details of each configuration
+            configs.forEach { (name, configList) ->
+                log.info("Configuration group '$name' has ${configList.size} configs:")
+                configList.forEachIndexed { index, config ->
+                    log.info("  [$index] ${config.name}")
+                    log.info("      script: ${config.script_path}")
+                    log.info("      args: ${config.arguments}")
+                    log.info("      working_dir: ${config.working_dir}")
+                }
+            }
+            
+            log.info("=== findConfigurations END ===")
+            return configs
+            
+        } catch (e: Exception) {
+            log.error("=== findConfigurations ERROR ===", e)
+            log.error("Failed to find configurations for: $modulePath")
+            log.error("Error type: ${e.javaClass.simpleName}")
+            log.error("Error message: ${e.message}")
+            
+            // Analyze and show user-friendly error
+            val errorContext = ErrorHandler.analyzeException(e, command)
+            val enhancedContext = when (errorContext.type) {
+                ErrorType.CONFIGURATION_EXTRACTION_FAILED -> errorContext.copy(
+                    details = modulePath,
+                    stdout = lastStdout,
+                    stderr = lastStderr
+                )
+                else -> errorContext.copy(
+                    details = modulePath
+                )
+            }
+            
+            ErrorHandler.handleError(project, enhancedContext)
+            throw e
+        }
     }
 
     fun listCompletions(modulePath: String): List<CustomCompletion> {
@@ -85,40 +178,106 @@ class InjectedFunctionActionHelper(val project: Project) {
 
     fun runPython(pythonArgs: List<String>): String {
         val command = "$interpreterPath ${pythonArgs.joinToString(" ")}"
-        log.info("Running command: $command")
-
+        log.info("=== runPython START ===")
+        log.info("Full command: $command")
+        log.info("Working directory: ${project?.basePath ?: System.getProperty("user.home")}")
+        
         val deps = getDependencies()
+        log.info("Dependencies for PYTHONPATH: ${deps.joinToString(":")}")
+        
         val (stdout, stderr, code) = runCommandWithEnvironment(
                 command.split(" "), mapOf(
                 "PYTHONPATH" to deps.joinToString(":")
         )
         )
-        log.info("Output: $stdout")
+        
+        // Store for error reporting
+        lastStdout = stdout
+        lastStderr = stderr
+        
+        log.info("Exit code: $code")
+        if (stdout.isNotEmpty()) {
+            log.info("Standard output (${stdout.length} chars):")
+            log.info(stdout.take(1000)) // Log first 1000 chars
+            if (stdout.length > 1000) {
+                log.info("... (truncated, ${stdout.length - 1000} more chars)")
+            }
+        }
         if (stderr.isNotEmpty()) {
-            log.info("Error: from command: $command \n stderr=>\n$stderr")
+            log.warn("Standard error: $stderr")
         }
 
         if (code != 0) {
+            log.error("Command failed with exit code $code")
+            log.error("Command was: $command")
+            log.error("Stderr: $stderr")
+            
+            // Show user-friendly error
+            val errorContext = ErrorHandler.analyzeException(
+                IllegalStateException("Failed to run command: $command \n stderr=>\n$stderr"),
+                command
+            ).copy(stdout = stdout, stderr = stderr)
+            
+            ErrorHandler.handleError(project, errorContext)
+            
             throw IllegalStateException("Failed to run command: $command \n stderr=>\n$stderr")
         }
+        
+        log.info("=== runPython END ===")
         return stdout
     }
 
     inline fun <reified T> runPythonJson(pythonArgs: List<String>): T {
+        log.info("=== runPythonJson START ===")
+        log.info("Expected type: ${T::class.simpleName}")
+        
         val stdout = runPython(pythonArgs)
         try {
             var json = stdout.trim()
+            log.info("Raw output length: ${stdout.length}")
+            
             if (json.contains("<pinjected>")) {
+                log.info("Found <pinjected> tags, extracting JSON...")
                 val pattern = Regex("<pinjected>(.*?)</pinjected>", RegexOption.DOT_MATCHES_ALL)
                 val match = pattern.find(json)
-                log.info("Looking for pattern: $pattern in $json and got $match")
-                json = match?.groupValues?.get(1)?.trim() ?: throw IllegalStateException("Failed to parse JSON from <pinjected> tags")
+                if (match != null) {
+                    json = match.groupValues[1].trim()
+                    log.info("Extracted JSON (${json.length} chars): ${json.take(500)}")
+                    if (json.length > 500) {
+                        log.info("... (truncated)")
+                    }
+                } else {
+                    log.error("Failed to find <pinjected> content in output")
+                    throw IllegalStateException("Failed to parse JSON from <pinjected> tags")
+                }
+            } else {
+                log.info("No <pinjected> tags found, using raw output as JSON")
             }
-            log.info("Decoding JSON: $json")
-            return Json.decodeFromString(json)
+            
+            log.info("Attempting to decode JSON...")
+            val result = Json.decodeFromString<T>(json)
+            log.info("Successfully decoded to ${result!!::class.simpleName}")
+            log.info("=== runPythonJson END ===")
+            return result
+            
         } catch (e: Exception) {
+            log.error("=== runPythonJson ERROR ===")
+            log.error("Failed to parse JSON", e)
+            log.error("Raw stdout: $stdout")
+            
             val command = "$interpreterPath ${pythonArgs.joinToString(" ")}"
-            showNotification("Error Parsing Json!", "Exception -> ${e} ${e.message} when parsing output from: ${command}. \nstdout:${stdout}")
+            
+            // Show user-friendly error
+            val errorContext = ErrorContext(
+                ErrorType.JSON_PARSING_FAILED,
+                "Failed to parse response from pinjected",
+                exception = e,
+                command = command,
+                stdout = stdout,
+                stderr = lastStderr
+            )
+            
+            ErrorHandler.handleError(project, errorContext)
             throw e
         }
     }
@@ -307,24 +466,58 @@ class InjectedFunctionActionHelper(val project: Project) {
     }
 
     fun cachedConfigurations(name: String): Promise<List<PyConfiguration>> {
+        log.info("=== cachedConfigurations START for '$name' ===")
+        
         val results = runInBackground("Find Configurations") { indicator ->
             indicator.fraction = 0.1
-            val filePath = getFilePath()!!
+            val filePath = getFilePath()
+            log.info("File path: $filePath")
+            
+            if (filePath == null) {
+                log.error("No file path available")
+                throw IllegalStateException("No file selected")
+            }
+            
             var loaded = false
 
+            log.info("Checking cache for file: $filePath")
             var configs = InjectedFunctionActionHelperObject.cache.getOrPut(filePath) {
+                log.info("Cache miss - loading configurations from Python")
                 loaded = true
                 findConfigurations(filePath)
             }
-            indicator.fraction = 0.5
-            if (!configs.containsKey(name) && !loaded) {
-                configs = findConfigurations(filePath)
-                InjectedFunctionActionHelperObject.cache[filePath] = configs
+            
+            if (!loaded) {
+                log.info("Found cached configurations: ${configs.keys}")
             }
+            
+            indicator.fraction = 0.5
+            
+            // Check if the requested configuration exists
+            if (!configs.containsKey(name)) {
+                log.warn("Configuration '$name' not found in cache")
+                if (!loaded) {
+                    log.info("Reloading configurations from Python")
+                    configs = findConfigurations(filePath)
+                    InjectedFunctionActionHelperObject.cache[filePath] = configs
+                    log.info("After reload, configurations: ${configs.keys}")
+                }
+            }
+            
             indicator.fraction = 0.9
-            val config_list = configs[name]!!
+            
+            val configList = configs[name]
+            if (configList == null) {
+                log.error("Configuration '$name' not found even after reload")
+                log.error("Available configurations: ${configs.keys}")
+                return@runInBackground emptyList<PyConfiguration>()
+            }
+            
+            log.info("Found ${configList.size} configurations for '$name'")
             indicator.fraction = 1.0
-            config_list
+            
+            log.info("=== cachedConfigurations END ===")
+            configList
         }
         return results
     }
@@ -340,8 +533,57 @@ class InjectedFunctionActionHelper(val project: Project) {
     }
 
     fun updateConfigurations() {
-        val filePath = getFilePath() ?: throw IllegalStateException("File not found")
-        val confs = findConfigurations(filePath)
-        InjectedFunctionActionHelperObject.cache[filePath] = confs
+        log.info("=== updateConfigurations START ===")
+        val filePath = getFilePath()
+        log.info("Current file path: $filePath")
+        
+        if (filePath == null) {
+            log.error("No file selected in editor")
+            throw IllegalStateException("No file selected - please open a Python file")
+        }
+        
+        try {
+            log.info("Clearing cache for: $filePath")
+            InjectedFunctionActionHelperObject.cache.remove(filePath)
+            
+            log.info("Finding new configurations...")
+            val confs = findConfigurations(filePath)
+            
+            log.info("Updating cache with ${confs.size} configuration groups")
+            InjectedFunctionActionHelperObject.cache[filePath] = confs
+            
+            // Log cache status
+            log.info("Cache now contains configurations for ${InjectedFunctionActionHelperObject.cache.size} files")
+            InjectedFunctionActionHelperObject.cache.forEach { (path, configs) ->
+                log.info("  $path -> ${configs.size} groups")
+            }
+            
+            showNotification(
+                "Configurations Updated",
+                "Found ${confs.size} configuration groups",
+                NotificationType.INFORMATION
+            )
+            
+        } catch (e: Exception) {
+            log.error("Failed to update configurations", e)
+            
+            // The error has already been shown by findConfigurations,
+            // but we can add additional context if needed
+            if (e.message?.contains("Python interpreter not found") == false &&
+                e.message?.contains("No module named 'pinjected'") == false) {
+                // Only show additional error if it's not already handled
+                val errorContext = ErrorContext(
+                    ErrorType.CACHE_ERROR,
+                    "Failed to update configuration cache",
+                    exception = e,
+                    details = filePath
+                )
+                ErrorHandler.handleError(project, errorContext)
+            }
+            
+            throw e
+        } finally {
+            log.info("=== updateConfigurations END ===")
+        }
     }
 }

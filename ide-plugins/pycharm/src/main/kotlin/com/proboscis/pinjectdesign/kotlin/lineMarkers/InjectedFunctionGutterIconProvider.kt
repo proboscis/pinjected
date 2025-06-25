@@ -20,12 +20,23 @@ class InjectedFunctionGutterIconProvider : LineMarkerProvider {
     private val log = Logger.getInstance("com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider")
     
     override fun getLineMarkerInfo(element: PsiElement): LineMarkerInfo<*>? {
+        // Only process name identifiers to avoid duplicate markers
+        if (element.node?.elementType?.toString() != "Py:IDENTIFIER") {
+            return null
+        }
+        
         val icon = AllIcons.Actions.Execute
         
-        return PinjectedDetectionUtil.getInjectedTargetName(element)?.let { targetName ->
-            log.debug("Found injected target: $targetName for element: ${element.text}")
+        val targetName = PinjectedDetectionUtil.getInjectedTargetName(element)
+        if (targetName != null) {
+            log.debug("=== Gutter Icon Detection ===")
+            log.debug("Found injected target: $targetName")
+            log.debug("Element text: ${element.text}")
+            log.debug("Element type: ${element.node?.elementType}")
+            log.debug("Parent: ${element.parent?.javaClass?.simpleName}")
+            log.debug("File: ${element.containingFile?.virtualFile?.path}")
             
-            createMarker(
+            return createMarker(
                 element,
                 icon,
                 "Run Injected: $targetName",
@@ -34,6 +45,8 @@ class InjectedFunctionGutterIconProvider : LineMarkerProvider {
                 targetName
             )
         }
+        
+        return null
     }
     
     private fun createMarker(
