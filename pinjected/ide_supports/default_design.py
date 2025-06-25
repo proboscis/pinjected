@@ -2,7 +2,7 @@ from pathlib import Path
 
 from returns.maybe import Some
 
-from pinjected import Design, Injected, design
+from pinjected import Design, Injected, design, IProxy
 from pinjected.exporter.llm_exporter import add_export_config
 from pinjected.helpers import inspect_and_make_configurations
 from pinjected.module_inspector import get_project_root
@@ -12,7 +12,9 @@ from pinjected.ide_supports.create_configs import injected_to_idea_configs
 # This design is used for ide supports
 pinjected_internal_design: Design = design(
     logger=logger,
-    runner_script_path=Injected.pure(lambda: __import__("pinjected").__main__.__file__),
+    runner_script_path=IProxy(
+        lambda: __import__("pinjected.__main__", fromlist=["__main__"]).__file__
+    )(),
     custom_idea_config_creator=Injected.pure(lambda spec: []),  # type ConfigCreator
     # this becomes recursive and overflows if we call meta_session inside a parent design...
     default_design_path=None,
