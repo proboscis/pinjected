@@ -5,7 +5,17 @@ from datetime import datetime
 from pathlib import Path
 
 from injected_utils import async_cached, lzma_sqlite, sqlite_dict
-from pinjected_niji_voice.api import NijiVoiceParam, a_niji_voice_play
+
+# Try to import voice support, but make it optional for Python 3.13 compatibility
+try:
+    from pinjected_niji_voice.api import NijiVoiceParam, a_niji_voice_play
+    _VOICE_AVAILABLE = True
+except ImportError:
+    # Voice features not available (e.g., on Python 3.13 due to audioop removal)
+    NijiVoiceParam = None
+    a_niji_voice_play = None
+    _VOICE_AVAILABLE = False
+
 from pinjected_openai.openrouter.instances import StructuredLLM
 from pinjected_openai.openrouter.util import (
     a_openrouter_chat_completion,
@@ -115,7 +125,7 @@ async def a_handle_error_with_llm_voice(
         err_msg = f"{main_e.__class__.__name__}"
         from pinjected.notification import notify
 
-        if __pinjected_error_reports_enable_voice__:
+        if __pinjected_error_reports_enable_voice__ and _VOICE_AVAILABLE:
             voices = await asyncio.gather(
                 a_niji_voice(
                     NijiVoiceParam(
@@ -158,7 +168,7 @@ async def a_handle_result_with_llm_voice(
         logger.success(f"Result: {result}")
     from pinjected.notification import notify
 
-    if __pinjected_error_reports_enable_voice__:
+    if __pinjected_error_reports_enable_voice__ and _VOICE_AVAILABLE:
         voice = await a_niji_voice(
             NijiVoiceParam(
                 actor_name="小夜",
@@ -211,15 +221,25 @@ a_cached_sllm_gpt4o__openrouter: IProxy = async_cached(
     sqlite_dict(injected("error_reports_cache_path") / "gpt4o.sqlite")
 )(Injected.partial(a_openrouter_chat_completion__without_fix, model="openai/gpt-4o"))
 
-design_for_error_reports = design(
-    **{
-        PinjectedHandleMainException.key.name: a_handle_error_with_llm_voice,
-        PinjectedHandleMainResult.key.name: a_handle_result_with_llm_voice,
-    },
-    a_sllm_for_error_analysis=gemini_flash_2_0,
-    a_niji_voice_play=a_niji_voice_play,
-    error_reports_cache_path=Path("~/.cache").expanduser(),
-    cache_root_path=Path("~/.cache").expanduser(),
-    a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
-    a_structured_llm_for_json_fix=a_cached_sllm_gpt4o__openrouter,
-)
+# Create design with optional voice support
+design_bindings = {
+    PinjectedHandleMainException.key.name: a_handle_error_with_llm_voice,
+    PinjectedHandleMainResult.key.name: a_handle_result_with_llm_voice,
+    "a_sllm_for_error_analysis": gemini_flash_2_0,
+    "error_reports_cache_path": Path("~/.cache").expanduser(),
+    "cache_root_path": Path("~/.cache").expanduser(),
+    "a_llm_for_json_schema_example": a_cached_sllm_gpt4o__openrouter,
+    "a_structured_llm_for_json_fix": a_cached_sllm_gpt4o__openrouter,
+}
+
+# Only add voice support if available
+if _VOICE_AVAILABLE:
+    design_bindings["a_niji_voice_play"] = a_niji_voice_play
+else:
+    # Provide a dummy voice function that does nothing when voice is not available
+    @instance
+    async def dummy_a_niji_voice(param):
+        return None
+    design_bindings["a_niji_voice"] = dummy_a_niji_voice
+
+design_for_error_reports = design(**design_bindings)
