@@ -95,16 +95,20 @@ def design_rich_tree(tgt_design, root, binding_sources=None):  # noqa: C901
             if binding_sources:
                 from pinjected.v2.keys import StrBindKey
 
-                key = StrBindKey(node)
-                if key in binding_sources:
-                    source = binding_sources[key]
-                    # Shorten long paths for readability
-                    if source.startswith("/") and len(source) > 50:
-                        # Show last part of path
-                        parts = source.split("/")
-                        if len(parts) > 3:
-                            source = "..." + "/".join(parts[-3:])
-                    source_info = f" [from {source}]"
+                # Check if the binding_sources keys are IBindKey objects or strings
+                # and handle accordingly
+                for bind_key, source in binding_sources.items():
+                    if (isinstance(bind_key, StrBindKey) and bind_key.name == node) or (
+                        isinstance(bind_key, str) and bind_key == node
+                    ):
+                        # Shorten long paths for readability
+                        if source.startswith("/") and len(source) > 50:
+                            # Show last part of path
+                            parts = source.split("/")
+                            if len(parts) > 3:
+                                source = "..." + "/".join(parts[-3:])
+                        source_info = f" [from {source}]"
+                        break
 
             return Text.assemble(
                 (node, Style(color="cyan", bold=True)),
