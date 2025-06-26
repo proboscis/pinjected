@@ -67,8 +67,10 @@ def test_binding_locations_without_sources():
     # Should work without errors
     assert "not found" not in tree_str
 
-    # Should not have binding location info
-    assert "[from" not in tree_str
+    # Should have binding location info from metadata
+    # The design() function captures source location metadata
+    assert "[from" in tree_str
+    assert "test_binding_location_display.py" in tree_str
 
 
 def test_mixed_key_types():
