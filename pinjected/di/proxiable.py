@@ -62,6 +62,30 @@ class DelegatedVar(Generic[T]):
     __cxt__: IProxyContext[T]
 
     def __getattr__(self, item):
+        # Handle pytest introspection attributes to prevent loops
+        pytest_attrs = {
+            "__signature__",
+            "signature",
+            "__name__",
+            "__qualname__",
+            "__module__",
+            "__doc__",
+            "__annotations__",
+            "__wrapped__",
+            "__dict__",
+            "__class__",
+            "im_func",
+            "func",
+            "__func__",
+        }
+
+        if item in pytest_attrs:
+            # For pytest introspection attributes, raise AttributeError
+            # This prevents pytest from getting stuck in delegation loops
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{item}'"
+            )
+
         return self.__cxt__.getattr(self.__value__, item)
 
     def __call__(self, *args, **kwargs):
