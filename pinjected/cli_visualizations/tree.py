@@ -33,9 +33,9 @@ def format_path_for_display(path: str, max_length: int = 50) -> str:
     if len(path) <= max_length:
         return path
 
-    parts = path.split("/")
+    parts = [p for p in path.split("/") if p]  # Remove empty strings
     if len(parts) > 3:
-        return "..." + "/".join(parts[-3:])
+        return ".../" + "/".join(parts[-3:])
     return path
 
 

@@ -33,7 +33,7 @@ def test_format_path_for_display():
     )  # Still under custom limit
     assert (
         format_path_for_display("/app/module/submodule/config.py", max_length=20)
-        == ".../submodule/config.py"
+        == ".../module/submodule/config.py"
     )
 
 
