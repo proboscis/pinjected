@@ -480,6 +480,9 @@ class PinjectedCLI:
       describe       - Generate a human-readable description of a dependency graph.
                        Requires a full module path in the format: full.module.path.var.name
                        Can be used as: describe my_module.path.var or describe --var_path=my_module.path.var
+      describe_json  - Generate a JSON representation of the dependency chain for an IProxy variable.
+                       Returns dependency information including metadata about where keys are bound.
+                       Can be used as: describe_json my_module.path.var or describe_json --var_path=my_module.path.var
       list           - List all IProxy objects that are runnable in the specified module.
                        Requires a module path in the format: full.module.path
                        Can be used as: list my_module.path or list --var_path=my_module.path
@@ -494,6 +497,7 @@ class PinjectedCLI:
       pinjected run --var_path=my_module.my_var
       pinjected resolve --var_path=my_module.my_var
       pinjected describe --var_path=my_module.my_submodule.my_variable
+      pinjected describe_json --var_path=my_module.my_submodule.my_iproxy_variable
       pinjected list my_module.my_submodule
       pinjected trace_key logger
       pinjected trace_key database --var_path=my_module.path
@@ -506,6 +510,7 @@ class PinjectedCLI:
         self.create_overloads = process_file
         self.json_graph = json_graph
         self.describe = describe
+        self.describe_json = describe_json
         self.list = list
         self.trace_key = trace_key
 

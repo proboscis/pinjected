@@ -55,7 +55,21 @@ def get_binding_location_info(  # noqa: C901, PLR0912
     from returns.maybe import Nothing
     from pinjected.di.metadata.location_data import ModuleVarPath, ModuleVarLocation
 
-    # First try to get metadata from the binding
+    # First check binding_sources (for backwards compatibility)
+    if binding_sources:
+        from pinjected.v2.keys import StrBindKey
+
+        # Check if the binding_sources keys are IBindKey objects or strings
+        for bind_key, source in binding_sources.items():
+            if (isinstance(bind_key, StrBindKey) and bind_key.name == node) or (
+                isinstance(bind_key, str) and bind_key == node
+            ):
+                # Shorten long paths for readability
+                if source.startswith("/"):
+                    source = format_path_for_display(source)
+                return f" [from {source}]"
+
+    # If no binding_sources or not found, try metadata
     metadata = d.get_metadata(node)
 
     if metadata != Nothing:
@@ -69,20 +83,6 @@ def get_binding_location_info(  # noqa: C901, PLR0912
             elif isinstance(location, ModuleVarLocation):
                 source_path = format_path_for_display(str(location.path))
                 return f" [from {source_path}:{location.line}]"
-
-    # Fall back to binding_sources if no metadata found
-    if binding_sources:
-        from pinjected.v2.keys import StrBindKey
-
-        # Check if the binding_sources keys are IBindKey objects or strings
-        for bind_key, source in binding_sources.items():
-            if (isinstance(bind_key, StrBindKey) and bind_key.name == node) or (
-                isinstance(bind_key, str) and bind_key == node
-            ):
-                # Shorten long paths for readability
-                if source.startswith("/"):
-                    source = format_path_for_display(source)
-                return f" [from {source}]"
 
     return ""
 
