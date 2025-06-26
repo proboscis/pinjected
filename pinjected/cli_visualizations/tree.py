@@ -20,6 +20,73 @@ from pinjected.di.injected import (
 from pinjected.visualize_di import DIGraph
 
 
+def format_path_for_display(path: str, max_length: int = 50) -> str:
+    """Format a file path for display, shortening if necessary.
+
+    Args:
+        path: The file path to format
+        max_length: Maximum length before shortening
+
+    Returns:
+        Formatted path string
+    """
+    if len(path) <= max_length:
+        return path
+
+    parts = path.split("/")
+    if len(parts) > 3:
+        return "..." + "/".join(parts[-3:])
+    return path
+
+
+def get_binding_location_info(  # noqa: C901, PLR0912
+    d: DIGraph, node: str, binding_sources: dict | None = None
+) -> str:
+    """Extract binding location information for a node.
+
+    Args:
+        d: The DIGraph containing metadata
+        node: The node name to get location for
+        binding_sources: Optional fallback binding sources
+
+    Returns:
+        Formatted location string (e.g., " [from path:line]") or empty string
+    """
+    from returns.maybe import Nothing
+    from pinjected.di.metadata.location_data import ModuleVarPath, ModuleVarLocation
+
+    # First try to get metadata from the binding
+    metadata = d.get_metadata(node)
+
+    if metadata != Nothing:
+        meta = metadata.unwrap()
+        if meta.code_location != Nothing:
+            location = meta.code_location.unwrap()
+
+            # Format location based on type
+            if isinstance(location, ModuleVarPath):
+                return f" [from {location.path}]"
+            elif isinstance(location, ModuleVarLocation):
+                source_path = format_path_for_display(str(location.path))
+                return f" [from {source_path}:{location.line}]"
+
+    # Fall back to binding_sources if no metadata found
+    if binding_sources:
+        from pinjected.v2.keys import StrBindKey
+
+        # Check if the binding_sources keys are IBindKey objects or strings
+        for bind_key, source in binding_sources.items():
+            if (isinstance(bind_key, StrBindKey) and bind_key.name == node) or (
+                isinstance(bind_key, str) and bind_key == node
+            ):
+                # Shorten long paths for readability
+                if source.startswith("/"):
+                    source = format_path_for_display(source)
+                return f" [from {source}]"
+
+    return ""
+
+
 def format_injected_for_tree(injected: Injected) -> str:  # noqa: C901, PLR0911, PLR0912
     """依存関係ツリー表示用にInjectedをフォーマットする"""
     if isinstance(injected, InjectedWithDefaultDesign):
@@ -77,7 +144,7 @@ def design_rich_tree(tgt_design, root, binding_sources=None):  # noqa: C901
     d = DIGraph(enhanced_design)
     g = d.create_dependency_digraph_rooted(root).graph
 
-    def get_node_label(node):  # noqa: C901, PLR0912
+    def get_node_label(node):
         try:
             value = d[node]
             if isinstance(value, Injected):
@@ -91,24 +158,7 @@ def design_rich_tree(tgt_design, root, binding_sources=None):  # noqa: C901
             #     value_str = "********"
 
             # Add source information if available
-            source_info = ""
-            if binding_sources:
-                from pinjected.v2.keys import StrBindKey
-
-                # Check if the binding_sources keys are IBindKey objects or strings
-                # and handle accordingly
-                for bind_key, source in binding_sources.items():
-                    if (isinstance(bind_key, StrBindKey) and bind_key.name == node) or (
-                        isinstance(bind_key, str) and bind_key == node
-                    ):
-                        # Shorten long paths for readability
-                        if source.startswith("/") and len(source) > 50:
-                            # Show last part of path
-                            parts = source.split("/")
-                            if len(parts) > 3:
-                                source = "..." + "/".join(parts[-3:])
-                        source_info = f" [from {source}]"
-                        break
+            source_info = get_binding_location_info(d, node, binding_sources)
 
             return Text.assemble(
                 (node, Style(color="cyan", bold=True)),
