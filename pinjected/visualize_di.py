@@ -133,6 +133,7 @@ class EdgeInfo:
         return {
             "key": self.key,
             "dependencies": self.dependencies,
+            "used_by": self.used_by,
             "metadata": metadata_info,
             "spec": spec_info,
         }
