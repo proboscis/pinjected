@@ -238,6 +238,10 @@ def run_anything(  # noqa: C901, PLR0912, PLR0915
 
         async def task(cxt):
             generate_dependency_graph_description(var_path, design_path, cxt, D)
+    elif cmd == "describe_json":
+
+        async def task(cxt):
+            generate_dependency_chain_json(var_path, design_path, cxt, D)
     else:
         raise Exception(f"unknown command: {cmd}")
     res = asyncio.run(a_run_with_notify(cxt, task, notify))
@@ -289,6 +293,67 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
         raise AttributeError(
             f"Object {root_name} must have a dependencies() method to use the describe command"
         )
+
+
+def generate_dependency_chain_json(var_path, design_path, cxt, design):
+    """
+    Generate a JSON representation of the dependency chain for an IProxy variable.
+
+    :param var_path: the path to the IProxy variable to describe
+    :param design_path: the path to the design to be used
+    :param cxt: the run context containing variable and design information
+    :param design: the design object to use for dependency resolution
+    """
+    from returns.maybe import Some
+    import json
+
+    from pinjected.visualize_di import DIGraph
+    from pinjected.di.injected import Injected
+    from pinjected import design as design_func
+
+    logger.info(
+        f"generating dependency chain JSON for {var_path} with design {design_path}"
+    )
+
+    # Create enhanced design with resolver
+    enhanced_design = design + design_func(
+        __design__=Injected.pure(design),
+        __resolver__=Injected.pure("__resolver__"),
+    )
+
+    # Create DIGraph with spec information
+    digraph = DIGraph(
+        enhanced_design, spec=Some(cxt.src_meta_context.spec_trace.accumulated)
+    )
+
+    root_name = cxt.src_var_spec.var_path.split(".")[-1]
+
+    if hasattr(cxt.var, "dependencies"):
+        logger.info(f"deps:{cxt.var.dependencies()}")
+        deps = list(cxt.var.dependencies())
+
+        # Build edges using DIGraph's to_edges method
+        edges = digraph.to_edges(root_name, deps)
+
+        # Create JSON structure
+        result = {
+            "root": root_name,
+            "module_var_path": var_path,
+            "dependency_chain": [edge.to_json_repr() for edge in edges],
+        }
+
+        # Print JSON output
+        print(json.dumps(result, indent=2))
+    else:
+        error_msg = f"Object {root_name} must have a dependencies() method to use the describe-json command"
+        logger.error(f"Object {root_name} doesn't have dependencies method")
+        # Return error as JSON for IDE consumption
+        error_result = {
+            "error": error_msg,
+            "root": root_name,
+            "module_var_path": var_path,
+        }
+        print(json.dumps(error_result, indent=2))
 
 
 def call_impl(call_args, call_kwargs, cxt, design):

@@ -246,6 +246,32 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
+def describe_json(var_path: str = None, design_path: str = None, **kwargs):
+    """
+    Generate a JSON representation of the dependency chain for an IProxy variable.
+    Returns dependency information including metadata about where keys are bound.
+
+    :param var_path: Full module path to the IProxy variable to describe in the format 'full.module.path.var.name'.
+                    This parameter is required and must point to an importable IProxy object.
+    :param design_path: Full module path to the design to be used in the format 'module.path.design'.
+                      If not provided, it will be inferred from var_path.
+    :param kwargs: Additional parameters to pass to run_injected.
+    :return: JSON string containing dependency chain information with metadata.
+    """
+    if var_path is None:
+        print(
+            "Error: You must provide a variable path in the format 'full.module.path.var.name'"
+        )
+        print("Examples:")
+        print("  pinjected describe-json my_module.my_submodule.my_iproxy_variable")
+        print(
+            "  pinjected describe-json --var_path=my_module.my_submodule.my_iproxy_variable"
+        )
+        return None
+
+    return run_injected("describe_json", var_path, design_path, **kwargs)
+
+
 def list(var_path: str = None):
     """
     List all IProxy objects that are runnable in the specified module.
