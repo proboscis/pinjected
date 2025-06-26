@@ -6,34 +6,36 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_iproxy_pytest_introspection_attributes():
-    """Test that IProxy properly handles pytest introspection attributes without loops"""
+    """Test that IProxy properly blocks introspection attributes to prevent pytest loops"""
 
     # Create an IProxy instance
     test_obj = IProxy(lambda: "test function")
 
-    # Test pytest introspection attributes that would go through __getattr__
-    # (excluding those that exist on the IProxy class itself like __module__, __name__, etc.)
-    introspection_attrs = [
+    # Test that dunder attributes are blocked (only those not implemented on DelegatedVar)
+    dunder_attrs = [
         "__signature__",
-        "signature",
         "__wrapped__",
-        "im_func",
-        "func",
         "__func__",
+        "__name__",
+        "__qualname__",
     ]
 
-    for attr in introspection_attrs:
-        # These should raise AttributeError instead of causing loops
+    # Test that specific pytest attributes are blocked
+    pytest_attrs = ["signature", "func", "im_func"]
+
+    all_blocked_attrs = dunder_attrs + pytest_attrs
+
+    for attr in all_blocked_attrs:
+        # These should raise AttributeError with our custom message
         try:
             _ = getattr(test_obj, attr)
             assert False, f"Should have raised AttributeError for {attr}"
         except AttributeError as e:
-            # Check for either IProxy or DelegatedVar in the error message
+            # Check for our custom error message
             error_msg = str(e)
-            assert (
-                "'IProxy' object has no attribute" in error_msg
-                or "'DelegatedVar' object has no attribute" in error_msg
-            )
+            assert "blocks access to" in error_msg
+            assert "pytest collection loops" in error_msg
+            assert attr in error_msg
 
         # Also verify hasattr returns False
         assert not hasattr(test_obj, attr)
@@ -96,8 +98,12 @@ def test_iproxy_prevents_introspection_loops():
     proxy = IProxy(RecursiveClass())
 
     # These should raise AttributeError immediately, not cause loops
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError) as exc1:
         _ = proxy.__signature__
+    assert "blocks access to" in str(exc1.value)
+    assert "pytest collection loops" in str(exc1.value)
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError) as exc2:
         _ = proxy.__name__
+    assert "blocks access to" in str(exc2.value)
+    assert "pytest collection loops" in str(exc2.value)
