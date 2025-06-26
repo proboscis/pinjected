@@ -12,7 +12,7 @@ from pinjected.cli_visualizations.tree import (
 )
 from pinjected.di.metadata.bind_metadata import BindMetadata
 from pinjected.di.metadata.location_data import ModuleVarLocation, ModuleVarPath
-from pinjected.helper_structure import InjectedPure
+from pinjected.di.injected import InjectedPure
 from pinjected.visualize_di import DIGraph
 
 
