@@ -62,6 +62,17 @@ class DelegatedVar(Generic[T]):
     __cxt__: IProxyContext[T]
 
     def __getattr__(self, item):
+        # Block dunder attributes and specific pytest introspection attributes
+        if (item.startswith("__") and item.endswith("__")) or item in {
+            "signature",
+            "func",
+            "im_func",
+        }:
+            raise AttributeError(
+                f"'{type(self).__name__}' blocks access to '{item}' to prevent "
+                f"pytest collection loops when IProxy objects have 'test_' prefix names."
+            )
+
         return self.__cxt__.getattr(self.__value__, item)
 
     def __call__(self, *args, **kwargs):
