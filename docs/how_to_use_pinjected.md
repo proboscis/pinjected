@@ -1197,6 +1197,161 @@ advanced_design = base_design + design(
 # 4. Testing: Can create mock implementations that satisfy the Protocol
 ```
 
+## 3. Creating .pyi Stub Files for Enhanced IDE Support
+
+**Best Practice**: Create `.pyi` stub files alongside your Python modules to provide explicit type information for `@injected` functions. This gives IDEs complete understanding of the callable signatures from the user's perspective.
+
+### Why .pyi Files Are Important
+
+When you use `@injected`, the function signature in your code includes both injected dependencies and runtime arguments. However, when calling these functions, users only provide the runtime arguments (after the `/`). By creating `.pyi` stub files, you declare the user-facing signatures for optimal IDE support.
+
+### How to Create .pyi Files
+
+For each module containing `@injected` functions, create a corresponding `.pyi` file with the same name that shows only the runtime arguments:
+
+**Example: mymodule.py**
+```python
+from typing import Protocol
+from pinjected import injected, instance
+
+# Define protocols
+class UserFetcherProtocol(Protocol):
+    def __call__(self, user_id: str) -> dict: ...
+
+class DataProcessorProtocol(Protocol):
+    async def __call__(self, data: dict) -> dict: ...
+
+# Implement functions
+@injected(protocol=UserFetcherProtocol)
+def fetch_user(db, cache, /, user_id: str) -> dict:
+    cached = cache.get(f"user:{user_id}")
+    if cached:
+        return cached
+    user = db.get_user(user_id)
+    cache.set(f"user:{user_id}", user)
+    return user
+
+@injected(protocol=DataProcessorProtocol)
+async def a_process_data(processor, validator, /, data: dict) -> dict:
+    validated = validator.validate(data)
+    result = await processor.process(validated)
+    return result
+
+@injected
+def simple_func(config, /, name: str, count: int = 1) -> str:
+    return f"{config.prefix}: {name} x {count}"
+
+@instance
+def user_service(api_client):
+    return UserService(api_client)
+```
+
+**Example: mymodule.pyi**
+```python
+from typing import Protocol, overload
+from pinjected.di.iproxy import IProxy
+
+# Re-declare protocols if they're part of the public API
+class UserFetcherProtocol(Protocol):
+    def __call__(self, user_id: str) -> dict: ...
+
+class DataProcessorProtocol(Protocol):
+    async def __call__(self, data: dict) -> dict: ...
+
+# For @injected with protocol, use @overload
+@overload
+def fetch_user(user_id: str) -> dict: ...
+
+@overload
+async def a_process_data(data: dict) -> dict: ...
+
+# For @injected without protocol, also use @overload
+@overload
+def simple_func(name: str, count: int = 1) -> str: ...
+
+# For @instance, type it as IProxy of the instance type
+user_service: IProxy[UserService]
+```
+
+### Advanced Example with Multiple Signatures
+
+For functions that can be called in different ways, use multiple `@overload` decorators in the `.pyi` file:
+
+**complex_module.py**
+```python
+from typing import Protocol, Literal
+from pinjected import injected
+
+class SearchProtocol(Protocol):
+    def __call__(self, query: str, *, limit: int = 10, format: Literal["json", "csv"] = "json") -> list[dict] | str: ...
+
+@injected(protocol=SearchProtocol)
+def search_items(db, formatter, /, query: str, *, limit: int = 10, format: Literal["json", "csv"] = "json"):
+    results = db.search(query, limit=limit)
+    if format == "csv":
+        return formatter.to_csv(results)
+    return results
+
+@injected
+def process_data(parser, transformer, /, data: str | bytes, *, encoding: str | None = None) -> dict:
+    if isinstance(data, bytes):
+        data = data.decode(encoding or 'utf-8')
+    parsed = parser.parse(data)
+    return transformer.transform(parsed)
+```
+
+**complex_module.pyi**
+```python
+from typing import Protocol, overload, Literal
+
+class SearchProtocol(Protocol):
+    def __call__(self, query: str, *, limit: int = 10, format: Literal["json", "csv"] = "json") -> list[dict] | str: ...
+
+# Multiple overloads to show different return types based on format
+@overload
+def search_items(query: str) -> list[dict]: ...
+
+@overload
+def search_items(query: str, *, limit: int) -> list[dict]: ...
+
+@overload
+def search_items(query: str, *, limit: int, format: Literal["json"]) -> list[dict]: ...
+
+@overload
+def search_items(query: str, *, limit: int, format: Literal["csv"]) -> str: ...
+
+# Show different signatures for different input types
+@overload
+def process_data(data: str) -> dict: ...
+
+@overload
+def process_data(data: bytes, *, encoding: str | None = None) -> dict: ...
+```
+
+### Key Points About .pyi Files
+
+1. **Show only runtime arguments**: Omit injected dependencies (everything before `/`)
+2. **Always use `@overload` for @injected**: All `@injected` functions need `@overload` in the .pyi file
+3. **Type @instance as IProxy**: Use `IProxy[T]` for functions decorated with `@instance`
+4. **Include Protocol definitions**: If protocols are part of your public API, include them in the .pyi file
+
+### Benefits of .pyi Files
+
+1. **Clear user interface**: Shows exactly what arguments users need to provide
+2. **Full IDE Support**: Autocomplete, parameter hints, and return type information work correctly
+3. **Overload Support**: Can define multiple signatures for functions with different call patterns
+4. **Type Checking**: Works seamlessly with mypy and other type checkers
+5. **Documentation**: Serves as clear documentation of your module's public API
+
+### Best Practices for .pyi Files
+
+1. **Keep in Sync**: Always update .pyi files when changing function signatures
+2. **Focus on runtime interface**: Remember that users only see the runtime arguments, not injected dependencies
+3. **Always use `@overload`**: All `@injected` functions require `@overload` in .pyi files
+4. **Import IProxy**: Import `IProxy` from `pinjected.di.iproxy` for typing `@instance` decorators
+5. **Place alongside .py files**: Keep .pyi files in the same directory as their corresponding .py files
+6. **Version Control**: Commit .pyi files to your repository for consistent IDE support across your team
+
 # Execution from Pinjected main Block (Not Recommended)
 
 Pinjected can be used directly from the main block. This pattern is not recommended.
