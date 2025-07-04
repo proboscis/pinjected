@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+from pinjected import EmptyDesign
 
 
 class TestObjectWithoutDependencies:
@@ -16,6 +17,6 @@ def test_describe_requires_dependencies():
     mock_cxt.src_var_spec.var_path = "test_obj"
 
     with pytest.raises(AttributeError) as excinfo:
-        generate_dependency_graph_description("test_obj", None, mock_cxt, None)
+        generate_dependency_graph_description("test_obj", None, mock_cxt, EmptyDesign)
 
-    assert "has no attribute 'bindings'" in str(excinfo.value)
+    assert "must have a dependencies() method to use the describe command" in str(excinfo.value)
