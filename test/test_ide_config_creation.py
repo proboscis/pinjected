@@ -412,3 +412,170 @@ class TestIDEIntegration:
 
         print(f"Found {len(run_commands)} 'run' commands: {run_commands}")
         print(f"Found {len(call_commands)} 'call' commands: {call_commands}")
+
+
+class TestNewCLICommands:
+    """Test that new CLI commands are included in IDE configurations."""
+
+    def test_new_cli_commands_in_configs(self):
+        """Test that describe_json, trace_key, and list commands are generated."""
+        from pathlib import Path
+        from pinjected.runnables import get_runnables
+        from pinjected.module_inspector import ModuleVarSpec
+        from pinjected import design
+        from pinjected.v2.async_resolver import AsyncResolver
+        from pinjected.ide_supports.default_design import pinjected_internal_design
+        # inspect_and_make_idea_configs is injected, not directly importable
+        from pinjected.pinjected_logging import logger
+        from pinjected.helper_structure import IdeaRunConfigurations
+        from returns.maybe import Nothing
+        import asyncio
+
+        # Use the actual test module
+        test_module_path = (
+            Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
+        )
+
+        # Get runnables
+        runnables = get_runnables(test_module_path)
+        
+        # Find a suitable test runnable
+        test_runnable = None
+        for runnable in runnables:
+            if isinstance(runnable, ModuleVarSpec) and runnable.var_path.endswith("test_runnable"):
+                test_runnable = runnable
+                break
+        
+        assert test_runnable is not None, "Should find test_runnable"
+
+        # Create a test design with required dependencies
+        test_design = pinjected_internal_design + design(
+            default_design_paths=["pinjected.test_package.test_design"],
+            internal_idea_config_creator=lambda tgt: [],
+            custom_idea_config_creator=lambda tgt: [],
+            default_working_dir=Nothing,
+            interpreter_path=sys.executable,
+            print_to_stdout=False,
+            runner_script_path="/path/to/runner.py",
+            logger=logger,
+        )
+
+        async def get_configs():
+            resolver = AsyncResolver(test_design)
+            make_configs = await resolver.provide("inspect_and_make_idea_configs")
+            return make_configs(test_runnable)
+
+        # Get the configurations
+        configs: IdeaRunConfigurations = asyncio.run(get_configs())
+        
+        # Extract the configuration names for our test variable
+        var_name = "test_runnable"
+        assert var_name in configs.configs, f"Should have configs for {var_name}"
+        
+        config_names = [cfg.name for cfg in configs.configs[var_name]]
+        
+        # Check that all expected command types are present
+        expected_commands = [
+            # Original commands
+            f"{var_name}(test_design)",  # Regular run command
+            f"{var_name}(test_design)_viz",  # Visualize command
+            f"describe {var_name}",  # Describe command
+            # New commands
+            f"describe_json {var_name}",  # New: describe_json
+            f"trace {var_name}",  # New: trace_key
+            f"list module module1",  # New: list module
+        ]
+        
+        for expected_cmd in expected_commands:
+            assert any(expected_cmd in name for name in config_names), (
+                f"Expected to find '{expected_cmd}' in config names, but got: {config_names}"
+            )
+        
+        # Verify the arguments are correct for the new commands
+        for cfg in configs.configs[var_name]:
+            if cfg.name == f"describe_json {var_name}":
+                assert cfg.arguments[0] == "describe-json", f"describe_json should use 'describe-json' command, got: {cfg.arguments}"
+                assert var_name in " ".join(cfg.arguments[1:]), f"describe_json should include variable path"
+            elif cfg.name == f"trace {var_name}":
+                assert cfg.arguments[0] == "trace-key", f"trace should use 'trace-key' command, got: {cfg.arguments}"
+                assert cfg.arguments[1] == var_name, f"trace should have variable name as second arg"
+            elif cfg.name == f"list module module1":
+                assert cfg.arguments[0] == "list", f"list should use 'list' command, got: {cfg.arguments}"
+                assert "module1" in cfg.arguments[1], f"list should have module path"
+        
+        print(f"Successfully verified {len(expected_commands)} command types in IDE configurations")
+        
+    def test_cli_commands_have_correct_structure(self):
+        """Test that all CLI commands have the required fields for IDE integration."""
+        from pathlib import Path
+        from pinjected.runnables import get_runnables
+        from pinjected.module_inspector import ModuleVarSpec
+        from pinjected import design
+        from pinjected.v2.async_resolver import AsyncResolver
+        from pinjected.ide_supports.default_design import pinjected_internal_design
+        # inspect_and_make_idea_configs is injected, not directly importable
+        from pinjected.pinjected_logging import logger
+        from pinjected.helper_structure import IdeaRunConfigurations
+        from returns.maybe import Nothing
+        import asyncio
+
+        # Use the actual test module
+        test_module_path = (
+            Path(__file__).parent.parent / "pinjected/test_package/child/module1.py"
+        )
+
+        # Get runnables
+        runnables = get_runnables(test_module_path)
+        
+        # Find a suitable test runnable
+        test_runnable = None
+        for runnable in runnables:
+            if isinstance(runnable, ModuleVarSpec) and runnable.var_path.endswith("test_runnable"):
+                test_runnable = runnable
+                break
+        
+        assert test_runnable is not None, "Should find test_runnable"
+
+        # Create a test design
+        test_design = pinjected_internal_design + design(
+            default_design_paths=["pinjected.test_package.test_design"],
+            internal_idea_config_creator=lambda tgt: [],
+            custom_idea_config_creator=lambda tgt: [],
+            default_working_dir=Nothing,
+            interpreter_path=sys.executable,
+            print_to_stdout=False,
+            runner_script_path="/path/to/runner.py",
+            logger=logger,
+        )
+
+        async def get_configs():
+            resolver = AsyncResolver(test_design)
+            make_configs = await resolver.provide("inspect_and_make_idea_configs")
+            return make_configs(test_runnable)
+
+        # Get the configurations
+        configs: IdeaRunConfigurations = asyncio.run(get_configs())
+        
+        var_name = "test_runnable"
+        
+        # Check all configurations have required fields
+        for cfg in configs.configs[var_name]:
+            # All configs must have these fields
+            assert cfg.name is not None and cfg.name != "", "Config must have a name"
+            assert cfg.script_path is not None and cfg.script_path != "", "Config must have script_path"
+            assert cfg.interpreter_path is not None and cfg.interpreter_path != "", "Config must have interpreter_path"
+            assert cfg.arguments is not None and len(cfg.arguments) > 0, "Config must have arguments"
+            assert cfg.working_dir is not None, "Config must have working_dir"
+            
+            # The script path should be consistent
+            assert cfg.script_path.endswith("__main__.py") or cfg.script_path == "/path/to/runner.py", (
+                f"Script path should be __main__.py or runner.py, got: {cfg.script_path}"
+            )
+            
+            # Arguments should start with a valid command
+            valid_commands = ["run", "call", "describe", "describe-json", "trace-key", "list", "run_injected"]
+            assert cfg.arguments[0] in valid_commands, (
+                f"First argument should be a valid command, got: {cfg.arguments[0]}"
+            )
+            
+        print(f"All {len(configs.configs[var_name])} configurations have valid structure")
