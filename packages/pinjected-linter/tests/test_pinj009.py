@@ -83,22 +83,25 @@ async def a_process_batch(
     items: list
 ):
     # Good - has a_ prefix and uses other async functions
+    # Note: No await when calling @injected functions - building AST!
     results = []
     for item in items:
-        valid = await a_validate_item(item)
+        valid = a_validate_item(item)  # No await - building AST
         if valid:
-            transformed = await a_transform_item(item)
+            transformed = a_transform_item(item)  # No await - building AST
             results.append(transformed)
     return results
 
 @injected
 async def a_complex_workflow(database, cache, a_fetch_external_data, /, request_id: str):
     # Good - has a_ prefix
+    # Note: await is OK for injected params (not @injected functions)
     cached = await cache.get(request_id)
     if cached:
         return cached
     
-    data = await a_fetch_external_data(request_id)
+    # No await for @injected function calls - building AST!
+    data = a_fetch_external_data(request_id)
     await database.save(request_id, data)
     await cache.set(request_id, data)
     return data

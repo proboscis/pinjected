@@ -14,14 +14,19 @@ class PINJ010Visitor(BaseNodeVisitor):
         super().__init__(rule, context)
         self.has_design_import = False
         self.design_alias = None
+        self.has_design_func_import = False
+        self.design_func_alias = None
 
     def visit_ImportFrom(self, node):
-        """Track Design imports."""
+        """Track Design and design imports."""
         if node.module == "pinjected":
             for alias in node.names:
                 if alias.name == "Design":
                     self.has_design_import = True
                     self.design_alias = alias.asname or "Design"
+                elif alias.name == "design":
+                    self.has_design_func_import = True
+                    self.design_func_alias = alias.asname or "design"
         self.generic_visit(node)
 
     def visit_Call(self, node):
@@ -31,18 +36,24 @@ class PINJ010Visitor(BaseNodeVisitor):
         self.generic_visit(node)
 
     def _is_design_call(self, node) -> bool:
-        """Check if this is a Design() call."""
+        """Check if this is a Design() or design() call."""
         if isinstance(node.func, ast.Name):
-            return node.func.id == (self.design_alias or "Design")
+            # Check for Design class
+            if node.func.id == (self.design_alias or "Design"):
+                return True
+            # Check for design function
+            if node.func.id == (self.design_func_alias or "design"):
+                return True
         return False
 
     def _check_design_usage(self, node):
-        """Check specific Design() usage patterns."""
-        # Rule 1: Design() should not be empty
+        """Check specific Design()/design() usage patterns."""
+        # Rule 1: Design()/design() should not be empty
         if not node.args and not node.keywords:
+            func_name = "Design()" if isinstance(node.func, ast.Name) and node.func.id in (self.design_alias or "Design", "Design") else "design()"
             self.add_violation(
                 node,
-                "Empty Design() instantiation. Design should contain configuration or overrides.",
+                f"Empty {func_name} instantiation. Design should contain configuration or overrides.",
                 suggestion="Add configuration parameters or remove if not needed",
             )
             return
@@ -64,7 +75,7 @@ class PINJ010Visitor(BaseNodeVisitor):
             if keyword.arg in ["injected", "instance", "provider"]:
                 self.add_violation(
                     keyword,
-                    f"Design() parameter '{keyword.arg}' looks like a decorator name. "
+                    f"Design/design parameter '{keyword.arg}' looks like a decorator name. "
                     f"Design should map dependency names to their providers.",
                     suggestion="Use dependency names as keys, not decorator names",
                 )
@@ -83,7 +94,7 @@ class PINJ010Visitor(BaseNodeVisitor):
             ):
                 self.add_violation(
                     keyword.value,
-                    f"Design() appears to directly call @instance function '{func_name}'. "
+                    f"Design/design appears to directly call @instance function '{func_name}'. "
                     f"Design should reference functions, not call them.",
                     suggestion=f"Use '{keyword.arg}': {func_name} instead of '{keyword.arg}': {func_name}()",
                 )
@@ -100,8 +111,8 @@ class PINJ010Visitor(BaseNodeVisitor):
         ):
             self.add_violation(
                 node,
-                "Design() should only be combined with other Design() instances using +",
-                suggestion="Use Design() + Design() for combining designs",
+                "Design/design should only be combined with other Design/design instances using +",
+                suggestion="Use Design() + Design() or design() + design() for combining designs",
             )
 
     def _get_call_name(self, node) -> Optional[str]:
@@ -146,29 +157,37 @@ class PINJ010Visitor(BaseNodeVisitor):
 class PINJ010DesignUsage(ASTRuleBase):
     """Rule for checking Design() usage patterns.
 
-    Design() is used to configure and override dependencies in Pinjected.
-    Common issues include:
-    1. Empty Design() with no configuration
+    Design() class and design() function are used to configure and override
+    dependencies in Pinjected. Common issues include:
+    1. Empty Design()/design() with no configuration
     2. Calling @instance functions instead of referencing them
     3. Using decorator names as keys instead of dependency names
     4. Incorrect combination patterns
 
     Good:
-        design = Design(
+        # Using Design class
+        config1 = Design(
             database=database_provider,
             logger=logger_instance,
             config=lambda: {"debug": True}
         )
+        
+        # Using design function
+        config2 = design(
+            database=database_provider,
+            cache=cache_provider
+        )
 
     Bad:
-        design = Design()  # Empty
-        design = Design(instance=database_provider)  # Wrong key name
-        design = Design(database=database_provider())  # Calling instead of referencing
+        empty1 = Design()  # Empty
+        empty2 = design()  # Empty
+        bad1 = Design(instance=database_provider)  # Wrong key name
+        bad2 = design(database=database_provider())  # Calling instead of referencing
     """
 
     rule_id = "PINJ010"
     name = "Design() usage patterns"
-    description = "Design() should be used correctly for dependency configuration"
+    description = "Design()/design() should be used correctly for dependency configuration"
     severity = Severity.WARNING
     category = "usage"
     auto_fixable = False  # Usage patterns require manual review
