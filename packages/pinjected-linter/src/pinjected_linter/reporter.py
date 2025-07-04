@@ -138,7 +138,12 @@ class Reporter:
     def __init__(self, output_format: str = "terminal", **kwargs):
         """Initialize reporter with specified format."""
         formatter_class = self.FORMATTERS.get(output_format, TerminalFormatter)
-        self.formatter = formatter_class(**kwargs)
+        
+        # Only pass kwargs to formatters that accept them
+        if formatter_class == TerminalFormatter:
+            self.formatter = formatter_class(**kwargs)
+        else:
+            self.formatter = formatter_class()
     
     def report(self, violations: List[Violation]) -> str:
         """Report violations in the configured format."""

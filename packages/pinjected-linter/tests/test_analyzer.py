@@ -159,3 +159,84 @@ def test_analyzer_parallel_mode():
     with patch('multiprocessing.cpu_count', return_value=1):
         analyzer3 = PinjectedAnalyzer(parallel=True)
         assert analyzer3.parallel is False
+
+
+def test_analyzer_analyze_files_single():
+    """Test analyze_files with single file (no parallel)."""
+    analyzer = PinjectedAnalyzer(parallel=False)
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create test file
+        test_file = Path(tmpdir) / "test.py"
+        test_file.write_text("# Test file")
+        
+        violations = analyzer.analyze_files([test_file])
+        assert isinstance(violations, list)
+
+
+def test_analyzer_analyze_files_parallel():
+    """Test analyze_files with multiple files in parallel mode."""
+    analyzer = PinjectedAnalyzer(parallel=True)
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create multiple test files
+        files = []
+        for i in range(3):
+            test_file = Path(tmpdir) / f"test{i}.py"
+            test_file.write_text(f"# Test file {i}")
+            files.append(test_file)
+        
+        # Force parallel mode even with few files
+        if multiprocessing.cpu_count() > 1:
+            violations = analyzer.analyze_files(files)
+            assert isinstance(violations, list)
+
+
+def test_analyzer_analyze_files_parallel_error(capsys):
+    """Test parallel analysis with file processing error."""
+    analyzer = PinjectedAnalyzer(parallel=True)
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a valid file and a non-existent file
+        valid_file = Path(tmpdir) / "valid.py"
+        valid_file.write_text("# Valid")
+        invalid_file = Path(tmpdir) / "nonexistent.py"
+        
+        # Mock analyze_file to raise exception for invalid file
+        original_analyze = analyzer.analyze_file
+        
+        def mock_analyze(path):
+            if path == invalid_file:
+                raise Exception("File not found")
+            return original_analyze(path)
+        
+        analyzer.analyze_file = mock_analyze
+        
+        # This should handle the error gracefully
+        violations = analyzer._analyze_files_parallel([valid_file, invalid_file])
+        
+        # Check error was printed
+        captured = capsys.readouterr()
+        assert "Error analyzing" in captured.out
+
+
+def test_analyzer_severity_override():
+    """Test severity override in configuration."""
+    config = {
+        "severity": {
+            "PINJ001": "warning",
+            "PINJ002": "info"
+        }
+    }
+    analyzer = PinjectedAnalyzer(config=config)
+    
+    # Test severity override
+    config1 = analyzer._get_rule_config("PINJ001")
+    assert config1["severity"] == "warning"
+    
+    config2 = analyzer._get_rule_config("PINJ002")
+    assert config2["severity"] == "info"
+    
+    # Test rule without override
+    config3 = analyzer._get_rule_config("PINJ003")
+    assert "severity" not in config3
