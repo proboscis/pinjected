@@ -30,6 +30,7 @@ setup-all:
 	cd packages/injected_utils && uv sync --group dev
 	cd packages/gcp && uv sync --group dev
 	cd packages/pytest_runner && uv sync --group dev
+	cd packages/pinjected-linter && uv sync --group dev
 
 test:
 	uv sync --all-packages
@@ -44,6 +45,7 @@ test:
 	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
 	cd packages/gcp && uv sync --group dev && uv run -m pytest tests
 	cd packages/pytest_runner && uv sync --group dev && uv run -m pytest tests
+	cd packages/pinjected-linter && uv sync --group dev && uv run -m pytest tests
 	uv sync --group dev --all-packages
 
 test-cov:
