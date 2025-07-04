@@ -3,6 +3,7 @@ import functools
 import inspect
 from collections.abc import Callable
 from contextlib import contextmanager
+from typing import Union, Optional, overload, Any
 
 from returns.maybe import Some
 
@@ -121,7 +122,7 @@ def injected_instance(f) -> Injected:
     with the ``Injected`` instance handling the complexities of resolving and managing dependencies.
     """
 
-    is_coroutine = inspect.iscoroutinefunction(f)
+    # is_coroutine = inspect.iscoroutinefunction(f)
     # if is_coroutine:
     #     f = cached_coroutine(f)
 
@@ -146,7 +147,25 @@ def injected_instance(f) -> Injected:
     return instance.proxy
 
 
-def injected(tgt: str | type | Callable) -> DelegatedVar:
+@overload
+def injected(tgt: str) -> DelegatedVar: ...
+
+
+@overload
+def injected(
+    tgt: type | Callable, *, protocol: Optional[Any] = None
+) -> DelegatedVar: ...
+
+
+@overload
+def injected(
+    *, protocol: Optional[Any] = None
+) -> Callable[[Callable], DelegatedVar]: ...
+
+
+def injected(
+    tgt: Optional[Union[str, type, Callable]] = None, *, protocol: Optional[Any] = None
+) -> Union[DelegatedVar, Callable[[Callable], DelegatedVar]]:
     """
     The ``injected`` decorator automates dependency injection, transforming a target (string, class, or callable)
     into an ``Injected`` instance. It specifically treats positional-only parameters as dependencies,
@@ -157,6 +176,8 @@ def injected(tgt: str | type | Callable) -> DelegatedVar:
                 1. ``str``: the name of a dependency.
                 2. ``type``: a class that needs automated dependency injection for instantiation.
                 3. ``Callable``: a function or method requiring dependencies.
+    :param protocol: Optional Protocol class that defines the interface for the injected function.
+                     Enables better type safety and IDE support.
     :return: An appropriate ``Injected`` instance, proxy, or wrapped entity with dependencies injected,
              contingent on the nature of ``tgt``.
 
@@ -176,6 +197,14 @@ def injected(tgt: str | type | Callable) -> DelegatedVar:
         # For direct dependency retrieval via a string identifier.
         dependency_instance = injected("dependency_key")
 
+        # With protocol specification
+        class FetchUserProtocol(Protocol):
+            def __call__(self, user_id: str) -> User: ...
+
+        @injected(protocol=FetchUserProtocol)
+        def fetch_user(db, /, user_id: str) -> User:
+            return db.get_user(user_id)
+
     In these examples, ``dependency1`` is a positional-only parameter and treated as a dependency to be
     automatically injected. On the other hand, ``normal_param`` is a non-positional-only parameter. It's
     not considered a dependency within the automatic injection process, and thus, must be specified
@@ -188,10 +217,78 @@ def injected(tgt: str | type | Callable) -> DelegatedVar:
         function/method invocation or class instantiation. This strategy enhances code readability
         and ensures that the dependency injection framework adheres to explicit programming practices.
     """
+    if tgt is None:
+        # Called as @injected(protocol=SomeProtocol) or @injected()
+        def decorator(func: Callable) -> DelegatedVar:
+            return _injected_with_protocol(
+                func,
+                protocol=protocol,
+                parent_frame=inspect.currentframe().f_back.f_back,
+            )
+
+        return decorator
+
     if isinstance(tgt, str):
+        # String targets don't support protocol
+        if protocol is not None:
+            raise TypeError(
+                "Protocol parameter is not supported for string dependencies"
+            )
         return Injected.by_name(tgt).proxy
+
     if isinstance(tgt, type) or callable(tgt):
-        return injected_function(tgt, parent_frame=inspect.currentframe().f_back)
+        return _injected_with_protocol(
+            tgt, protocol=protocol, parent_frame=inspect.currentframe().f_back
+        )
+
+    raise TypeError(f"Invalid target type: {type(tgt)}")
+
+
+def _injected_with_protocol(
+    tgt: Union[type, Callable], protocol: Optional[Any] = None, parent_frame=None
+) -> DelegatedVar:
+    """Internal helper to handle protocol-aware injection."""
+    # First check what injected_function returns
+    sig: inspect.Signature = inspect.signature(tgt)
+    tgts = dict()
+    if parent_frame is None:
+        parent_frame = inspect.currentframe().f_back
+
+    # Extract dependencies based on naming conventions and position-only parameters
+    for k, v in sig.parameters.items():
+        if k.startswith("__"):
+            tgts[k] = Injected.by_name(k)
+        elif k.startswith("_"):
+            tgts[k] = Injected.by_name(k[1:])
+        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
+            tgts[k] = Injected.by_name(k)
+
+    new_f = Injected.inject_partially(tgt, **tgts)
+
+    # Determine the key name
+    if isinstance(tgt, type):
+        key_name = f"new_{tgt.__name__}"
+    else:
+        key_name = tgt.__name__
+
+    # Create metadata with protocol information
+    from pinjected.di.metadata.bind_metadata import BindMetadata
+
+    metadata = BindMetadata(
+        code_location=Some(get_code_location(parent_frame)), protocol=protocol
+    )
+
+    # Store in IMPLICIT_BINDINGS with protocol metadata
+    IMPLICIT_BINDINGS[StrBindKey(key_name)] = BindInjected(
+        new_f,
+        _metadata=Some(metadata),
+    )
+
+    # Add protocol attribute to the result for runtime access
+    if protocol is not None:
+        new_f.__protocol__ = protocol
+
+    return new_f
 
 
 def injected_class(cls):
@@ -255,9 +352,9 @@ def dynamic(*providables):
     """
 
     def impl(tgt):
-        all_deps = set(
-            sum([list(extract_dependency(p)) for p in providables], start=[])
-        )
+        all_deps = set()
+        for p in providables:
+            all_deps.update(extract_dependency(p))
         match tgt:
             case Injected() as i:
                 return i.add_dynamic_dependencies(*all_deps)
