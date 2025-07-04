@@ -137,7 +137,7 @@ class MetaContext:
             )
 
     @staticmethod
-    async def a_gather_bindings_with_legacy(file_path):  # noqa: C901
+    async def a_gather_bindings_with_legacy(file_path):  # noqa: C901, PLR0912
         """
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__ and __design__.
         __pinjected__.py and __design__ will override the deprecated __meta_design__ and __init__.py
@@ -168,8 +168,33 @@ class MetaContext:
                     ovr += await AsyncResolver(var.var).provide("overrides")
             elif var.var_path.endswith("__design__"):
                 ovr = await _a_resolve(var.var)
-            for k, bind in ovr.bindings.items():
-                key_to_path[k] = var.var_path
+            
+            # Extract binding locations from design metadata if available
+            with logger.contextualize(tag="extract_binding_locations"):
+                for k, bind in ovr.bindings.items():
+                    # Try to get location from binding metadata
+                    location_str = None
+                    try:
+                        if hasattr(bind, 'metadata'):
+                            # Get metadata using the property
+                            metadata_maybe = bind.metadata
+                            from returns.maybe import Nothing
+                            if metadata_maybe != Nothing:
+                                metadata = metadata_maybe.unwrap()
+                                if hasattr(metadata, 'code_location') and metadata.code_location != Nothing:
+                                    location = metadata.code_location.unwrap()
+                                    from pinjected.di.metadata.location_data import ModuleVarLocation
+                                    if isinstance(location, ModuleVarLocation):
+                                        location_str = f"{location.path}:{location.line}"
+                    except Exception as e:
+                        logger.debug(f"Failed to extract metadata for {k}: {e}")
+                    
+                    # If no metadata location, use the file path instead of module path
+                    if location_str is None:
+                        # Use the actual file path which is more useful than module path
+                        location_str = str(var.module_file_path)
+                    
+                    key_to_path[k] = location_str
             acc += ovr
 
         for k, v in key_to_path.items():
