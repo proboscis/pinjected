@@ -364,6 +364,37 @@ def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
             results[name].append(IdeaRunConfiguration(**config))
             results[name].append(IdeaRunConfiguration(**viz_config))
             results[name].append(IdeaRunConfiguration(**describe_config))
+            
+            # Add describe_json config
+            describe_json_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["describe-json"] + args[1:],
+                "name": f"describe_json {name}",
+            }
+            results[name].append(IdeaRunConfiguration(**describe_json_config))
+            
+            # Add trace_key config - trace the specific key binding
+            trace_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["trace-key", name] + args[1:],
+                "name": f"trace {name}",
+            }
+            results[name].append(IdeaRunConfiguration(**trace_config))
+            
+            # Add list config - list all IProxy objects in the module
+            module_path = tgt.var_path.rsplit(".", 1)[0]
+            list_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["list", module_path],
+                "name": f"list module {module_path.split('.')[-1]}",
+            }
+            results[name].append(IdeaRunConfiguration(**list_config))
         else:
             # NOTE: __runnable_metadata__ is deprecated. @instance decorated functions
             # don't automatically get this metadata anymore, which is why they're skipped.
