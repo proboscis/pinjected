@@ -2,8 +2,9 @@
 
 import ast
 from pathlib import Path
-from pinjected_linter.rules.pinj002_instance_defaults import PINJ002InstanceDefaults
+
 from pinjected_linter.models import RuleContext, Severity
+from pinjected_linter.rules.pinj002_instance_defaults import PINJ002InstanceDefaults
 from pinjected_linter.utils.symbol_table import SymbolTable
 
 

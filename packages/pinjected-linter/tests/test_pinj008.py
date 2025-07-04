@@ -2,8 +2,9 @@
 
 import ast
 from pathlib import Path
-from pinjected_linter.rules.pinj008_injected_dependency_declaration import PINJ008InjectedDependencyDeclaration
+
 from pinjected_linter.models import RuleContext, Severity
+from pinjected_linter.rules.pinj008_injected_dependency_declaration import PINJ008InjectedDependencyDeclaration
 from pinjected_linter.utils.symbol_table import SymbolTable
 
 
@@ -156,16 +157,18 @@ async def a_process_data(processor, /):
 @injected
 async def a_workflow(database, /):
     # Bad - not declaring async dependencies
-    data = await a_fetch_data()  # ❌ a_fetch_data not declared
-    result = await a_process_data()  # ❌ a_process_data not declared
-    return await database.save(result)
+    # Note: No await when calling @injected functions (building AST)
+    data = a_fetch_data()  # ❌ a_fetch_data not declared
+    result = a_process_data()  # ❌ a_process_data not declared
+    return database.save(result)  # Note: database is injected param, not @injected func
 
 @injected
 async def a_good_workflow(database, a_fetch_data, a_process_data, /):
     # Good - declaring async dependencies
-    data = await a_fetch_data()  # ✅ Declared
-    result = await a_process_data()  # ✅ Declared
-    return await database.save(result)
+    # Note: No await when calling @injected functions (building AST)
+    data = a_fetch_data()  # ✅ Declared
+    result = a_process_data()  # ✅ Declared
+    return database.save(result)  # Note: database is injected param, not @injected func
 '''
     
     rule = PINJ008InjectedDependencyDeclaration()

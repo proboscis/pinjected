@@ -1,9 +1,9 @@
 """Integration tests that run the linter on actual example files."""
 
 from pathlib import Path
-import pytest
+
 from pinjected_linter.analyzer import PinjectedAnalyzer
-from pinjected_linter.reporter import Reporter, TerminalFormatter
+from pinjected_linter.reporter import Reporter
 
 
 def test_lint_bad_instance_file():

@@ -2,6 +2,7 @@
 
 from pinjected import injected
 
+
 # Define the functions that will be called without declaration
 @injected
 async def a_fetch_data(client, /, resource_id):

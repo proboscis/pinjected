@@ -1,10 +1,8 @@
 """Test all implemented rules together."""
 
-import ast
 from pathlib import Path
+
 from pinjected_linter.analyzer import PinjectedAnalyzer
-from pinjected_linter.models import RuleContext, Severity
-from pinjected_linter.utils.symbol_table import SymbolTable
 
 
 def test_all_rules_comprehensive():
@@ -179,7 +177,6 @@ result = regular_function()  # OK - not @instance
 if __name__ == "__main__":
     # Need to mock file reading for the analyzer
     import tempfile
-    import os
     
     # Create temporary files
     with tempfile.TemporaryDirectory() as tmpdir:
