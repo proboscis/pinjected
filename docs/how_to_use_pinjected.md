@@ -71,49 +71,90 @@ async def async_database_connection(host, port):
 The `@injected` decorator is a feature for defining functions that have both dependency-injected arguments and runtime-passed arguments. This allows creating partially dependency-resolved functions.
 
 The `@injected` decorator can separate function arguments into "arguments to be injected" and "arguments to be specified at call time". Arguments to the left of `/` are injected as dependencies, and arguments to the right are passed at runtime.
+
+#### Best Practice: Always Define and Use Protocol
+
+**Important**: When implementing `@injected` functions, you should always define a Protocol for the function interface and specify it using the `protocol` parameter. This provides better type safety, IDE support, and makes your code more maintainable.
+
 ```python
+from typing import Protocol
 from pinjected import injected
 
-@injected
-def generate_text(llm_model, /, prompt: str):
+# Step 1: Define the Protocol
+class TextGeneratorProtocol(Protocol):
+    def __call__(self, prompt: str) -> str: ...
+
+# Step 2: Implement with protocol parameter
+@injected(protocol=TextGeneratorProtocol)
+def generate_text(llm_model, /, prompt: str) -> str:
     # llm_model is injected from DI
     # prompt can be passed any value at runtime
     return llm_model.generate(prompt)
+
+# Step 3: Use with type annotation
+@injected
+def process_document(
+    text_generator: TextGeneratorProtocol,  # Type hint with protocol
+    /, 
+    document: str
+) -> str:
+    # IDE knows text_generator accepts str and returns str
+    summary = text_generator(f"Summarize: {document}")
+    return summary
 ```
-This allows you to concisely write functions equivalent to the previous impl function.
+
+Benefits of using Protocol:
+- **Type Safety**: Type checkers can verify correct usage
+- **IDE Support**: Full autocomplete and parameter hints
+- **Documentation**: Protocol serves as clear contract for dependencies
+- **Refactoring**: Easier to find all usages and update interfaces
 
 #### Important: Calling Other @injected Functions
 
 When you want to call another `@injected` function from within an `@injected` function, you must declare it as a dependency by placing it before the `/` separator. This is because within `@injected` functions, you're building an AST (Abstract Syntax Tree), not executing functions directly.
 
 ```python
-@injected
+from typing import Protocol
+from pathlib import Path
+
+# Define Protocols for each function
+class DatasetPreparerProtocol(Protocol):
+    async def __call__(self, dataset_path: Path) -> Dataset: ...
+
+class DatasetUploaderProtocol(Protocol):
+    async def __call__(self, dataset: Dataset, name: str) -> str: ...
+
+class ConvertAndUploadProtocol(Protocol):
+    async def __call__(self, dataset_path: Path) -> str: ...
+
+# Implement with protocols
+@injected(protocol=DatasetPreparerProtocol)
 async def a_prepare_dataset(logger, /, dataset_path: Path) -> Dataset:
     # Prepare dataset logic
     return prepared_dataset
 
-@injected
+@injected(protocol=DatasetUploaderProtocol)
 async def a_upload_dataset(logger, /, dataset: Dataset, name: str) -> str:
     # Upload dataset logic
     return artifact_path
 
 # INCORRECT - This won't work
-@injected
-async def a_convert_and_upload(logger, /, dataset_path: Path):
+@injected(protocol=ConvertAndUploadProtocol)
+async def a_convert_and_upload_wrong(logger, /, dataset_path: Path):
     # This will fail because a_prepare_dataset is not declared as a dependency
     dataset = await a_prepare_dataset(dataset_path)  # Error!
     artifact = await a_upload_dataset(dataset, "my-dataset")  # Error!
     return artifact
 
-# CORRECT - Declare @injected functions as dependencies
-@injected
+# CORRECT - Declare @injected functions as dependencies with Protocol types
+@injected(protocol=ConvertAndUploadProtocol)
 async def a_convert_and_upload(
     logger, 
-    a_prepare_dataset,  # Declare as dependency (before /)
-    a_upload_dataset,   # Declare as dependency (before /)
+    a_prepare_dataset: DatasetPreparerProtocol,  # Declare with Protocol type
+    a_upload_dataset: DatasetUploaderProtocol,   # Declare with Protocol type
     /, 
     dataset_path: Path
-):
+) -> str:
     # Now you can call them (building AST, not executing)
     # Note: Do NOT use 'await' - you're building an AST
     dataset = a_prepare_dataset(dataset_path)
@@ -963,30 +1004,45 @@ def setup_database(host, port, username):  # × Contains verb
     return db.connect(...)
 ```
 
-## 2. Naming Convention for @injected
+## 2. Naming Convention for @injected and Protocols
 
-The `@injected` decorator defines partially dependency-resolved "functions".
+The `@injected` decorator defines partially dependency-resolved "functions". Always define a corresponding Protocol.
 
 ### Recommended Patterns
-- **Verb form**: `send_message`, `process_data`, `validate_user`
-- **Verb_object**: `create_user`, `update_config`
-- **`a_` prefix for async functions (async def)**: `a_fetch_data`, `a_process_queue`
+- **Function names**: 
+  - **Verb form**: `send_message`, `process_data`, `validate_user`
+  - **Verb_object**: `create_user`, `update_config`
+  - **`a_` prefix for async functions (async def)**: `a_fetch_data`, `a_process_queue`
+- **Protocol names**:
+  - **Add `Protocol` suffix**: `SendMessageProtocol`, `ProcessDataProtocol`
+  - **Match the function purpose**: `UserValidatorProtocol`, `DataFetcherProtocol`
 
 ### Examples
 ```python
-# Good example
-@injected
-def send_message(channel, /, queue: str, message: str):
+from typing import Protocol
+
+# Good example - synchronous function with Protocol
+class MessageSenderProtocol(Protocol):
+    def __call__(self, queue: str, message: str) -> bool: ...
+
+@injected(protocol=MessageSenderProtocol)
+def send_message(channel, /, queue: str, message: str) -> bool:
     # ...
 
-# Good example
-@injected
-def process_image(model, preprocessor, /, image_path: str):
+# Good example - with complex parameters
+class ImageProcessorProtocol(Protocol):
+    def __call__(self, image_path: str) -> ProcessedImage: ...
+
+@injected(protocol=ImageProcessorProtocol)
+def process_image(model, preprocessor, /, image_path: str) -> ProcessedImage:
     # ...
 
-# Good example of async function
-@injected
-async def a_fetch_data(api_client, /, user_id: str):
+# Good example of async function with Protocol
+class DataFetcherProtocol(Protocol):
+    async def __call__(self, user_id: str) -> UserData: ...
+
+@injected(protocol=DataFetcherProtocol)
+async def a_fetch_data(api_client, /, user_id: str) -> UserData:
     # ...
 ```
 
@@ -1057,25 +1113,29 @@ Following this naming convention clarifies the role and processing type of funct
 
 ## 1. Basic Principles of Type Annotations
 
-In Pinjected, using appropriate type annotations improves code safety and maintainability. Especially for dependencies with multiple implementations, type definitions using Protocol are recommended.
+In Pinjected, using appropriate type annotations improves code safety and maintainability. **Always use Protocol definitions with the `@injected` decorator** to ensure type safety and better IDE support.
 
 ### Basic Type Annotations
 
 ```python
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, Protocol
 
 @instance
 def database_connection(host: str, port: int) -> Connection:
     return connect_to_db(host, port)
 
-@injected
+# Always define a Protocol for @injected functions
+class UserFetcherProtocol(Protocol):
+    def __call__(self, user_id: Optional[int] = None) -> List[Dict[str, any]]: ...
+
+@injected(protocol=UserFetcherProtocol)  # Always specify protocol
 def fetch_users(db: Connection, /, user_id: Optional[int] = None) -> List[Dict[str, any]]:
     # ...
 ```
 
-## 2. Type Definition of Dependencies Using Protocol
+## 2. Mandatory Protocol Usage with @injected
 
-When preparing multiple implementations for the same interface, define the interface using `Protocol`. This allows type-safe replacement of dependencies.
+**Best Practice**: Always define and use Protocol when implementing `@injected` functions. This is now the recommended approach for all new code.
 
 ### Definition and Use of Protocol
 
@@ -1083,36 +1143,43 @@ When preparing multiple implementations for the same interface, define the inter
 from typing import Protocol, runtime_checkable
 from PIL import Image
 
-# Definition of image processing protocol
+# Step 1: Always define Protocol for your @injected functions
 @runtime_checkable
-class ImageProcessor(Protocol):
-    async def __call__(self, image) -> Image.Image:
-        pass
+class ImageProcessorProtocol(Protocol):
+    async def __call__(self, image: Image.Image) -> Image.Image: ...
 
-# Implementation variation 1
-@injected
-async def a_process_image__v1(preprocessor, /, image) -> Image.Image:
+class ImageUploaderProtocol(Protocol):
+    async def __call__(self, image: Image.Image, destination: str) -> str: ...
+
+# Step 2: Always specify protocol parameter in @injected
+@injected(protocol=ImageProcessorProtocol)  # Always specify protocol
+async def a_process_image__v1(preprocessor, /, image: Image.Image) -> Image.Image:
     # Logic for implementation 1
-    return processed_image
+    processed = preprocessor.apply(image)
+    return processed
 
-# Implementation variation 2 (with additional dependencies)
-@injected
-async def a_process_image__v2(preprocessor, enhancer, /, image) -> Image.Image:
-    # Logic for implementation 2
-    return processed_image
+@injected(protocol=ImageProcessorProtocol)  # Same protocol for alternative implementation
+async def a_process_image__v2(preprocessor, enhancer, /, image: Image.Image) -> Image.Image:
+    # Logic for implementation 2 with additional dependencies
+    processed = preprocessor.apply(image)
+    enhanced = enhancer.enhance(processed)
+    return enhanced
 
-# Function using Protocol as type
-@injected
-async def a_use_image_processor(
-    image_processor: ImageProcessor,  # Use Protocol as type
+# Step 3: Use Protocol types when declaring dependencies
+@injected(protocol=ImageUploaderProtocol)
+async def a_upload_processed_image(
+    a_process_image: ImageProcessorProtocol,  # Always use Protocol type annotation
+    uploader,
     logger,
     /,
-    image,
-    additional_args: dict
-) -> Image.Image:
-    logger.info(f"Processing image with args: {additional_args}")
-    # image_processor is guaranteed to implement __call__
-    return await image_processor(image)
+    image: Image.Image,
+    destination: str
+) -> str:
+    logger.info(f"Processing and uploading image to {destination}")
+    # Type checker knows a_process_image accepts and returns Image.Image
+    processed_image = await a_process_image(image)
+    upload_path = await uploader.upload(processed_image, destination)
+    return upload_path
 
 # Variation switching by design
 base_design = design(
@@ -1122,6 +1189,12 @@ base_design = design(
 advanced_design = base_design + design(
     a_process_image = a_process_image__v2  # Switch to v2
 )
+
+# Benefits:
+# 1. Type Safety: IDEs and type checkers understand the exact interface
+# 2. Documentation: Protocol serves as clear contract
+# 3. Refactoring: Easy to find all implementations and usages
+# 4. Testing: Can create mock implementations that satisfy the Protocol
 ```
 
 # Execution from Pinjected main Block (Not Recommended)
@@ -1413,6 +1486,20 @@ Main benefits:
 - **Declarative description**: DSL-like expression with Injected/IProxy
 - **Async support**: Efficient dependency resolution with asyncio integration
 - **Dependency graph visualization**: Easy-to-understand dependency display with `describe` command
+- **Type safety with Protocol**: Mandatory Protocol usage with @injected ensures type safety and IDE support
+
+### Key Best Practice: Always Use Protocol with @injected
+
+When implementing `@injected` functions, always:
+1. Define a Protocol for the function interface
+2. Specify the protocol using `@injected(protocol=YourProtocol)`
+3. Use Protocol types when declaring dependencies
+
+This approach provides:
+- Better type safety and early error detection
+- Full IDE support with autocomplete and parameter hints
+- Clear documentation of interfaces
+- Easier refactoring and testing
 
 As a result, development speed improves and code reusability increases.
 
