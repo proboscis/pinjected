@@ -1249,6 +1249,7 @@ def user_service(api_client):
 **Example: mymodule.pyi**
 ```python
 from typing import Protocol, overload
+from pinjected.di.iproxy import IProxy
 
 # Re-declare protocols if they're part of the public API
 class UserFetcherProtocol(Protocol):
@@ -1264,11 +1265,12 @@ def fetch_user(user_id: str) -> dict: ...
 @overload
 async def a_process_data(data: dict) -> dict: ...
 
-# For @injected without protocol, just declare the function
+# For @injected without protocol, also use @overload
+@overload
 def simple_func(name: str, count: int = 1) -> str: ...
 
-# For @instance, you might want to type it as the instance type
-user_service: UserService
+# For @instance, type it as IProxy of the instance type
+user_service: IProxy[UserService]
 ```
 
 ### Advanced Example with Multiple Signatures
@@ -1329,8 +1331,8 @@ def process_data(data: bytes, *, encoding: str | None = None) -> dict: ...
 ### Key Points About .pyi Files
 
 1. **Show only runtime arguments**: Omit injected dependencies (everything before `/`)
-2. **Use `@overload` for protocol functions**: When a function has `@injected(protocol=P)`, use `@overload` in the .pyi
-3. **Simple declarations for non-protocol functions**: For `@injected` without protocol, just declare the function normally
+2. **Always use `@overload` for @injected**: All `@injected` functions need `@overload` in the .pyi file
+3. **Type @instance as IProxy**: Use `IProxy[T]` for functions decorated with `@instance`
 4. **Include Protocol definitions**: If protocols are part of your public API, include them in the .pyi file
 
 ### Benefits of .pyi Files
@@ -1345,9 +1347,10 @@ def process_data(data: bytes, *, encoding: str | None = None) -> dict: ...
 
 1. **Keep in Sync**: Always update .pyi files when changing function signatures
 2. **Focus on runtime interface**: Remember that users only see the runtime arguments, not injected dependencies
-3. **Use `@overload` appropriately**: Add it for functions with `protocol` parameter or multiple call signatures
-4. **Place alongside .py files**: Keep .pyi files in the same directory as their corresponding .py files
-5. **Version Control**: Commit .pyi files to your repository for consistent IDE support across your team
+3. **Always use `@overload`**: All `@injected` functions require `@overload` in .pyi files
+4. **Import IProxy**: Import `IProxy` from `pinjected.di.iproxy` for typing `@instance` decorators
+5. **Place alongside .py files**: Keep .pyi files in the same directory as their corresponding .py files
+6. **Version Control**: Commit .pyi files to your repository for consistent IDE support across your team
 
 # Execution from Pinjected main Block (Not Recommended)
 
