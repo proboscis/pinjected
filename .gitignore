@@ -22,3 +22,10 @@ ide-plugins/pycharm/.project
 ide-plugins/pycharm/.settings/
 ide-plugins/pycharm/.classpath
 ide-plugins/pycharm/bin/
+
+# Coverage files
+.coverage
+coverage.json
+coverage.xml
+htmlcov/
+.pytest_cache/
