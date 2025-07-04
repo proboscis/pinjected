@@ -1199,15 +1199,15 @@ advanced_design = base_design + design(
 
 ## 3. Creating .pyi Stub Files for Enhanced IDE Support
 
-**Best Practice**: Create `.pyi` stub files alongside your Python modules to provide explicit type information for `@injected` functions. This gives IDEs complete understanding of the `IProxy` signatures.
+**Best Practice**: Create `.pyi` stub files alongside your Python modules to provide explicit type information for `@injected` functions. This gives IDEs complete understanding of the callable signatures from the user's perspective.
 
 ### Why .pyi Files Are Important
 
-When you use `@injected(protocol=Protocol)`, the decorator returns an `IProxy[Protocol]` at runtime. However, IDEs may not automatically infer the exact callable signature inside the IProxy. By creating `.pyi` stub files, you explicitly declare these types for optimal IDE support.
+When you use `@injected`, the function signature in your code includes both injected dependencies and runtime arguments. However, when calling these functions, users only provide the runtime arguments (after the `/`). By creating `.pyi` stub files, you declare the user-facing signatures for optimal IDE support.
 
 ### How to Create .pyi Files
 
-For each module containing `@injected` functions, create a corresponding `.pyi` file with the same name:
+For each module containing `@injected` functions, create a corresponding `.pyi` file with the same name that shows only the runtime arguments:
 
 **Example: mymodule.py**
 ```python
@@ -1237,6 +1237,10 @@ async def a_process_data(processor, validator, /, data: dict) -> dict:
     result = await processor.process(validated)
     return result
 
+@injected
+def simple_func(config, /, name: str, count: int = 1) -> str:
+    return f"{config.prefix}: {name} x {count}"
+
 @instance
 def user_service(api_client):
     return UserService(api_client)
@@ -1244,43 +1248,40 @@ def user_service(api_client):
 
 **Example: mymodule.pyi**
 ```python
-from typing import Protocol
-from pinjected.di.iproxy import IProxy
+from typing import Protocol, overload
 
-# Re-declare protocols
+# Re-declare protocols if they're part of the public API
 class UserFetcherProtocol(Protocol):
     def __call__(self, user_id: str) -> dict: ...
 
 class DataProcessorProtocol(Protocol):
     async def __call__(self, data: dict) -> dict: ...
 
-# Declare the actual types that IDEs will see
-fetch_user: IProxy[UserFetcherProtocol]
-a_process_data: IProxy[DataProcessorProtocol]
-user_service: IProxy[UserService]  # For @instance, it's IProxy of the return type
+# For @injected with protocol, use @overload
+@overload
+def fetch_user(user_id: str) -> dict: ...
+
+@overload
+async def a_process_data(data: dict) -> dict: ...
+
+# For @injected without protocol, just declare the function
+def simple_func(name: str, count: int = 1) -> str: ...
+
+# For @instance, you might want to type it as the instance type
+user_service: UserService
 ```
 
-### Advanced Example with Multiple Overloads
+### Advanced Example with Multiple Signatures
 
-For functions with multiple signatures or optional parameters:
+For functions that can be called in different ways, use multiple `@overload` decorators in the `.pyi` file:
 
 **complex_module.py**
 ```python
-from typing import Protocol, overload, Literal
+from typing import Protocol, Literal
 from pinjected import injected
 
 class SearchProtocol(Protocol):
-    @overload
-    def __call__(self, query: str) -> list[dict]: ...
-    
-    @overload
-    def __call__(self, query: str, *, limit: int) -> list[dict]: ...
-    
-    @overload
-    def __call__(self, query: str, *, limit: int, format: Literal["json"]) -> list[dict]: ...
-    
-    @overload
-    def __call__(self, query: str, *, limit: int, format: Literal["csv"]) -> str: ...
+    def __call__(self, query: str, *, limit: int = 10, format: Literal["json", "csv"] = "json") -> list[dict] | str: ...
 
 @injected(protocol=SearchProtocol)
 def search_items(db, formatter, /, query: str, *, limit: int = 10, format: Literal["json", "csv"] = "json"):
@@ -1288,45 +1289,65 @@ def search_items(db, formatter, /, query: str, *, limit: int = 10, format: Liter
     if format == "csv":
         return formatter.to_csv(results)
     return results
+
+@injected
+def process_data(parser, transformer, /, data: str | bytes, *, encoding: str | None = None) -> dict:
+    if isinstance(data, bytes):
+        data = data.decode(encoding or 'utf-8')
+    parsed = parser.parse(data)
+    return transformer.transform(parsed)
 ```
 
 **complex_module.pyi**
 ```python
 from typing import Protocol, overload, Literal
-from pinjected.di.iproxy import IProxy
 
 class SearchProtocol(Protocol):
-    @overload
-    def __call__(self, query: str) -> list[dict]: ...
-    
-    @overload
-    def __call__(self, query: str, *, limit: int) -> list[dict]: ...
-    
-    @overload
-    def __call__(self, query: str, *, limit: int, format: Literal["json"]) -> list[dict]: ...
-    
-    @overload
-    def __call__(self, query: str, *, limit: int, format: Literal["csv"]) -> str: ...
+    def __call__(self, query: str, *, limit: int = 10, format: Literal["json", "csv"] = "json") -> list[dict] | str: ...
 
-# The IDE will now know all possible signatures
-search_items: IProxy[SearchProtocol]
+# Multiple overloads to show different return types based on format
+@overload
+def search_items(query: str) -> list[dict]: ...
+
+@overload
+def search_items(query: str, *, limit: int) -> list[dict]: ...
+
+@overload
+def search_items(query: str, *, limit: int, format: Literal["json"]) -> list[dict]: ...
+
+@overload
+def search_items(query: str, *, limit: int, format: Literal["csv"]) -> str: ...
+
+# Show different signatures for different input types
+@overload
+def process_data(data: str) -> dict: ...
+
+@overload
+def process_data(data: bytes, *, encoding: str | None = None) -> dict: ...
 ```
+
+### Key Points About .pyi Files
+
+1. **Show only runtime arguments**: Omit injected dependencies (everything before `/`)
+2. **Use `@overload` for protocol functions**: When a function has `@injected(protocol=P)`, use `@overload` in the .pyi
+3. **Simple declarations for non-protocol functions**: For `@injected` without protocol, just declare the function normally
+4. **Include Protocol definitions**: If protocols are part of your public API, include them in the .pyi file
 
 ### Benefits of .pyi Files
 
-1. **Full IDE Support**: Complete autocomplete, parameter hints, and return type information
-2. **Overload Support**: Can define multiple signatures for complex functions
-3. **Documentation**: Serves as additional documentation for your module's public API
+1. **Clear user interface**: Shows exactly what arguments users need to provide
+2. **Full IDE Support**: Autocomplete, parameter hints, and return type information work correctly
+3. **Overload Support**: Can define multiple signatures for functions with different call patterns
 4. **Type Checking**: Works seamlessly with mypy and other type checkers
-5. **No Runtime Impact**: .pyi files are purely for development tooling
+5. **Documentation**: Serves as clear documentation of your module's public API
 
 ### Best Practices for .pyi Files
 
 1. **Keep in Sync**: Always update .pyi files when changing function signatures
-2. **Include All Public APIs**: Document all `@injected` and `@instance` decorators
-3. **Use Same Directory**: Place .pyi files alongside their .py counterparts
-4. **Version Control**: Commit .pyi files to your repository
-5. **IDE Configuration**: Ensure your IDE is configured to recognize .pyi files (most modern IDEs do this automatically)
+2. **Focus on runtime interface**: Remember that users only see the runtime arguments, not injected dependencies
+3. **Use `@overload` appropriately**: Add it for functions with `protocol` parameter or multiple call signatures
+4. **Place alongside .py files**: Keep .pyi files in the same directory as their corresponding .py files
+5. **Version Control**: Commit .pyi files to your repository for consistent IDE support across your team
 
 # Execution from Pinjected main Block (Not Recommended)
 
