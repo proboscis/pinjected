@@ -25,8 +25,8 @@ class TestSubprocessIntegration:
         This now matches how IDE plugins actually call the command (without design_path).
         See issue: tasks/20250625-test-ide-config-creation/ide-plugin-migration-issue.md
         """
-        # Use the pinjected repo path
-        pinjected_path = Path(__file__).parent.parent.parent / "pinjected"
+        # Use the pinjected repo path (parent of test directory)
+        pinjected_path = Path(__file__).parent.parent
 
         # First, let's add pinjected to PYTHONPATH
         env = os.environ.copy()
@@ -126,7 +126,7 @@ class TestSubprocessIntegration:
         Uses the IDE plugin command format (without design_path).
         See issue: tasks/20250625-test-ide-config-creation/ide-plugin-migration-issue.md
         """
-        pinjected_path = Path(__file__).parent.parent.parent / "pinjected"
+        pinjected_path = Path(__file__).parent.parent
 
         # Set up environment
         env = os.environ.copy()
@@ -194,7 +194,7 @@ class TestSubprocessIntegration:
         Uses IDE plugin format (no design_path).
         See issue: tasks/20250625-test-ide-config-creation/ide-plugin-migration-issue.md
         """
-        pinjected_path = Path(__file__).parent.parent.parent / "pinjected"
+        pinjected_path = Path(__file__).parent.parent
 
         # Set up environment
         env = os.environ.copy()
@@ -275,7 +275,7 @@ class TestSubprocessIntegration:
         This ensures backward compatibility for users who explicitly specify design_path.
         See issue: tasks/20250625-test-ide-config-creation/ide-plugin-migration-issue.md
         """
-        pinjected_path = Path(__file__).parent.parent.parent / "pinjected"
+        pinjected_path = Path(__file__).parent.parent
 
         # Set up environment
         env = os.environ.copy()

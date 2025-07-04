@@ -462,8 +462,8 @@ class TestNewCLICommands:
 
         async def get_configs():
             resolver = AsyncResolver(test_design)
-            make_configs = await resolver.provide("inspect_and_make_idea_configs")
-            return make_configs(test_runnable)
+            make_configs = await resolver.provide("inspect_and_make_configurations")
+            return make_configs(test_module_path)
 
         # Get the configurations
         configs: IdeaRunConfigurations = asyncio.run(get_configs())
@@ -550,8 +550,8 @@ class TestNewCLICommands:
 
         async def get_configs():
             resolver = AsyncResolver(test_design)
-            make_configs = await resolver.provide("inspect_and_make_idea_configs")
-            return make_configs(test_runnable)
+            make_configs = await resolver.provide("inspect_and_make_configurations")
+            return make_configs(test_module_path)
 
         # Get the configurations
         configs: IdeaRunConfigurations = asyncio.run(get_configs())
