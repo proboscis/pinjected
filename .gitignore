@@ -13,6 +13,7 @@ requirements*.lock
 uv.lock
 CLAUDE.md
 .claude/
+tmp/
 
 # IDE Plugin build artifacts
 ide-plugins/pycharm/.gradle/
