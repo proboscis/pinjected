@@ -35,8 +35,21 @@ class PINJ014MissingStubFile(BaseRule):
         ignore_patterns = self.config.get("ignore_patterns", ["**/tests/**", "**/migrations/**"])
         
         # Check if file matches ignore patterns
+        path_str = str(context.file_path)
+        
+        # Always ignore temporary files (but not regular Python files in temp directories)
+        file_name = context.file_path.name
+        if (file_name.startswith("tmp") and len(file_name) > 10 and not file_name.endswith("_test.py")
+            or path_str.startswith("/tmp/") and file_name.startswith("tmp")):
+            return violations
+            
         for pattern in ignore_patterns:
-            if context.file_path.match(pattern):
+            # Check if any part of the path contains the pattern keywords
+            if pattern == "**/tests/**" and "/tests/" in path_str:
+                return violations
+            elif pattern == "**/migrations/**" and "/migrations/" in path_str:
+                return violations
+            elif context.file_path.match(pattern):
                 return violations
         
         # Count injected functions

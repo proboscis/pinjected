@@ -2,8 +2,9 @@
 
 import ast
 from pathlib import Path
-from pinjected_linter.rules.pinj003_async_instance_naming import PINJ003AsyncInstanceNaming
+
 from pinjected_linter.models import RuleContext, Severity
+from pinjected_linter.rules.pinj003_async_instance_naming import PINJ003AsyncInstanceNaming
 from pinjected_linter.utils.symbol_table import SymbolTable
 
 

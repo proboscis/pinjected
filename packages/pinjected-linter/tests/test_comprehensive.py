@@ -1,6 +1,7 @@
 """Test the comprehensive example file to ensure all rules work correctly."""
 
 from pathlib import Path
+
 from pinjected_linter.analyzer import PinjectedAnalyzer
 from pinjected_linter.reporter import Reporter
 

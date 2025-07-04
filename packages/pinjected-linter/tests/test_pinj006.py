@@ -2,10 +2,11 @@
 
 import ast
 from pathlib import Path
+
+from pinjected_linter.models import RuleContext, Severity
 from pinjected_linter.rules.pinj006_instance_side_effects import (
     PINJ006InstanceSideEffects,
 )
-from pinjected_linter.models import RuleContext, Severity
 from pinjected_linter.utils.symbol_table import SymbolTable
 
 

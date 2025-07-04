@@ -2,10 +2,11 @@
 
 import ast
 from pathlib import Path
+
+from pinjected_linter.models import RuleContext, Severity
 from pinjected_linter.rules.pinj009_injected_async_prefix import (
     PINJ009InjectedAsyncPrefix,
 )
-from pinjected_linter.models import RuleContext, Severity
 from pinjected_linter.utils.symbol_table import SymbolTable
 
 

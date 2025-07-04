@@ -2,8 +2,9 @@
 
 import ast
 from pathlib import Path
-from pinjected_linter.rules.pinj010_design_usage import PINJ010DesignUsage
+
 from pinjected_linter.models import RuleContext, Severity
+from pinjected_linter.rules.pinj010_design_usage import PINJ010DesignUsage
 from pinjected_linter.utils.symbol_table import SymbolTable
 
 
@@ -33,7 +34,7 @@ combined = Design() + Design(database=db_provider)
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Should detect empty Design() calls
     assert len(violations) >= 2
@@ -86,7 +87,7 @@ def create_design():
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Should detect function calls
     assert len(violations) >= 3
@@ -131,7 +132,7 @@ design2 = Design(
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Should detect decorator names as keys
     assert len(violations) >= 3
@@ -211,7 +212,7 @@ combined2 = base + extra
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Should have no violations for proper usage
     assert len(violations) == 0
@@ -262,7 +263,7 @@ def create_design(env):
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Should have no violations
     assert len(violations) == 0
@@ -301,7 +302,7 @@ container = Container(
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Should have no violations
     assert len(violations) == 0
@@ -339,7 +340,7 @@ bad_combined4 = Design(b=2) + "string"  # Bad
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Note: The current implementation may not detect these due to
     # _get_parent_node being a placeholder. This test documents
@@ -393,7 +394,7 @@ good_design = design(
         config={},
     )
 
-    violations = rule.check(context)
+    violations = rule.check(context)  # noqa: F841
 
     # Note: Current implementation only handles Design, not design
     # This test documents expected behavior for design() function

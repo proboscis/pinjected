@@ -50,7 +50,11 @@ class PINJ010Visitor(BaseNodeVisitor):
         """Check specific Design()/design() usage patterns."""
         # Rule 1: Design()/design() should not be empty
         if not node.args and not node.keywords:
-            func_name = "Design()" if isinstance(node.func, ast.Name) and node.func.id in (self.design_alias or "Design", "Design") else "design()"
+            func_name = (
+                "Design()" if isinstance(node.func, ast.Name) 
+                and node.func.id in (self.design_alias or "Design", "Design") 
+                else "design()"
+            )
             self.add_violation(
                 node,
                 f"Empty {func_name} instantiation. Design should contain configuration or overrides.",
