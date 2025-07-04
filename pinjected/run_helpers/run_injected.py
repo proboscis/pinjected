@@ -273,6 +273,9 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
     from pinjected.di.injected import Injected
     from pinjected import design as design_func
 
+    if design is None:
+        raise ValueError("design parameter cannot be None. Pass a valid Design object.")
+    
     enhanced_design = design + design_func(
         __design__=Injected.pure(design),
         __resolver__=Injected.pure("__resolver__"),

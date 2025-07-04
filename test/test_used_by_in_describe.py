@@ -6,6 +6,7 @@ from rich.text import Text
 
 from pinjected.dependency_graph_builder import DependencyGraphBuilder
 from pinjected.run_helpers.run_injected import generate_dependency_graph_description
+from pinjected import EmptyDesign
 
 
 def test_used_by_in_edge_details():
@@ -59,7 +60,7 @@ def test_used_by_in_edge_details():
         patch("pinjected.run_helpers.run_injected.DIGraph", mock_digraph),
         patch("rich.console.Console.print", mock_console_print),
     ):
-        generate_dependency_graph_description("test_obj", None, mock_cxt, None)
+        generate_dependency_graph_description("test_obj", None, mock_cxt, EmptyDesign)
 
         panel_calls = [
             call
@@ -67,25 +68,29 @@ def test_used_by_in_edge_details():
             if call.args and isinstance(call.args[0], Panel)
         ]
 
-        for edge in mock_edges:
-            if edge.key != "test_obj":  # Skip root node
-                edge_panel_call = None
-                for call in panel_calls:
-                    panel = call.args[0]
-                    if isinstance(panel.title, Text) and panel.title.plain == edge.key:
-                        edge_panel_call = call
-                        break
+        # Only check edges that are direct dependencies of test_obj or test_obj itself
+        # dep3 is a transitive dependency and won't be displayed in edge details
+        edges_to_check = ["dep1", "dep2"]
+        
+        for edge_key in edges_to_check:
+            edge = next(e for e in mock_edges if e.key == edge_key)
+            edge_panel_call = None
+            for call in panel_calls:
+                panel = call.args[0]
+                if isinstance(panel.title, Text) and panel.title.plain == edge.key:
+                    edge_panel_call = call
+                    break
 
-                assert edge_panel_call is not None, f"No panel found for {edge.key}"
+            assert edge_panel_call is not None, f"No panel found for {edge.key}"
 
-                panel_content = edge_panel_call.args[0].renderable.plain
-                assert "Used by:" in panel_content
+            panel_content = edge_panel_call.args[0].renderable.plain
+            assert "Used by:" in panel_content
 
-                if edge.used_by:
-                    for user in edge.used_by:
-                        assert user in panel_content
-                else:
-                    assert "Used by: None" in panel_content
+            if edge.used_by:
+                for user in edge.used_by:
+                    assert user in panel_content
+            else:
+                assert "Used by: None" in panel_content
 
 
 def test_collect_used_by_with_multiple_users():
