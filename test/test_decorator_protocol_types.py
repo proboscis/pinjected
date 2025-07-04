@@ -1,6 +1,6 @@
 """Test type annotations for decorator protocol feature (ARC-320)."""
 
-from typing import Protocol, reveal_type
+from typing import Protocol
 from pinjected import injected, design
 
 
@@ -26,22 +26,20 @@ def test_protocol_type_annotations():
 
     # Type checker should see this as IProxy[UserServiceProtocol]
     # In runtime it's actually Partial, but for typing it's IProxy
-    if False:  # Type checking only
-        reveal_type(get_user)  # Should be IProxy[UserServiceProtocol]
+    # Note: reveal_type is only available in Python 3.11+
+    # The type annotation is still properly applied for type checkers
 
     # Test 2: Function without protocol should return DelegatedVar
     @injected
     def simple_func(dep, /, arg: str) -> str:
         return f"{dep}: {arg}"
 
-    if False:  # Type checking only
-        reveal_type(simple_func)  # Should be DelegatedVar
+    # Note: Type checkers should see this as DelegatedVar
 
     # Test 3: String injection should return DelegatedVar
     db_proxy = injected("database")
 
-    if False:  # Type checking only
-        reveal_type(db_proxy)  # Should be DelegatedVar
+    # Note: Type checkers should see this as DelegatedVar
 
     # Test 4: Using protocol-typed dependency in another function
     @injected
@@ -59,8 +57,7 @@ def test_protocol_type_annotations():
         # Simulate async data fetching
         return [{"query": query, "result": "data"}]
 
-    if False:  # Type checking only
-        reveal_type(fetch_data)  # Should be IProxy[AsyncDataProtocol]
+    # Note: Type checkers should see this as IProxy[AsyncDataProtocol]
 
 
 def test_protocol_usage_in_design():
@@ -94,3 +91,4 @@ if __name__ == "__main__":
     test_protocol_type_annotations()
     test_protocol_usage_in_design()
     print("All type annotation tests passed!")
+

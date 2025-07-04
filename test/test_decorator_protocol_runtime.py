@@ -173,3 +173,4 @@ if __name__ == "__main__":
     test_protocol_with_class()
     test_async_protocol_runtime()
     print("All runtime tests passed!")
+
