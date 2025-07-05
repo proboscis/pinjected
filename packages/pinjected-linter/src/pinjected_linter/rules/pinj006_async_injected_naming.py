@@ -1,4 +1,4 @@
-"""PINJ009: Injected function async prefix rule."""
+"""PINJ006: Async injected naming rule."""
 
 import ast
 
@@ -7,7 +7,7 @@ from ..utils.ast_utils import has_decorator
 from .base import ASTRuleBase, BaseNodeVisitor
 
 
-class PINJ009Visitor(BaseNodeVisitor):
+class PINJ006Visitor(BaseNodeVisitor):
     """Visitor for checking async @injected function naming."""
 
     def visit_AsyncFunctionDef(self, node):
@@ -16,9 +16,9 @@ class PINJ009Visitor(BaseNodeVisitor):
             fix = self._create_fix(node)
             self.add_violation(
                 node,
-                f"Async @injected function '{node.name}' should have 'a_' prefix. "
-                f"This helps distinguish async from sync functions.",
-                suggestion=f"Consider renaming to 'a_{node.name}'",
+                f"Async @injected function '{node.name}' must have 'a_' prefix. "
+                f"This helps distinguish async functions in dependency injection.",
+                suggestion=f"Rename to 'a_{node.name}'",
                 fix=fix,
             )
         self.generic_visit(node)
@@ -28,6 +28,7 @@ class PINJ009Visitor(BaseNodeVisitor):
         old_name = node.name
         new_name = f"a_{old_name}"
 
+        # The position after 'async def '
         start_pos = Position(
             line=node.lineno,
             column=node.col_offset + 10,  # 'async def ' is 10 characters
@@ -45,26 +46,21 @@ class PINJ009Visitor(BaseNodeVisitor):
         )
 
 
-class PINJ009InjectedAsyncPrefix(ASTRuleBase):
+class PINJ006AsyncInjectedNaming(ASTRuleBase):
     """Rule for checking async @injected function naming convention.
-
-    Async @injected functions should have the 'a_' prefix to clearly
-    distinguish them from synchronous functions. This is important because:
-    - It makes async boundaries visible in the code
-    - It helps prevent accidentally mixing sync/async calls
-    - It follows Pinjected's naming conventions
-
-    Note: This is the opposite of PINJ003, which prevents @instance
-    functions from having the 'a_' prefix.
+    
+    Async @injected functions MUST have 'a_' prefix to clearly indicate
+    that they are asynchronous operations in Pinjected's dependency
+    injection system.
     """
-
-    rule_id = "PINJ009"
-    name = "Injected async function prefix"
-    description = "Async @injected functions should have 'a_' prefix"
+    
+    rule_id = "PINJ006"
+    name = "Async injected naming"
+    description = "Async @injected functions must have 'a_' prefix"
     severity = Severity.ERROR
     category = "naming"
     auto_fixable = True
-
+    
     def get_visitor(self, context: RuleContext) -> ast.NodeVisitor:
         """Get the AST visitor for this rule."""
-        return PINJ009Visitor(self, context)
+        return PINJ006Visitor(self, context)

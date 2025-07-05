@@ -7,12 +7,13 @@ from .pinj001_instance_naming import PINJ001InstanceNaming
 from .pinj002_instance_defaults import PINJ002InstanceDefaults
 from .pinj003_async_instance_naming import PINJ003AsyncInstanceNaming
 from .pinj004_direct_instance_call import PINJ004DirectInstanceCall
-from .pinj005_instance_imports import PINJ005InstanceImports
-from .pinj006_instance_side_effects import PINJ006InstanceSideEffects
+from .pinj005_injected_function_naming import PINJ005InjectedFunctionNaming
+from .pinj006_async_injected_naming import PINJ006AsyncInjectedNaming
+from .pinj007_slash_separator_position import PINJ007SlashSeparatorPosition
 from .pinj008_injected_dependency_declaration import (
     PINJ008InjectedDependencyDeclaration,
 )
-from .pinj009_injected_async_prefix import PINJ009InjectedAsyncPrefix
+from .pinj009_no_await_in_injected import PINJ009NoAwaitInInjected
 from .pinj010_design_usage import PINJ010DesignUsage
 from .pinj011_iproxy_annotations import PINJ011IProxyAnnotations
 from .pinj012_dependency_cycles import PINJ012DependencyCycles
@@ -26,10 +27,11 @@ RULE_CLASSES = [
     PINJ002InstanceDefaults,
     PINJ003AsyncInstanceNaming,
     PINJ004DirectInstanceCall,
-    PINJ005InstanceImports,
-    PINJ006InstanceSideEffects,
+    PINJ005InjectedFunctionNaming,
+    PINJ006AsyncInjectedNaming,
+    PINJ007SlashSeparatorPosition,
     PINJ008InjectedDependencyDeclaration,
-    PINJ009InjectedAsyncPrefix,
+    PINJ009NoAwaitInInjected,
     PINJ010DesignUsage,
     PINJ011IProxyAnnotations,
     PINJ012DependencyCycles,
