@@ -29,3 +29,5 @@ coverage.json
 coverage.xml
 htmlcov/
 .pytest_cache/
+.testmondata*
+packages/pinjected-linter/.coverage.*
