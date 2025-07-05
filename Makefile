@@ -1,5 +1,5 @@
 
-.PHONY: test test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils publish-gcp tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils tag-version-gcp release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils release-gcp sync setup-all setup-pre-commit
+.PHONY: test test-all test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils publish-gcp tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils tag-version-gcp release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils release-gcp sync setup-all setup-pre-commit
 
 setup-pre-commit:
 	@echo "Setting up pre-commit hooks..."
@@ -33,6 +33,12 @@ setup-all:
 	cd packages/pinjected-linter && uv sync --group dev
 
 test:
+	@echo "Running tests with coverage enforcement (90% minimum)..."
+	uv sync --all-packages
+	cd test && uv run pytest --testmon --cov=pinjected --cov-fail-under=90 --cov-report=term-missing --cov-report=html
+	@echo "✓ All tests passed with coverage >= 90%"
+
+test-all:
 	uv sync --all-packages
 	cd test && uv run pytest
 	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
