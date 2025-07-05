@@ -7,11 +7,11 @@
 **Severity:** Warning  
 **Auto-fixable:** No
 
-Ensures proper usage of the `Design()` class for dependency configuration in Pinjected.
+Ensures proper usage of the `design()` function and `Design()` class for dependency configuration in Pinjected.
 
 ## Rationale
 
-The `Design()` class (and its convenience function `design()`) is the primary way to configure and override dependencies in Pinjected. Proper usage ensures:
+The `design()` function (and its underlying `Design()` class) is the primary way to configure and override dependencies in Pinjected. Proper usage ensures:
 
 1. **Clear Configuration:** Dependencies are properly mapped to their providers
 2. **Avoid Common Mistakes:** Prevents calling providers instead of referencing them
