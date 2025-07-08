@@ -134,6 +134,7 @@ pub fn is_noun_like(name: &str) -> bool {
         "delete_",
         "update_",
         "process_",
+        "provide_",
         "handle_",
         "parse_",
         "validate_",
