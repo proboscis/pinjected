@@ -1,4 +1,4 @@
-use rustpython_ast::{Stmt, Mod};
+use rustpython_ast::{Mod, Stmt};
 
 #[derive(Debug, Clone)]
 pub struct Violation {

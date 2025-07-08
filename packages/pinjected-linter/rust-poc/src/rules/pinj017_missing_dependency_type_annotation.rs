@@ -3,10 +3,13 @@
 //! Dependencies in @instance and @injected functions should have type annotations
 //! for better type safety and IDE support.
 
-use rustpython_ast::{StmtFunctionDef, StmtAsyncFunctionDef, Arguments};
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_injected_decorator, has_injected_decorator_async};
+use crate::utils::pinjected_patterns::{
+    has_injected_decorator, has_injected_decorator_async, has_instance_decorator,
+    has_instance_decorator_async,
+};
+use rustpython_ast::{Arguments, StmtAsyncFunctionDef, StmtFunctionDef};
 
 pub struct MissingDependencyTypeAnnotationRule;
 
@@ -14,7 +17,7 @@ impl MissingDependencyTypeAnnotationRule {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Check if arguments have type annotations
     fn check_args_for_annotations(
         args: &Arguments,
@@ -22,7 +25,7 @@ impl MissingDependencyTypeAnnotationRule {
         is_injected: bool,
     ) -> Vec<(String, usize)> {
         let mut missing_annotations = Vec::new();
-        
+
         if is_injected {
             // For @injected, only check positional-only args (before /)
             for (idx, arg) in args.posonlyargs.iter().enumerate() {
@@ -38,7 +41,7 @@ impl MissingDependencyTypeAnnotationRule {
                     missing_annotations.push((arg.def.arg.to_string(), idx));
                 }
             }
-            
+
             // Check regular args
             for (idx, arg) in args.args.iter().enumerate() {
                 if arg.def.annotation.is_none() {
@@ -46,7 +49,7 @@ impl MissingDependencyTypeAnnotationRule {
                     missing_annotations.push((arg.def.arg.to_string(), actual_idx));
                 }
             }
-            
+
             // Check kwonlyargs
             for arg in args.kwonlyargs.iter() {
                 if arg.def.annotation.is_none() {
@@ -54,26 +57,33 @@ impl MissingDependencyTypeAnnotationRule {
                 }
             }
         }
-        
+
         missing_annotations
     }
-    
+
     /// Check a function definition
     fn check_function(&self, func: &StmtFunctionDef) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         let is_instance = has_instance_decorator(func);
         let is_injected = has_injected_decorator(func);
-        
+
         if !is_instance && !is_injected {
             return violations;
         }
-        
+
         let missing = Self::check_args_for_annotations(&func.args, func.name.as_str(), is_injected);
-        
+
         if !missing.is_empty() {
-            let decorator_type = if is_instance { "@instance" } else { "@injected" };
-            let missing_params: Vec<String> = missing.iter().map(|(name, _)| format!("'{}'", name)).collect();
+            let decorator_type = if is_instance {
+                "@instance"
+            } else {
+                "@injected"
+            };
+            let missing_params: Vec<String> = missing
+                .iter()
+                .map(|(name, _)| format!("'{}'", name))
+                .collect();
             let message = if missing.len() == 1 {
                 format!(
                     "{} function '{}' has dependency {} without type annotation. Add type annotation for better type safety.",
@@ -89,7 +99,7 @@ impl MissingDependencyTypeAnnotationRule {
                     missing_params.join(", ")
                 )
             };
-            
+
             violations.push(Violation {
                 rule_id: "PINJ017".to_string(),
                 message,
@@ -98,26 +108,33 @@ impl MissingDependencyTypeAnnotationRule {
                 severity: Severity::Warning,
             });
         }
-        
+
         violations
     }
-    
+
     /// Check an async function definition
     fn check_async_function(&self, func: &StmtAsyncFunctionDef) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         let is_instance = has_instance_decorator_async(func);
         let is_injected = has_injected_decorator_async(func);
-        
+
         if !is_instance && !is_injected {
             return violations;
         }
-        
+
         let missing = Self::check_args_for_annotations(&func.args, func.name.as_str(), is_injected);
-        
+
         if !missing.is_empty() {
-            let decorator_type = if is_instance { "@instance" } else { "@injected" };
-            let missing_params: Vec<String> = missing.iter().map(|(name, _)| format!("'{}'", name)).collect();
+            let decorator_type = if is_instance {
+                "@instance"
+            } else {
+                "@injected"
+            };
+            let missing_params: Vec<String> = missing
+                .iter()
+                .map(|(name, _)| format!("'{}'", name))
+                .collect();
             let message = if missing.len() == 1 {
                 format!(
                     "{} function '{}' has dependency {} without type annotation. Add type annotation for better type safety.",
@@ -133,7 +150,7 @@ impl MissingDependencyTypeAnnotationRule {
                     missing_params.join(", ")
                 )
             };
-            
+
             violations.push(Violation {
                 rule_id: "PINJ017".to_string(),
                 message,
@@ -142,7 +159,7 @@ impl MissingDependencyTypeAnnotationRule {
                 severity: Severity::Warning,
             });
         }
-        
+
         violations
     }
 }
@@ -151,14 +168,14 @@ impl LintRule for MissingDependencyTypeAnnotationRule {
     fn rule_id(&self) -> &str {
         "PINJ017"
     }
-    
+
     fn description(&self) -> &str {
         "Dependencies in @instance and @injected functions should have type annotations"
     }
-    
+
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         match context.stmt {
             rustpython_ast::Stmt::FunctionDef(func) => {
                 for mut violation in self.check_function(func) {
@@ -174,7 +191,7 @@ impl LintRule for MissingDependencyTypeAnnotationRule {
             }
             _ => {}
         }
-        
+
         violations
     }
 }
@@ -182,14 +199,14 @@ impl LintRule for MissingDependencyTypeAnnotationRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustpython_parser::{parse, Mode};
     use rustpython_ast::Mod;
-    
+    use rustpython_parser::{parse, Mode};
+
     fn check_code(code: &str) -> Vec<Violation> {
         let ast = parse(code, Mode::Module, "test.py").unwrap();
         let rule = MissingDependencyTypeAnnotationRule::new();
         let mut violations = Vec::new();
-        
+
         match &ast {
             Mod::Module(module) => {
                 for stmt in &module.body {
@@ -204,10 +221,10 @@ mod tests {
             }
             _ => {}
         }
-        
+
         violations
     }
-    
+
     #[test]
     fn test_instance_without_annotations() {
         let code = r#"
@@ -222,7 +239,7 @@ def database(host, port):
         assert_eq!(violations[0].rule_id, "PINJ017");
         assert!(violations[0].message.contains("'host', 'port'"));
     }
-    
+
     #[test]
     fn test_instance_with_annotations() {
         let code = r#"
@@ -235,7 +252,7 @@ def database(host: str, port: int):
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_instance_partial_annotations() {
         let code = r#"
@@ -250,7 +267,7 @@ def database(host: str, port):
         assert_eq!(violations[0].rule_id, "PINJ017");
         assert!(violations[0].message.contains("'port'"));
     }
-    
+
     #[test]
     fn test_injected_without_annotations() {
         let code = r#"
@@ -265,7 +282,7 @@ def process_data(logger, database, /, data: str) -> str:
         assert_eq!(violations[0].rule_id, "PINJ017");
         assert!(violations[0].message.contains("'logger', 'database'"));
     }
-    
+
     #[test]
     fn test_injected_with_annotations() {
         let code = r#"
@@ -285,7 +302,7 @@ def process_data(logger: Logger, database: Database, /, data: str) -> str:
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_injected_no_dependencies() {
         let code = r#"
@@ -299,7 +316,7 @@ def simple_function(data: str) -> str:
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_async_instance_without_annotations() {
         let code = r#"
@@ -313,7 +330,7 @@ async def a_database(host, port):
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ017");
     }
-    
+
     #[test]
     fn test_async_injected_without_annotations() {
         let code = r#"
@@ -328,7 +345,7 @@ async def a_fetch_data(client, cache, /, url: str) -> dict:
         assert_eq!(violations[0].rule_id, "PINJ017");
         assert!(violations[0].message.contains("'client', 'cache'"));
     }
-    
+
     #[test]
     fn test_regular_function_ignored() {
         let code = r#"

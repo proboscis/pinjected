@@ -1,13 +1,16 @@
 //! AST walking utilities for collecting information across modules
 
+use crate::utils::pinjected_patterns::{
+    has_instance_callable_decorator, has_instance_callable_decorator_async, has_instance_decorator,
+    has_instance_decorator_async,
+};
 use rustpython_ast::{Mod, Stmt};
 use std::collections::HashSet;
-use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_instance_callable_decorator, has_instance_callable_decorator_async};
 
 /// Collect all @instance function names in a module
 pub fn collect_instance_functions(ast: &Mod) -> HashSet<String> {
     let mut instance_functions = HashSet::new();
-    
+
     match ast {
         Mod::Module(module) => {
             for stmt in &module.body {
@@ -16,7 +19,7 @@ pub fn collect_instance_functions(ast: &Mod) -> HashSet<String> {
         }
         _ => {}
     }
-    
+
     instance_functions
 }
 
@@ -45,20 +48,26 @@ fn collect_instance_functions_from_stmt(stmt: &Stmt, instance_functions: &mut Ha
 /// Collect all @instance(callable=True) function names in a module
 pub fn collect_instance_callable_functions(ast: &Mod) -> HashSet<String> {
     let mut instance_callable_functions = HashSet::new();
-    
+
     match ast {
         Mod::Module(module) => {
             for stmt in &module.body {
-                collect_instance_callable_functions_from_stmt(stmt, &mut instance_callable_functions);
+                collect_instance_callable_functions_from_stmt(
+                    stmt,
+                    &mut instance_callable_functions,
+                );
             }
         }
         _ => {}
     }
-    
+
     instance_callable_functions
 }
 
-fn collect_instance_callable_functions_from_stmt(stmt: &Stmt, instance_callable_functions: &mut HashSet<String>) {
+fn collect_instance_callable_functions_from_stmt(
+    stmt: &Stmt,
+    instance_callable_functions: &mut HashSet<String>,
+) {
     match stmt {
         Stmt::FunctionDef(func) => {
             if has_instance_callable_decorator(func) {

@@ -1,5 +1,5 @@
 //! PINJ009: No direct calls to @injected functions
-//! 
+//!
 //! Inside @injected functions, you're building a dependency graph (AST),
 //! not executing code. Direct calls to other @injected functions are
 //! fundamentally wrong - they should be declared as dependencies and
@@ -10,11 +10,11 @@
 //! - Await calls to @injected functions  
 //! - Any form of execution of @injected functions
 
-use rustpython_ast::{Mod, Stmt, Expr, ExprCall};
-use std::collections::HashSet;
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{has_injected_decorator, has_injected_decorator_async};
+use rustpython_ast::{Expr, ExprCall, Mod, Stmt};
+use std::collections::HashSet;
 
 pub struct NoDirectInjectedCallsRule {
     /// All @injected function names in the module
@@ -36,7 +36,7 @@ impl NoDirectInjectedCallsRule {
             in_injected_function: false,
         }
     }
-    
+
     /// Collect all @injected functions in the module
     fn collect_injected_functions(&mut self, ast: &Mod) {
         match ast {
@@ -48,7 +48,7 @@ impl NoDirectInjectedCallsRule {
             _ => {}
         }
     }
-    
+
     fn collect_from_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::FunctionDef(func) => {
@@ -78,38 +78,41 @@ impl NoDirectInjectedCallsRule {
             _ => {}
         }
     }
-    
+
     /// Extract dependency names from function (parameters before slash)
     fn extract_dependencies(&self, func: &rustpython_ast::StmtFunctionDef) -> HashSet<String> {
         let mut dependencies = HashSet::new();
-        
+
         // In Python AST, posonlyargs are the parameters before the slash
         for arg in &func.args.posonlyargs {
             dependencies.insert(arg.def.arg.to_string());
         }
-        
+
         dependencies
     }
-    
+
     /// Extract dependency names from async function
-    fn extract_dependencies_async(&self, func: &rustpython_ast::StmtAsyncFunctionDef) -> HashSet<String> {
+    fn extract_dependencies_async(
+        &self,
+        func: &rustpython_ast::StmtAsyncFunctionDef,
+    ) -> HashSet<String> {
         let mut dependencies = HashSet::new();
-        
+
         // In Python AST, posonlyargs are the parameters before the slash
         for arg in &func.args.posonlyargs {
             dependencies.insert(arg.def.arg.to_string());
         }
-        
+
         dependencies
     }
-    
+
     /// Check if a call is to an @injected function
     fn check_call(&self, call: &ExprCall, file_path: &str, violations: &mut Vec<Violation>) {
         // Skip if we're not inside an @injected function
         if !self.in_injected_function {
             return;
         }
-        
+
         // Get the function name being called
         let func_name = match &*call.func {
             Expr::Name(name) => Some(name.id.to_string()),
@@ -121,9 +124,9 @@ impl NoDirectInjectedCallsRule {
                     None
                 }
             }
-            _ => None
+            _ => None,
         };
-        
+
         if let Some(called_func) = func_name {
             // Check if this is a call to an @injected function
             if self.injected_functions.contains(&called_func) {
@@ -147,7 +150,7 @@ impl NoDirectInjectedCallsRule {
             }
         }
     }
-    
+
     /// Check expressions for calls
     fn check_expr(&self, expr: &Expr, file_path: &str, violations: &mut Vec<Violation>) {
         match expr {
@@ -165,11 +168,13 @@ impl NoDirectInjectedCallsRule {
                     // Get the function name being awaited
                     let func_name = match &*call.func {
                         Expr::Name(name) => Some(name.id.to_string()),
-                        _ => None
+                        _ => None,
                     };
-                    
+
                     if let Some(called_func) = func_name {
-                        if self.injected_functions.contains(&called_func) && self.in_injected_function {
+                        if self.injected_functions.contains(&called_func)
+                            && self.in_injected_function
+                        {
                             if !self.current_dependencies.contains(&called_func) {
                                 violations.push(Violation {
                                     rule_id: "PINJ009".to_string(),
@@ -272,7 +277,7 @@ impl NoDirectInjectedCallsRule {
             _ => {}
         }
     }
-    
+
     /// Check statements for calls
     fn check_stmt(&mut self, stmt: &Stmt, file_path: &str, violations: &mut Vec<Violation>) {
         match stmt {
@@ -282,16 +287,16 @@ impl NoDirectInjectedCallsRule {
                     let old_func = self.current_function.take();
                     let old_deps = self.current_dependencies.clone();
                     let old_in_injected = self.in_injected_function;
-                    
+
                     self.current_function = Some(func.name.to_string());
                     self.current_dependencies = self.extract_dependencies(func);
                     self.in_injected_function = true;
-                    
+
                     // Check function body
                     for stmt in &func.body {
                         self.check_stmt(stmt, file_path, violations);
                     }
-                    
+
                     // Restore context
                     self.current_function = old_func;
                     self.current_dependencies = old_deps;
@@ -309,16 +314,16 @@ impl NoDirectInjectedCallsRule {
                     let old_func = self.current_function.take();
                     let old_deps = self.current_dependencies.clone();
                     let old_in_injected = self.in_injected_function;
-                    
+
                     self.current_function = Some(func.name.to_string());
                     self.current_dependencies = self.extract_dependencies_async(func);
                     self.in_injected_function = true;
-                    
+
                     // Check function body
                     for stmt in &func.body {
                         self.check_stmt(stmt, file_path, violations);
                     }
-                    
+
                     // Restore context
                     self.current_function = old_func;
                     self.current_dependencies = old_deps;
@@ -458,28 +463,28 @@ impl LintRule for NoDirectInjectedCallsRule {
     fn rule_id(&self) -> &str {
         "PINJ009"
     }
-    
+
     fn description(&self) -> &str {
         "No direct calls to @injected functions inside other @injected functions"
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         // Create a mutable instance for stateful tracking
         let mut checker = NoDirectInjectedCallsRule::new();
-        
+
         // First pass: collect all @injected functions
         checker.collect_injected_functions(context.ast);
-        
+
         // If no @injected functions, nothing to check
         if checker.injected_functions.is_empty() {
             return violations;
         }
-        
+
         // Second pass: check the current statement
         checker.check_stmt(context.stmt, context.file_path, &mut violations);
-        
+
         violations
     }
 }
@@ -487,14 +492,14 @@ impl LintRule for NoDirectInjectedCallsRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustpython_parser::{parse, Mode};
     use rustpython_ast::Mod;
-    
+    use rustpython_parser::{parse, Mode};
+
     fn check_code(code: &str) -> Vec<Violation> {
         let ast = parse(code, Mode::Module, "test.py").unwrap();
         let rule = NoDirectInjectedCallsRule::new();
         let mut violations = Vec::new();
-        
+
         match &ast {
             Mod::Module(module) => {
                 for stmt in &module.body {
@@ -509,10 +514,10 @@ mod tests {
             }
             _ => {}
         }
-        
+
         violations
     }
-    
+
     #[test]
     fn test_direct_call_without_dependency() {
         let code = r#"
@@ -536,7 +541,7 @@ def analyze_results(results):
         assert!(violations[0].message.contains("direct call"));
         assert_eq!(violations[0].severity, Severity::Error);
     }
-    
+
     #[test]
     fn test_await_call_without_dependency() {
         let code = r#"
@@ -557,21 +562,27 @@ async def a_analyze_results(results):
         let violations = check_code(code);
         // Should have 2 violations: one for direct call, one for await
         assert_eq!(violations.len(), 2);
-        
+
         // Check that we have both types of violations
-        let has_await_violation = violations.iter().any(|v| v.message.contains("uses 'await'"));
-        let has_direct_call_violation = violations.iter().any(|v| v.message.contains("direct call"));
-        
+        let has_await_violation = violations
+            .iter()
+            .any(|v| v.message.contains("uses 'await'"));
+        let has_direct_call_violation =
+            violations.iter().any(|v| v.message.contains("direct call"));
+
         assert!(has_await_violation, "Should have await violation");
-        assert!(has_direct_call_violation, "Should have direct call violation");
-        
+        assert!(
+            has_direct_call_violation,
+            "Should have direct call violation"
+        );
+
         // All violations should be PINJ009 errors
         for v in &violations {
             assert_eq!(v.rule_id, "PINJ009");
             assert_eq!(v.severity, Severity::Error);
         }
     }
-    
+
     #[test]
     fn test_call_with_dependency_declared() {
         let code = r#"
@@ -590,7 +601,7 @@ def analyze_results(process_data, /, results):
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_await_with_dependency_declared() {
         let code = r#"
@@ -610,7 +621,7 @@ async def a_analyze_results(a_process_data, /, results):
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_non_injected_function_calls() {
         let code = r#"
@@ -629,7 +640,7 @@ def process_data(data):
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_nested_calls() {
         let code = r#"

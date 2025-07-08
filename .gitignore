@@ -25,6 +25,7 @@ ide-plugins/pycharm/bin/
 
 # Coverage files
 .coverage
+.coverage.*
 coverage.json
 coverage.xml
 htmlcov/

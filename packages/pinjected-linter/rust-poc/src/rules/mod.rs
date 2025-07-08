@@ -19,6 +19,7 @@ pub mod pinj014_missing_stub_file;
 pub mod pinj015_missing_slash;
 pub mod pinj016_missing_protocol;
 pub mod pinj017_missing_dependency_type_annotation;
+pub mod pinj018_double_injected;
 // Future rules would be added here:
 // ... etc
 
@@ -43,7 +44,10 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj014_missing_stub_file::MissingStubFileRule::new()),
         Box::new(pinj015_missing_slash::MissingSlashRule::new()),
         Box::new(pinj016_missing_protocol::MissingProtocolRule::new()),
-        Box::new(pinj017_missing_dependency_type_annotation::MissingDependencyTypeAnnotationRule::new()),
+        Box::new(
+            pinj017_missing_dependency_type_annotation::MissingDependencyTypeAnnotationRule::new(),
+        ),
+        Box::new(pinj018_double_injected::DoubleInjectedRule::new()),
         // Add more rules here as they're implemented
     ]
 }

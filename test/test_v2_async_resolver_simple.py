@@ -168,12 +168,14 @@ class TestAsyncResolver:
         """Test creating AsyncResolver instance."""
         # AsyncResolver takes different parameters based on actual implementation
         # Create with minimal required args
-        try:
-            resolver = AsyncResolver({})
-            assert resolver is not None
-        except TypeError:
-            # If it requires different parameters, just check it's constructable
-            pytest.skip("AsyncResolver requires different constructor parameters")
+        from pinjected.di.util import EmptyDesign
+
+        resolver = AsyncResolver(design=EmptyDesign)
+
+        assert resolver is not None
+        assert resolver.design is not None
+        assert isinstance(resolver.objects, dict)
+        assert hasattr(resolver, "locks")
 
     @pytest.mark.asyncio
     async def test_async_resolver_basic_functionality(self):

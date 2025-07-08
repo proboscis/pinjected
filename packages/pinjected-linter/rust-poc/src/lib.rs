@@ -7,8 +7,8 @@ pub mod utils;
 
 use anyhow::Result;
 use rayon::prelude::*;
+use rustpython_ast::{text_size::TextRange, Mod};
 use rustpython_parser::{parse, Mode};
-use rustpython_ast::{Mod, text_size::TextRange};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -59,20 +59,20 @@ fn should_analyze_file(path: &Path) -> bool {
             return false;
         }
     }
-    
+
     // Skip generated files
     if let Some(parent) = path.parent() {
         if parent.ends_with("__pycache__") || parent.ends_with(".git") {
             return false;
         }
     }
-    
+
     true
 }
 
 /// Analyze a single file with caching support
 fn analyze_file(
-    path: &Path, 
+    path: &Path,
     rules: &[Box<dyn rules::base::LintRule>],
     cache: Option<&AstCache>,
 ) -> Result<Vec<Violation>> {
@@ -80,16 +80,19 @@ fn analyze_file(
     if !should_analyze_file(path) {
         return Ok(Vec::new());
     }
-    
+
     let content = fs::read_to_string(path)?;
-    
+
     // Quick check: if file doesn't contain "injected" or "instance", skip most rules
-    let has_pinjected = content.contains("@injected") || content.contains("@instance") || content.contains("from pinjected") || content.contains("pinjected");
-    
+    let has_pinjected = content.contains("@injected")
+        || content.contains("@instance")
+        || content.contains("from pinjected")
+        || content.contains("pinjected");
+
     // Get or parse AST
     let ast = if let Some(cache) = cache {
         let mut cache_guard = cache.lock().unwrap();
-        
+
         if let Some(cached_ast) = cache_guard.get(path) {
             cached_ast.clone()
         } else {
@@ -100,38 +103,41 @@ fn analyze_file(
     } else {
         Arc::new(parse(&content, Mode::Module, path.to_str().unwrap())?)
     };
-    
+
     let mut violations = Vec::new();
-    
+
     // Filter rules based on file content
     let active_rules: Vec<_> = if !has_pinjected {
         // Only run rules that don't require decorators
-        rules.iter()
+        rules
+            .iter()
             .filter(|r| matches!(r.rule_id(), "PINJ013")) // Only builtin shadowing
             .collect()
     } else {
         rules.iter().collect()
     };
-    
+
     if active_rules.is_empty() {
         return Ok(violations);
     }
-    
+
     // Create a single context for module-level rules
     let module_context = RuleContext {
-        stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass { range: TextRange::default() }),
+        stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass {
+            range: TextRange::default(),
+        }),
         file_path: path.to_str().unwrap(),
         source: &content,
         ast: &ast,
     };
-    
+
     // First pass: module-level rules (PINJ012, PINJ014)
     for rule in &active_rules {
         if matches!(rule.rule_id(), "PINJ012" | "PINJ014") {
             violations.extend(rule.check(&module_context));
         }
     }
-    
+
     // Second pass: statement-level rules
     match &*ast {
         Mod::Module(module) => {
@@ -139,17 +145,18 @@ fn analyze_file(
             let mut stmt_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
             let mut func_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
             let class_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
-            
+
             for rule in &active_rules {
                 match rule.rule_id() {
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
-                    "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016" | "PINJ017" => func_rules.push(rule),
+                    "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
+                    | "PINJ017" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
-                    "PINJ013" => stmt_rules.push(rule),
+                    "PINJ013" | "PINJ018" => stmt_rules.push(rule),
                     _ => {} // Already handled
                 }
             }
-            
+
             for stmt in &module.body {
                 let context = RuleContext {
                     stmt,
@@ -157,10 +164,11 @@ fn analyze_file(
                     source: &content,
                     ast: &ast,
                 };
-                
+
                 // Apply rules based on statement type
                 match stmt {
-                    rustpython_ast::Stmt::FunctionDef(_) | rustpython_ast::Stmt::AsyncFunctionDef(_) => {
+                    rustpython_ast::Stmt::FunctionDef(_)
+                    | rustpython_ast::Stmt::AsyncFunctionDef(_) => {
                         for rule in &func_rules {
                             violations.extend(rule.check(&context));
                         }
@@ -180,7 +188,7 @@ fn analyze_file(
         }
         _ => {}
     }
-    
+
     // Filter out violations suppressed by noqa comments
     let noqa_directives = noqa::parse_noqa_directives(&content);
     if !noqa_directives.is_empty() {
@@ -190,45 +198,48 @@ fn analyze_file(
             !noqa::is_violation_suppressed(line, &violation.rule_id, &noqa_directives)
         });
     }
-    
+
     Ok(violations)
 }
 
 /// Find all Python files in a directory
 pub fn find_python_files(path: &Path, skip_patterns: &[String]) -> Vec<PathBuf> {
-    use walkdir::{WalkDir, DirEntry};
-    
+    use walkdir::{DirEntry, WalkDir};
+
     let mut files = Vec::new();
-    
+
     // Create a filter function to skip directories
     let is_excluded = |entry: &DirEntry| -> bool {
         let path_str = entry.path().to_str().unwrap_or("");
-        
+
         // Check each component of the path
         for component in entry.path().components() {
             if let Some(name) = component.as_os_str().to_str() {
-                if skip_patterns.iter().any(|pattern| name == pattern || path_str.contains(pattern)) {
+                if skip_patterns
+                    .iter()
+                    .any(|pattern| name == pattern || path_str.contains(pattern))
+                {
                     return true;
                 }
             }
         }
         false
     };
-    
+
     let walker = WalkDir::new(path)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| !is_excluded(e));
-    
+
     for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
-        
+
         // Check if Python file
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("py") {
             files.push(path.to_path_buf());
         }
     }
-    
+
     files
 }
 
@@ -240,52 +251,51 @@ pub fn lint_path(path: &Path, options: LinterOptions) -> Result<LintResult> {
             .num_threads(options.threads)
             .build_global()?;
     }
-    
+
     // Get list of files to analyze
     let files = if path.is_file() {
         vec![path.to_path_buf()]
     } else {
         find_python_files(path, &options.skip_patterns)
     };
-    
+
     let files_analyzed = files.len();
-    
+
     // Load rules once
     let all_rules = rules::get_all_rules();
     let rules: Vec<_> = if let Some(rule_filter) = &options.rule {
         // Parse comma-separated rule IDs
         let rule_ids: Vec<&str> = rule_filter.split(',').map(|s| s.trim()).collect();
-        all_rules.into_iter()
+        all_rules
+            .into_iter()
             .filter(|r| rule_ids.contains(&r.rule_id()))
             .collect()
     } else {
         all_rules
     };
-    
+
     // Create cache if requested
     let cache = if options.cache {
         Some(Arc::new(Mutex::new(HashMap::new())))
     } else {
         None
     };
-    
+
     // Process files in parallel, tracking errors
     let mut files_with_errors = 0;
     let mut parse_errors = 0;
-    
+
     let results: Vec<_> = files
         .par_iter()
-        .map(|file| {
-            match analyze_file(file, &rules, cache.as_ref()) {
-                Ok(violations) => (file.clone(), Ok(violations)),
-                Err(e) => {
-                    eprintln!("Error analyzing {}: {}", file.display(), e);
-                    (file.clone(), Err(e))
-                }
+        .map(|file| match analyze_file(file, &rules, cache.as_ref()) {
+            Ok(violations) => (file.clone(), Ok(violations)),
+            Err(e) => {
+                eprintln!("Error analyzing {}: {}", file.display(), e);
+                (file.clone(), Err(e))
             }
         })
         .collect();
-    
+
     let mut violations = Vec::new();
     for (file, result) in results {
         match result {
@@ -297,19 +307,21 @@ pub fn lint_path(path: &Path, options: LinterOptions) -> Result<LintResult> {
             Err(e) => {
                 files_with_errors += 1;
                 // Check if it's a parse error
-                if e.to_string().contains("invalid syntax") || e.to_string().contains("unexpected token") {
+                if e.to_string().contains("invalid syntax")
+                    || e.to_string().contains("unexpected token")
+                {
                     parse_errors += 1;
                 }
             }
         }
     }
-    
+
     let cached_asts = if let Some(cache) = cache {
         cache.lock().unwrap().len()
     } else {
         0
     };
-    
+
     Ok(LintResult {
         violations,
         files_analyzed,

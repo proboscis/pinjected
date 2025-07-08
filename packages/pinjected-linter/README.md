@@ -13,23 +13,23 @@ A comprehensive linter for the Pinjected dependency injection library that enfor
 ## Installation
 
 ```bash
-pip install pinjected-dynamic-linter
+pip install pinjected-linter
 ```
 
 ## Quick Start
 
 ```bash
 # Lint all Python files in the current directory
-pinjected-dynamic-linter
+pinjected-linter
 
 # Lint specific files
-pinjected-dynamic-linter src/mymodule.py
+pinjected-linter src/mymodule.py
 
 # Auto-fix issues
-pinjected-dynamic-linter --fix
+pinjected-linter --fix
 
 # Show detailed explanations
-pinjected-dynamic-linter --show-source
+pinjected-linter --show-source
 ```
 
 ## Configuration
@@ -37,16 +37,16 @@ pinjected-dynamic-linter --show-source
 Configure the linter in your `pyproject.toml`:
 
 ```toml
-[tool.pinjected-dynamic-linter]
+[tool.pinjected-linter]
 # Enable/disable specific rules
 enable = ["PINJ001", "PINJ002", "PINJ008"]
 disable = ["PINJ016"]
 
 # Rule-specific configuration
-[tool.pinjected-dynamic-linter.rules.PINJ017]
+[tool.pinjected-linter.rules.PINJ017]
 categories = ["model", "dataset", "service", "custom_category"]
 
-[tool.pinjected-dynamic-linter.rules.PINJ020]
+[tool.pinjected-linter.rules.PINJ020]
 allow_in_tests = false
 ```
 
@@ -56,10 +56,10 @@ Add to your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-  - repo: https://github.com/pinjected/pinjected-dynamic-linter
+  - repo: https://github.com/pinjected/pinjected-linter
     rev: v0.1.0
     hooks:
-      - id: pinjected-dynamic-linter
+      - id: pinjected-linter
 ```
 
 ## Available Rules
@@ -106,7 +106,7 @@ repos:
 ```bash
 # Clone the repository
 git clone https://github.com/pinjected/pinjected.git
-cd pinjected/packages/pinjected-dynamic-linter
+cd pinjected/packages/pinjected-linter
 
 # Install in development mode
 pip install -e ".[dev]"
@@ -115,7 +115,7 @@ pip install -e ".[dev]"
 pytest
 
 # Run linter on itself
-pinjected-dynamic-linter src/
+pinjected-linter src/
 ```
 
 ## License

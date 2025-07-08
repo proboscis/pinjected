@@ -1,16 +1,16 @@
 //! PINJ010: design() usage patterns
-//! 
+//!
 //! The design() function is used to configure and override
 //! dependencies in Pinjected. Common issues include:
 //! 1. Calling @instance functions instead of referencing them
 //! 2. Using decorator names as keys instead of dependency names
 //! 3. Incorrect combination patterns
 
-use rustpython_ast::{Mod, Stmt, Expr, ExprCall};
-use std::collections::HashSet;
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async};
+use rustpython_ast::{Expr, ExprCall, Mod, Stmt};
+use std::collections::HashSet;
 
 pub struct DesignUsageRule {
     /// Track @instance decorated function names
@@ -28,7 +28,7 @@ impl DesignUsageRule {
             design_alias: None,
         }
     }
-    
+
     /// Collect all @instance functions and design imports in the module
     fn collect_definitions(&mut self, ast: &Mod) {
         match ast {
@@ -40,7 +40,7 @@ impl DesignUsageRule {
             _ => {}
         }
     }
-    
+
     fn collect_from_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::FunctionDef(func) => {
@@ -83,7 +83,7 @@ impl DesignUsageRule {
             _ => {}
         }
     }
-    
+
     /// Check if a call is to design()
     fn is_design_call(&self, call: &ExprCall) -> bool {
         if let Expr::Name(name) = &*call.func {
@@ -93,7 +93,7 @@ impl DesignUsageRule {
             false
         }
     }
-    
+
     /// Check design() usage patterns
     fn check_design_call(&self, call: &ExprCall, file_path: &str, violations: &mut Vec<Violation>) {
         // Check keyword arguments
@@ -113,7 +113,7 @@ impl DesignUsageRule {
                         severity: Severity::Warning,
                     });
                 }
-                
+
                 // Rule 2: Check for direct instance calls as values
                 if let Expr::Call(value_call) = &keyword.value {
                     if let Expr::Name(func_name) = &*value_call.func {
@@ -125,11 +125,7 @@ impl DesignUsageRule {
                                     "Calling @instance function '{}()' in design(). \
                                     @instance functions should be referenced, not called. \
                                     Use '{}': {} instead of '{}': {}()",
-                                    func_name.id,
-                                    arg_name,
-                                    func_name.id,
-                                    arg_name,
-                                    func_name.id
+                                    func_name.id, arg_name, func_name.id, arg_name, func_name.id
                                 ),
                                 offset: value_call.range.start().to_usize(),
                                 file_path: file_path.to_string(),
@@ -141,7 +137,7 @@ impl DesignUsageRule {
             }
         }
     }
-    
+
     /// Check expressions for design() calls
     fn check_expr(&self, expr: &Expr, file_path: &str, violations: &mut Vec<Violation>) {
         match expr {
@@ -225,7 +221,7 @@ impl DesignUsageRule {
             _ => {}
         }
     }
-    
+
     /// Check statements for design() calls
     fn check_stmt(&self, stmt: &Stmt, file_path: &str, violations: &mut Vec<Violation>) {
         match stmt {
@@ -367,23 +363,23 @@ impl LintRule for DesignUsageRule {
     fn rule_id(&self) -> &str {
         "PINJ010"
     }
-    
+
     fn description(&self) -> &str {
         "design() should be used correctly for dependency configuration"
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         // Create a mutable instance for stateful tracking
         let mut checker = DesignUsageRule::new();
-        
+
         // First pass: collect all @instance functions and design imports
         checker.collect_definitions(context.ast);
-        
+
         // Second pass: check the current statement
         checker.check_stmt(context.stmt, context.file_path, &mut violations);
-        
+
         violations
     }
 }
