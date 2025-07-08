@@ -73,6 +73,8 @@ ignore = ["N802"]  # Allow uppercase function names for AST visitor methods
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["pinjected_linter"]

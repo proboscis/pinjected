@@ -19,7 +19,7 @@ class TestMetaMain:
 
         assert run_with_meta_context is not None
 
-    @patch("pinjected.meta_main.fire.Fire")
+    @patch("fire.Fire")
     @patch("pinjected.meta_main.warnings.warn")
     def test_main_execution(self, mock_warn, mock_fire):
         """Test execution when run as main."""

@@ -37,15 +37,21 @@ class TestJustBind:
         assert bind.impl is impl
         assert bind.deps == deps
 
-    def test_just_bind_provide_method(self):
-        """Test provide method returns the impl."""
+    @pytest.mark.asyncio
+    async def test_just_bind_provide_method(self):
+        """Test provide method calls the impl."""
 
         async def impl(ctx, deps):
             return "result"
 
         bind = JustBind(impl=impl, deps=set())
 
-        assert bind.provide() is impl
+        # Test that provide calls the implementation
+        ctx = Mock(spec=ProvideContext)
+        deps = {}
+        result = await bind.provide(ctx, deps)
+
+        assert result == "result"
 
     def test_just_bind_str_representation(self):
         """Test string representation."""
@@ -79,24 +85,28 @@ class TestBindInjected:
         injected = InjectedPure("value")
         bind = BindInjected(src=injected)
 
-        assert bind.deps == set()
+        assert bind.dependencies == set()
 
     @pytest.mark.asyncio
     async def test_bind_injected_provide(self):
         """Test provide method."""
-        # Create a mock injected that has a_provide method
+        # Create a mock injected that has dependencies and get_provider methods
         mock_injected = Mock(spec=Injected)
-        mock_injected.a_provide = AsyncMock(return_value="result")
+        mock_injected.dependencies.return_value = ["dep1", "dep2"]
+        mock_injected.dynamic_dependencies.return_value = []
+
+        async def mock_provider(dep1=None, dep2=None):
+            return "result"
+
+        mock_injected.get_provider.return_value = mock_provider
 
         bind = BindInjected(src=mock_injected)
-        provider = bind.provide()
 
         # Call the provider
         ctx = Mock(spec=ProvideContext)
-        deps = {}
-        result = await provider(ctx, deps)
+        deps = {StrBindKey("dep1"): "value1", StrBindKey("dep2"): "value2"}
+        result = await bind.provide(ctx, deps)
 
-        mock_injected.a_provide.assert_called_once_with(ctx, deps)
         assert result == "result"
 
     def test_bind_injected_str_representation(self):
@@ -117,20 +127,38 @@ class TestStrBind:
 
     def test_str_bind_creation(self):
         """Test creating StrBind instance."""
-        bind = StrBind(impl="test_impl", deps={StrBindKey("dep1")})
 
-        assert bind.impl == "test_impl"
-        assert bind.deps == {StrBindKey("dep1")}
+        async def test_impl(**kwargs):
+            return "test_result"
 
-    def test_str_bind_provide_method(self):
+        bind = StrBind(impl=test_impl, deps={"dep1"})
+
+        assert bind.impl == test_impl
+        assert bind.deps == {"dep1"}
+
+    @pytest.mark.asyncio
+    async def test_str_bind_provide_method(self):
         """Test provide method."""
-        bind = StrBind(impl="my_impl", deps=set())
 
-        assert bind.provide() == "my_impl"
+        async def my_impl(**kwargs):
+            return "result"
+
+        bind = StrBind(impl=my_impl, deps=set())
+
+        # Create mock context and deps
+        ctx = Mock(spec=ProvideContext)
+        deps = {}
+
+        result = await bind.provide(ctx, deps)
+        assert result == "result"
 
     def test_str_bind_str_representation(self):
         """Test string representation."""
-        bind = StrBind(impl="test_impl", deps={StrBindKey("dep1")})
+
+        async def test_impl(**kwargs):
+            return "result"
+
+        bind = StrBind(impl=test_impl, deps={"dep1"})
         str_repr = str(bind)
 
         assert "StrBind" in str_repr
@@ -154,15 +182,13 @@ class TestExprBind:
 
     def test_expr_bind_deps_property(self):
         """Test deps property extracts dependencies from AST."""
-        from pinjected.di.expr_util import Object, BinOp
-
         mock_evaled = Mock(spec=EvaledInjected)
-        # Create AST with dependencies
-        ast = BinOp(left=Object("dep1"), op="+", right=Object("dep2"))
-        mock_evaled.ast = ast
+        # Mock the dependencies method to return expected dependencies
+        mock_evaled.dependencies.return_value = ["dep1", "dep2"]
+        mock_evaled.dynamic_dependencies.return_value = []
 
         bind = ExprBind(src=mock_evaled)
-        deps = bind.deps
+        deps = bind.dependencies
 
         # Should extract "dep1" and "dep2" from the AST
         assert StrBindKey("dep1") in deps
@@ -170,13 +196,15 @@ class TestExprBind:
 
     def test_expr_bind_deps_empty(self):
         """Test deps when AST has no Object nodes."""
-        from pinjected.di.expr_util import Const
+        # Use a simple mock since Const doesn't exist
+        from unittest.mock import Mock
 
         mock_evaled = Mock(spec=EvaledInjected)
-        mock_evaled.ast = Const(42)
+        mock_evaled.dependencies.return_value = []
+        mock_evaled.dynamic_dependencies.return_value = []
 
         bind = ExprBind(src=mock_evaled)
-        assert bind.deps == set()
+        assert bind.dependencies == set()
 
     def test_expr_bind_str_representation(self):
         """Test string representation."""
@@ -204,19 +232,26 @@ class TestMappedBind:
         def mapper(x):
             return x.upper()
 
-        bind = MappedBind(src=mock_bind, mapper=mapper)
+        async def async_mapper(x):
+            return mapper(x)
+
+        bind = MappedBind(src=mock_bind, async_f=async_mapper)
 
         assert bind.src is mock_bind
-        assert bind.mapper is mapper
+        assert bind.async_f is async_mapper
 
     def test_mapped_bind_deps_property(self):
         """Test deps property delegates to src."""
         mock_bind = Mock(spec=IBind)
-        mock_bind.deps = {StrBindKey("dep1")}
+        mock_bind.dependencies = {StrBindKey("dep1")}
+        mock_bind.dynamic_dependencies = set()
 
-        bind = MappedBind(src=mock_bind, mapper=lambda x: x)
+        async def async_identity(x):
+            return x
 
-        assert bind.deps == {StrBindKey("dep1")}
+        bind = MappedBind(src=mock_bind, async_f=async_identity)
+
+        assert bind.dependencies == {StrBindKey("dep1")}
 
     @pytest.mark.asyncio
     async def test_mapped_bind_provide(self):
@@ -233,14 +268,19 @@ class TestMappedBind:
         def mapper(value):
             return value.upper()
 
-        bind = MappedBind(src=mock_bind, mapper=mapper)
-        provider = bind.provide()
+        async def async_mapper(value):
+            return mapper(value)
+
+        bind = MappedBind(src=mock_bind, async_f=async_mapper)
 
         # Call the provider
         ctx = Mock(spec=ProvideContext)
         deps = {}
 
-        result = await provider(ctx, deps)
+        # Set up mock_bind.provide to return "result"
+        mock_bind.provide = AsyncMock(return_value="result")
+
+        result = await bind.provide(ctx, deps)
 
         # Should apply mapper to the result
         assert result == "RESULT"
@@ -250,7 +290,10 @@ class TestMappedBind:
         mock_bind = Mock(spec=IBind)
         mock_bind.__str__ = Mock(return_value="MockBind")
 
-        bind = MappedBind(src=mock_bind, mapper=lambda x: x)
+        async def async_identity(x):
+            return x
+
+        bind = MappedBind(src=mock_bind, async_f=async_identity)
         str_repr = str(bind)
 
         assert "MappedBind" in str_repr

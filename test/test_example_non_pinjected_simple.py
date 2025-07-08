@@ -30,25 +30,59 @@ from pinjected.test_package.child.example_non_pinjected import (
 class TestBuildFunctions:
     """Test the build functions."""
 
-    @patch("pinjected.test_package.child.example_non_pinjected.nn")
-    def test_build_model(self, mock_nn):
+    def test_build_model(self):
         """Test build_model function."""
-        mock_nn.Module = MagicMock()
-        cfg = {"test": "config"}
+        # Create mock torch module and nn submodule
+        import sys
 
-        result = build_model(cfg, "test_model", 5, 10)
+        mock_module_class = MagicMock()
+        mock_nn = MagicMock()
+        mock_nn.Module = mock_module_class
+        mock_torch = MagicMock()
+        mock_torch.nn = mock_nn
 
-        assert result is mock_nn.Module
+        # Temporarily add to sys.modules
+        sys.modules["torch"] = mock_torch
+        sys.modules["torch.nn"] = mock_nn
 
-    @patch("torch.utils.data.Dataset")
-    def test_build_dataset(self, mock_dataset):
+        try:
+            cfg = {"test": "config"}
+            result = build_model(cfg, "test_model", 5, 10)
+            assert result is mock_module_class
+        finally:
+            # Clean up
+            sys.modules.pop("torch", None)
+            sys.modules.pop("torch.nn", None)
+
+    def test_build_dataset(self):
         """Test build_dataset function."""
-        cfg = {"test": "config"}
+        # Create mock torch module structure
+        import sys
 
-        result = build_dataset(cfg, "test_dataset", 100)
+        mock_dataset_class = MagicMock()
+        mock_data = MagicMock()
+        mock_data.Dataset = mock_dataset_class
+        mock_utils = MagicMock()
+        mock_utils.data = mock_data
+        mock_torch = MagicMock()
+        mock_torch.utils = mock_utils
 
-        # Should return Dataset class (not instance)
-        assert result is not None
+        # Temporarily add to sys.modules
+        sys.modules["torch"] = mock_torch
+        sys.modules["torch.utils"] = mock_utils
+        sys.modules["torch.utils.data"] = mock_data
+
+        try:
+            cfg = {"test": "config"}
+            result = build_dataset(cfg, "test_dataset", 100)
+
+            # Should return Dataset class (not instance)
+            assert result is mock_dataset_class
+        finally:
+            # Clean up
+            sys.modules.pop("torch", None)
+            sys.modules.pop("torch.utils", None)
+            sys.modules.pop("torch.utils.data", None)
 
 
 class TestModelFunctions:
@@ -128,22 +162,33 @@ class TestDatasetFunctions:
 class TestRunExperiment:
     """Test the run_experiment function."""
 
-    @patch("pinjected.test_package.child.example_non_pinjected.evaluate")
-    def test_run_experiment(self, mock_evaluate):
+    def test_run_experiment(self):
         """Test run_experiment function."""
-        mock_evaluate.return_value = 0.95
+        # Mock evaluate function by adding it to the module
+        import pinjected.test_package.child.example_non_pinjected as test_module
 
-        # run_experiment is injected, so we need to get the underlying function
-        func = run_experiment.src_function
+        mock_evaluate = Mock(return_value=0.95)
+        original_evaluate = getattr(test_module, "evaluate", None)
+        test_module.evaluate = mock_evaluate
 
-        cfg = {"config": "value"}
-        model = Mock()
-        dataset = Mock()
+        try:
+            # run_experiment is injected, so we need to get the underlying function
+            func = run_experiment.src_function
 
-        result = func(cfg, model, dataset)
+            cfg = {"config": "value"}
+            model = Mock()
+            dataset = Mock()
 
-        mock_evaluate.assert_called_once_with(cfg, model, dataset)
-        assert result == 0.95
+            result = func(cfg, model, dataset)
+
+            mock_evaluate.assert_called_once_with(cfg, model, dataset)
+            assert result == 0.95
+        finally:
+            # Restore original state
+            if original_evaluate is None:
+                delattr(test_module, "evaluate")
+            else:
+                test_module.evaluate = original_evaluate
 
 
 class TestExperimentFunctions:
@@ -260,21 +305,34 @@ class TestSetupParser:
 
     def test_setup_parser(self):
         """Test setup_parser creates ArgumentParser."""
-        parser = setup_parser()
-
-        # Check it's an ArgumentParser
+        # Mock ArgumentParser since it's not imported in the module
+        import pinjected.test_package.child.example_non_pinjected as test_module
         from argparse import ArgumentParser
 
-        assert isinstance(parser, ArgumentParser)
+        # Temporarily add ArgumentParser to the module
+        original_parser = getattr(test_module, "ArgumentParser", None)
+        test_module.ArgumentParser = ArgumentParser
 
-        # Check it has the required argument
-        # Parse with the required argument
-        args = parser.parse_args(["--name", "test_experiment"])
-        assert args.name == "test_experiment"
+        try:
+            parser = setup_parser()
 
-        # Should fail without --name
-        with pytest.raises(SystemExit):
-            parser.parse_args([])
+            # Check it's an ArgumentParser
+            assert isinstance(parser, ArgumentParser)
+
+            # Check it has the required argument
+            # Parse with the required argument
+            args = parser.parse_args(["--name", "test_experiment"])
+            assert args.name == "test_experiment"
+
+            # Should fail without --name
+            with pytest.raises(SystemExit):
+                parser.parse_args([])
+        finally:
+            # Restore original state
+            if original_parser is None:
+                delattr(test_module, "ArgumentParser")
+            else:
+                test_module.ArgumentParser = original_parser
 
 
 class TestMainBlock:

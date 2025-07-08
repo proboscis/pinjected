@@ -50,7 +50,8 @@ async def test_a_map_progress__tqdm_raise_exception(
         [item async for item in agen]
         raise AssertionError("Expected exception not raised")
     except Exception as e:
-        if isinstance(e, CompatibleExceptionGroup):
+        # Handle both native Python 3.11+ ExceptionGroup and compatibility ExceptionGroup
+        if hasattr(e, "exceptions"):  # ExceptionGroup-like object
             if any(isinstance(ex, DummyException) for ex in e.exceptions):
                 pass
             else:

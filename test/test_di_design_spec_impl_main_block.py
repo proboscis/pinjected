@@ -25,22 +25,26 @@ class TestMainBlockExecution:
         """Test IOSuccess and IOFailure behavior."""
         # Test IOSuccess
         success = IOSuccess("success")
-        assert str(success).endswith("IOSuccess(success)")
-        assert success.value_or("hello") == IOSuccess("success")
+        assert str(success) == "<IOResult: <Success: success>>"
+        # value_or returns an IO object
+        assert str(success.value_or("hello")) == "<IO: success>"
 
         # Test IOFailure
         exception = Exception("test error")
         failure = IOFailure(exception)
-        assert "IOFailure" in str(failure)
-        assert failure.value_or("hello") == IOSuccess("hello")
+        assert "IOResult" in str(failure) and "Failure" in str(failure)
+        # value_or returns an IO object with the fallback value
+        assert str(failure.value_or("hello")) == "<IO: hello>"
 
         # Test unsafe_perform_io
+        from returns.result import Success, Failure
+
         result_success = unsafe_perform_io(success)
-        assert result_success.is_successful()
+        assert isinstance(result_success, Success)
         assert result_success.unwrap() == "success"
 
         result_failure = unsafe_perform_io(failure)
-        assert not result_failure.is_successful()
+        assert isinstance(result_failure, Failure)
 
     @pytest.mark.asyncio
     async def test_future_safe_decorator(self):
@@ -51,13 +55,15 @@ class TestMainBlockExecution:
         async def error_func():
             raise Exception("error")
 
-        # Test that it returns a FutureResultE
+        # Test that it returns a FutureResult
         fut_res = error_func()
-        assert isinstance(fut_res, FutureResultE)
+        assert isinstance(fut_res, FutureResult)
 
         # Run the future and check the result
         res = await fut_res.awaitable()
-        assert not unsafe_perform_io(res).is_successful()
+        from returns.result import Failure
+
+        assert isinstance(unsafe_perform_io(res), Failure)
 
     @pytest.mark.asyncio
     async def test_future_result_recovery(self):
@@ -88,11 +94,13 @@ class TestMainBlockExecution:
         res2 = await recovered_2.awaitable()
         res3 = await recovered_3.awaitable()
 
-        assert unsafe_perform_io(res1).is_successful()
+        from returns.result import Success
+
+        assert isinstance(unsafe_perform_io(res1), Success)
         assert unsafe_perform_io(res1).unwrap() == "recovered"
-        assert unsafe_perform_io(res2).is_successful()
+        assert isinstance(unsafe_perform_io(res2), Success)
         assert unsafe_perform_io(res2).unwrap() == "recovered"
-        assert unsafe_perform_io(res3).is_successful()
+        assert isinstance(unsafe_perform_io(res3), Success)
         assert unsafe_perform_io(res3).unwrap() == "recovered"
 
     @pytest.mark.asyncio
@@ -110,7 +118,9 @@ class TestMainBlockExecution:
 
         fut_success = success_func()
         result = await await_target(fut_success)
-        assert unsafe_perform_io(result).is_successful()
+        from returns.result import Success
+
+        assert isinstance(unsafe_perform_io(result), Success)
         assert unsafe_perform_io(result).unwrap() == "success"
 
         # Test with failure
@@ -120,13 +130,15 @@ class TestMainBlockExecution:
 
         fut_error = error_func()
         result = await await_target(fut_error)
-        assert not unsafe_perform_io(result).is_successful()
+        from returns.result import Failure
+
+        assert isinstance(unsafe_perform_io(result), Failure)
 
     def test_maybe_behavior(self):
         """Test Maybe (Some/Nothing) behavior."""
         # Test Some
         some = Some("hello")
-        assert str(some) == "Some(hello)"
+        assert str(some) == "<Some: hello>"
 
         # Test bind on Some
         result = some.bind(lambda d: Some(isinstance(d, str)))
@@ -134,11 +146,11 @@ class TestMainBlockExecution:
 
         # Test Nothing
         none = Nothing
-        assert str(none) == "Nothing"
+        assert str(none) == "<Nothing>"
 
-        # Test lash on Nothing (should return Nothing)
+        # Test lash on Nothing (should recover)
         result = none.lash(lambda fail: Some("recovered"))
-        assert result == Nothing
+        assert result == Some("recovered")
 
     def test_execute_main_block(self):
         """Execute the main block by importing the module."""
@@ -148,7 +160,7 @@ class TestMainBlockExecution:
 
         try:
             # Mock logger to avoid actual logging
-            with patch("pinjected.di.design_spec.impl.logger"):
+            with patch("loguru.logger"):
                 # Import and execute the main block
                 import importlib
 
@@ -190,7 +202,9 @@ class TestMainBlockExecution:
 
         # Test successful chain
         result = await step1().bind(step2).bind(step3).awaitable()
-        assert not unsafe_perform_io(result).is_successful()  # 20 > 15
+        from returns.result import Failure
+
+        assert isinstance(unsafe_perform_io(result), Failure)  # 20 > 15
 
         # Test with recovery
         recovered = await (
@@ -200,19 +214,24 @@ class TestMainBlockExecution:
             .lash(lambda _: FutureResult.from_value(25))
             .awaitable()
         )
-        assert unsafe_perform_io(recovered).is_successful()
+        from returns.result import Success
+
+        assert isinstance(unsafe_perform_io(recovered), Success)
         assert unsafe_perform_io(recovered).unwrap() == 25
 
     def test_io_monad_properties(self):
         """Test IO monad properties."""
         # Test that IOSuccess wraps values properly
         success = IOSuccess([1, 2, 3])
-        assert success.value_or([]) == IOSuccess([1, 2, 3])
+        # value_or returns an IO object
+        assert str(success.value_or([])) == "<IO: [1, 2, 3]>"
 
         # Test nested structures
         nested = IOSuccess(IOSuccess("nested"))
         result = unsafe_perform_io(nested)
-        assert result.is_successful()
+        from returns.result import Success
+
+        assert isinstance(result, Success)
 
         # Test with None
         none_success = IOSuccess(None)
