@@ -105,6 +105,8 @@ impl DoubleInjectedRule {
         if !is_injected_call {
             return;
         }
+        
+        eprintln!("PINJ018: Found injected() call with {} args", call.args.len());
 
         // Check if the argument is an already @injected function
         if call.args.len() == 1 {
