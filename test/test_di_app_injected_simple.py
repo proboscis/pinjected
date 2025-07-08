@@ -364,21 +364,25 @@ class TestReduceInjectedExpr:
         def test_func():
             pass
 
-        expr = Object(InjectedFromFunction(test_func, {"arg": "value"}))
+        async def async_test_func():
+            return test_func()
 
-        with patch(
-            "pinjected.di.app_injected.reduce_injected_expr",
-            side_effect=lambda x: "kwargs_reduced",
-        ) as mock_reduce:
-            # First call is for the original expression, second is for kwargs
-            mock_reduce.side_effect = [None, "kwargs_reduced"]
+        # InjectedFromFunction expects original_function, target_function, and kwargs_mapping
+        injected_obj = InjectedFromFunction(
+            original_function=test_func,
+            target_function=async_test_func,
+            kwargs_mapping={"arg": "value"},
+        )
+        expr = Object(injected_obj)
 
-            # Call reduce_injected_expr directly
-            from pinjected.di.app_injected import reduce_injected_expr as real_reduce
+        from pinjected.di.app_injected import reduce_injected_expr
 
-            result = real_reduce(expr)
+        result = reduce_injected_expr(expr)
 
-            assert result == "test_func(kwargs_reduced)"
+        # The function name and the reduced kwargs should be in the result
+        # Since target_function is async_test_func, that's what will appear in the result
+        assert "async_test_func" in result
+        assert result.startswith("async_test_func(")
 
     def test_reduce_delegated_var(self):
         """Test reducing DelegatedVar expression."""
@@ -387,20 +391,14 @@ class TestReduceInjectedExpr:
 
         expr = Object(mock_dv)
 
-        with patch(
-            "pinjected.di.app_injected.reduce_injected_expr",
-            side_effect=lambda x: str(x.value),
-        ) as mock_reduce:
-            # First call is for the original expression, second is for the eval result
-            mock_reduce.side_effect = [None, "delegated_value"]
+        from pinjected.di.app_injected import reduce_injected_expr
 
-            # Call reduce_injected_expr directly
-            from pinjected.di.app_injected import reduce_injected_expr as real_reduce
+        result = reduce_injected_expr(expr)
 
-            real_reduce(expr)
-
-            # The function should call eval() and then reduce the result
-            mock_dv.eval.assert_called_once()
+        # The function should call eval() and then reduce the result
+        mock_dv.eval.assert_called_once()
+        # The result should be the reduced value from the eval result
+        assert result == "delegated_value"
 
     def test_reduce_evaled_injected(self):
         """Test reducing EvaledInjected expression."""
@@ -461,7 +459,7 @@ class TestHelperFunctions:
         expr = Object("test")
 
         def transformer(e):
-            if isinstance(e, Object) and e.value == "test":
+            if isinstance(e, Object) and e.data == "test":
                 return Object("transformed")
             return e
 
@@ -473,7 +471,7 @@ class TestHelperFunctions:
         expr = Call(Object("func"), (Object("arg1"),), {"key": Object("val")})
 
         def transformer(e):
-            if isinstance(e, Object) and e.value == "arg1":
+            if isinstance(e, Object) and e.data == "arg1":
                 return Object("new_arg")
             return e
 
@@ -485,7 +483,7 @@ class TestHelperFunctions:
         expr = BiOp("+", Object(1), Object(2))
 
         def transformer(e):
-            if isinstance(e, Object) and e.value == 1:
+            if isinstance(e, Object) and e.data == 1:
                 return Object(10)
             return e
 
@@ -497,19 +495,19 @@ class TestHelperFunctions:
         expr = UnaryOp("-", Object(5))
 
         def transformer(e):
-            if isinstance(e, Object) and e.value == 5:
+            if isinstance(e, Object) and e.data == 5:
                 return Object(10)
             return e
 
         result = walk_replace(expr, transformer)
-        assert result.tgt == Object(10)
+        assert result.target == Object(10)
 
     def test_walk_replace_attr(self):
         """Test walk_replace with Attr expression."""
         expr = Attr(Object("obj"), "attribute")
 
         def transformer(e):
-            if isinstance(e, Object) and e.value == "obj":
+            if isinstance(e, Object) and e.data == "obj":
                 return Object("new_obj")
             return e
 
@@ -521,7 +519,7 @@ class TestHelperFunctions:
         expr = GetItem(Object("dict"), Object("key"))
 
         def transformer(e):
-            if isinstance(e, Object) and e.value == "key":
+            if isinstance(e, Object) and e.data == "key":
                 return Object("new_key")
             return e
 
@@ -549,36 +547,36 @@ class TestHelperFunctions:
 
     def test_await_awaitables_with_awaitable(self):
         """Test await_awaitables with awaitable object."""
-        mock_awaitable = Mock()
-        mock_awaitable.__is_awaitable__ = True
+        # Create a mock that has __is_awaitable__ attribute
+        mock_awaitable = type("MockAwaitable", (), {"__is_awaitable__": True})()
 
         expr = Object(mock_awaitable)
         result = await_awaitables(expr)
 
         assert isinstance(result, UnaryOp)
-        assert result.op == "await"
-        assert result.tgt == expr
+        assert result.name == "await"
+        assert result.target == expr
 
     def test_await_awaitables_with_async_function_call(self):
         """Test await_awaitables with async function call."""
-        mock_func = Mock()
-        mock_func.__is_async_function__ = True
+        # Create a mock that has __is_async_function__ attribute
+        mock_func = type("MockAsyncFunc", (), {"__is_async_function__": True})()
 
         # Test Call with Object wrapped async function
         expr = Call(Object(mock_func), (), {})
         result = await_awaitables(expr)
 
         assert isinstance(result, UnaryOp)
-        assert result.op == "await"
-        assert result.tgt == expr
+        assert result.name == "await"
+        assert result.target == expr
 
         # Test Call with direct async function
         expr2 = Call(mock_func, (), {})
         result2 = await_awaitables(expr2)
 
         assert isinstance(result2, UnaryOp)
-        assert result2.op == "await"
-        assert result2.tgt == expr2
+        assert result2.name == "await"
+        assert result2.target == expr2
 
     def test_await_awaitables_no_change(self):
         """Test await_awaitables with non-awaitable expression."""
@@ -624,7 +622,9 @@ class TestInjectedIter:
 
     def test_injected_iter_next(self):
         """Test __next__ method."""
-        mock_expr = Mock()
+        from unittest.mock import MagicMock
+
+        mock_expr = MagicMock()
         mock_expr.__getitem__.side_effect = ["first", "second", "third"]
 
         iter_obj = InjectedIter(mock_expr)

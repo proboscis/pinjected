@@ -44,6 +44,8 @@ packages = ["src/injected_utils"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src/injected_utils"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.sources]
 pinjected = { workspace = true }

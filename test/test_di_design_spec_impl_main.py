@@ -27,19 +27,25 @@ class TestMainBlockCoverage:
         assert "success" in str(success)
         assert "Failure" in str(failure) or "IOResult" in str(failure)
 
-        # Test value_or
-        assert success.value_or("hello") == IOSuccess("success")
-        assert failure.value_or("hello").unwrap() == "hello"
+        # Test value_or - returns IO object
+        assert str(success.value_or("hello")) == "<IO: success>"
+        assert str(failure.value_or("hello")) == "<IO: hello>"
 
         # Test unsafe_perform_io
+        from returns.result import Failure
+
         success_result = unsafe_perform_io(success)
         failure_result = unsafe_perform_io(failure)
 
         assert success_result.unwrap() == "success"
-        assert failure_result.is_failure()
+        assert isinstance(failure_result, Failure)
 
-        # Test unwrap on success
-        assert unsafe_perform_io(success.unwrap()).unwrap() == "success"
+        # Test unwrap on IOSuccess returns Success
+        from returns.io import IO
+
+        unwrapped = success.unwrap()
+        assert isinstance(unwrapped, IO)
+        assert unwrapped._inner_value == "success"
 
     @pytest.mark.asyncio
     async def test_future_safe_error_handling(self):
@@ -58,13 +64,16 @@ class TestMainBlockCoverage:
         res = await fut_res.awaitable()
 
         # Should be a failure
+        from returns.result import Failure
+
         io_res = unsafe_perform_io(res)
-        assert io_res.is_failure()
-        assert "error" in str(io_res.failure())
+        assert isinstance(io_res, Failure)
+        assert "error" in str(io_res)
 
     @pytest.mark.asyncio
     async def test_future_result_recovery(self):
         """Test FutureResultE recovery using lash."""
+        from returns.result import Failure
 
         @future_safe
         async def error_func():
@@ -92,7 +101,7 @@ class TestMainBlockCoverage:
         recovered_3_result = await recovered_3.awaitable()
 
         # Original should be failure
-        assert unsafe_perform_io(original_result).is_failure()
+        assert isinstance(unsafe_perform_io(original_result), Failure)
 
         # All recovered versions should be success
         assert unsafe_perform_io(recovered_result).unwrap() == "recovered"
@@ -102,6 +111,7 @@ class TestMainBlockCoverage:
     @pytest.mark.asyncio
     async def test_await_target_pattern(self):
         """Test the await_target pattern from main block."""
+        from returns.result import Failure
 
         @future_safe
         async def error_func():
@@ -117,12 +127,12 @@ class TestMainBlockCoverage:
         # Test with error
         fut_res = error_func()
         result = await await_target(fut_res)
-        assert result.is_failure()
+        assert isinstance(unsafe_perform_io(result), Failure)
 
         # Test with recovery
         recovered = fut_res.lash(recover)
         recovered_result = await await_target(recovered)
-        assert recovered_result.unwrap() == "recovered"
+        assert unsafe_perform_io(recovered_result).unwrap() == "recovered"
 
     def test_maybe_behavior(self):
         """Test Maybe (Some/Nothing) behavior."""
@@ -137,9 +147,9 @@ class TestMainBlockCoverage:
         bind_result = some.bind(lambda d: Some(isinstance(d, str)))
         assert bind_result.unwrap() is True
 
-        # Test lash on Nothing (should remain Nothing)
+        # Test lash on Nothing (should recover)
         lash_result = none.lash(lambda fail: Some("recovered"))
-        assert lash_result == Nothing
+        assert lash_result == Some("recovered")
 
     def test_main_block_execution(self):
         """Test that simulates the main block execution."""

@@ -3,10 +3,9 @@
 import pytest
 from unittest.mock import Mock, patch
 import asyncio
-from returns.result import Success, Failure
+from returns.result import Result, Success, Failure
 
 from pinjected.di.graph import (
-    MissingDependencyException,
     OGFactoryByDesign,
     IObjectGraph,
     ProvideEvent,
@@ -24,6 +23,7 @@ from pinjected.di.graph import (
     SessionValue,
     MyObjectGraph,
     DependencyResolver,
+    DependencyResolutionError,
 )
 from pinjected.exceptions import DependencyResolutionFailure
 from pinjected import Injected
@@ -48,8 +48,9 @@ class TestBasicGraphComponents:
 
     def test_no_mapping_error_creation(self):
         """Test NoMappingError creation."""
-        error = NoMappingError("test_key", ["parent", "child", "test_key"])
-        assert str(error) == "('test_key', ['parent', 'child', 'test_key'])"
+        error = NoMappingError("test_key")
+        assert str(error) == "No mapping found for DI:test_key"
+        assert error.key == "test_key"
 
     def test_provide_event_creation(self):
         """Test ProvideEvent creation."""
@@ -64,24 +65,33 @@ class TestBasicGraphComponents:
     def test_event_distributor(self):
         """Test EventDistributor functionality."""
         dist = EventDistributor()
-        assert dist.listeners == []
+        assert dist.callbacks == []
+        assert dist.event_history == []
 
-        # Add listeners
-        listener1 = Mock()
-        listener2 = Mock()
-        dist.add_listener(listener1)
-        dist.add_listener(listener2)
+        # Add callbacks
+        callback1 = Mock()
+        callback2 = Mock()
+        dist.register(callback1)
+        dist.register(callback2)
 
-        # Distribute event
+        # Emit event
         event = ProvideEvent(["key"], "provide", "data")
-        dist(event)
+        dist.emit(event)
 
-        listener1.assert_called_once_with(event)
-        listener2.assert_called_once_with(event)
+        callback1.assert_called_once_with(event)
+        callback2.assert_called_once_with(event)
+        assert event in dist.event_history
 
     def test_get_caller_info(self):
         """Test get_caller_info returns valid info."""
-        filename, lineno = get_caller_info(1)
+        result = get_caller_info(1)
+
+        # @safe decorator returns a Result type
+        assert isinstance(result, Result)
+        assert isinstance(result, Success)
+
+        # Extract the values
+        filename, lineno = result.unwrap()
         assert isinstance(filename, str)
         assert isinstance(lineno, int)
         assert lineno > 0
@@ -109,7 +119,9 @@ class TestBasicGraphComponents:
 
     def test_providable_to_injected_invalid(self):
         """Test providable_to_injected with invalid type."""
-        with pytest.raises(TypeError, match="Unknown target"):
+        with pytest.raises(
+            TypeError, match="target must be either class or a string or Injected"
+        ):
             providable_to_injected(123)
 
 
@@ -209,6 +221,7 @@ class TestMChildScope:
         """Test provide delegates to parent."""
         parent = Mock(spec=IScope)
         parent.provide.return_value = "parent_value"
+        parent.__contains__ = Mock(return_value=True)  # normal_key is in parent
 
         child = MChildScope(parent=parent, override_targets={"other_key"})
 
@@ -238,7 +251,7 @@ class TestOverridingScope:
         """Test provide uses override value."""
         parent = Mock(spec=IScope)
         overrides = {"key1": "override1", "key2": "override2"}
-        scope = OverridingScope(parent=parent, overrides=overrides)
+        scope = OverridingScope(src=parent, overrides=overrides)
 
         provider = Mock()
         result = scope.provide("key1", provider, ["key1"])
@@ -252,7 +265,7 @@ class TestOverridingScope:
         parent = Mock(spec=IScope)
         parent.provide.return_value = "parent_value"
 
-        scope = OverridingScope(parent=parent, overrides={"other": "value"})
+        scope = OverridingScope(src=parent, overrides={"other": "value"})
 
         provider = Mock()
         result = scope.provide("key", provider, ["key"])
@@ -266,7 +279,7 @@ class TestOverridingScope:
         logger = Mock()
         parent.trace_logger = logger
 
-        scope = OverridingScope(parent=parent, overrides={})
+        scope = OverridingScope(src=parent, overrides={})
         assert scope.trace_logger == logger
 
 
@@ -280,32 +293,50 @@ class TestSessionValue:
 
         session = SessionValue(graph, designed)
 
-        assert session.graph is graph
-        assert session.tgt is designed
+        assert session.parent is graph
+        assert session.designed is designed
 
     def test_get(self):
         """Test SessionValue.get() method."""
         graph = Mock(spec=IObjectGraph)
-        graph.provide.return_value = "provided_value"
+
+        # Set up designed mock
         designed = Mock(spec=Designed)
+        designed.design = Mock()
+        designed.internal_injected = "test_injected"
+
+        # Set up child_session mock
+        child_session = Mock()
+        child_session.__getitem__ = Mock(return_value="provided_value")
+        graph.child_session.return_value = child_session
 
         session = SessionValue(graph, designed)
-        result = session.get()
+        result = session.value
 
         assert result == "provided_value"
-        graph.provide.assert_called_once_with(designed)
+        child_session.__getitem__.assert_called_once_with("test_injected")
 
     def test_await(self):
-        """Test SessionValue.__await__() method."""
+        """Test SessionValue value property access."""
+        # SessionValue doesn't have __await__ method
+        # Testing value property instead
         graph = Mock(spec=IObjectGraph)
-        graph.provide.return_value = "async_value"
+
+        # Set up designed mock
         designed = Mock(spec=Designed)
+        designed.design = Mock()
+        designed.internal_injected = "test_injected"
+
+        # Set up child_session mock
+        child_session = Mock()
+        child_session.__getitem__ = Mock(return_value="async_value")
+        graph.child_session.return_value = child_session
 
         session = SessionValue(graph, designed)
 
-        # Test that __await__ returns an iterator
-        awaitable = session.__await__()
-        assert hasattr(awaitable, "__next__")
+        # Test both value and __value__ properties
+        assert session.value == "async_value"
+        assert session.__value__ == "async_value"
 
 
 class TestRichTraceLogger:
@@ -364,43 +395,57 @@ class TestMyObjectGraph:
 
     def test_properties(self):
         """Test MyObjectGraph properties."""
-        factory = Mock()
         design = Mock()
         resolver = Mock(spec=DependencyResolver)
         scope = Mock(spec=IScope)
 
-        graph = MyObjectGraph(
-            factory=factory, design=design, resolver=resolver, scope=scope
-        )
+        graph = MyObjectGraph(_resolver=resolver, src_design=design, scope=scope)
 
-        assert graph.factory is factory
-        assert graph.design is design
+        # Check factory is created from design
+        assert hasattr(graph, "factory")
+        assert graph.src_design is design
         assert graph.resolver is resolver
         assert graph.scope is scope
 
     def test_provide_success(self):
         """Test successful provide."""
         resolver = Mock(spec=DependencyResolver)
+
+        # Set up dependency_tree to return a Success with empty dict
+        resolver.dependency_tree.return_value = Success({})
+        # Set up find_failures to return empty dict (no failures)
+        resolver.find_failures.return_value = {}
+        # Set up provide to return Success
         resolver.provide.return_value = Success("result")
 
-        graph = MyObjectGraph(
-            factory=Mock(), design=Mock(), resolver=resolver, scope=Mock()
-        )
+        # Mock the design properly
+        design_mock = Mock()
+        design_mock.bindings = {}  # DIGraph expects this to be iterable
+
+        graph = MyObjectGraph(_resolver=resolver, src_design=design_mock, scope=Mock())
 
         result = graph.provide("test_key")
-        assert result == "result"
+        # provide returns a Result object
+        assert isinstance(result, Success)
+        assert result.unwrap() == "result"
 
     def test_provide_failure(self):
         """Test provide with failure."""
         failure = Mock(spec=DependencyResolutionFailure)
         resolver = Mock(spec=DependencyResolver)
-        resolver.provide.return_value = Failure(failure)
 
-        graph = MyObjectGraph(
-            factory=Mock(), design=Mock(), resolver=resolver, scope=Mock()
-        )
+        # Set up dependency_tree to return a Success with nested Result values
+        resolver.dependency_tree.return_value = Success({"test": Failure(failure)})
+        # Set up find_failures to return failures (list, not dict)
+        resolver.find_failures.return_value = [failure]
 
-        with pytest.raises(MissingDependencyException):
+        # Mock the design properly
+        design_mock = Mock()
+        design_mock.bindings = {}
+
+        graph = MyObjectGraph(_resolver=resolver, src_design=design_mock, scope=Mock())
+
+        with pytest.raises(DependencyResolutionError):
             graph.provide("test_key")
 
 

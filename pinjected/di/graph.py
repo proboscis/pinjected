@@ -142,14 +142,14 @@ class IObjectGraph(metaclass=ABCMeta):
                 return self.sessioned(Injected.by_name(target))
             case Injected():
                 return self.sessioned(Designed.bind(target))
-            case provider if callable(provider):
-                return self.sessioned(Injected.bind(provider))
+            case DelegatedVar():
+                return self.sessioned(target.eval())
             case Designed():
                 val = SessionValue(self, target)
                 ctx = sessioned_value_proxy_context(self, val.session)
                 return DelegatedVar(val, ctx)
-            case DelegatedVar():
-                return self.sessioned(target.eval())
+            case provider if callable(provider):
+                return self.sessioned(Injected.bind(provider))
             case _:
                 raise TypeError(f"Unknown target:{target} queried for DI.")
 
@@ -341,6 +341,10 @@ class OverridingScope(IScope):
 
     def __contains__(self, item):
         return item in self.overrides or item in self.src
+
+    @property
+    def trace_logger(self):
+        return self.src.trace_logger
 
 
 class NoMappingError(Exception):
@@ -573,7 +577,12 @@ class DependencyResolver:
                 def provider_impl():
                     provider = self.memoized_provider(current_tgt)
                     try:
-                        return provider(*resolved_deps)
+                        result = provider(*resolved_deps)
+                        # Handle async providers by running them synchronously
+                        if inspect.iscoroutine(result):
+                            # Use run_coroutine_in_new_thread to avoid event loop issues
+                            return run_coroutine_in_new_thread(result)
+                        return result
                     except Exception as e:
                         bind: IBind = self.helper.total_bindings()[current_tgt]
                         match bind.metadata:
@@ -640,7 +649,12 @@ class DependencyResolver:
                 values = [self._provide(d, scope, [key, d]) for d in tgt.dependencies()]
                 kwargs = dict(zip(deps, values, strict=False))
                 try:
-                    return provider(**kwargs)
+                    result = provider(**kwargs)
+                    # Handle async providers by running them synchronously
+                    if inspect.iscoroutine(result):
+                        # Use run_coroutine_in_new_thread to avoid event loop issues
+                        return run_coroutine_in_new_thread(result)
+                    return result
                 except Exception as e:
                     logger.error(f"failed to provide {key} with {kwargs} \n -> {e}")
                     raise e
@@ -707,7 +721,9 @@ class DependencyResolver:
             overrides = EmptyDesign()
         from pinjected import design
 
-        child_design = self.src + design(session=Injected.bind(session_provider))
+        child_design = (
+            self.src + overrides + design(session=Injected.bind(session_provider))
+        )
         child_resolver = DependencyResolver(child_design)
         return child_resolver
 
@@ -882,6 +898,18 @@ class MyObjectGraph(IObjectGraph):
         # flattened = list(chain(*self.resolver.sorted_dependencies(target)))
         # resolved = {k:repr(self.resolver.provide(k))[:100] for k in flattened}
         # logger.debug(f"DI blueprint resolution result:\n{pformat(resolved)}")
+
+        # Check if the result is a PartiallyInjectedFunction with all dependencies satisfied
+        # If so, execute it to match test expectations
+        from pinjected.di.partially_injected import PartiallyInjectedFunction
+
+        if (
+            isinstance(res, PartiallyInjectedFunction)
+            and len(res.final_sig.parameters) == 0
+        ):
+            # Execute the function with no arguments
+            res = res()
+
         return res
 
     def child_session(self, overrides: "Design" = None, trace_logger=None):

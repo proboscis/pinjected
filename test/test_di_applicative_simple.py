@@ -108,7 +108,10 @@ class TestApplicative:
 
         # Test zip
         result = app.zip(1, 2, 3)
-        assert result == (1, 2, 3)
+        # zip should return an object with a map method
+        assert hasattr(result, "map")
+        # When mapped with identity, should give back the tuple
+        assert result.map(lambda x: x) == (1, 2, 3)
 
         # Test pure
         result = app.pure("hello")

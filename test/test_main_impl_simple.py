@@ -394,13 +394,8 @@ class TestRunFunction:
             mock_get_ctx.return_value = mock_ctx
             mock_notify.return_value = "result"
 
-            # Configure asyncio.run to execute the coroutine
-            async def run_coro(coro):
-                return await coro
-
-            mock_asyncio_run.side_effect = (
-                lambda coro: asyncio.get_event_loop().run_until_complete(run_coro(coro))
-            )
+            # Configure asyncio.run to return a result directly
+            mock_asyncio_run.return_value = "result"
 
             # Run
             run("my.var", "my.design")

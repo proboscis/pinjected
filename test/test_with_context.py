@@ -37,28 +37,29 @@ class TestWithContext:
         assert repr_str == "WithContext()"
 
     def test_with_context_is_not_hashable(self):
-        """Test WithContext instances are not hashable by default."""
+        """Test WithContext instances are hashable (frozen dataclass)."""
         context = WithContext()
-        # Regular dataclasses are not hashable by default
-        with pytest.raises(TypeError, match="unhashable type"):
-            hash(context)
+        # Frozen dataclasses are hashable
+        hash_value = hash(context)
+        assert isinstance(hash_value, int)
 
     def test_with_context_not_in_set(self):
-        """Test WithContext cannot be used in sets (not hashable)."""
+        """Test WithContext can be used in sets (is hashable)."""
         context1 = WithContext()
         context2 = WithContext()
 
-        # Should raise TypeError since not hashable
-        with pytest.raises(TypeError, match="unhashable type"):
-            {context1, context2}
+        # Should work since frozen dataclasses are hashable
+        context_set = {context1, context2}
+        # All instances are equal, so set should have only one element
+        assert len(context_set) == 1
 
     def test_with_context_not_as_dict_key(self):
-        """Test WithContext cannot be used as dict key (not hashable)."""
+        """Test WithContext can be used as dict key (is hashable)."""
         context = WithContext()
 
-        # Should raise TypeError since not hashable
-        with pytest.raises(TypeError, match="unhashable type"):
-            {context: "value"}
+        # Should work since frozen dataclasses are hashable
+        context_dict = {context: "value"}
+        assert context_dict[context] == "value"
 
     def test_with_context_copy(self):
         """Test copying WithContext instances."""

@@ -1,6 +1,5 @@
 """Tests for di.monadic module."""
 
-import pytest
 from returns.result import Success, Failure
 from pinjected.di.monadic import getitem_opt
 
@@ -61,17 +60,19 @@ class TestGetitemOpt:
         assert result.unwrap() == "y"
 
     def test_object_without_getitem(self):
-        """Test object without __getitem__ method raises AttributeError."""
+        """Test object without __getitem__ method returns Failure."""
 
         class NoGetItem:
             pass
 
         obj = NoGetItem()
-        # The AttributeError happens before safe() can catch it
-        with pytest.raises(
-            AttributeError, match="'NoGetItem' object has no attribute '__getitem__'"
-        ):
-            getitem_opt(obj, "key")
+        # getitem_opt returns a Failure, not raises an exception
+        result = getitem_opt(obj, "key")
+        assert isinstance(result, Failure)
+        assert isinstance(result.failure(), AttributeError)
+        assert "'NoGetItem' object has no attribute '__getitem__'" in str(
+            result.failure()
+        )
 
     def test_custom_getitem(self):
         """Test custom object with __getitem__ method."""

@@ -251,15 +251,23 @@ async def test_run_in_process_wait_for_result():
 
 def test_future_with_std_dataclass():
     """Test FutureWithStd dataclass creation."""
-    future = asyncio.Future()
-    stdout_q = asyncio.Queue()
-    stderr_q = asyncio.Queue()
+    # Create event loop for asyncio objects
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    fws = FutureWithStd(result=future, stdout_queue=stdout_q, stderr_queue=stderr_q)
+    try:
+        future = asyncio.Future()
+        stdout_q = asyncio.Queue()
+        stderr_q = asyncio.Queue()
 
-    assert fws.result is future
-    assert fws.stdout_queue is stdout_q
-    assert fws.stderr_queue is stderr_q
+        fws = FutureWithStd(result=future, stdout_queue=stdout_q, stderr_queue=stderr_q)
+
+        assert fws.result is future
+        assert fws.stdout_queue is stdout_q
+        assert fws.stderr_queue is stderr_q
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
 
 
 if __name__ == "__main__":

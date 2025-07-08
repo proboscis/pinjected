@@ -10,6 +10,7 @@ class TestPClassExample:
     def test_pclass_example_attributes(self):
         """Test that PClassExample has expected attributes."""
         # Create instance with attributes
+        # PClassExample is a plain class, not transformed
         obj = PClassExample()
         obj._dep1 = "dep1_value"
         obj._dep2 = "dep2_value"

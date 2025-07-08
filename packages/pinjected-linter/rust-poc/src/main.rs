@@ -1,7 +1,8 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
+use git2::{Repository, StatusOptions};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::time::Instant;
 
@@ -171,6 +172,12 @@ struct Args {
     /// Example: pinjected-lint --error-on-warning
     #[arg(long = "error-on-warning")]
     error_on_warning: bool,
+
+    /// Only lint files that have been modified in git
+    ///
+    /// Example: pinjected-lint --modified
+    #[arg(long = "modified")]
+    modified: bool,
 }
 
 fn show_configuration_docs() {
@@ -264,6 +271,44 @@ fn show_rule_documentation(rule_id: &str) -> Result<()> {
         eprintln!("Use --show-config-docs to see available rules.");
         process::exit(exit_codes::USAGE_ERROR);
     }
+}
+
+/// Get list of modified Python files in the git repository
+fn get_git_modified_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
+    let repo = Repository::discover(repo_path)?;
+    let mut status_options = StatusOptions::new();
+    status_options.include_untracked(true);
+    status_options.include_ignored(false);
+    
+    let statuses = repo.statuses(Some(&mut status_options))?;
+    
+    let mut modified_files = Vec::new();
+    for entry in statuses.iter() {
+        let status = entry.status();
+        
+        // Check if file is modified, new, or renamed
+        if status.contains(git2::Status::WT_MODIFIED)
+            || status.contains(git2::Status::WT_NEW)
+            || status.contains(git2::Status::WT_RENAMED)
+            || status.contains(git2::Status::INDEX_MODIFIED)
+            || status.contains(git2::Status::INDEX_NEW)
+            || status.contains(git2::Status::INDEX_RENAMED)
+        {
+            if let Some(path_str) = entry.path() {
+                let path = PathBuf::from(path_str);
+                // Only include Python files
+                if path.extension().and_then(|s| s.to_str()) == Some("py") {
+                    // Make path absolute relative to repo root
+                    let abs_path = repo.workdir()
+                        .ok_or_else(|| anyhow::anyhow!("No working directory"))?
+                        .join(&path);
+                    modified_files.push(abs_path);
+                }
+            }
+        }
+    }
+    
+    Ok(modified_files)
 }
 
 fn main() -> Result<()> {
@@ -373,50 +418,123 @@ fn main() -> Result<()> {
         eprintln!("Starting Pinjected linter");
     }
 
-    for path_str in &args.paths {
-        let path = Path::new(path_str);
+    // Handle --modified flag
+    if args.modified {
+        // Get the working directory to search for git repo
+        let cwd = std::env::current_dir()?;
+        
+        match get_git_modified_files(&cwd) {
+            Ok(modified_files) => {
+                if modified_files.is_empty() {
+                    if args.verbose {
+                        eprintln!("No modified Python files found in git repository");
+                    }
+                } else {
+                    if args.verbose {
+                        eprintln!("Found {} modified Python files to analyze", modified_files.len());
+                        for file in &modified_files {
+                            eprintln!("  - {}", file.display());
+                        }
+                    }
+                    
+                    // Lint each modified file
+                    for file_path in modified_files {
+                        if args.verbose {
+                            eprintln!("Analyzing: {}", file_path.display());
+                        }
+                        
+                        // Skip if file matches skip patterns
+                        let should_skip = skip_patterns.iter().any(|pattern| {
+                            file_path.to_str()
+                                .map(|s| s.contains(pattern))
+                                .unwrap_or(false)
+                        });
+                        
+                        if should_skip {
+                            if args.verbose {
+                                eprintln!("  Skipping (matches exclude pattern)");
+                            }
+                            continue;
+                        }
+                        
+                        match lint_path(&file_path, options.clone()) {
+                            Ok(result) => {
+                                total_files += result.files_analyzed;
 
-        // Check if path exists
-        if !path.exists() {
-            eprintln!("Error: Path not found: {}", path.display());
-            had_file_errors = true;
-            continue;
-        }
+                                // Track errors
+                                if result.files_with_errors > 0 {
+                                    had_file_errors = true;
+                                }
+                                if result.parse_errors > 0 {
+                                    had_parse_errors = true;
+                                }
 
-        if args.verbose {
-            let files = if path.is_file() {
-                vec![path.to_path_buf()]
-            } else {
-                find_python_files(path, &skip_patterns)
-            };
-            eprintln!(
-                "Found {} Python files to analyze in {}",
-                files.len(),
-                path.display()
-            );
-        }
-
-        // Run linter
-        match lint_path(path, options.clone()) {
-            Ok(result) => {
-                total_files += result.files_analyzed;
-
-                // Track errors
-                if result.files_with_errors > 0 {
-                    had_file_errors = true;
-                }
-                if result.parse_errors > 0 {
-                    had_parse_errors = true;
-                }
-
-                // Collect violations
-                for (file, violations) in result.violations {
-                    all_violations.push((file, violations));
+                                // Collect violations
+                                for (file, violations) in result.violations {
+                                    all_violations.push((file, violations));
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error processing file {}: {}", file_path.display(), e);
+                                had_file_errors = true;
+                            }
+                        }
+                    }
                 }
             }
             Err(e) => {
-                eprintln!("Error processing path {}: {}", path.display(), e);
+                eprintln!("Error getting modified files from git: {}", e);
+                eprintln!("Make sure you're running this command inside a git repository");
+                process::exit(exit_codes::USAGE_ERROR);
+            }
+        }
+    } else {
+        // Normal path processing
+        for path_str in &args.paths {
+            let path = Path::new(path_str);
+
+            // Check if path exists
+            if !path.exists() {
+                eprintln!("Error: Path not found: {}", path.display());
                 had_file_errors = true;
+                continue;
+            }
+
+            if args.verbose {
+                let files = if path.is_file() {
+                    vec![path.to_path_buf()]
+                } else {
+                    find_python_files(path, &skip_patterns)
+                };
+                eprintln!(
+                    "Found {} Python files to analyze in {}",
+                    files.len(),
+                    path.display()
+                );
+            }
+
+            // Run linter
+            match lint_path(path, options.clone()) {
+                Ok(result) => {
+                    total_files += result.files_analyzed;
+
+                    // Track errors
+                    if result.files_with_errors > 0 {
+                        had_file_errors = true;
+                    }
+                    if result.parse_errors > 0 {
+                        had_parse_errors = true;
+                    }
+
+                    // Collect violations
+                    for (file, violations) in result.violations {
+                        all_violations.push((file, violations));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error processing path {}: {}", path.display(), e);
+                    had_file_errors = true;
+                }
             }
         }
     }

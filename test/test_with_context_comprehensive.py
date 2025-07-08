@@ -37,19 +37,19 @@ class TestWithContext:
         assert repr_str == "WithContext()"
 
     def test_with_context_not_hashable(self):
-        """Test that WithContext instances are not hashable by default."""
+        """Test that WithContext instances are hashable (frozen dataclass)."""
         ctx1 = WithContext()
 
-        # Dataclasses without frozen=True are not hashable
-        with pytest.raises(TypeError, match="unhashable type"):
-            hash(ctx1)
+        # Dataclasses with frozen=True are hashable
+        hash_value = hash(ctx1)
+        assert isinstance(hash_value, int)
 
     def test_with_context_mutable(self):
-        """Test that WithContext instances are mutable."""
+        """Test that WithContext instances are immutable (frozen)."""
         ctx = WithContext()
-        # Can add attributes dynamically
-        ctx.custom_attr = "value"
-        assert ctx.custom_attr == "value"
+        # Cannot add attributes dynamically to frozen dataclass
+        with pytest.raises(AttributeError):
+            ctx.custom_attr = "value"
 
     def test_with_context_multiple_instances(self):
         """Test multiple WithContext instances."""

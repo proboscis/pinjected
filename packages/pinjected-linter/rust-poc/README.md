@@ -56,6 +56,10 @@ pinjected-linter-rust /path/to/project --show-only error,warning
 # Show minimum severity level and above (threshold)
 pinjected-linter-rust /path/to/project --severity error     # errors only
 pinjected-linter-rust /path/to/project --severity warning   # warnings and errors
+
+# Lint only modified files in git
+pinjected-linter-rust --modified
+pinjected-linter-rust --modified --verbose  # show which files are being analyzed
 ```
 
 ### Severity Filtering
@@ -73,6 +77,33 @@ The linter provides two ways to filter violations by severity:
   - `--show-only error,warning`: Shows errors and warnings, but not info
 
 Note: `--severity` and `--show-only` cannot be used together.
+
+### Git Integration
+
+The linter can analyze only files that have been modified in your git repository:
+
+```bash
+# Lint only modified files (staged and unstaged)
+pinjected-linter --modified
+
+# With verbose output to see which files are being analyzed
+pinjected-linter --modified --verbose
+
+# Combine with other options
+pinjected-linter --modified --show-only error
+pinjected-linter --modified --error-on-warning
+```
+
+The `--modified` flag will:
+- Include files with changes in the working directory (modified, new, renamed)
+- Include files with changes in the staging area
+- Only analyze Python files (`.py` extension)
+- Respect the same exclude patterns from configuration
+
+This is particularly useful for:
+- Pre-commit hooks
+- CI/CD pipelines that only need to check changed files
+- Large codebases where you want to focus on recent changes
 
 ### Output Statistics
 

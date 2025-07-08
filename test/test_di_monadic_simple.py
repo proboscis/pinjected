@@ -30,8 +30,7 @@ class TestGetitemOpt:
 
         assert isinstance(result, Failure)
         # Should contain KeyError
-        with pytest.raises(KeyError):
-            result.unwrap()
+        assert isinstance(result.failure(), KeyError)
 
     def test_getitem_opt_with_list_success(self):
         """Test getitem_opt with list and valid index."""
@@ -53,8 +52,7 @@ class TestGetitemOpt:
 
         assert isinstance(result, Failure)
         # Should contain IndexError
-        with pytest.raises(IndexError):
-            result.unwrap()
+        assert isinstance(result.failure(), IndexError)
 
         # Negative index out of bounds
         result2 = getitem_opt(data, -10)
@@ -93,8 +91,7 @@ class TestGetitemOpt:
 
         result2 = getitem_opt(obj, "invalid")
         assert isinstance(result2, Failure)
-        with pytest.raises(ValueError):
-            result2.unwrap()
+        assert isinstance(result2.failure(), ValueError)
 
     def test_getitem_opt_with_no_getitem(self):
         """Test getitem_opt with object that doesn't have __getitem__."""
@@ -108,8 +105,7 @@ class TestGetitemOpt:
 
         assert isinstance(result, Failure)
         # Should contain AttributeError
-        with pytest.raises(AttributeError):
-            result.unwrap()
+        assert isinstance(result.failure(), AttributeError)
 
     def test_getitem_opt_with_none(self):
         """Test getitem_opt with None object."""
@@ -117,8 +113,7 @@ class TestGetitemOpt:
 
         assert isinstance(result, Failure)
         # Should contain AttributeError
-        with pytest.raises(AttributeError):
-            result.unwrap()
+        assert isinstance(result.failure(), AttributeError)
 
     def test_getitem_opt_preserves_exception_type(self):
         """Test that getitem_opt preserves the original exception type."""
@@ -126,11 +121,9 @@ class TestGetitemOpt:
 
         result = getitem_opt(data, "missing")
 
-        try:
-            result.unwrap()
-        except Exception as e:
-            assert isinstance(e, KeyError)
-            assert "missing" in str(e)
+        # Check the failure contains the original exception
+        assert isinstance(result.failure(), KeyError)
+        assert "missing" in str(result.failure())
 
 
 if __name__ == "__main__":

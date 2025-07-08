@@ -109,7 +109,7 @@ class TestFixImports:
     def test_empty_source(self):
         """Test with empty source code."""
         result = fix_imports("")
-        assert result == "\n"
+        assert result == ""
 
     def test_no_imports(self):
         """Test source with no imports."""
@@ -120,8 +120,8 @@ class TestFixImports:
 
         result = fix_imports(source)
 
-        # Should add empty line at beginning
-        assert result.startswith("\n")
+        # Should return the source as-is (no imports to remove)
+        assert result == source
         assert "def hello():" in result
 
     def test_all_imports_unused(self):

@@ -37,12 +37,16 @@ class TestWithContext:
         assert repr_str == "WithContext()"
 
     def test_with_context_hash(self):
-        """Test that WithContext instances are not hashable by default."""
+        """Test that WithContext instances are hashable (frozen=True)."""
         ctx1 = WithContext()
+        ctx2 = WithContext()
 
-        # Dataclasses without frozen=True are not hashable
-        with pytest.raises(TypeError, match="unhashable type"):
-            hash(ctx1)
+        # Dataclasses with frozen=True are hashable
+        assert hash(ctx1) == hash(ctx2)  # Same instances should have same hash
+
+        # Can be used in sets and dicts
+        assert {ctx1, ctx2} == {ctx1}  # They are equal, so set has one element
+        assert {ctx1: "value"}[ctx2] == "value"  # Can use as dict key
 
 
 if __name__ == "__main__":
