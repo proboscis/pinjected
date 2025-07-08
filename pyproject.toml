@@ -242,6 +242,7 @@ enable = [
     "PINJ013",  # Builtin shadowing (avoid shadowing builtins)
     "PINJ014",  # Missing stub file (.pyi for @injected functions)
     #"PINJ015",  # Missing slash (require / in @injected functions)
+    "PINJ019",  # No __main__ block with @injected/@instance functions
 ]
 
 # Optionally disable specific rules
