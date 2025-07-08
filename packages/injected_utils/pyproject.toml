@@ -53,5 +53,5 @@ dev = [
     "pytest>=8.1.1,<9"
 ]
 
-[tool.ruff]
+[tool.ruff.lint]
 ignore = ["F403", "F405", "F401"]

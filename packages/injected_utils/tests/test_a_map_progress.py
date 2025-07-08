@@ -47,7 +47,7 @@ async def test_a_map_progress__tqdm_raise_exception(
             total=len(items),
             desc="Testing a_map_progress",
         )
-        res = [item async for item in agen]
+        [item async for item in agen]
         raise AssertionError("Expected exception not raised")
     except Exception as e:
         if isinstance(e, CompatibleExceptionGroup):

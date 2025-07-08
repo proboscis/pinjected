@@ -196,7 +196,7 @@ def provide_cached_async(
     additonal_key,
     en_async,
     value_invalidator=lambda x: False,
-    key_encoder_factory: Callable[[inspect.Signature], KeyEncoder] = None,
+    key_encoder_factory: Callable[[inspect.Signature], KeyEncoder] = None,  # noqa: RUF013
 ):
     """
     TODO: Fix for issue #217 - @async_cached decorator does not respect key_hashers parameter
@@ -482,7 +482,7 @@ class JsonBackedSqliteDict:
         return [jsonpickle.loads(v) for v in self.src.values()]
 
     def keys(self):
-        return [jsonpickle.loads(k) for k in self.src.keys()]
+        return [jsonpickle.loads(k) for k in self.src]
 
 
 @injected
@@ -653,8 +653,8 @@ default_custom_key_hasher_factory = Injected.pure(CustomKeyHasher)
 
 @injected
 def custom_key_hasher_factory(
-    key_hasher: dict[str, callable] = None,
-    type_hasher: dict[type, callable] = None,
+    key_hasher: dict[str, callable] = None,  # noqa: RUF013
+    type_hasher: dict[type, callable] = None,  # noqa: RUF013
 ):
     """
     Use this factory along with @sync_cached to provide custom key hasher.
