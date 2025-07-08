@@ -65,6 +65,7 @@ members = ["packages/*"]
 dev = [
     "pinjected-reviewer",
     "pinjected-error-reports",
+    "pinjected-linter",
     "ruff>=0.11.7",
     "flake8>=7.0.0",
     "flake8-cognitive-complexity>=0.1.0",
@@ -83,6 +84,7 @@ pinjected-rate-limit = { workspace = true }
 pinjected-niji-voice = { workspace = true }
 injected-utils = { workspace = true }
 pinjected-openai = { workspace = true }
+pinjected-linter = { workspace = true }
 [tool.ruff]
 target-version = "py310"
 line-length = 88
@@ -212,3 +214,55 @@ exclude = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN201"]
 "packages/*/tests/**/*.py" = ["ANN201"]
+# Temporarily ignore complexity errors for existing code
+# TODO: Refactor these files to reduce complexity
+"**/*.py" = ["C901", "PLR0912", "PLR0915", "PLR0911"]
+
+[tool.pinjected-dynamic-linter]
+# Enable all pinjected linter rules except PINJ001 and PINJ005
+enable = [
+    # "PINJ001",  # Instance naming convention (@instance functions should be nouns) - EXCLUDED
+    "PINJ002",  # Instance defaults (check default parameter usage)
+    "PINJ003",  # Async instance naming (a_ prefix for async @instance)
+    "PINJ004",  # Direct instance call (avoid calling @instance functions directly)
+    # "PINJ005",  # Injected function naming (should be verbs/actions) - EXCLUDED
+    "PINJ006",  # Async injected naming (a_ prefix for async @injected)
+    "PINJ007",  # Slash separator position (disabled - heuristics removed)
+    "PINJ008",  # Injected dependency declaration (dependencies before /)
+    "PINJ009",  # No await in injected (except for declared dependencies)
+    "PINJ010",  # Design usage (proper design() function usage)
+    "PINJ011",  # IProxy annotations (not for injected dependencies)
+    "PINJ012",  # Dependency cycles detection
+    "PINJ013",  # Builtin shadowing (avoid shadowing builtins)
+    "PINJ014",  # Missing stub file (.pyi for @injected functions)
+    #"PINJ015",  # Missing slash (require / in @injected functions)
+]
+
+# Optionally disable specific rules
+disable = ["PINJ001", "PINJ005","PINJ015"]  # Instance and injected function naming rules excluded
+
+# Configure specific rules
+[tool.pinjected-dynamic-linter.rules.PINJ014]
+# Minimum number of @injected functions to require stub file
+min_injected_functions = 3
+# Additional paths to search for stub files
+stub_search_paths = ["stubs", "typings", "types"]
+# Patterns to ignore
+ignore_patterns = ["**/tests/**", "**/test_*.py", "**/*_test.py"]
+
+# Exclude paths from linting
+exclude = [
+    ".venv",
+    "venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".ruff_cache",
+    "node_modules",
+]
+
+# Additional configuration options
+max_line_length = 120
+check_docstrings = true

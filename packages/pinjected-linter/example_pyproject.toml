@@ -1,0 +1,19 @@
+[tool.pinjected-dynamic-linter]
+# Exclude specific files and directories from linting
+exclude = [
+    "**/tests/**",        # Exclude all test directories
+    "**/migrations/**",   # Exclude database migrations
+    "tmp_*.py",          # Exclude temporary files
+    "experimental/*",    # Exclude experimental directory
+    "*_backup.py"        # Exclude backup files
+]
+
+# You can also enable/disable specific rules
+# enable = ["PINJ001", "PINJ002", "PINJ003"]
+# disable = ["PINJ014"]  # Disable stub file checking
+
+# Configure specific rules
+[tool.pinjected-dynamic-linter.rules.PINJ014]
+min_injected_functions = 3
+stub_search_paths = ["stubs", "typings", "types"]
+ignore_patterns = ["**/tests/**", "**/test_*.py"]

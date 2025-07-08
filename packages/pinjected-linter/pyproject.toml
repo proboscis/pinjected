@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-pinjected-lint = "pinjected_linter.cli:main"
+pinjected-dynamic-linter = "pinjected_linter.cli:main"
 
 [project.urls]
 "Homepage" = "https://github.com/pinjected/pinjected"
