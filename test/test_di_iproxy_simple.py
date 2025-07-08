@@ -74,7 +74,7 @@ class TestIProxy:
 
         # __value__ should be an Object instance
         assert isinstance(proxy.__value__, Object)
-        assert proxy.__value__.value == value
+        assert proxy.__value__.data == value
 
     def test_iproxy_internal_context(self):
         """Test that internal context is InjectedEvalContext."""
@@ -95,7 +95,7 @@ class TestIProxy:
 
         assert proxy is not None
         assert isinstance(proxy, IProxy)
-        assert proxy.__value__.value is obj
+        assert proxy.__value__.data is obj
 
     def test_iproxy_multiple_instances(self):
         """Test creating multiple IProxy instances."""
@@ -130,7 +130,7 @@ class TestIProxy:
 
         assert proxy is not None
         assert isinstance(proxy, IProxy)
-        assert proxy.__value__.value is my_func
+        assert proxy.__value__.data is my_func
 
 
 if __name__ == "__main__":

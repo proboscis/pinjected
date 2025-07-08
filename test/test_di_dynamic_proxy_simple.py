@@ -51,7 +51,7 @@ class TestDynamicProxyContextImpl:
         result = proxy_ctx.getattr(mock_obj, "test_attr")
 
         assert isinstance(result, DelegatedVar)
-        assert result.value == "Pure(test_value)"
+        assert result.__value__ == "Pure(test_value)"
         assert result.__cxt__ is proxy_ctx
 
     def test_call(self):
@@ -73,7 +73,7 @@ class TestDynamicProxyContextImpl:
 
         mock_callable.assert_called_once_with("arg1", "arg2", kwarg="value")
         assert isinstance(result, DelegatedVar)
-        assert result.value == "Pure(call_result)"
+        assert result.__value__ == "Pure(call_result)"
 
     def test_pure(self):
         """Test pure method."""
@@ -91,7 +91,7 @@ class TestDynamicProxyContextImpl:
         result = proxy_ctx.pure("test_value")
 
         assert isinstance(result, DelegatedVar)
-        assert result.value == "Pure(test_value)"
+        assert result.__value__ == "Pure(test_value)"
         assert result.__cxt__ is proxy_ctx
 
     def test_getitem(self):
@@ -112,7 +112,7 @@ class TestDynamicProxyContextImpl:
         result = proxy_ctx.getitem(mock_obj, "key1")
 
         assert isinstance(result, DelegatedVar)
-        assert result.value == "Pure(value1)"
+        assert result.__value__ == "Pure(value1)"
 
     def test_eval(self):
         """Test eval method."""
@@ -203,7 +203,7 @@ class TestDynamicProxyContextImpl:
         result = proxy_ctx.map(mock_obj, mapper)
 
         assert isinstance(result, DelegatedVar)
-        assert result.value == "Pure(20)"
+        assert result.__value__ == "Pure(20)"
 
 
 class TestDynamicProxyIterator:
@@ -246,15 +246,15 @@ class TestDynamicProxyIterator:
         # Test iteration
         result1 = next(proxy_iter)
         assert isinstance(result1, DelegatedVar)
-        assert result1.value == "Pure(1)"
+        assert result1.__value__ == "Pure(1)"
 
         result2 = next(proxy_iter)
         assert isinstance(result2, DelegatedVar)
-        assert result2.value == "Pure(2)"
+        assert result2.__value__ == "Pure(2)"
 
         result3 = next(proxy_iter)
         assert isinstance(result3, DelegatedVar)
-        assert result3.value == "Pure(3)"
+        assert result3.__value__ == "Pure(3)"
 
         # Should raise StopIteration when exhausted
         with pytest.raises(StopIteration):
@@ -274,7 +274,7 @@ class TestDynamicProxyIterator:
 
         assert len(results) == 3
         assert all(isinstance(r, DelegatedVar) for r in results)
-        assert [r.value for r in results] == ["Pure(a)", "Pure(b)", "Pure(c)"]
+        assert [r.__value__ for r in results] == ["Pure(a)", "Pure(b)", "Pure(c)"]
 
 
 if __name__ == "__main__":

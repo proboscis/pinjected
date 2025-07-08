@@ -32,7 +32,7 @@ class TestMissingDependencyException:
         message = MissingDependencyException.create_message([])
 
         assert isinstance(message, str)
-        assert "Missing dependencies" in message
+        assert "Missing dependency" in message
 
     def test_create_message_with_failures(self):
         """Test create_message with dependency failures."""
@@ -47,7 +47,7 @@ class TestMissingDependencyException:
 
         assert "dep1" in message
         assert "dep2" in message
-        assert "Missing dependencies" in message
+        assert "Missing Dependencies" in message
 
 
 class TestOGFactoryByDesign:
@@ -60,17 +60,17 @@ class TestOGFactoryByDesign:
     def test_og_factory_by_design_creation(self):
         """Test creating OGFactoryByDesign instance."""
         mock_design = Mock()
-        factory = OGFactoryByDesign(d=mock_design)
+        factory = OGFactoryByDesign(src=mock_design)
 
-        assert factory.d is mock_design
+        assert factory.src is mock_design
 
     def test_create_graph(self):
         """Test create_graph method."""
         mock_design = Mock()
         mock_design.to_graph.return_value = Mock()
 
-        factory = OGFactoryByDesign(d=mock_design)
-        graph = factory.create_graph()
+        factory = OGFactoryByDesign(src=mock_design)
+        graph = factory.create()
 
         mock_design.to_graph.assert_called_once()
         assert graph is mock_design.to_graph.return_value
