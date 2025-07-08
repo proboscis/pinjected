@@ -1,13 +1,15 @@
 //! PINJ005: Injected function naming convention
-//! 
+//!
 //! @injected functions represent actions or operations that can be performed
 //! with injected dependencies. Using verb forms makes it clear that these
 //! are functions to be called, not values to be provided.
 
-use rustpython_ast::Stmt;
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_injected_decorator, has_injected_decorator_async, is_verb_like};
+use crate::utils::pinjected_patterns::{
+    has_injected_decorator, has_injected_decorator_async, is_verb_like,
+};
+use rustpython_ast::Stmt;
 
 pub struct InjectedFunctionNamingRule;
 
@@ -15,18 +17,18 @@ impl InjectedFunctionNamingRule {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Check if name follows verb naming convention
     fn is_verb_form(name: &str) -> bool {
         // Empty or single char names are invalid
         if name.len() <= 1 {
             return false;
         }
-        
+
         // Use the shared is_verb_like utility
         is_verb_like(name)
     }
-    
+
     /// Suggest a verb form for a noun-named function
     fn suggest_verb_form(name: &str) -> String {
         // Common noun to verb transformations
@@ -69,7 +71,7 @@ impl LintRule for InjectedFunctionNamingRule {
     fn rule_id(&self) -> &str {
         "PINJ005"
     }
-    
+
     fn description(&self) -> &str {
         "@injected functions should use verb forms"
     }
@@ -81,17 +83,16 @@ impl LintRule for InjectedFunctionNamingRule {
             Stmt::FunctionDef(func) => {
                 if has_injected_decorator(func) {
                     let function_name = &func.name;
-                    
+
                     if !Self::is_verb_form(function_name) {
                         let suggestion = Self::suggest_verb_form(function_name);
-                        
+
                         violations.push(Violation {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
                                 "@injected function '{}' uses noun form. Use verb form instead. \
                                 Consider renaming to '{}'",
-                                function_name,
-                                suggestion
+                                function_name, suggestion
                             ),
                             offset: func.range.start().to_usize(),
                             file_path: context.file_path.to_string(),
@@ -103,14 +104,14 @@ impl LintRule for InjectedFunctionNamingRule {
             Stmt::AsyncFunctionDef(func) => {
                 if has_injected_decorator_async(func) {
                     let function_name = &func.name;
-                    
+
                     // Handle async prefix for async functions
                     let (name_to_check, has_async_prefix) = if function_name.starts_with("a_") {
                         (&function_name[2..], true)
                     } else {
                         (function_name.as_str(), false)
                     };
-                    
+
                     if !Self::is_verb_form(name_to_check) {
                         let suggestion = Self::suggest_verb_form(name_to_check);
                         let final_suggestion = if has_async_prefix {
@@ -118,14 +119,13 @@ impl LintRule for InjectedFunctionNamingRule {
                         } else {
                             suggestion
                         };
-                        
+
                         violations.push(Violation {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
                                 "@injected function '{}' uses noun form. Use verb form instead. \
                                 Consider renaming to '{}'",
-                                function_name,
-                                final_suggestion
+                                function_name, final_suggestion
                             ),
                             offset: func.range.start().to_usize(),
                             file_path: context.file_path.to_string(),

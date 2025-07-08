@@ -19,7 +19,7 @@ pub struct NoqaDirective {
 /// Parse noqa directives from source code
 pub fn parse_noqa_directives(source: &str) -> Vec<NoqaDirective> {
     let mut directives = Vec::new();
-    
+
     for (line_idx, line) in source.lines().enumerate() {
         if let Some(directive) = parse_line_for_noqa(line) {
             let mut noqa = directive;
@@ -27,7 +27,7 @@ pub fn parse_noqa_directives(source: &str) -> Vec<NoqaDirective> {
             directives.push(noqa);
         }
     }
-    
+
     directives
 }
 
@@ -36,16 +36,16 @@ fn parse_line_for_noqa(line: &str) -> Option<NoqaDirective> {
     // Look for # noqa in the line
     let comment_start = line.find('#')?;
     let comment = &line[comment_start..];
-    
+
     // Check if it contains noqa
     if !comment.to_lowercase().contains("noqa") {
         return None;
     }
-    
+
     // Find the noqa part
     let noqa_start = comment.to_lowercase().find("noqa")?;
     let noqa_part = &comment[noqa_start..];
-    
+
     // Check if it's just "noqa" or has specific rules
     if noqa_part.len() == 4 || !noqa_part[4..].trim_start().starts_with(':') {
         // Generic noqa - suppress all
@@ -54,11 +54,11 @@ fn parse_line_for_noqa(line: &str) -> Option<NoqaDirective> {
             rule_ids: HashSet::new(),
         });
     }
-    
+
     // Parse specific rules after the colon
     let colon_idx = noqa_part.find(':')?;
     let rules_part = &noqa_part[colon_idx + 1..];
-    
+
     // Split by comma and trim
     let rule_ids: HashSet<String> = rules_part
         .split(',')
@@ -69,7 +69,7 @@ fn parse_line_for_noqa(line: &str) -> Option<NoqaDirective> {
             s.split_whitespace().next().unwrap_or(s).to_string()
         })
         .collect();
-    
+
     if rule_ids.is_empty() {
         // If colon present but no rules, treat as generic noqa
         Some(NoqaDirective {
@@ -77,19 +77,12 @@ fn parse_line_for_noqa(line: &str) -> Option<NoqaDirective> {
             rule_ids: HashSet::new(),
         })
     } else {
-        Some(NoqaDirective {
-            line: 0,
-            rule_ids,
-        })
+        Some(NoqaDirective { line: 0, rule_ids })
     }
 }
 
 /// Check if a violation at a specific line is suppressed by noqa directives
-pub fn is_violation_suppressed(
-    line: usize,
-    rule_id: &str,
-    directives: &[NoqaDirective],
-) -> bool {
+pub fn is_violation_suppressed(line: usize, rule_id: &str, directives: &[NoqaDirective]) -> bool {
     for directive in directives {
         if directive.line == line {
             // If no specific rules, suppress all

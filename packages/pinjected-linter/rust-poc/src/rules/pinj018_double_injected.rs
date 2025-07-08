@@ -1,14 +1,26 @@
-//! PINJ009: No direct calls to @injected functions
+//! PINJ018: Don't call injected() on already @injected decorated functions
 //!
-//! Inside @injected functions, you're building a dependency graph (AST),
-//! not executing code. Direct calls to other @injected functions are
-//! fundamentally wrong - they should be declared as dependencies and
-//! injected, not called directly.
+//! If a function is already decorated with @injected, calling injected() on it
+//! is redundant and incorrect. The @injected decorator already wraps the function
+//! with the necessary injection logic.
 //!
-//! This rule replaces both the old PINJ008 and PINJ009, covering:
-//! - Direct function calls to @injected functions
-//! - Await calls to @injected functions  
-//! - Any form of execution of @injected functions
+//! Bad:
+//! ```python
+//! @injected
+//! def my_function(...): ...
+//!
+//! # Wrong - my_function is already @injected
+//! result = injected(my_function).proxy(...)
+//! ```
+//!
+//! Good:
+//! ```python
+//! @injected
+//! def my_function(...): ...
+//!
+//! # Correct - use the already decorated function
+//! result = my_function.proxy(...)
+//! ```
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
@@ -16,24 +28,15 @@ use crate::utils::pinjected_patterns::{has_injected_decorator, has_injected_deco
 use rustpython_ast::{Expr, ExprCall, Mod, Stmt};
 use std::collections::HashSet;
 
-pub struct NoDirectInjectedCallsRule {
+pub struct DoubleInjectedRule {
     /// All @injected function names in the module
     injected_functions: HashSet<String>,
-    /// Current function context
-    current_function: Option<String>,
-    /// Dependencies of current function (parameters before /)
-    current_dependencies: HashSet<String>,
-    /// Whether current function is @injected
-    in_injected_function: bool,
 }
 
-impl NoDirectInjectedCallsRule {
+impl DoubleInjectedRule {
     pub fn new() -> Self {
         Self {
             injected_functions: HashSet::new(),
-            current_function: None,
-            current_dependencies: HashSet::new(),
-            in_injected_function: false,
         }
     }
 
@@ -79,68 +82,41 @@ impl NoDirectInjectedCallsRule {
         }
     }
 
-    /// Extract dependency names from function (parameters before slash)
-    fn extract_dependencies(&self, func: &rustpython_ast::StmtFunctionDef) -> HashSet<String> {
-        let mut dependencies = HashSet::new();
-
-        // In Python AST, posonlyargs are the parameters before the slash
-        for arg in &func.args.posonlyargs {
-            dependencies.insert(arg.def.arg.to_string());
-        }
-
-        dependencies
-    }
-
-    /// Extract dependency names from async function
-    fn extract_dependencies_async(
+    /// Check if a call is to injected() with an already @injected function
+    fn check_injected_call(
         &self,
-        func: &rustpython_ast::StmtAsyncFunctionDef,
-    ) -> HashSet<String> {
-        let mut dependencies = HashSet::new();
+        call: &ExprCall,
+        file_path: &str,
+        violations: &mut Vec<Violation>,
+    ) {
+        // Check if this is a call to injected()
+        let is_injected_call = match &*call.func {
+            Expr::Name(name) => name.id.as_str() == "injected",
+            Expr::Attribute(attr) => {
+                if let Expr::Name(name) = &*attr.value {
+                    name.id.as_str() == "pinjected" && attr.attr.as_str() == "injected"
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
 
-        // In Python AST, posonlyargs are the parameters before the slash
-        for arg in &func.args.posonlyargs {
-            dependencies.insert(arg.def.arg.to_string());
-        }
-
-        dependencies
-    }
-
-    /// Check if a call is to an @injected function
-    fn check_call(&self, call: &ExprCall, file_path: &str, violations: &mut Vec<Violation>) {
-        // Skip if we're not inside an @injected function
-        if !self.in_injected_function {
+        if !is_injected_call {
             return;
         }
 
-        // Get the function name being called
-        let func_name = match &*call.func {
-            Expr::Name(name) => Some(name.id.to_string()),
-            Expr::Attribute(attr) => {
-                // Handle cases like obj.method()
-                if let Expr::Name(name) = &*attr.value {
-                    Some(name.id.to_string())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(called_func) = func_name {
-            // Check if this is a call to an @injected function
-            if self.injected_functions.contains(&called_func) {
-                // Check if it's declared as a dependency
-                if !self.current_dependencies.contains(&called_func) {
+        // Check if the argument is an already @injected function
+        if call.args.len() == 1 {
+            if let Expr::Name(name) = &call.args[0] {
+                if self.injected_functions.contains(name.id.as_str()) {
                     violations.push(Violation {
-                        rule_id: "PINJ009".to_string(),
+                        rule_id: "PINJ018".to_string(),
                         message: format!(
-                            "@injected function '{}' makes a direct call to @injected function '{}'. \
-                            Inside @injected functions, you're building a dependency graph, not executing code. \
-                            Declare '{}' as a dependency (before '/') instead.",
-                            self.current_function.as_ref().unwrap(),
-                            called_func,
-                            called_func
+                            "Function '{}' is already decorated with @injected. \
+                            Calling injected() on it is redundant and incorrect. \
+                            Use '{}.proxy(...)' directly instead of 'injected({}).proxy(...)'.",
+                            name.id, name.id, name.id
                         ),
                         offset: call.range.start().to_usize(),
                         file_path: file_path.to_string(),
@@ -151,50 +127,22 @@ impl NoDirectInjectedCallsRule {
         }
     }
 
-    /// Check expressions for calls
+    /// Check expressions for injected() calls
     fn check_expr(&self, expr: &Expr, file_path: &str, violations: &mut Vec<Violation>) {
         match expr {
             Expr::Call(call) => {
-                self.check_call(call, file_path, violations);
+                self.check_injected_call(call, file_path, violations);
+
+                // Also check if this is a method call on injected()
+                if let Expr::Attribute(attr) = &*call.func {
+                    // Check the value of the attribute (what the method is called on)
+                    self.check_expr(&attr.value, file_path, violations);
+                }
+
                 // Check arguments
                 for arg in &call.args {
                     self.check_expr(arg, file_path, violations);
                 }
-            }
-            // Check await expressions specifically
-            Expr::Await(await_expr) => {
-                // Special handling for await of @injected functions
-                if let Expr::Call(call) = &*await_expr.value {
-                    // Get the function name being awaited
-                    let func_name = match &*call.func {
-                        Expr::Name(name) => Some(name.id.to_string()),
-                        _ => None,
-                    };
-
-                    if let Some(called_func) = func_name {
-                        if self.injected_functions.contains(&called_func)
-                            && self.in_injected_function
-                        {
-                            if !self.current_dependencies.contains(&called_func) {
-                                violations.push(Violation {
-                                    rule_id: "PINJ009".to_string(),
-                                    message: format!(
-                                        "@injected function '{}' uses 'await' on a call to @injected function '{}'. \
-                                        Inside @injected functions, you're building a dependency graph, not executing code. \
-                                        Declare '{}' as a dependency (before '/') instead.",
-                                        self.current_function.as_ref().unwrap(),
-                                        called_func,
-                                        called_func
-                                    ),
-                                    offset: await_expr.range.start().to_usize(),
-                                    file_path: file_path.to_string(),
-                                    severity: Severity::Error,
-                                });
-                            }
-                        }
-                    }
-                }
-                self.check_expr(&await_expr.value, file_path, violations);
             }
             // Recurse into other expression types
             Expr::BinOp(binop) => {
@@ -278,61 +226,17 @@ impl NoDirectInjectedCallsRule {
         }
     }
 
-    /// Check statements for calls
-    fn check_stmt(&mut self, stmt: &Stmt, file_path: &str, violations: &mut Vec<Violation>) {
+    /// Check statements for injected() calls
+    fn check_stmt(&self, stmt: &Stmt, file_path: &str, violations: &mut Vec<Violation>) {
         match stmt {
             Stmt::FunctionDef(func) => {
-                if has_injected_decorator(func) {
-                    // Enter @injected function context
-                    let old_func = self.current_function.take();
-                    let old_deps = self.current_dependencies.clone();
-                    let old_in_injected = self.in_injected_function;
-
-                    self.current_function = Some(func.name.to_string());
-                    self.current_dependencies = self.extract_dependencies(func);
-                    self.in_injected_function = true;
-
-                    // Check function body
-                    for stmt in &func.body {
-                        self.check_stmt(stmt, file_path, violations);
-                    }
-
-                    // Restore context
-                    self.current_function = old_func;
-                    self.current_dependencies = old_deps;
-                    self.in_injected_function = old_in_injected;
-                } else {
-                    // Check nested functions
-                    for stmt in &func.body {
-                        self.check_stmt(stmt, file_path, violations);
-                    }
+                for stmt in &func.body {
+                    self.check_stmt(stmt, file_path, violations);
                 }
             }
             Stmt::AsyncFunctionDef(func) => {
-                if has_injected_decorator_async(func) {
-                    // Enter @injected function context
-                    let old_func = self.current_function.take();
-                    let old_deps = self.current_dependencies.clone();
-                    let old_in_injected = self.in_injected_function;
-
-                    self.current_function = Some(func.name.to_string());
-                    self.current_dependencies = self.extract_dependencies_async(func);
-                    self.in_injected_function = true;
-
-                    // Check function body
-                    for stmt in &func.body {
-                        self.check_stmt(stmt, file_path, violations);
-                    }
-
-                    // Restore context
-                    self.current_function = old_func;
-                    self.current_dependencies = old_deps;
-                    self.in_injected_function = old_in_injected;
-                } else {
-                    // Check nested functions
-                    for stmt in &func.body {
-                        self.check_stmt(stmt, file_path, violations);
-                    }
+                for stmt in &func.body {
+                    self.check_stmt(stmt, file_path, violations);
                 }
             }
             Stmt::ClassDef(class) => {
@@ -459,22 +363,22 @@ impl NoDirectInjectedCallsRule {
     }
 }
 
-impl LintRule for NoDirectInjectedCallsRule {
+impl LintRule for DoubleInjectedRule {
     fn rule_id(&self) -> &str {
-        "PINJ009"
+        "PINJ018"
     }
 
     fn description(&self) -> &str {
-        "No direct calls to @injected functions inside other @injected functions"
+        "Don't call injected() on already @injected decorated functions"
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
         // Create a mutable instance for stateful tracking
-        let mut checker = NoDirectInjectedCallsRule::new();
+        let mut checker = DoubleInjectedRule::new();
 
-        // First pass: collect all @injected functions
+        // First pass: collect all @injected functions from the entire AST
         checker.collect_injected_functions(context.ast);
 
         // If no @injected functions, nothing to check
@@ -482,7 +386,7 @@ impl LintRule for NoDirectInjectedCallsRule {
             return violations;
         }
 
-        // Second pass: check the current statement
+        // Second pass: check only the current statement
         checker.check_stmt(context.stmt, context.file_path, &mut violations);
 
         violations
@@ -497,7 +401,7 @@ mod tests {
 
     fn check_code(code: &str) -> Vec<Violation> {
         let ast = parse(code, Mode::Module, "test.py").unwrap();
-        let rule = NoDirectInjectedCallsRule::new();
+        let rule = DoubleInjectedRule::new();
         let mut violations = Vec::new();
 
         match &ast {
@@ -519,147 +423,126 @@ mod tests {
     }
 
     #[test]
-    fn test_direct_call_without_dependency() {
+    fn test_double_injected_basic() {
         let code = r#"
 from pinjected import injected
 
 @injected
-def process_data(data: str) -> str:
-    # pinjected: no dependencies
-    return data.upper()
+def a_user_registration_workflow(
+    create_user_fn,
+    logger,
+    /,
+    user_data: list[dict]
+) -> None:
+    for data in user_data:
+        create_user_fn(
+            user_id=data["id"],
+            name=data["name"],
+            email_address=data["email"]
+        )
 
-@injected
-def analyze_results(results):
-    # pinjected: no dependencies
-    # Direct call without declaring as dependency
-    processed = process_data(results)
-    return processed
+# Wrong - calling injected() on already @injected function
+test_workflow = injected(a_user_registration_workflow).proxy(
+    user_data=[
+        {"id": "1", "name": "Alice", "email": "alice@example.com"},
+    ]
+)
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "PINJ009");
-        assert!(violations[0].message.contains("direct call"));
+        assert_eq!(violations[0].rule_id, "PINJ018");
+        assert!(violations[0]
+            .message
+            .contains("already decorated with @injected"));
+        assert!(violations[0]
+            .message
+            .contains("a_user_registration_workflow"));
         assert_eq!(violations[0].severity, Severity::Error);
     }
 
     #[test]
-    fn test_await_call_without_dependency() {
+    fn test_double_injected_pinjected_module() {
         let code = r#"
-from pinjected import injected
+import pinjected
 
-@injected
-async def a_process_data(data: str) -> str:
-    # pinjected: no dependencies
+@pinjected.injected
+def process_data(data: str) -> str:
     return data.upper()
 
-@injected
-async def a_analyze_results(results):
-    # pinjected: no dependencies
-    # Await call without declaring as dependency
-    processed = await a_process_data(results)
-    return processed
+# Wrong - using pinjected.injected() on already decorated function
+result = pinjected.injected(process_data).proxy()
 "#;
         let violations = check_code(code);
-        // Should have 2 violations: one for direct call, one for await
-        assert_eq!(violations.len(), 2);
-
-        // Check that we have both types of violations
-        let has_await_violation = violations
-            .iter()
-            .any(|v| v.message.contains("uses 'await'"));
-        let has_direct_call_violation =
-            violations.iter().any(|v| v.message.contains("direct call"));
-
-        assert!(has_await_violation, "Should have await violation");
-        assert!(
-            has_direct_call_violation,
-            "Should have direct call violation"
-        );
-
-        // All violations should be PINJ009 errors
-        for v in &violations {
-            assert_eq!(v.rule_id, "PINJ009");
-            assert_eq!(v.severity, Severity::Error);
-        }
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ018");
+        assert!(violations[0].message.contains("process_data"));
     }
 
     #[test]
-    fn test_call_with_dependency_declared() {
+    fn test_no_violation_undecorated_function() {
+        let code = r#"
+from pinjected import injected
+
+def regular_function(data: str) -> str:
+    return data.upper()
+
+# OK - regular_function is not decorated with @injected
+result = injected(regular_function).proxy()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_no_violation_direct_proxy_call() {
         let code = r#"
 from pinjected import injected
 
 @injected
 def process_data(data: str) -> str:
-    # pinjected: no dependencies
     return data.upper()
 
-@injected
-def analyze_results(process_data, /, results):
-    # OK - process_data is declared as dependency
-    return process_data(results)
+# OK - calling proxy() directly on decorated function
+result = process_data.proxy()
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
 
     #[test]
-    fn test_await_with_dependency_declared() {
+    fn test_double_injected_in_assignment() {
         let code = r#"
 from pinjected import injected
 
 @injected
-async def a_process_data(data: str) -> str:
-    # pinjected: no dependencies
-    return data.upper()
+async def a_fetch_data(url: str) -> dict:
+    return {"data": "example"}
 
-@injected
-async def a_analyze_results(a_process_data, /, results):
-    # This is still wrong - shouldn't await even with dependency
-    # But if we're checking for declaration, this passes
-    return a_process_data(results)
-"#;
-        let violations = check_code(code);
-        assert_eq!(violations.len(), 0);
-    }
-
-    #[test]
-    fn test_non_injected_function_calls() {
-        let code = r#"
-from pinjected import injected
-
-def regular_function(data):
-    return data.upper()
-
-@injected
-def process_data(data):
-    # pinjected: no dependencies
-    # OK - regular_function is not @injected
-    result = regular_function(data)
-    return result
-"#;
-        let violations = check_code(code);
-        assert_eq!(violations.len(), 0);
-    }
-
-    #[test]
-    fn test_nested_calls() {
-        let code = r#"
-from pinjected import injected
-
-@injected
-def helper(data):
-    # pinjected: no dependencies
-    return data
-
-@injected
-def process(data):
-    # pinjected: no dependencies
-    # Nested call expression
-    result = len(helper(data))
-    return result
+# Wrong in various contexts
+data_fetcher = injected(a_fetch_data).proxy(url="https://example.com")
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_id, "PINJ009");
+        assert_eq!(violations[0].rule_id, "PINJ018");
+        assert!(violations[0].message.contains("a_fetch_data"));
+    }
+
+    #[test]
+    fn test_double_injected_nested_function() {
+        let code = r#"
+from pinjected import injected
+
+def outer():
+    @injected
+    def inner(data: str) -> str:
+        return data
+    
+    # Wrong - inner is already @injected
+    return injected(inner).proxy()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ018");
+        assert!(violations[0].message.contains("inner"));
     }
 }

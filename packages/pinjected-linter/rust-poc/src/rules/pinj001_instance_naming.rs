@@ -1,11 +1,13 @@
 //! PINJ001: Instance naming convention
-//! 
+//!
 //! @instance decorated functions should have noun-like names
 
-use rustpython_ast::Stmt;
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, is_noun_like};
+use crate::utils::pinjected_patterns::{
+    has_instance_decorator, has_instance_decorator_async, is_noun_like,
+};
+use rustpython_ast::Stmt;
 
 pub struct InstanceNamingRule;
 
@@ -19,7 +21,7 @@ impl LintRule for InstanceNamingRule {
     fn rule_id(&self) -> &str {
         "PINJ001"
     }
-    
+
     fn description(&self) -> &str {
         "Instance naming convention (@instance functions should be nouns)"
     }

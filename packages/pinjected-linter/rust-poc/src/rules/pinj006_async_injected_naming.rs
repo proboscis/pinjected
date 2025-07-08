@@ -1,12 +1,12 @@
 //! PINJ006: Async injected naming
-//! 
+//!
 //! Async @injected functions must have 'a_' prefix.
 //! This helps distinguish async functions in dependency injection.
 
-use rustpython_ast::Stmt;
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_injected_decorator_async, has_async_prefix};
+use crate::utils::pinjected_patterns::{has_async_prefix, has_injected_decorator_async};
+use rustpython_ast::Stmt;
 
 pub struct AsyncInjectedNamingRule;
 
@@ -20,7 +20,7 @@ impl LintRule for AsyncInjectedNamingRule {
     fn rule_id(&self) -> &str {
         "PINJ006"
     }
-    
+
     fn description(&self) -> &str {
         "Async @injected functions must have 'a_' prefix"
     }

@@ -3,10 +3,10 @@
 //! @injected functions should always define and use Protocol by specifying
 //! it in the protocol parameter of the decorator.
 
-use rustpython_ast::{Expr, StmtFunctionDef, StmtAsyncFunctionDef, Arguments};
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{is_injected_decorator};
+use crate::utils::pinjected_patterns::is_injected_decorator;
+use rustpython_ast::{Arguments, Expr, StmtAsyncFunctionDef, StmtFunctionDef};
 
 pub struct MissingProtocolRule;
 
@@ -14,11 +14,15 @@ impl MissingProtocolRule {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Generate the protocol signature for an @injected function
-    fn generate_protocol_signature(func_name: &str, args: &Arguments, returns: Option<&Expr>) -> String {
+    fn generate_protocol_signature(
+        func_name: &str,
+        args: &Arguments,
+        returns: Option<&Expr>,
+    ) -> String {
         let mut signature_parts = Vec::new();
-        
+
         // Add regular args (after the slash)
         for arg in &args.args {
             let arg_name = arg.def.arg.as_str();
@@ -30,7 +34,7 @@ impl MissingProtocolRule {
                 signature_parts.push(arg_name.to_string());
             }
         }
-        
+
         // Add keyword-only args
         for arg in &args.kwonlyargs {
             let arg_name = arg.def.arg.as_str();
@@ -41,24 +45,31 @@ impl MissingProtocolRule {
                 signature_parts.push(arg_name.to_string());
             }
         }
-        
+
         // Build the return type
         let return_type = if let Some(ret) = returns {
             format!(" -> {}", Self::expr_to_type_string(ret))
         } else {
             String::new()
         };
-        
+
         // Convert function name to PascalCase for the protocol name
         let protocol_name = func_name
             .split('_')
             .map(|part| {
-                part.chars().enumerate().map(|(i, c)| {
-                    if i == 0 { c.to_uppercase().to_string() } else { c.to_string() }
-                }).collect::<String>()
+                part.chars()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if i == 0 {
+                            c.to_uppercase().to_string()
+                        } else {
+                            c.to_string()
+                        }
+                    })
+                    .collect::<String>()
             })
             .collect::<String>();
-        
+
         // Format the protocol
         format!(
             "class {}Protocol(Protocol):\n    def __call__(self, {}){}: ...",
@@ -67,17 +78,15 @@ impl MissingProtocolRule {
             return_type
         )
     }
-    
+
     /// Convert an expression to a type string (simplified)
     fn expr_to_type_string(expr: &Expr) -> String {
         match expr {
             Expr::Name(name) => name.id.to_string(),
-            Expr::Constant(c) => {
-                match &c.value {
-                    rustpython_ast::Constant::Str(s) => format!("'{}'", s),
-                    _ => "Any".to_string(),
-                }
-            }
+            Expr::Constant(c) => match &c.value {
+                rustpython_ast::Constant::Str(s) => format!("'{}'", s),
+                _ => "Any".to_string(),
+            },
             Expr::Subscript(sub) => {
                 if let Expr::Name(name) = &*sub.value {
                     format!("{}[{}]", name.id, Self::expr_to_type_string(&sub.slice))
@@ -86,13 +95,17 @@ impl MissingProtocolRule {
                 }
             }
             Expr::Tuple(tuple) => {
-                let elements: Vec<String> = tuple.elts.iter()
+                let elements: Vec<String> = tuple
+                    .elts
+                    .iter()
                     .map(|e| Self::expr_to_type_string(e))
                     .collect();
                 format!("({})", elements.join(", "))
             }
             Expr::List(list) => {
-                let elements: Vec<String> = list.elts.iter()
+                let elements: Vec<String> = list
+                    .elts
+                    .iter()
                     .map(|e| Self::expr_to_type_string(e))
                     .collect();
                 format!("[{}]", elements.join(", "))
@@ -100,7 +113,7 @@ impl MissingProtocolRule {
             _ => "Any".to_string(),
         }
     }
-    
+
     /// Check if an @injected decorator has a protocol parameter
     fn has_protocol_parameter(decorator: &Expr) -> bool {
         match decorator {
@@ -109,9 +122,13 @@ impl MissingProtocolRule {
                 if !Self::is_injected_call(&call.func) {
                     return false;
                 }
-                
+
                 // Check if any keyword argument is named "protocol"
-                call.keywords.iter().any(|kw| kw.arg.as_ref().map_or(false, |arg| arg.as_str() == "protocol"))
+                call.keywords.iter().any(|kw| {
+                    kw.arg
+                        .as_ref()
+                        .map_or(false, |arg| arg.as_str() == "protocol")
+                })
             }
             _ => {
                 // Simple @injected without parameters - no protocol
@@ -119,18 +136,18 @@ impl MissingProtocolRule {
             }
         }
     }
-    
+
     /// Check if the function expression is an @injected decorator
     fn is_injected_call(func: &Expr) -> bool {
         is_injected_decorator(func)
     }
-    
+
     /// Check a function definition
     fn check_function(&self, func: &StmtFunctionDef) -> Option<Violation> {
         // Check if any decorator is @injected
         let mut has_injected = false;
         let mut has_protocol = false;
-        
+
         for decorator in &func.decorator_list {
             match decorator {
                 Expr::Name(name) if name.id.as_str() == "injected" => {
@@ -154,22 +171,31 @@ impl MissingProtocolRule {
                 _ => {}
             }
         }
-        
+
         if has_injected && !has_protocol {
             let protocol_signature = Self::generate_protocol_signature(
                 func.name.as_str(),
                 &func.args,
-                func.returns.as_ref().map(|r| &**r)
+                func.returns.as_ref().map(|r| &**r),
             );
             // Extract just the protocol name
-            let protocol_name = func.name
+            let protocol_name = func
+                .name
                 .split('_')
                 .map(|part| {
-                    part.chars().enumerate().map(|(i, c)| {
-                        if i == 0 { c.to_uppercase().to_string() } else { c.to_string() }
-                    }).collect::<String>()
+                    part.chars()
+                        .enumerate()
+                        .map(|(i, c)| {
+                            if i == 0 {
+                                c.to_uppercase().to_string()
+                            } else {
+                                c.to_string()
+                            }
+                        })
+                        .collect::<String>()
                 })
-                .collect::<String>() + "Protocol";
+                .collect::<String>()
+                + "Protocol";
             Some(Violation {
                 rule_id: "PINJ016".to_string(),
                 message: format!(
@@ -186,13 +212,13 @@ impl MissingProtocolRule {
             None
         }
     }
-    
+
     /// Check an async function definition
     fn check_async_function(&self, func: &StmtAsyncFunctionDef) -> Option<Violation> {
         // Check if any decorator is @injected
         let mut has_injected = false;
         let mut has_protocol = false;
-        
+
         for decorator in &func.decorator_list {
             match decorator {
                 Expr::Name(name) if name.id.as_str() == "injected" => {
@@ -216,22 +242,31 @@ impl MissingProtocolRule {
                 _ => {}
             }
         }
-        
+
         if has_injected && !has_protocol {
             let protocol_signature = Self::generate_protocol_signature(
                 func.name.as_str(),
                 &func.args,
-                func.returns.as_ref().map(|r| &**r)
+                func.returns.as_ref().map(|r| &**r),
             );
             // Extract just the protocol name
-            let protocol_name = func.name
+            let protocol_name = func
+                .name
                 .split('_')
                 .map(|part| {
-                    part.chars().enumerate().map(|(i, c)| {
-                        if i == 0 { c.to_uppercase().to_string() } else { c.to_string() }
-                    }).collect::<String>()
+                    part.chars()
+                        .enumerate()
+                        .map(|(i, c)| {
+                            if i == 0 {
+                                c.to_uppercase().to_string()
+                            } else {
+                                c.to_string()
+                            }
+                        })
+                        .collect::<String>()
                 })
-                .collect::<String>() + "Protocol";
+                .collect::<String>()
+                + "Protocol";
             Some(Violation {
                 rule_id: "PINJ016".to_string(),
                 message: format!(
@@ -254,14 +289,14 @@ impl LintRule for MissingProtocolRule {
     fn rule_id(&self) -> &str {
         "PINJ016"
     }
-    
+
     fn description(&self) -> &str {
         "@injected functions should specify a Protocol using the protocol parameter"
     }
-    
+
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         match context.stmt {
             rustpython_ast::Stmt::FunctionDef(func) => {
                 if let Some(mut violation) = self.check_function(func) {
@@ -277,7 +312,7 @@ impl LintRule for MissingProtocolRule {
             }
             _ => {}
         }
-        
+
         violations
     }
 }
@@ -285,14 +320,14 @@ impl LintRule for MissingProtocolRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustpython_parser::{parse, Mode};
     use rustpython_ast::Mod;
-    
+    use rustpython_parser::{parse, Mode};
+
     fn check_code(code: &str) -> Vec<Violation> {
         let ast = parse(code, Mode::Module, "test.py").unwrap();
         let rule = MissingProtocolRule::new();
         let mut violations = Vec::new();
-        
+
         match &ast {
             Mod::Module(module) => {
                 for stmt in &module.body {
@@ -307,10 +342,10 @@ mod tests {
             }
             _ => {}
         }
-        
+
         violations
     }
-    
+
     #[test]
     fn test_injected_without_protocol() {
         let code = r#"
@@ -325,7 +360,7 @@ def process_data(logger, /, data: str) -> str:
         assert_eq!(violations[0].rule_id, "PINJ016");
         assert!(violations[0].message.contains("process_data"));
     }
-    
+
     #[test]
     fn test_injected_with_protocol() {
         let code = r#"
@@ -342,7 +377,7 @@ def process_data(logger, /, data: str) -> str:
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
     }
-    
+
     #[test]
     fn test_injected_with_other_params_no_protocol() {
         let code = r#"
@@ -356,7 +391,7 @@ def process_data(logger, /, data: str) -> str:
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ016");
     }
-    
+
     #[test]
     fn test_async_injected_without_protocol() {
         let code = r#"
@@ -370,7 +405,7 @@ async def a_process_data(logger, /, data: str) -> str:
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ016");
     }
-    
+
     #[test]
     fn test_not_injected() {
         let code = r#"

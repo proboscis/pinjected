@@ -1,12 +1,12 @@
 //! PINJ003: Async instance naming
-//! 
+//!
 //! Async @instance functions should NOT have 'a_' prefix.
 //! The 'a_' prefix is only for @injected functions.
 
-use rustpython_ast::Stmt;
-use crate::models::{Violation, RuleContext, Severity};
+use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_instance_decorator_async, has_async_prefix};
+use crate::utils::pinjected_patterns::{has_async_prefix, has_instance_decorator_async};
+use rustpython_ast::Stmt;
 
 pub struct AsyncInstanceNamingRule;
 
@@ -20,7 +20,7 @@ impl LintRule for AsyncInstanceNamingRule {
     fn rule_id(&self) -> &str {
         "PINJ003"
     }
-    
+
     fn description(&self) -> &str {
         "Async @instance functions should NOT have 'a_' prefix"
     }
@@ -32,7 +32,7 @@ impl LintRule for AsyncInstanceNamingRule {
             Stmt::AsyncFunctionDef(func) => {
                 if has_instance_decorator_async(func) && has_async_prefix(&func.name) {
                     let _suggested_name = &func.name[2..]; // Remove 'a_' prefix
-                    
+
                     violations.push(Violation {
                         rule_id: self.rule_id().to_string(),
                         message: format!(
