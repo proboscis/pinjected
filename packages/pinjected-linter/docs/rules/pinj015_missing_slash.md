@@ -4,10 +4,10 @@
 
 **Rule ID:** PINJ015  
 **Category:** Syntax  
-**Severity:** Error  
+**Severity:** Warning  
 **Auto-fixable:** No
 
-`@injected` functions must use the `/` separator to distinguish dependencies from runtime arguments. Without `/`, ALL arguments are treated as runtime arguments.
+`@injected` functions typically use the `/` separator to distinguish dependencies from runtime arguments. Without `/`, ALL arguments are treated as runtime arguments, which may be intentional in some cases.
 
 ## Rationale
 
@@ -20,11 +20,13 @@ The `/` separator is CRITICAL in Pinjected because it defines the boundary betwe
 - No dependency injection occurs
 - All arguments must be provided at call time
 - The function behaves like a regular Python function
-- The `@injected` decorator effectively does nothing
+- The `@injected` decorator is still building a dependency graph node, but with no dependencies
+
+While this is sometimes intentional (e.g., for pure transformation functions), it's often a mistake.
 
 ## Rule Details
 
-This rule detects `@injected` functions that have arguments but no `/` separator, which is almost always a mistake.
+This rule warns when `@injected` functions have arguments but no `/` separator, unless explicitly marked as intentional with `pinjected: no dependencies`.
 
 ### Examples of Violations
 
@@ -70,6 +72,15 @@ async def a_fetch_user(cache, database, /, user_id: str):
 def get_config(config_service, /):
     # CORRECT: All dependencies, no runtime args
     return config_service.get_all()
+
+@injected
+def transform_data(data: dict) -> dict:
+    """Transform data without any dependencies.
+    
+    pinjected: no dependencies
+    """
+    # CORRECT: Explicitly marked as having no dependencies
+    return {k: v.upper() for k, v in data.items()}
 ```
 
 ## Common Mistakes and Their Consequences
@@ -151,11 +162,46 @@ def process_payment(payment_gateway, logger, /, amount, customer_id):
 process_payment(100.00, "cust123")  # Dependencies injected!
 ```
 
+## Intentional No-Dependencies Pattern
+
+Sometimes you genuinely want an `@injected` function with no dependencies (all runtime arguments). This is valid for:
+- Pure transformation functions
+- Validation functions
+- Utility functions that need to be part of the dependency graph
+
+To indicate this is intentional, add `pinjected: no dependencies` to the docstring:
+
+```python
+@injected
+def validate_email(email: str) -> bool:
+    """Validate email format.
+    
+    pinjected: no dependencies
+    """
+    return "@" in email and "." in email
+
+@injected
+def normalize_user_data(data: dict) -> dict:
+    """Normalize user data for consistency.
+    
+    This is a pure function with no dependencies.
+    pinjected: no dependencies
+    """
+    return {
+        "name": data.get("name", "").strip().title(),
+        "email": data.get("email", "").lower()
+    }
+```
+
 ## Migration Guide
 
-When fixing missing slash errors:
+When fixing missing slash warnings:
 
-1. **Identify intended dependencies vs runtime args:**
+1. **First, determine if no dependencies is intentional:**
+   - If yes: Add `pinjected: no dependencies` to the docstring
+   - If no: Add the `/` separator appropriately
+
+2. **Identify intended dependencies vs runtime args:**
    ```python
    # Before (broken):
    @injected
@@ -198,8 +244,13 @@ This rule has no configuration options.
 
 ## When to Disable
 
-This rule should NEVER be disabled in production code. The only valid case might be:
+This rule should rarely be disabled. Instead:
+- If no dependencies is intentional: Add `pinjected: no dependencies` to the docstring
+- If dependencies are needed: Add the `/` separator
+
+The only valid reasons to disable might be:
 - During initial migration when learning Pinjected
+- Legacy code that will be refactored soon
 
 To disable for a specific function:
 ```python
@@ -217,9 +268,9 @@ disable = ["PINJ015"]
 
 ## Related Rules
 
-- **PINJ008:** Injected dependency declaration
-- **PINJ009:** Injected async prefix (for async dependencies)
+- **PINJ009:** No direct calls to @injected functions
 - **PINJ011:** IProxy annotations (for dependency types)
+- **PINJ017:** Missing type annotations for dependencies
 
 ## See Also
 
@@ -229,4 +280,5 @@ disable = ["PINJ015"]
 
 ## Version History
 
+- **1.1.0:** Changed from Error to Warning, added `pinjected: no dependencies` marker support
 - **1.0.0:** Initial implementation

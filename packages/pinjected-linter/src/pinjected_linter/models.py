@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 class Severity(Enum):
     """Severity levels for violations."""
+
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
@@ -20,6 +21,7 @@ class Severity(Enum):
 @dataclass
 class Position:
     """Position in source code."""
+
     line: int
     column: int
     end_line: Optional[int] = None
@@ -29,11 +31,12 @@ class Position:
 @dataclass
 class Fix:
     """Represents a fix that can be applied to source code."""
+
     start_pos: Position
     end_pos: Position
     replacement: str
     description: str
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -49,6 +52,7 @@ class Fix:
 @dataclass
 class Violation:
     """Represents a linting violation."""
+
     rule_id: str
     message: str
     file_path: Path
@@ -57,17 +61,17 @@ class Violation:
     suggestion: Optional[str] = None
     fix: Optional[Fix] = None
     source_line: Optional[str] = None
-    
+
     @property
     def line(self) -> int:
         """Line number for backwards compatibility."""
         return self.position.line
-    
+
     @property
     def column(self) -> int:
         """Column number for backwards compatibility."""
         return self.position.column
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -86,6 +90,7 @@ class Violation:
 @dataclass
 class FunctionInfo:
     """Information about a function definition."""
+
     name: str
     node: ast.FunctionDef
     decorators: List[str]
@@ -95,7 +100,7 @@ class FunctionInfo:
     is_test: bool = False
     has_slash: bool = False
     slash_index: Optional[int] = None
-    
+
     @property
     def is_decorated(self) -> bool:
         """Check if function has any Pinjected decorators."""
@@ -105,12 +110,13 @@ class FunctionInfo:
 @dataclass
 class RuleContext:
     """Context passed to rules for checking."""
+
     file_path: Path
     source: str
     tree: ast.AST
     symbol_table: "SymbolTable"
     config: Dict[str, Any]
-    
+
     def get_line(self, node: ast.AST) -> str:
         """Get source line for a node."""
         if hasattr(node, "lineno"):

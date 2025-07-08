@@ -22,13 +22,13 @@ def get_decorator_names(node: ast.FunctionDef) -> List[str]:
 
 def find_slash_position(args: ast.arguments) -> Optional[int]:
     """Find the position of the slash separator in function arguments.
-    
+
     Returns the index where the slash appears, or None if no slash.
     """
     # Python 3.8+ position-only arguments use posonlyargs
     if hasattr(args, "posonlyargs") and args.posonlyargs:
         return len(args.posonlyargs)
-    
+
     # For compatibility, we might need to parse comments or use other heuristics
     # In real implementation, this would need more sophisticated handling
     return None
@@ -39,11 +39,11 @@ def get_function_params_before_slash(node: ast.FunctionDef) -> List[str]:
     slash_pos = find_slash_position(node.args)
     if slash_pos is None:
         return []
-    
+
     params = []
     if hasattr(node.args, "posonlyargs"):
         params.extend(arg.arg for arg in node.args.posonlyargs)
-    
+
     return params
 
 
@@ -53,7 +53,7 @@ def get_function_params_after_slash(node: ast.FunctionDef) -> List[str]:
     if slash_pos is None:
         # No slash, all params are after
         return [arg.arg for arg in node.args.args]
-    
+
     # Return regular args (not position-only)
     return [arg.arg for arg in node.args.args]
 
@@ -71,13 +71,13 @@ def is_function_call(node: ast.AST, function_name: str) -> bool:
 def find_all_names(node: ast.AST) -> Set[str]:
     """Find all Name nodes in an AST subtree."""
     names = set()
-    
+
     class NameCollector(ast.NodeVisitor):
         def visit_Name(self, node):
             if isinstance(node.ctx, ast.Load):
                 names.add(node.id)
             self.generic_visit(node)
-    
+
     NameCollector().visit(node)
     return names
 
@@ -85,7 +85,7 @@ def find_all_names(node: ast.AST) -> Set[str]:
 def get_call_names(node: ast.AST) -> Set[str]:
     """Get all function names that are called in an AST subtree."""
     calls = set()
-    
+
     class CallCollector(ast.NodeVisitor):
         def visit_Call(self, node):
             if isinstance(node.func, ast.Name):
@@ -94,7 +94,7 @@ def get_call_names(node: ast.AST) -> Set[str]:
                 # For method calls, we might want the attribute name
                 calls.add(node.func.attr)
             self.generic_visit(node)
-    
+
     CallCollector().visit(node)
     return calls
 
@@ -102,12 +102,12 @@ def get_call_names(node: ast.AST) -> Set[str]:
 def find_await_calls(node: ast.AST) -> List[ast.Await]:
     """Find all await expressions in an AST subtree."""
     awaits = []
-    
+
     class AwaitCollector(ast.NodeVisitor):
         def visit_Await(self, node):
             awaits.append(node)
             self.generic_visit(node)
-    
+
     AwaitCollector().visit(node)
     return awaits
 
@@ -139,24 +139,24 @@ def extract_function_defaults(node: ast.FunctionDef) -> List[Tuple[str, ast.AST]
     """Extract parameter names and their default values."""
     defaults = []
     args = node.args
-    
+
     # Handle regular arguments with defaults
     if args.defaults:
         # defaults align with the end of args
         num_args = len(args.args)
         num_defaults = len(args.defaults)
         start_idx = num_args - num_defaults
-        
+
         for i, default in enumerate(args.defaults):
             arg = args.args[start_idx + i]
             defaults.append((arg.arg, default))
-    
+
     # Handle keyword-only arguments with defaults
     if args.kw_defaults:
         for arg, default in zip(args.kwonlyargs, args.kw_defaults):
             if default is not None:
                 defaults.append((arg.arg, default))
-    
+
     return defaults
 
 

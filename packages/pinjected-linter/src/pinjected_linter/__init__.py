@@ -7,10 +7,10 @@ from .models import Fix, Severity, Violation
 from .reporter import Reporter, TerminalFormatter
 
 __all__ = [
-    "PinjectedAnalyzer",
-    "Violation",
-    "Severity", 
     "Fix",
+    "PinjectedAnalyzer",
     "Reporter",
+    "Severity",
     "TerminalFormatter",
+    "Violation",
 ]

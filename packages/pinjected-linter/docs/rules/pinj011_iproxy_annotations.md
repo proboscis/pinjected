@@ -7,211 +7,171 @@
 **Severity:** Warning  
 **Auto-fixable:** No
 
-Dependencies in Pinjected should use `IProxy[T]` type annotations for proper type checking and clarity.
+Variables holding references to `@instance` or `@injected` functions should use `IProxy[T]` type annotations.
 
 ## Rationale
 
-The `IProxy[T]` type wrapper is essential for Pinjected's type system because it:
+The `IProxy[T]` type wrapper is used for:
 
-1. **Type Safety:** Enables proper type checking for dependencies
-2. **Clear Boundaries:** Distinguishes injected dependencies from runtime values
-3. **IDE Support:** Provides better autocomplete and type hints
-4. **Documentation:** Makes dependency injection patterns explicit
-5. **Runtime Safety:** Helps prevent mixing injected and non-injected values
+1. **Unresolved References:** Variables that hold references to `@instance` or `@injected` functions before resolution
+2. **Entry Points:** Variables used as entry points for `python -m pinjected run`
+3. **Type Safety:** Distinguishes between IProxy references and resolved values
+
+**Important:** Injected dependencies (parameters before `/` in `@injected` functions) should NOT use `IProxy[T]`. They receive resolved values, not IProxy objects.
 
 ## Rule Details
 
-This rule checks for proper `IProxy[T]` usage in two contexts:
+This rule currently checks:
 
-1. **Injected Function Parameters:** Service-type dependencies should be annotated with `IProxy[T]`
-2. **Instance Function Returns:** Entry point services should return `IProxy[T]`
+1. **Instance Function Returns:** Entry point services may optionally return `IProxy[T]` (currently checking, but may be revised)
 
-The rule identifies service types by common naming patterns (Service, Client, Repository, Manager, etc.).
+The rule does NOT check:
+- Injected dependencies (parameters before `/`) - these should use their actual types
 
-### Examples of Violations
+### Examples
 
-❌ **Bad:** Missing IProxy annotations
-```python
-from pinjected import injected, instance
-
-# Error: Service-type parameters without IProxy
-@injected
-def process_order(
-    order_service: OrderService,      # Should be IProxy[OrderService]
-    payment_client: PaymentClient,    # Should be IProxy[PaymentClient]
-    logger: Logger,                   # Should be IProxy[Logger]
-    /,
-    order_id: str
-):
-    return order_service.process(order_id)
-
-# Error: Instance function returning service without IProxy
-@instance
-def user_service() -> UserService:  # Should be IProxy[UserService]
-    return UserService()
-
-@instance
-def database_client() -> DatabaseClient:  # Should be IProxy[DatabaseClient]
-    return PostgresClient()
-```
-
-✅ **Good:** Proper IProxy annotations
+✅ **Correct:** Injected dependencies use actual types, not IProxy
 ```python
 from pinjected import injected, instance, IProxy
 
-# Good: Service-type parameters with IProxy
+# CORRECT: Injected dependencies (before /) use their actual types
 @injected
 def process_order(
-    order_service: IProxy[OrderService],
-    payment_client: IProxy[PaymentClient],
-    logger: IProxy[Logger],
+    order_service: OrderService,      # Correct: actual type
+    payment_client: PaymentClient,    # Correct: actual type
+    logger: Logger,                   # Correct: actual type
     /,
     order_id: str
-):
+) -> Order:
+    # These are resolved values, not IProxy objects
     return order_service.process(order_id)
 
-# Good: Instance functions returning IProxy
+# Instance functions
 @instance
-def user_service() -> IProxy[UserService]:
+def user_service() -> UserService:
     return UserService()
 
 @instance
-def database_client() -> IProxy[DatabaseClient]:
+def database_client() -> DatabaseClient:
     return PostgresClient()
+```
+
+✅ **Correct:** IProxy for entry point variables
+```python
+from pinjected import instance, injected, IProxy
+
+@instance
+def database() -> Database:
+    return PostgresDB()
+
+@injected
+def process_data(db: Database, /, data: str) -> Result:
+    return db.process(data)
+
+# IProxy for entry point variables
+run_processor: IProxy[Result] = process_data("input.csv")  # Entry point
+db_ref: IProxy[Database] = database  # Reference to @instance function
+```
+
+❌ **Incorrect:** Using IProxy for injected dependencies
+```python
+# WRONG: Injected dependencies should NOT use IProxy
+@injected
+def bad_example(
+    service: IProxy[Service],    # Wrong! Should be: Service
+    logger: IProxy[Logger],      # Wrong! Should be: Logger
+    /,
+    data: str
+):
+    pass
 ```
 
 ## Common Patterns and Best Practices
 
-### 1. Annotate all service dependencies
+### 1. Entry Points and IProxy
 ```python
-# ❌ Bad - mixed annotations
-@injected
-def create_report(
-    report_service: ReportService,      # Missing IProxy
-    db: IProxy[Database],               # Has IProxy
-    cache: CacheManager,                # Missing IProxy
-    /,
-    report_type: str
-):
-    pass
+from pinjected import instance, injected, IProxy
 
-# ✅ Good - consistent IProxy usage
+@instance
+def database() -> Database:
+    return PostgresDB()
+
 @injected
-def create_report(
-    report_service: IProxy[ReportService],
-    db: IProxy[Database],
-    cache: IProxy[CacheManager],
+def process_report(
+    db: Database,            # Correct: actual type for injected dependency
+    logger: Logger,          # Correct: actual type
     /,
-    report_type: str
-):
-    pass
+    report_id: str
+) -> Report:
+    return db.fetch_report(report_id)
+
+# Entry points use IProxy
+run_report: IProxy[Report] = process_report("monthly-2024")  # IProxy for entry point
+db_instance: IProxy[Database] = database  # IProxy for @instance reference
 ```
 
-### 2. Entry point services should return IProxy
+### 2. Calling @injected functions from other @injected functions
 ```python
-# ❌ Bad - entry points without IProxy
-@instance
-def api_gateway() -> APIGateway:
-    return APIGateway()
+from typing import Protocol
 
-@instance
-def auth_handler() -> AuthHandler:
-    return OAuthHandler()
+class ReportProcessorProtocol(Protocol):
+    def __call__(self, report_id: str) -> Report: ...
 
-# ✅ Good - entry points with IProxy
-@instance
-def api_gateway() -> IProxy[APIGateway]:
-    return APIGateway()
-
-@instance
-def auth_handler() -> IProxy[AuthHandler]:
-    return OAuthHandler()
+@injected
+def generate_summary(
+    process_report: ReportProcessorProtocol,  # Dependency uses Protocol, not IProxy
+    formatter: Formatter,                     # Actual type
+    /,
+    report_id: str
+) -> Summary:
+    report = process_report(report_id)  # Building AST, not executing
+    return formatter.summarize(report)
 ```
 
-### 3. Non-service types don't need IProxy
+### 3. IProxy in module-level variables
 ```python
-# ✅ Good - IProxy only for services
+# Module-level entry points
+from pinjected import instance, injected, IProxy
+
+@instance
+def app_config() -> Config:
+    return Config.from_env()
+
+@injected
+def run_app(config: Config, /, args: List[str]) -> None:
+    # Application logic
+    pass
+
+# Module-level IProxy variables for CLI execution
+config_ref: IProxy[Config] = app_config
+run_main: IProxy[None] = run_app(sys.argv[1:])
+```
+
+### 4. When NOT to use IProxy
+```python
+# ✅ Correct: No IProxy for injected dependencies
 @injected
 def process_data(
-    processor: IProxy[DataProcessor],    # Service: needs IProxy
-    validator: IProxy[Validator],        # Service: needs IProxy
-    config: dict,                        # Data: no IProxy needed
+    processor: DataProcessor,     # Actual type, not IProxy
+    validator: Validator,         # Actual type, not IProxy
+    config: dict,                 # Plain data type
     /,
-    data: List[str],                     # Runtime param: no IProxy
-    options: ProcessOptions              # Value object: no IProxy
-):
-    # Simple types, primitives, and value objects don't need IProxy
-    pass
+    data: List[str],             # Runtime parameter
+    options: ProcessOptions       # Runtime parameter
+) -> ProcessedData:
+    # All parameters receive resolved values
+    validated = validator.validate(data)
+    return processor.process(validated, options)
 ```
 
-### 4. Complex service hierarchies
-```python
-# ✅ Good - IProxy with generic types
-@injected
-def handle_request(
-    router: IProxy[Router[Request, Response]],
-    middleware: IProxy[List[Middleware]],
-    auth: IProxy[Optional[AuthService]],
-    /,
-    request: Request
-) -> Response:
-    # IProxy works with generic types
-    if auth:
-        auth.validate(request)
-    
-    for mw in middleware:
-        request = mw.process(request)
-    
-    return router.route(request)
-```
+## Current Rule Behavior
 
-### 5. Factory patterns with IProxy
-```python
-# ✅ Good - factories returning IProxy
-@instance
-def service_factory() -> IProxy[ServiceFactory]:
-    return ServiceFactory()
+Currently, this rule only checks:
+- Return types of `@instance` functions for service-type patterns
 
-@injected
-def create_handler(
-    factory: IProxy[ServiceFactory],
-    /,
-    handler_type: str
-) -> IProxy[Handler]:
-    # Factory creates handlers that are also IProxy-wrapped
-    return factory.create_handler(handler_type)
-```
-
-## Service Type Detection
-
-The rule identifies service types by these patterns in type names:
-- Service
-- Client
-- Repository
-- Manager
-- Factory
-- Provider
-- Handler
-- Processor
-- Validator
-- Logger
-- Database
-- Cache
-- Gateway
-- Controller
-
-Types without these patterns won't trigger the rule:
-```python
-@injected
-def calculate(
-    calculator: Calculator,  # Has none of the patterns - no warning
-    config: Config,          # Simple config - no warning
-    utils: Utils,            # Utilities - no warning
-    /,
-    value: float
-):
-    pass
-```
+The rule was updated to NOT check:
+- Injected dependencies (parameters before `/` in `@injected` functions)
+- These should always use their actual types, never `IProxy[T]`
 
 ## Configuration
 
@@ -239,36 +199,29 @@ To disable in configuration:
 disable = ["PINJ011"]
 ```
 
-## Migration Guide
+## Key Takeaways
 
-When adding IProxy to existing code:
+1. **Injected dependencies (before `/`) should NEVER use `IProxy[T]`**
+   - They receive resolved values, not IProxy objects
+   - Use the actual type: `logger: Logger`, not `logger: IProxy[Logger]`
 
-```python
-# Step 1: Import IProxy
-from pinjected import IProxy
+2. **Use `IProxy[T]` for:**
+   - Variables holding references to `@instance` or `@injected` functions
+   - Entry point variables for CLI execution
+   - Module-level variables that will be resolved later
 
-# Step 2: Update function signatures
-# Before:
-@injected
-def process(service: UserService, /, data: dict):
-    pass
-
-# After:
-@injected
-def process(service: IProxy[UserService], /, data: dict):
-    pass
-
-# Step 3: Update instance functions
-# Before:
-@instance
-def user_service() -> UserService:
-    return UserService()
-
-# After:
-@instance
-def user_service() -> IProxy[UserService]:
-    return UserService()
-```
+3. **Common correct patterns:**
+   ```python
+   # Injected dependency - NO IProxy
+   @injected
+   def process(logger: Logger, /, data: str): ...
+   
+   # Entry point variable - YES IProxy
+   run_process: IProxy[Result] = process("input.txt")
+   
+   # Reference to @instance - YES IProxy
+   db_ref: IProxy[Database] = database_instance
+   ```
 
 ## Related Rules
 

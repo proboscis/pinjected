@@ -7,7 +7,7 @@
 **Severity:** Error  
 **Auto-fixable:** No
 
-The `/` separator must correctly separate injected dependencies (left) from runtime arguments (right).
+**Note:** This rule is currently disabled as it cannot reliably determine developer intent.
 
 ## Rationale
 
@@ -15,24 +15,20 @@ The slash separator (`/`) in `@injected` functions is a critical syntactic eleme
 - **Left side:** Parameters that are dependency-injected by Pinjected
 - **Right side:** Parameters that must be provided at runtime when calling the function
 
-Incorrect placement of the slash separator will cause runtime errors because:
-1. Dependencies placed after `/` won't be injected
-2. The function will expect these as runtime arguments
-3. Calls will fail with missing argument errors
+While incorrect placement of the slash separator will cause runtime errors, this rule has been disabled because:
+1. **Intent is unknowable:** A parameter named "logger" after `/` might be intentional, not a mistake
+2. **False positives:** Heuristics can incorrectly flag legitimate runtime parameters
+3. **Developer autonomy:** Developers should decide their parameter placement
 
-## Rule Details
+## Current Status
 
-This rule verifies that all dependency parameters appear before the `/` separator in `@injected` functions. It uses various heuristics to identify likely dependencies:
+This rule is effectively disabled. It will not produce any violations. The check for missing slash separators is handled by PINJ015.
 
-1. Known dependency names from `@instance` and `@injected` functions in the codebase
-2. Common dependency naming patterns (logger, db, cache, service, etc.)
-3. Parameters with dependency-like suffixes (_service, _client, _manager, etc.)
-4. Parameters used as method calls in the function body
-5. Async dependency patterns (a_ prefix)
+## Historical Context
 
-### Examples of Violations
+Previously, this rule attempted to detect potentially misplaced parameters using heuristics. Here are examples of what it would have flagged:
 
-❌ **Bad:** Dependencies after the slash
+### What Would Have Been Flagged (No Longer Active)
 ```python
 @injected
 def process(dep1, /, dep2, arg):  # ❌ dep2 on wrong side
@@ -140,85 +136,31 @@ def initialize_system(config, context, /, options):
     )
 ```
 
-## Dependency Detection Heuristics
+## Why These Patterns Are No Longer Flagged
 
-The rule uses several methods to identify dependencies:
+The rule previously used heuristics to detect potentially misplaced dependencies based on:
+- Known dependency names
+- Common patterns (logger, db, service, etc.)
+- Suffix patterns (_service, _client, etc.)
+- Usage patterns in the function body
 
-### 1. Known dependencies
-```python
-# If you have these in your codebase:
-@instance
-def database():
-    return Database()
+However, these heuristics were disabled because:
+1. **False positives:** A parameter named "logger" might legitimately be a runtime argument
+2. **Developer intent:** Only the developer knows whether parameter placement is intentional
+3. **Flexibility:** Some patterns might have valid use cases as runtime parameters
 
-@injected
-def user_service(database, /):
-    return UserService(database)
+## When This Rule Applies
 
-# Then 'database' and 'user_service' are recognized as dependencies
-@injected
-def get_user(/, database, user_id):  # ❌ 'database' detected as dependency
-    return database.get_user(user_id)
-```
-
-### 2. Common patterns
-```python
-# These are recognized as likely dependencies:
-- logger, db, database, cache, redis
-- api, client, service, repository, repo
-- manager, handler, processor, transformer
-- validator, serializer, parser, formatter
-- auth, authenticator, session, store
-- queue, broker, publisher, factory
-- config, settings, context, engine
-```
-
-### 3. Suffix patterns
-```python
-# Parameters ending with these suffixes are likely dependencies:
-@injected
-def process(/, user_service, payment_client, data):  # ❌ Both detected
-    # _service and _client suffixes indicate dependencies
-    pass
-```
-
-### 4. Usage patterns
-```python
-@injected
-def handle(/, processor, data):  # ❌ Detected by usage
-    # 'processor' is used as an object with methods
-    result = processor.process(data)
-    processor.log_result(result)
-    return result
-```
-
-## When This Rule Doesn't Apply
-
-This rule only checks `@injected` functions. It doesn't apply to:
-- Regular functions without decorators
-- `@instance` decorated functions
-- Functions without a `/` separator (handled by PINJ015)
+Since this rule is disabled, it effectively doesn't apply to any code. The rule exists for backward compatibility but will not produce violations.
 
 ## Configuration
 
 This rule has no configuration options.
 
-## When to Disable
+## Disabling This Rule
 
-You should rarely disable this rule as incorrect slash placement will cause runtime errors. Only disable when:
-- You're using a custom injection system with different conventions
-- During migration when gradually fixing legacy code
+Since the rule is already effectively disabled, there's no need to explicitly disable it. However, if you want to ensure it's excluded:
 
-To disable for a specific function:
-```python
-# noqa: PINJ007
-@injected
-def legacy_function(arg1, /, dependency, arg2):
-    # Will be fixed in next refactor
-    pass
-```
-
-To disable in configuration:
 ```toml
 [tool.pinjected-linter]
 disable = ["PINJ007"]
@@ -237,3 +179,4 @@ disable = ["PINJ007"]
 ## Version History
 
 - **1.0.0:** Initial implementation matching Linear issue ARC-290
+- **1.1.0:** Rule disabled - heuristics cannot reliably determine developer intent

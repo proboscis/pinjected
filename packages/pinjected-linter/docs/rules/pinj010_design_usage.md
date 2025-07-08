@@ -1,4 +1,4 @@
-# PINJ010: Design() Usage Patterns
+# PINJ010: design() Usage Patterns
 
 ## Overview
 
@@ -7,11 +7,11 @@
 **Severity:** Warning  
 **Auto-fixable:** No
 
-Ensures proper usage of the `design()` function and `Design()` class for dependency configuration in Pinjected.
+Ensures proper usage of the `design()` function for dependency configuration in Pinjected.
 
 ## Rationale
 
-The `design()` function (and its underlying `Design()` class) is the primary way to configure and override dependencies in Pinjected. Proper usage ensures:
+The `design()` function is the primary way to configure and override dependencies in Pinjected. Proper usage ensures:
 
 1. **Clear Configuration:** Dependencies are properly mapped to their providers
 2. **Avoid Common Mistakes:** Prevents calling providers instead of referencing them
@@ -22,23 +22,21 @@ The `design()` function (and its underlying `Design()` class) is the primary way
 ## Rule Details
 
 This rule checks for several common misuse patterns:
-1. Empty Design() instantiation
-2. Using decorator names as keys instead of dependency names
-3. Calling @instance functions instead of referencing them
-4. Incorrect combination patterns
+1. Using decorator names as keys instead of dependency names
+2. Calling @instance functions instead of referencing them (only detects actual @instance decorated functions)
+3. Incorrect combination patterns
+
+Note: The rule tracks @instance decorated functions in your code and only flags calls to those specific functions. Other function calls (like `Injected.pure()`) are allowed.
 
 ### Examples of Violations
 
-❌ **Bad:** Common Design() misuse patterns
+❌ **Bad:** Common design() misuse patterns
 ```python
-from pinjected import Design, instance
-
-# Error: Empty Design - no configuration provided
-empty_design = Design()
+from pinjected import design, instance
 
 # Error: Using decorator name as key
-wrong_key = Design(
-    instance=database_provider  # Wrong: 'instance' is not a dependency name
+wrong_key = design(
+    instance=database  # Wrong: 'instance' is not a dependency name
 )
 
 # Error: Calling @instance function instead of referencing
@@ -46,41 +44,52 @@ wrong_key = Design(
 def database_provider():
     return Database()
 
-called_design = Design(
+called_design = design(
     database=database_provider()  # Wrong: Calling the function
 )
 
-# Error: Mixing Design with non-Design objects
-mixed = Design(db=database) + {"cache": cache}  # Can't mix types
+# Error: Mixing design with non-design objects
+mixed = design(db=database) + {"cache": cache}  # Can't mix types
 ```
 
-✅ **Good:** Proper Design() usage
+✅ **Good:** Proper design() usage
 ```python
-from pinjected import Design, design, instance
+from pinjected import design, instance
 
-# Good: Providing configuration
-configured_design = Design(
-    database=database_provider,      # Reference, not call
-    logger=logger_instance,          # Reference, not call
-    config=lambda: {"debug": True}   # Lambda is fine
+# Good: Empty design is allowed - useful as a base
+base_design = design()
+
+# Good: Providing configuration with values and references
+configured_design = design(
+    database=database,           # Reference, not call
+    logger=logger,               # Reference, not call
+    batch_size=128,              # Simple value
+    learning_rate=0.001          # Simple value
 )
 
-# Good: Using the design() convenience function
+# Good: Using the design() function
 simple_design = design(
-    database=database_provider,
-    cache=cache_provider,
-    logger=lambda: Logger("myapp")
+    database=database,
+    cache=cache,
+    model=model
 )
 
 # Good: Combining designs properly
-combined = Design(database=db1) + Design(cache=cache1)
+combined = base_design + design(database=db) + design(cache=cache)
 
 # Good: Non-empty with meaningful configuration
-app_design = Design(
-    database=postgres_provider,
-    cache=redis_provider,
-    auth_service=auth_provider,
-    config=config_provider
+app_design = design(
+    database=postgres_db,
+    cache=redis_cache,
+    auth_service=auth,
+    config=config
+)
+
+# Good: Using Injected factory methods
+advanced_design = design(
+    pure_value=Injected.pure("test_value"),  # Factory methods are allowed
+    by_name=Injected.by_name("some_key"),    # These create IProxy objects
+    database=database                         # Reference to @instance function
 )
 ```
 
@@ -97,35 +106,29 @@ def database():
 def cache():
     return RedisCache()
 
-bad_design = Design(
+bad_design = design(
     db=database(),    # Error: Calling the function
     cache=cache()     # Error: Calling the function
 )
 
 # ✅ Good - referencing providers
-good_design = Design(
+good_design = design(
     db=database,      # Reference only
     cache=cache       # Reference only
-)
-
-# Also good with design() function
-good_design2 = design(
-    db=database,
-    cache=cache
 )
 ```
 
 ### 2. Use dependency names as keys
 ```python
 # ❌ Bad - using decorator or type names
-wrong_design = Design(
+wrong_design = design(
     instance=database_provider,      # 'instance' is not a dependency
     provider=cache_provider,         # 'provider' is not a dependency
     injected=service_provider        # 'injected' is not a dependency
 )
 
 # ✅ Good - using actual dependency names
-correct_design = Design(
+correct_design = design(
     database=database_provider,      # 'database' is the dependency name
     cache=cache_provider,            # 'cache' is the dependency name
     user_service=service_provider    # 'user_service' is the dependency name
@@ -135,37 +138,38 @@ correct_design = Design(
 ### 3. Combine designs properly
 ```python
 # ❌ Bad - incorrect combination
-base_design = Design(database=db_provider)
+base_design = design(database=db_provider)
 bad_combined = base_design + {"cache": cache_provider}  # Can't add dict
 
 # ✅ Good - proper design combination
-base_design = Design(database=db_provider)
-cache_design = Design(cache=cache_provider)
+base_design = design(database=db_provider)
+cache_design = design(cache=cache_provider)
 good_combined = base_design + cache_design
 
 # Also good - chaining
 all_designs = (
-    Design(database=db_provider) +
-    Design(cache=cache_provider) +
-    Design(logger=logger_provider)
+    design(database=db_provider) +
+    design(cache=cache_provider) +
+    design(logger=logger_provider)
 )
 ```
 
-### 4. Use lambdas for simple values
+### 4. Use simple values and references
 ```python
-# ✅ Good - lambdas for configuration values
-config_design = Design(
-    debug_mode=lambda: True,
-    max_connections=lambda: 100,
-    api_key=lambda: os.environ.get("API_KEY"),
-    features=lambda: {"feature_x": True, "feature_y": False}
+# ✅ Good - simple values and references
+config_design = design(
+    debug_mode=True,                 # Simple boolean value
+    max_connections=100,             # Simple numeric value
+    api_key="sk-1234",              # Simple string value
+    features={"feature_x": True}     # Simple dict value
 )
 
-# Also good - mixing providers and lambdas
-mixed_design = Design(
-    database=database_provider,      # Provider function
-    config=lambda: load_config(),    # Lambda
-    debug=lambda: True               # Simple value via lambda
+# Also good - mixing providers and values
+mixed_design = design(
+    database=database_provider,      # Provider function reference
+    cache=cache_provider,            # Provider function reference
+    batch_size=64,                   # Simple value
+    learning_rate=0.001              # Simple value
 )
 ```
 
@@ -173,46 +177,42 @@ mixed_design = Design(
 ```python
 # ✅ Good - different designs for different environments
 def create_app_design(env: str):
-    base = Design(
+    base = design(
         logger=logger_provider,
         auth=auth_provider
     )
     
     if env == "production":
-        return base + Design(
+        return base + design(
             database=postgres_provider,
             cache=redis_provider,
             monitoring=datadog_provider
         )
     else:
-        return base + Design(
+        return base + design(
             database=sqlite_provider,
             cache=memory_cache_provider,
-            monitoring=lambda: None  # No monitoring in dev
+            monitoring=null_monitoring_provider  # No monitoring in dev
         )
 ```
 
-## Design() vs design()
+## Using the design() Function
 
-Pinjected provides both:
-- `Design()`: The class for creating design objects
-- `design()`: A convenience function that creates a Design instance
+Pinjected provides the `design()` function as the standard way to create dependency configurations:
 
-Both are valid and the linter accepts either:
 ```python
-# Using Design class
-class_design = Design(
-    database=db_provider,
-    cache=cache_provider
+# Empty design is valid - useful as a base
+base_design = design()
+
+# Create a design with the design() function
+my_design = design(
+    database=database,
+    cache=cache,
+    logger=logger
 )
 
-# Using design function (convenience)
-func_design = design(
-    database=db_provider,
-    cache=cache_provider
-)
-
-# Both are equivalent
+# Designs can be composed using the + operator
+extended_design = base_design + design(database=database) + design(cache=cache)
 ```
 
 ## Configuration
@@ -228,7 +228,7 @@ This rule should rarely be disabled. Consider disabling only if:
 To disable for a specific line:
 ```python
 # noqa: PINJ010
-empty_design = Design()  # Will be configured later
+empty_design = design()  # Will be configured later
 ```
 
 To disable in configuration:
