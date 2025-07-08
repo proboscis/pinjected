@@ -14,7 +14,7 @@ def update_if_registered(
     func: Injected[Callable],
     updated: Injected[Callable],
     meta: Maybe[BindMetadata] = Nothing,
-    binding_key: str = None,
+    binding_key: str | None = None,
 ):
     match func:
         # case Partial(InjectedFunction(tgt, mapping)):

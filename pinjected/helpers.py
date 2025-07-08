@@ -85,14 +85,14 @@ def get_design_path_from_var_path(var_path: str) -> str | None:
 def find_default_design_path(file_path: str) -> str | None:
     from pinjected.pinjected_logging import logger
 
-    logger.info(f"looking for default design_path")
+    logger.info("looking for default design_path")
     return find_module_attr(file_path, "__default_design_path__")
 
 
 def find_default_working_dir(file_path: str) -> str | None:
     from pinjected.pinjected_logging import logger
 
-    logger.info(f"looking for default working dir")
+    logger.info("looking for default working dir")
     return find_module_attr(file_path, "__default_working_dir__")
 
 
@@ -124,7 +124,7 @@ def find_default_design_paths(
 
 
 def find_module_attr(
-    file_path: str, attr_name: str, root_module_path: str = None
+    file_path: str, attr_name: str, root_module_path: str | None = None
 ) -> str | None:
     for item in walk_module_attr(Path(file_path), attr_name, root_module_path):
         return item.var

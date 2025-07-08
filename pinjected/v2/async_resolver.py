@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from traceback import FrameSummary
-from typing import Any, Optional, ParamSpec, TypeVar, Union
+from typing import Any, Optional, ParamSpec, TypeVar, Union, TYPE_CHECKING
 
 from returns.future import FutureResult, FutureResultE
 from returns.io import IOFailure, IOResultE
@@ -59,6 +59,9 @@ from pinjected.v2.resolver import (
     Providable,
 )
 from pinjected.visualize_di import DIGraph
+
+if TYPE_CHECKING:
+    from pinjected.di.design_interface import Design
 
 StaticProvisionError = Union[CyclicDependency, DependencyResolutionFailure]
 
@@ -117,7 +120,7 @@ class AsyncResolver:
             cb(event)
 
     def __post_init__(self):
-        from pinjected import Design
+        from pinjected.di.design_interface import Design
 
         if self.callbacks is None:
             self.callbacks = [
@@ -230,7 +233,7 @@ class AsyncResolver:
                 res = await bind.provide(new_cxt, deps)
             case Object(x):
                 res = x
-            case Call(f, args, kwargs) as call:
+            case Call(_, _, _) as call:
                 res = await self._resolve_call_prev(call, cxt)
             case BiOp(op, left, right):
                 new_cxt = ProvideContext(
@@ -375,7 +378,7 @@ class AsyncResolver:
                     tgt, ProvideContext(self, key=tgt, parent=root_cxt)
                 )
                 return res
-            case DelegatedVar(value, cxt) as dv:
+            case DelegatedVar(value, _) as dv:
                 # return await self._provide_providable(tgt.eval())
                 expr = await self._optimize(dv.eval().ast)
                 key = StrBindKey(f"{show_expr(value)}")
@@ -384,7 +387,7 @@ class AsyncResolver:
                 )
                 res = await self.eval_expr(expr, new_cxt)
                 return res
-            case EvaledInjected(val, ast):
+            case EvaledInjected(_, ast):
                 expr = await self._optimize(ast)
                 key = StrBindKey(f"{show_expr(ast)}")
                 new_cxt = ProvideContext(self, key=key, parent=root_cxt)
@@ -440,7 +443,7 @@ class AsyncResolver:
                     d, use_implicit_bindings=self.use_implicit_bindings
                 )
                 errors = list(digraph.di_dfs_validation(tgt))
-            case DelegatedVar() as dv:
+            case DelegatedVar():
                 tmp_design = d + design(__root__=tgt)
                 digraph: DIGraph = DIGraph(
                     tmp_design, use_implicit_bindings=self.use_implicit_bindings
@@ -473,7 +476,7 @@ class AsyncResolver:
                 message += f"Missing Dependencies: {missing_keys}\n"
                 message += "-" * len_header + "\n"
                 for e in drfs:
-                    key, trace, cause = e.key, e.trace, e.cause
+                    key, _trace, _cause = e.key, e.trace, e.cause
                     message += f"Trace {e.trace_str()}: {e.cause}\n"
                     key = StrBindKey(key)
                     spec: Maybe[BindSpec] = self.spec.get_spec(key)
@@ -487,12 +490,12 @@ class AsyncResolver:
                     doc_msg = unsafe_perform_io(
                         fut_msg.value_or("No documentation provided")
                     )
-                    key_doc += f"Documentation:\n"
+                    key_doc += "Documentation:\n"
                     key_doc += f"  {doc_msg}\n"
                     key_to_docs[key] = key_doc
                 message += "=" * len_header + "\n"
             if key_to_docs:
-                message += f"========== Key Documentations ==========\n"
+                message += "========== Key Documentations ==========\n"
             for key, doc in key_to_docs.items():
                 message += "-" * len_header + "\n"
                 message += f"Injection Key = {key}:\n{doc}\n"
@@ -517,9 +520,9 @@ class AsyncResolver:
                     async with TaskGroup() as tg:
                         await self.a_check_resolution(tgt)
                         match tgt:
-                            case EvaledInjected(val, ast):
+                            case EvaledInjected(_, ast):
                                 repr = show_expr(ast)
-                            case DelegatedVar(value, cxt) as dv:
+                            case DelegatedVar(_, _) as dv:
                                 repr = show_expr(dv.eval().ast)
                             case _:
                                 repr = str(tgt)
@@ -538,12 +541,11 @@ class AsyncResolver:
                     return res
                 return await self._provide_providable(tgt)
             except Exception as e:
-                if isinstance(e, CompatibleExceptionGroup):
-                    if len(e.exceptions) == 1:
-                        logger.debug(
-                            f"raising first exception from {[type(e) for e in e.exceptions]}"
-                        )
-                        raise e.exceptions[0] from None
+                if isinstance(e, CompatibleExceptionGroup) and len(e.exceptions) == 1:
+                    logger.debug(
+                        f"raising first exception from {[type(e) for e in e.exceptions]}"
+                    )
+                    raise e.exceptions[0] from None
                 raise e
             finally:
                 self.provision_depth -= 1
@@ -587,7 +589,7 @@ class AsyncResolver:
                 logger.info(f"waiting for {len(destructions)} destructors to finish.")
                 results = await asyncio.gather(*destructions)
                 logger.success(f"all destructors finished with results:{results}")
-                logger.success(f"Resolver destructed")
+                logger.success("Resolver destructed")
             else:
                 results = []
             self.destructed = True

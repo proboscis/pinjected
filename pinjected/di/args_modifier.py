@@ -1,7 +1,10 @@
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pinjected import Injected
 
 ArgsModifier = Callable[[tuple, dict], tuple[tuple, dict, list["Injected"]]]
 

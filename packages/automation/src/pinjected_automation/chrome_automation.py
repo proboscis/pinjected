@@ -549,10 +549,10 @@ async def initial_cxt(new_AnthropicChatContext):
 def show_cxt__rich(cxt: AnthropicChatContext):
     from rich import print
 
-    print(f"-------- Log Visualizer -------")
+    print("-------- Log Visualizer -------")
     cxt = cxt.truncate_image_data()
     # show tools
-    print(f"[bold]Tools:[/bold]")
+    print("[bold]Tools:[/bold]")
     for tool in cxt.tools:
         print(f"[bold]{tool['name']}[/bold]")
         for k, v in tool.items():
@@ -571,13 +571,13 @@ def show_cxt__rich(cxt: AnthropicChatContext):
                     "source": {
                         "type": "base64",
                         "media_type": media_type,
-                        "data": data,
+                        "data": _,
                     },
                 }:
                     print(f"[{color}]{role}: Image ({media_type})")
                 case {
                     "type": "tool_result",
-                    "tool_use_id": tool_use_id,
+                    "tool_use_id": _,
                     "content": content,
                 }:
                     for cnt in content:
@@ -784,10 +784,10 @@ async def a_handle_action_loop(
                         )
                         cxt = cxt.add_tool_result(tool_result)
                     case {"action": "left_click"}:
-                        logger.info(f"Mouse click.")
+                        logger.info("Mouse click.")
                         pyautogui.click()
                         cxt = cxt.add_tool_result(
-                            new_AnthropicToolResult(_id).add_text(f"Mouse clicked.")
+                            new_AnthropicToolResult(_id).add_text("Mouse clicked.")
                         )
                     case {"action": "right_click", "coordinate": (x, y)}:
                         screen_x, screen_y = last_bbox.to_screen_coordinates(x, y)
@@ -810,7 +810,7 @@ async def a_handle_action_loop(
                         tool_result, last_bbox = await a_chrome_screenshot(_id)
                         cxt = cxt.set_display_size(last_bbox.width, last_bbox.height)
                         logger.info(f"Took screenshot: {last_bbox}")
-                        tool_result.add_text(f"Screenshot taken")
+                        tool_result.add_text("Screenshot taken")
                         cxt = cxt.add_tool_result(tool_result)
                     case {"action": "key", "text": key_combination} | {
                         "text": key_combination
@@ -895,7 +895,7 @@ async def test_open_browser_and_cmd_l(
     await asyncio.sleep(1)
     await a_send_hotkey("command+l")
     await asyncio.sleep(1)
-    logger.info(f"Sending address to Chrome")
+    logger.info("Sending address to Chrome")
     pyautogui.typewrite(
         "https://platform.openai.com/settings/organization/billing/history"
     )

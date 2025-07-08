@@ -22,3 +22,9 @@ class BindMetadata:
     The Protocol class that defines the interface for this binding.
     Used for type checking and IDE support.
     """
+
+    is_callable_instance: bool = False
+    """
+    Indicates whether this instance returns a callable object that should be called directly.
+    Used by the linter to allow direct calls to the returned value.
+    """

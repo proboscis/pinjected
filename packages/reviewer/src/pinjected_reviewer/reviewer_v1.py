@@ -129,7 +129,7 @@ async def a_review_python_diff(
         )
         return Review(
             name=f"Pinjected Coding Style for {diff.filename}",
-            review_text=f"File contains a pinjected-reviewer ignore/skip comment. Skipping review.",
+            review_text="File contains a pinjected-reviewer ignore/skip comment. Skipping review.",
             approved=True,
         )
 

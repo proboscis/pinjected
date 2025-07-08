@@ -48,7 +48,7 @@ from pinjected.v2.keys import StrBindKey  # noqa: E402
 from pinjected.visualize_di import DIGraph  # noqa: E402
 
 
-def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):  # noqa: PLR0912, RUF013
+def run_injected(cmd, var_path, design_path: str = None, *args, **kwargs):  # noqa: RUF013
     no_notification = kwargs.pop("no_notification", False)
     if no_notification:
         notify_impl = lambda msg, *args, **kwargs: None  # noqa: E731
@@ -92,10 +92,11 @@ async def a_run_target(var_path: str, design_path: str | None = None):
     print(f"running target:{var_path} with design {design_path}")
     cxt: RunContext = await a_get_run_context(design_path, var_path)
     # design, meta_overrides, var = await a_get_run_context(design_path, var_path)
-    design = cxt.design + cxt.meta_overrides
+    merged_design = cxt.design + cxt.meta_overrides
+    resolver = None
     try:
         async with TaskGroup() as tg:
-            dd = design + design(__task_group__=tg)
+            dd = merged_design + design(__task_group__=tg)
             resolver = AsyncResolver(
                 dd, callbacks=[cxt.provision_callback] if cxt.provision_callback else []
             )
@@ -104,8 +105,9 @@ async def a_run_target(var_path: str, design_path: str | None = None):
                 _res = await _res
         print(f"run_target {var_path} result:{_res}")
     finally:
-        await resolver.destruct()
-        print(f"destructed resolver")
+        if resolver:
+            await resolver.destruct()
+            print("destructed resolver")
     return _res
 
 
@@ -155,7 +157,7 @@ async def a_run_target__mp(var_path: str):
     return res
 
 
-def run_anything(  # noqa: C901, PLR0912, PLR0915
+def run_anything(
     cmd: str,
     var_path: str,
     design_path: str | None,
@@ -275,7 +277,7 @@ def generate_dependency_graph_description(var_path, design_path, cxt, design):
 
     if design is None:
         raise ValueError("design parameter cannot be None. Pass a valid Design object.")
-    
+
     enhanced_design = design + design_func(
         __design__=Injected.pure(design),
         __resolver__=Injected.pure("__resolver__"),
@@ -391,7 +393,7 @@ class RunContext:
     def get_final_design(self):
         return self.design + self.meta_overrides + self.overrides
 
-    async def a_provide(self, tgt, show_debug=True):  # noqa: C901, PLR0912
+    async def a_provide(self, tgt, show_debug=True):
         final_design = self.get_final_design()
         if show_debug:
             logger.info(f"loaded design:{final_design}")
@@ -461,7 +463,7 @@ class RunContext:
         return asyncio.run(self.a_run())
 
 
-async def a_run_with_notify(  # noqa: C901, PLR0912
+async def a_run_with_notify(
     cxt: RunContext,
     a_run,
     notify=lambda msg, *args, **kwargs: notify(msg, *args, **kwargs),
@@ -517,7 +519,7 @@ async def a_run_with_notify(  # noqa: C901, PLR0912
                 logger.exception(
                     f"failed to handle result with {PinjectedHandleMainResult.key.name}"
                 )
-                logger.warning(f"still returning the result")
+                logger.warning("still returning the result")
         else:
             logger.info(
                 f"Note: The result can be handled with {PinjectedHandleMainResult.key.name}"

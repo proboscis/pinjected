@@ -1,11 +1,15 @@
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, TYPE_CHECKING
 
 from pinjected.di.applicative import Applicative
 from pinjected.di.designed import Designed
 from pinjected.di.expr_util import Expr
 from pinjected.di.injected import Injected
 from pinjected.di.static_proxy import AstProxyContextImpl, eval_applicative
+
+if TYPE_CHECKING:
+    from pinjected.di.graph import IObjectGraph
+    from pinjected.di.design_interface import Design
 
 T = TypeVar("T")
 

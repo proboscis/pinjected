@@ -255,7 +255,7 @@ def get_module_name(file_path: Path, root_module_path: Path) -> str:
 
     # Handle src/ pattern common in Python projects
     if str(relative_path).startswith("src/"):
-        logger.trace(f"File path starts with src/, removing src/ prefix")
+        logger.trace("File path starts with src/, removing src/ prefix")
         relative_path = Path(str(relative_path).replace("src/", "", 1))
 
     # Convert path to module name
@@ -525,7 +525,7 @@ def find_special_files(
 
     for filename in special_filenames:
         if not filename:
-            logger.warning(f"Empty filename in special_filenames - skipping")
+            logger.warning("Empty filename in special_filenames - skipping")
             continue
 
         file_path = directory / filename

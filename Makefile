@@ -35,12 +35,12 @@ setup-all:
 test:
 	@echo "Running tests with coverage enforcement (90% minimum)..."
 	uv sync --all-packages
-	cd test && uv run pytest --testmon --cov=pinjected --cov-fail-under=90 --cov-report=term-missing --cov-report=html
+	uv run pytest . --testmon --cov=pinjected --cov-fail-under=90 --cov-report=term-missing --cov-report=html
 	@echo "✓ All tests passed with coverage >= 90%"
 
 test-all:
 	uv sync --all-packages
-	cd test && uv run pytest
+	uv run pytest .
 	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
 	cd packages/anthropic && uv sync --group dev && uv run -m pytest tests
 	cd packages/wandb_util && uv sync --group dev && uv run -m pytest tests
@@ -55,7 +55,7 @@ test-all:
 	uv sync --group dev --all-packages
 
 test-cov:
-	cd test && uv run pytest -v --cov=pinjected --cov-report=xml
+	uv run pytest . -v --cov=pinjected --cov-report=xml
 	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
 
 publish:

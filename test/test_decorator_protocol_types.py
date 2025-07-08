@@ -37,7 +37,7 @@ def test_protocol_type_annotations():
     # Note: Type checkers should see this as DelegatedVar
 
     # Test 3: String injection should return DelegatedVar
-    db_proxy = injected("database")
+    injected("database")
 
     # Note: Type checkers should see this as DelegatedVar
 
@@ -91,4 +91,3 @@ if __name__ == "__main__":
     test_protocol_type_annotations()
     test_protocol_usage_in_design()
     print("All type annotation tests passed!")
-

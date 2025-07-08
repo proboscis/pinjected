@@ -23,11 +23,11 @@ from pinjected.run_helpers.run_injected import (
 
 
 def run(
-    var_path: str = None,
-    design_path: str = None,
-    overrides: str = None,
-    meta_context_path: str = None,
-    base64_encoded_json: str = None,
+    var_path: str | None = None,
+    design_path: str | None = None,
+    overrides: str | None = None,
+    meta_context_path: str | None = None,
+    base64_encoded_json: str | None = None,
     **kwargs,
 ):
     """
@@ -87,9 +87,9 @@ def check_config():
 
     default: Design = load_user_default_design()
     overrides = load_user_overrides_design()
-    logger.info(f"displaying default design bindings:")
+    logger.info("displaying default design bindings:")
     logger.info(default.table_str())
-    logger.info(f"displaying overrides design bindings:")
+    logger.info("displaying overrides design bindings:")
     logger.info(overrides.table_str())
 
 
@@ -143,12 +143,12 @@ def decode_b64json(text):
 
 
 def call(
-    var_path: str = None,
-    design_path: str = None,
-    overrides: str = None,
-    meta_context_path: str = None,
-    base64_encoded_json: str = None,
-    call_kwargs_base64_json: str = None,
+    var_path: str | None = None,
+    design_path: str | None = None,
+    overrides: str | None = None,
+    meta_context_path: str | None = None,
+    base64_encoded_json: str | None = None,
+    call_kwargs_base64_json: str | None = None,
     **kwargs,
 ):
     """
@@ -212,7 +212,7 @@ def call(
     return asyncio.run(a_prep())
 
 
-def json_graph(var_path: str = None, design_path: str = None, **kwargs):
+def json_graph(var_path: str | None = None, design_path: str | None = None, **kwargs):
     """
     Generate a JSON representation of the dependency graph for a variable.
 
@@ -223,7 +223,7 @@ def json_graph(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("json-graph", var_path, design_path, **kwargs)
 
 
-def describe(var_path: str = None, design_path: str = None, **kwargs):
+def describe(var_path: str | None = None, design_path: str | None = None, **kwargs):
     """
     Generate a human-readable description of the dependency graph for a variable.
     Uses to_edges() of DIGraph to show dependencies with their documentation.
@@ -246,7 +246,9 @@ def describe(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe", var_path, design_path, **kwargs)
 
 
-def describe_json(var_path: str = None, design_path: str = None, **kwargs):
+def describe_json(
+    var_path: str | None = None, design_path: str | None = None, **kwargs
+):
     """
     Generate a JSON representation of the dependency chain for an IProxy variable.
     Returns dependency information including metadata about where keys are bound.
@@ -272,7 +274,7 @@ def describe_json(var_path: str = None, design_path: str = None, **kwargs):
     return run_injected("describe_json", var_path, design_path, **kwargs)
 
 
-def list(var_path: str = None):
+def list(var_path: str | None = None):
     """
     List all IProxy objects that are runnable in the specified module.
 
@@ -522,14 +524,18 @@ def main():
         import fire
 
         try:
-            original_info = fire.inspectutils.Info
 
             def patched_info(component):
                 try:
                     import IPython
                     from IPython.core import oinspect
 
-                    ipython_version = tuple(map(int, IPython.__version__.split(".")))
+                    try:
+                        ipython_version = tuple(
+                            map(int, IPython.__version__.split(".")[:2])
+                        )
+                    except ValueError:
+                        ipython_version = (0, 0)
 
                     if ipython_version >= (9, 0):
                         inspector = oinspect.Inspector(theme_name="Neutral")

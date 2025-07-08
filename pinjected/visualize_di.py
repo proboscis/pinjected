@@ -1,11 +1,14 @@
+import colorsys
+import functools
 import inspect
+import operator
 import platform
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import networkx as nx
 from cytoolz import memoize
@@ -43,6 +46,9 @@ from pinjected.pinjected_logging import logger
 from pinjected.providable import Providable
 from pinjected.v2.binds import BindInjected
 
+if TYPE_CHECKING:
+    from pinjected.di.design_interface import Design
+
 
 def dfs(neighbors: Callable, node: str, trace=[]):
     nexts: list[str] = neighbors(node)
@@ -57,9 +63,6 @@ safe_attr = safe(getattr)
 @safe
 def getitem(tgt, name):
     return tgt[name]
-
-
-import colorsys
 
 
 def rgb_to_hex(rgb):
@@ -112,8 +115,6 @@ class EdgeInfo:
                 else None,
                 "source": str(metadata.source) if hasattr(metadata, "source") else None,
             }
-
-        used_by_info = self.used_by if self.used_by else []
 
         # The spec should now have a better string representation from our __str__ implementation
         spec_info = None
@@ -208,7 +209,11 @@ class DIGraph:
 
                 # logger.info(f"add direct injected node:\n{tabulate.tabulate(list(self.direct_injected.items()))}")
                 deps.append(dep_name)
-            missings = list(sum([list(extract_dependency(m)) for m in i.missings], []))
+            missings = list(
+                functools.reduce(
+                    operator.iadd, [list(extract_dependency(m)) for m in i.missings], []
+                )
+            )
             return deps + list(missings)
         if isinstance(i, MappedInjected):
             dep_name = self.new_name("mapped_src")
@@ -263,7 +268,7 @@ class DIGraph:
             except Exception as e:
                 import traceback
 
-                trb = traceback.format_exc()
+                traceback.format_exc()
                 if replace_missing:
                     # logger.debug(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e}")
                     # logger.warning(f"failed to get neighbors of {current} at {' => '.join(trace)}. due to {e} \n{trb}")
@@ -367,7 +372,7 @@ class DIGraph:
     def parse_injected(self, tgt: Injected):
         # from archpainter.my_artifacts.artifact_object import IArtifactObject
         match tgt:
-            case InjectedWithDefaultDesign(src, default_design):
+            case InjectedWithDefaultDesign(src, _):
                 return self.parse_injected(src)
             case InjectedFromFunction(f) as _if:
                 try:
@@ -392,16 +397,16 @@ class DIGraph:
             case MappedInjected(src, mapping) as mi:
                 desc = f"{mi.__class__.__name__}"
                 return ("injected", desc, self.get_source_repr(mapping))
-            case ZippedInjected(srcs) as zi:
+            case ZippedInjected(_) as zi:
                 desc = f"{zi.__class__.__name__}"
                 return ("injected", desc, "zipped")
-            case MZippedInjected(srcs) as mzi:
+            case MZippedInjected(_) as mzi:
                 desc = f"{mzi.__class__.__name__}"
                 return ("injected", desc, "mzipped")
             case InjectedByName(name):
                 desc = f"{name}"
                 return ("injected", desc, "by_name")
-            case EvaledInjected(val, ast):
+            case EvaledInjected(_, ast):
                 expr = show_expr(ast)
                 desc = f"Eval({expr})"
                 return ("injected", desc, expr)
@@ -545,7 +550,7 @@ g = d.to_graph()
         roots: str | list[str],
         replace_missing=True,
         root_group="root",
-        ignore_nodes: list[str] = None,
+        ignore_nodes: list[str] | None = None,
     ) -> NxGraphUtil:
         ignore_nodes = set(ignore_nodes or [])
         if isinstance(roots, str):
@@ -574,7 +579,7 @@ g = d.to_graph()
         self,
         roots: str | list[str],
         replace_missing=True,
-        ignore_nodes: list[str] = None,
+        ignore_nodes: list[str] | None = None,
     ):
         nx_graph = self.create_dependency_digraph(
             roots, replace_missing, ignore_nodes=ignore_nodes
@@ -666,7 +671,7 @@ g = d.to_graph()
         g = self.create_dependency_digraph(roots, replace_missing=visualize_missing)
         g.show_html()
 
-    def show_injected_html(self, tgt: Injected, name: str = None):
+    def show_injected_html(self, tgt: Injected, name: str | None = None):
         tgt = Injected.ensure_injected(tgt)
         assert isinstance(tgt, Injected)
         nx_graph = self.create_dependency_digraph_rooted(

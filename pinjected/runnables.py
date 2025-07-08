@@ -20,9 +20,9 @@ def get_runnables(module_path: Path) -> list[ModuleVarSpec]:
                 return True
             case (_, Designed()):
                 return True
-            case (_, DelegatedVar(value, cxt)) if cxt == InjectedEvalContext:
+            case (_, DelegatedVar(_, cxt)) if cxt == InjectedEvalContext:
                 return True
-            case (_, DelegatedVar(value, cxt)):
+            case (_, DelegatedVar(_, _)):
                 return False
             case (_, item) if hasattr(item, "__runnable_metadata__") and isinstance(
                 item.__runnable_metadata__, dict

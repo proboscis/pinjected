@@ -246,5 +246,81 @@ injected_c = Injected.bind(provide_c,
                            )  # you can nest Injected
 ```
 
+## IProxy AST Assertion (Preventing Accidental IProxy Creation)
+
+One common mistake when using `@injected` functions is calling them directly inside other functions. This creates IProxy objects instead of actually executing the function, which is usually not what you intended.
+
+### The Problem
+
+```python
+@injected
+def fetch_user(db, /, user_id: str):
+    return db.get_user(user_id)
+
+# WRONG - This creates an IProxy, not a user!
+def process_user_data(user_id: str):
+    user = fetch_user(user_id)  # This is an IProxy[dict], not a dict!
+    return user["name"]  # This will fail!
+```
+
+### The Solution
+
+Pinjected provides an optional runtime assertion to catch these mistakes early. When enabled, it will raise an error if you call an `@injected` function inside any function without proper context.
+
+To enable this feature, set the environment variable:
+```bash
+export PINJECTED_ENABLE_IPROXY_AST_ASSERTION=true
+```
+
+### Correct Patterns
+
+1. **In @injected functions**: Declare dependencies before the `/` separator
+```python
+@injected
+def process_user(fetch_user, /, user_id: str):
+    user = fetch_user(user_id)  # OK - fetch_user is a dependency
+    return user["name"]
+```
+
+2. **At module level**: IProxy creation is allowed for building the dependency graph
+```python
+# This is fine - module level
+fetch_admin = fetch_user("admin")
+```
+
+3. **With explicit context**: Use `allow_iproxy_creation()` when you really need it
+```python
+from pinjected import allow_iproxy_creation
+
+def advanced_function():
+    with allow_iproxy_creation():
+        # OK - explicitly allowed
+        user_proxy = fetch_user("123")
+    return user_proxy
+```
+
+### Error Messages
+
+When the assertion catches a mistake, it provides helpful guidance:
+```
+RuntimeError: Direct call to @injected function 'fetch_user' detected inside function 'bad_function'.
+
+@injected functions return IProxy objects, not actual values. This is likely not what you intended.
+
+Solutions:
+1. If you're in an @injected function:
+   Declare 'fetch_user' as a dependency (before '/')
+
+2. If you're in a regular function:
+   Use a resolved value from Design/Graph instead
+
+3. For advanced usage (if you really need IProxy here):
+   from pinjected import allow_iproxy_creation
+   with allow_iproxy_creation():
+       result = fetch_user(...)
+```
+
+This feature helps catch common mistakes early in development while being completely optional for backward compatibility.
+
 
 [Next: IProxy](04_injected_proxy.md)

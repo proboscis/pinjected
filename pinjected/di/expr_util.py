@@ -277,7 +277,7 @@ class Cache(Expr):
         self.src = state
 
     def __hash__(self):
-        return hash(f"cached") + hash(self.src)
+        return hash("cached") + hash(self.src)
 
 
 def show_expr(
@@ -303,7 +303,7 @@ def show_expr(
             logger.info(f"reduced:{reduced}")
             return reduced
         match e:
-            case Object(DelegatedVar(wrapped, cxt) as dv):
+            case Object(DelegatedVar(_, _) as dv):
                 return _show_expr(dv)
             case Object(x) if hasattr(x, "__repr_expr__"):
                 res = x.__repr_expr__()
@@ -326,7 +326,7 @@ def show_expr(
                 return f"{_show_expr(data)}.{attr_name}"
             case GetItem(Expr() as data, key):
                 return f"{_show_expr(data)}[{_show_expr(key)}]"
-            case DelegatedVar(wrapped, cxt):
+            case DelegatedVar(wrapped, _):
                 return f"{_show_expr(wrapped)}"
             case UnaryOp("await", Expr() as tgt):
                 return f"(await {_show_expr(tgt)})"

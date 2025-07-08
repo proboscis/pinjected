@@ -113,16 +113,21 @@ def find_pinjected_annotations(file_path: str) -> list[Annotation]:
         # Check for variable annotations and assignments
         elif isinstance(node, ast.AnnAssign):
             annotation = node.annotation
-            if isinstance(annotation, ast.Name):
-                if annotation.id in ["Injected", "IProxy"]:
-                    results.append(Annotation(node.target.id, f":{annotation.id}"))
+            if isinstance(annotation, ast.Name) and annotation.id in [
+                "Injected",
+                "IProxy",
+            ]:
+                results.append(Annotation(node.target.id, f":{annotation.id}"))
 
         # Check for type comments (for Python 3.5+)
-        elif isinstance(node, ast.Assign) and node.type_comment:
-            if "Injected" in node.type_comment or "IProxy" in node.type_comment:
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        results.append(Annotation(target.id, f":{node.type_comment}"))
+        elif (
+            isinstance(node, ast.Assign)
+            and node.type_comment
+            and ("Injected" in node.type_comment or "IProxy" in node.type_comment)
+        ):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    results.append(Annotation(target.id, f":{node.type_comment}"))
 
     return results
 

@@ -95,7 +95,7 @@ class TestSubprocessIntegration:
             f"Should find some expected entries, found: {list(configs.keys())}"
         )
 
-        print(f"✓ Successfully created configurations via subprocess")
+        print("✓ Successfully created configurations via subprocess")
         print(f"✓ Found {len(configs)} configurations: {list(configs.keys())[:5]}...")
 
         # Verify the structure of configurations
@@ -181,7 +181,7 @@ class TestSubprocessIntegration:
                 f"Run command failed: {run_result.stderr}"
             )
 
-            print(f"✓ Successfully ran extracted command via subprocess")
+            print("✓ Successfully ran extracted command via subprocess")
             print(f"✓ Command output: {run_result.stdout.strip()}")
 
         finally:
@@ -261,7 +261,7 @@ class TestSubprocessIntegration:
                     )
 
         # Check configuration structure
-        print(f"\n✓ Successfully created configurations for test_package module")
+        print("\n✓ Successfully created configurations for test_package module")
         print(f"✓ Found {len(configs)} configurations")
         print(f"✓ Found expected entries: {found_entries}")
 
@@ -332,6 +332,6 @@ class TestSubprocessIntegration:
             "Should find some configurations with explicit design_path"
         )
 
-        print(f"✓ Successfully created configurations WITH explicit design_path")
+        print("✓ Successfully created configurations WITH explicit design_path")
         print(f"✓ Found {len(configs)} configurations")
-        print(f"✓ Backward compatibility maintained for explicit design_path usage")
+        print("✓ Backward compatibility maintained for explicit design_path usage")

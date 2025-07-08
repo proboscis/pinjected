@@ -9,7 +9,8 @@ from injected_utils import async_cached
 from loguru import logger
 
 import pinjected_reviewer.entrypoint
-from pinjected import Injected, IProxy, injected
+import pinjected_reviewer.examples
+from pinjected import Injected, IProxy, injected, design
 
 
 @contextlib.contextmanager
@@ -73,10 +74,13 @@ async def a_collect_symbol_metadata(
                             symbol_info.is_instance = True
                         elif dec.id == "injected_pytest":
                             symbol_info.is_injected_pytest = True
-                    elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
+                    elif (
+                        isinstance(dec, ast.Call)
+                        and isinstance(dec.func, ast.Name)
+                        and dec.func.id == "injected_pytest"
+                    ):
                         # Handle decorator calls like @injected_pytest()
-                        if dec.func.id == "injected_pytest":
-                            symbol_info.is_injected_pytest = True
+                        symbol_info.is_injected_pytest = True
             metadata[f"{module_name}.{symbol_name}"] = symbol_info
     return metadata
 
@@ -279,14 +283,14 @@ async def a_collect_imported_symbol_metadata(
         module_file = final_path.with_suffix(".py")
         logger.debug(f"  モジュールファイルをチェック: {module_file}")
         if module_file.exists():
-            logger.debug(f"  モジュールファイルが存在します")
+            logger.debug("  モジュールファイルが存在します")
             return module_file
 
         # パッケージの場合は__init__.pyを確認
         init_file = final_path / "__init__.py"
         logger.debug(f"  __init__.pyファイルをチェック: {init_file}")
         if init_file.exists():
-            logger.debug(f"  __init__.pyファイルが存在します")
+            logger.debug("  __init__.pyファイルが存在します")
             return init_file
 
         logger.debug(
@@ -316,7 +320,7 @@ async def a_collect_imported_symbol_metadata(
 
         if module_path and module_path.exists():
             logger.debug(f"  モジュールパスが見つかりました: {module_path}")
-            logger.debug(f"  シンボルメタデータを収集中...")
+            logger.debug("  シンボルメタデータを収集中...")
             module_metadata = await a_collect_symbol_metadata(module_path)
             logger.debug(
                 f"  {len(module_metadata)} 個のシンボルメタデータを収集しました"
@@ -362,15 +366,14 @@ class SymbolMetadataGetter:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 returns_iproxy = False
                 # IProxy型の返り値かどうかをチェック
-                if node.returns:
-                    if (
-                        isinstance(node.returns, ast.Name)
-                        and node.returns.id == "IProxy"
-                    ) or (
+                if node.returns and (
+                    (isinstance(node.returns, ast.Name) and node.returns.id == "IProxy")
+                    or (
                         isinstance(node.returns, ast.Subscript)
                         and getattr(node.returns.value, "id", "") == "IProxy"
-                    ):
-                        returns_iproxy = True
+                    )
+                ):
+                    returns_iproxy = True
 
                 function_returns[node.name] = returns_iproxy
         self.function_returns = function_returns
@@ -464,10 +467,7 @@ class MisuseDetector(ast.NodeVisitor):
         return {}
 
     def is_key_injected(self, key):
-        for stack in self.injection_stack:
-            if key in stack.injection_keys:
-                return True
-        return False
+        return any(key in stack.injection_keys for stack in self.injection_stack)
 
     def _push_function(self, node):
         self.injection_stack.append(
@@ -535,26 +535,25 @@ class MisuseDetector(ast.NodeVisitor):
         if self._innermost_assign_type():
             # we do not check if we are in AnnAssign with IProxy type
             return
-        if info and info.is_iproxy and not self.is_key_injected(node.id):
-            if innermost := self._innermost_function():
-                if not self.symbol_metadata_getter.func_returns_iproxy(
-                    innermost.node.name
-                ):
-                    if outermost := self._outermost_function():
-                        self.misuses.append(
-                            Misuse(
-                                user_function=outermost.node.name,
-                                used_proxy=node.id,
-                                line_number=node.lineno,
-                                misuse_type="Direct access to IProxy detected. You must request the dependency, by placing it in the function arguments.",
-                                src_node=node,
-                            )
-                        )
+        if (
+            info
+            and info.is_iproxy
+            and not self.is_key_injected(node.id)
+            and (innermost := self._innermost_function())
+            and not self.symbol_metadata_getter.func_returns_iproxy(innermost.node.name)
+            and (outermost := self._outermost_function())
+        ):
+            self.misuses.append(
+                Misuse(
+                    user_function=outermost.node.name,
+                    used_proxy=node.id,
+                    line_number=node.lineno,
+                    misuse_type="Direct access to IProxy detected. You must request the dependency, by placing it in the function arguments.",
+                    src_node=node,
+                )
+            )
         self.generic_visit(node)
 
-
-import pinjected_reviewer.examples
-from pinjected import design
 
 test_collect_current_file: IProxy = a_collect_symbol_metadata(
     Path(pinjected_reviewer.examples.__file__)

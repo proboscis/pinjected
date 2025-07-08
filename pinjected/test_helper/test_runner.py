@@ -227,7 +227,7 @@ class TestEvent(ITestEvent):
 async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
     # logger.info(f"TestEvent: {e}")
     match e:
-        case TestEvent(name, PinjectedTestResult() as res):
+        case TestEvent(_, PinjectedTestResult() as res):
             import rich
             from rich.panel import Panel
 
@@ -249,7 +249,7 @@ async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
                 # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
 
 
-@instance
+@instance(callable=True)
 async def a_pinjected_test_event_callback(
     logger,
 ):
@@ -298,13 +298,13 @@ async def a_pinjected_test_event_callback(
             case TestEvent(key, PinjectedTestResult() as res):
                 active_tests.remove(key)
                 if res.failed():
-                    viz.update_status(e.name, f"[bold red]Failed[/bold red]")
+                    viz.update_status(e.name, "[bold red]Failed[/bold red]")
                     lines = res.stderr.split("\n")
                     viz.update_message(e.name, f"{lines[-3:]}")
                     failures.append(res)
                 else:
-                    viz.update_status(e.name, f"[bold green]Success[/bold green]")
-                    viz.update_message(e.name, f"done")
+                    viz.update_status(e.name, "[bold green]Success[/bold green]")
+                    viz.update_message(e.name, "done")
 
                 if not active_tests:
                     await viz_iter.__aexit__(None, None, None)
@@ -350,7 +350,7 @@ async def a_run_tests(
                 if task == "stop":
                     await results.put(("stop", None))
                     break
-                key = target.to_module_var_path().path
+                target.to_module_var_path().path
                 res = await a_pinjected_run_test(target)
                 fut.set_result(res)
                 await results.put(("result", res))

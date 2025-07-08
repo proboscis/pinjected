@@ -89,8 +89,8 @@ def check_picklable(tgt: dict):
 
         logger.error(f"Failed to pickle target: {pformat(failures)}")
         logger.error(
-            f"if the error message contains EncodedFile pickling error, "
-            f"check whether the logging module is included in the target object or not."
+            "if the error message contains EncodedFile pickling error, "
+            "check whether the logging module is included in the target object or not."
         )
         raise RuntimeError(
             "this object is not picklable. check the error messages above."
@@ -116,7 +116,8 @@ def method_to_function(method):
 
 def none_provider(func):
     argspec = inspect.getfullargspec(func)
-    signature = f"""none_provider({" ,".join((argspec.args or []) + (argspec.varargs or []))})"""
+    varargs_list = [argspec.varargs] if argspec.varargs else []
+    signature = f"""none_provider({" ,".join((argspec.args or []) + varargs_list)})"""
 
     def impl(*args, **kwargs):
         func(*args, **kwargs)  # gets multiple values for self
@@ -154,9 +155,13 @@ def try_import_subject():
 
         return Subject
     except Exception:
-        from rx.subjects import Subject
+        try:
+            from rx.subjects import Subject
 
-        return Subject
+            return Subject
+        except Exception:
+            # rx is not installed
+            return None
 
 
 def get_dict_diff(a: dict, b: dict):
@@ -171,13 +176,10 @@ def get_dict_diff(a: dict, b: dict):
     for k in all_keys:
         ak = getitem_opt(a, k).map(to_readable_name).value_or(None)
         bk = getitem_opt(b, k).map(to_readable_name).value_or(None)
-        match (ak, bk):
-            case (Subject(), Subject()):
-                flag = True
-            case (a, b):
-                flag = a != b
-            case _:
-                raise RuntimeError("this should not happen")
+        if Subject is not None and isinstance(ak, Subject) and isinstance(bk, Subject):
+            flag = True
+        else:
+            flag = ak != bk
         if flag:
             data.append((k, ak, bk))
 
@@ -270,7 +272,7 @@ def instances(**kwargs):
     )
     for k, v in kwargs.items():
         assert not isinstance(v, DelegatedVar), (
-            f"passing delegated var with Injected context is forbidden, to prevent human error."
+            "passing delegated var with Injected context is forbidden, to prevent human error."
         )
         assert not isinstance(v, Injected), (
             f"key {k} is an instance of 'Injected'. passing Injected to 'instances' is forbidden, to prevent human error. use bind_instance instead."
@@ -337,7 +339,7 @@ def providers(**kwargs):
     # Convert callable parameters to Injected.bind() if not already Injected
     wrapped_kwargs = {}
     for k, v in kwargs.items():
-        if isinstance(v, Injected) or isinstance(v, DelegatedVar):
+        if isinstance(v, (Injected, DelegatedVar)):
             wrapped_kwargs[k] = v
         elif callable(v):
             wrapped_kwargs[k] = Injected.bind(v)
@@ -350,9 +352,7 @@ def providers(**kwargs):
 
 def design(**kwargs):
     _injecteds = {
-        k: v
-        for k, v in kwargs.items()
-        if isinstance(v, Injected) or isinstance(v, DelegatedVar)
+        k: v for k, v in kwargs.items() if isinstance(v, (Injected, DelegatedVar))
     }
     _instances = {
         k: v

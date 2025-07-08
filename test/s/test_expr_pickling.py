@@ -55,7 +55,7 @@ realistic_various_pairs: Injected = zip_image_pairs(
 )
 
 
-def check(tgt: Injected, trace: list[tuple[str, object]] = None):
+def check(tgt: Injected, trace: list[tuple[str, object]] | None = None):
     if trace is None:
         trace = [("root", tgt)]
     import cloudpickle

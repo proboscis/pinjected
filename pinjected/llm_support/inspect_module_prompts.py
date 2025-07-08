@@ -1,4 +1,4 @@
-INSPECT_TEMPLATE = f"""
+INSPECT_TEMPLATE = """
 There is a function annotatation called 'injected' that converts a function into a wrapped function.
 Example:
 @injected

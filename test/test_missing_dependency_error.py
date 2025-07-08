@@ -59,10 +59,31 @@ def test_integration_with_resolver():
         x=Injected.bind(lambda z: z)  # z is not defined and doesn't create a cycle
     )
 
-    with pytest.raises(DependencyResolutionError) as excinfo:
-        asyncio.run(AsyncResolver(d)["x"])
+    # The error is wrapped in an ExceptionGroup in Python 3.11+
+    import sys
 
-    error_message = str(excinfo.value)
+    if sys.version_info >= (3, 11):
+        from builtins import BaseExceptionGroup as NativeExceptionGroup
+
+        with pytest.raises(NativeExceptionGroup) as excinfo:
+            asyncio.run(AsyncResolver(d)["x"])
+
+        # Extract the actual DependencyResolutionError from the ExceptionGroup
+        assert len(excinfo.value.exceptions) == 1
+        actual_error = excinfo.value.exceptions[0]
+        assert isinstance(actual_error, DependencyResolutionError)
+        error_message = str(actual_error)
+    else:
+        from pinjected.compatibility.task_group import ExceptionGroup
+
+        with pytest.raises(ExceptionGroup) as excinfo:
+            asyncio.run(AsyncResolver(d)["x"])
+
+        # Extract the actual DependencyResolutionError from the ExceptionGroup
+        assert len(excinfo.value.exceptions) == 1
+        actual_error = excinfo.value.exceptions[0]
+        assert isinstance(actual_error, DependencyResolutionError)
+        error_message = str(actual_error)
 
     assert any(
         pattern in error_message

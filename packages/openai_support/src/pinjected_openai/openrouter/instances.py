@@ -18,7 +18,7 @@ class NoEndpointsFoundError(Exception):
 
 class StructuredLLM(Protocol):
     async def __call__(
-        self, text: str, images=None, response_format: type[BaseModel] = None
+        self, text: str, images=None, response_format: type[BaseModel] | None = None
     ):
         pass
 
@@ -31,7 +31,7 @@ async def a_sllm_openrouter(
     text: str,
     model: str,
     images=None,
-    response_format: type[BaseModel] = None,
+    response_format: type[BaseModel] | None = None,
     max_tokens: int = 8192,
 ):
     retry_count = 5

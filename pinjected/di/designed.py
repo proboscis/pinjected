@@ -1,9 +1,14 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Union
+from typing import Generic, TypeVar, Union, TYPE_CHECKING
 
 from pinjected.di.proxiable import DelegatedVar
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
+    from pinjected.di.design_interface import Design
+    from pinjected.di.injected import Injected
 
 T = TypeVar("T")
 

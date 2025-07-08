@@ -34,16 +34,15 @@ class AttributeReplacer(ast.NodeTransformer):
             self.in_method
             and isinstance(node.value, ast.Name)
             and node.value.id == "self"
-        ):
-            if node.attr in self.attrs_to_replace:
-                new_name = f"__self_{node.attr}__"
-                self.replaced_attrs.add(new_name)
-                return ast.Name(
-                    id=new_name,
-                    ctx=node.ctx,
-                    lineno=node.lineno,
-                    col_offset=node.col_offset,
-                )
+        ) and node.attr in self.attrs_to_replace:
+            new_name = f"__self_{node.attr}__"
+            self.replaced_attrs.add(new_name)
+            return ast.Name(
+                id=new_name,
+                ctx=node.ctx,
+                lineno=node.lineno,
+                col_offset=node.col_offset,
+            )
         return node
 
 

@@ -31,7 +31,7 @@ def test_used_by_with_actual_design_objects():
         "shared_dep": [],
         "dep1": [],
         "dep2": [],
-        "dep3": []
+        "dep3": [],
     }
 
     # Skip the collect_dependencies test since it relies on di_dfs implementation details
@@ -58,12 +58,12 @@ def test_used_by_with_actual_design_objects():
 
     # Mock collect_dependencies to return our manually created deps_map
     from unittest.mock import patch
-    
+
     # Add root to deps_map for build_edges
     deps_map_with_root = deps_map.copy()
     deps_map_with_root["root"] = ["service1", "service2", "service3"]
-    
-    with patch.object(builder, 'collect_dependencies', return_value=deps_map_with_root):
+
+    with patch.object(builder, "collect_dependencies", return_value=deps_map_with_root):
         edges = builder.build_edges("root", ["service1", "service2", "service3"])
 
     edge_dict = {edge.key: edge for edge in edges}
@@ -166,14 +166,14 @@ def test_used_by_in_dependency_graph_description():
                     if key == "shared_dep":
                         assert (
                             "service1" in panel_content and "service2" in panel_content
-                        ), f"shared_dep should show it's used by service1 and service2"
+                        ), "shared_dep should show it's used by service1 and service2"
                     elif key == "dep1":
                         assert "service1" in panel_content, (
-                            f"dep1 should show it's used by service1"
+                            "dep1 should show it's used by service1"
                         )
                     elif key == "dep2":
                         assert "service2" in panel_content, (
-                            f"dep2 should show it's used by service2"
+                            "dep2 should show it's used by service2"
                         )
                     elif key in {"service1", "service2"}:
                         assert "root" in panel_content, (

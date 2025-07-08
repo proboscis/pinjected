@@ -45,7 +45,7 @@ _webtoon_val_converted_internal: IProxy = Injected.procedure(
     result := a_run_conversation_with_monitoring(
         dataset=webtoon_val,
         config="",
-        run_name=f"",
+        run_name="",
         tags=["production", "webtoon", "lineart", "full_dataset"],
         test_mode=False,
     ),

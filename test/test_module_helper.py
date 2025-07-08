@@ -206,12 +206,14 @@ def test_yielding_order():
             next_depth = paths[j].count(".")
 
             # Skip comparison if they're from the same directory level
-            if ".".join(paths[i].split(".")[:2]) != ".".join(paths[j].split(".")[:2]):
-                # Higher module should come before deeper module
-                if current_depth > next_depth:
-                    assert False, (
-                        f"Order incorrect: {paths[i]} (depth {current_depth}) came before {paths[j]} (depth {next_depth})"
-                    )
+            # Higher module should come before deeper module
+            if (
+                ".".join(paths[i].split(".")[:2]) != ".".join(paths[j].split(".")[:2])
+                and current_depth > next_depth
+            ):
+                assert False, (
+                    f"Order incorrect: {paths[i]} (depth {current_depth}) came before {paths[j]} (depth {next_depth})"
+                )
 
     # Ensure at least one item exists from each expected level
     top_level_found = False

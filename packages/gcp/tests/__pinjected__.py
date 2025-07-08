@@ -63,7 +63,7 @@ __design__ = design(
     },
     gcp_storage_client=MockStorageClient(),
     temp_file=Path(
-        tempfile.NamedTemporaryFile(delete=False, suffix=".txt").name
+        tempfile.NamedTemporaryFile(delete=False, suffix=".txt").name  # noqa: SIM115
     ).absolute(),
     logger=loguru.logger,
     a_upload_gcs=a_upload_gcs,

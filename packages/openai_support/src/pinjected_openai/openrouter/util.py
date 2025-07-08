@@ -9,7 +9,24 @@ from typing import (
     get_origin,
 )
 
+import httpx
+import json_repair
+import PIL
+from injected_utils.injected_cache_utils import async_cached, sqlite_dict
+from openai import AsyncOpenAI
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from pinjected import Injected, IProxy, design, injected, instance
+from pinjected_openai.compatibles import a_openai_compatible_llm
+from pinjected_openai.vision_llm import to_content
+from pydantic import BaseModel, ValidationError
 from returns.result import ResultE, safe
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 
 # Custom exceptions for schema compatibility issues
@@ -38,25 +55,6 @@ class GeminiCompatibilityError(SchemaCompatibilityError):
         message = f"Gemini API compatibility issues found in {model.__name__}: {issues}"
         super().__init__(message)
 
-
-import httpx
-import json_repair
-import PIL
-from injected_utils.injected_cache_utils import async_cached, sqlite_dict
-from openai import AsyncOpenAI
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from pinjected_openai.compatibles import a_openai_compatible_llm
-from pinjected_openai.vision_llm import to_content
-from pydantic import BaseModel, ValidationError
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
-from pinjected import Injected, IProxy, design, injected, instance
 
 # from vision_llm import a_vision_llm__gpt4o
 
@@ -249,7 +247,7 @@ class OpenRouterChatCompletion(Protocol):
         model: str,
         max_tokens: int = 8192,
         temperature: float = 1,
-        images: list[PIL.Image.Image] = None,
+        images: list[PIL.Image.Image] | None = None,
         response_format: BaseModel | None = None,
         provider: dict[str, Any] | None = None,
         **kwargs,
@@ -267,9 +265,9 @@ async def a_openrouter_chat_completion__without_fix(
     model: str,
     max_tokens: int = 8192,
     temperature: float = 1,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     response_format=None,
-    provider: dict = None,
+    provider: dict | None = None,
     **kwargs,
 ):
     """
@@ -472,7 +470,7 @@ def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
             # 自己参照型をチェック（簡易版）
             if field_type == model:
                 issues.append(
-                    f"自己参照モデルはOpenAPI 3.0で問題を引き起こす可能性があります"
+                    "自己参照モデルはOpenAPI 3.0で問題を引き起こす可能性があります"
                 )
 
             # 入れ子になったモデルを再帰的にチェック
@@ -509,7 +507,7 @@ def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
             extra = model.model_config.json_schema_extra
             if isinstance(extra, dict) and "discriminator" in extra:
                 issues.append(
-                    f"discriminatorはOpenAPI 3.0の実装によっては完全にサポートされていない場合があります"
+                    "discriminatorはOpenAPI 3.0の実装によっては完全にサポートされていない場合があります"
                 )
 
         if issues:
@@ -621,7 +619,7 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
         elif inspect.isclass(field_type) and issubclass(field_type, BaseModel):
             # 自己参照型をチェック
             if field_type == model:
-                issues.append(f"自己参照モデルはGemini APIではサポートされていません")
+                issues.append("自己参照モデルはGemini APIではサポートされていません")
 
             # 入れ子になったモデルを再帰的にチェック
             nested_issues = is_gemini_compatible(field_type)
@@ -685,9 +683,9 @@ async def a_openrouter_chat_completion(
     model: str,
     max_tokens: int = 8192,
     temperature: float = 1,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     response_format=None,
-    provider: dict = None,
+    provider: dict | None = None,
     **kwargs,
 ):
     """
@@ -715,9 +713,10 @@ async def a_openrouter_chat_completion(
             raise OpenAPI3CompatibilityError(response_format, issues)
 
         # Additional Gemini-specific compatibility check when model contains 'gemini'
-        if "gemini" in model.lower():
-            if gemini_issues := is_gemini_compatible(response_format):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
+        if "gemini" in model.lower() and (
+            gemini_issues := is_gemini_compatible(response_format)
+        ):
+            raise GeminiCompatibilityError(response_format, gemini_issues)
 
         provider_filter["provider"] = {"require_parameters": True}
         openai_response_format = build_openrouter_response_format(response_format)
@@ -820,9 +819,10 @@ async def a_llm__openrouter(
             raise OpenAPI3CompatibilityError(response_format, issues)
 
         # Additional Gemini-specific compatibility check when model contains 'gemini'
-        if "gemini" in model.lower():
-            if gemini_issues := is_gemini_compatible(response_format):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
+        if "gemini" in model.lower() and (
+            gemini_issues := is_gemini_compatible(response_format)
+        ):
+            raise GeminiCompatibilityError(response_format, gemini_issues)
 
     res: ChatCompletion = await a_openai_compatible_llm(
         api=openrouter_api,
@@ -885,7 +885,7 @@ test_openrouter_chat_completion: IProxy = a_openrouter_chat_completion(
 )
 
 test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+    prompt="What is the capital of Japan?",
     model="deepseek/deepseek-chat",
     # model="deepseek/deepseek-r1-distill-qwen-32b",
     response_format=Text,
@@ -894,7 +894,7 @@ test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_compl
 # this must raise error though...
 test_openrouter_chat_completion_with_structure_optional: IProxy = (
     a_openrouter_chat_completion(
-        prompt=f"What is the capital of Japan?",
+        prompt="What is the capital of Japan?",
         model="deepseek/deepseek-chat",
         response_format=OptionalText,
     )
@@ -918,14 +918,14 @@ class PersonWithUnion(BaseModel):
 
 # Test with gemini-pro model
 test_gemini_pro_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+    prompt="What is the capital of Japan?",
     model="google/gemini-pro",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
 
 # Test with gemini-flash model
 test_gemini_flash_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+    prompt="What is the capital of Japan?",
     model="google/gemini-2.0-flash-001",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
@@ -938,7 +938,7 @@ class SimpleResponse(BaseModel):
 
 
 test_gemini_flash_with_compatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan? Answer with high confidence.",
+    prompt="What is the capital of Japan? Answer with high confidence.",
     model="google/gemini-2.0-flash-001",
     response_format=SimpleResponse,  # This should be compatible with Gemini
 )
@@ -1014,7 +1014,7 @@ test_is_gemini_compatible_complex_list: IProxy = Injected.pure(
 ).proxy(PersonWithComplexList)
 
 test_return_empty_item: IProxy = a_openrouter_chat_completion(
-    prompt=f"Please answer with empty lines.",
+    prompt="Please answer with empty lines.",
     model="deepseek/deepseek-chat",
     response_format=Text,
 )

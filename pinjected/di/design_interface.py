@@ -14,6 +14,7 @@ Key implementations of this interface can be found in design.py:
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from beartype import beartype
 from returns.maybe import Maybe, Nothing
@@ -23,6 +24,9 @@ from pinjected.di.proxiable import DelegatedVar
 from pinjected.module_var_path import ModuleVarPath
 from pinjected.v2.binds import IBind
 from pinjected.v2.keys import IBindKey, StrBindKey
+
+if TYPE_CHECKING:
+    from pinjected.providable import Providable
 
 
 class Design(ABC):
@@ -97,7 +101,7 @@ class Design(ABC):
         from pinjected.v2.async_resolver import AsyncResolver
 
         logger.warning(
-            f"Design.provide is deprecated. please use AsyncResolver instead."
+            "Design.provide is deprecated. please use AsyncResolver instead."
         )
         return AsyncResolver(self).to_blocking().provide(tgt)
 
@@ -106,7 +110,7 @@ class Design(ABC):
         from pinjected.v2.async_resolver import AsyncResolver
 
         logger.warning(
-            f"Design.to_graph is deprecated. please use AsyncResolver instead."
+            "Design.to_graph is deprecated. please use AsyncResolver instead."
         )
         return AsyncResolver(self).to_blocking()
 
@@ -120,7 +124,7 @@ class Design(ABC):
         from pinjected.di.util import check_picklable
         from pinjected.pinjected_logging import logger
 
-        logger.info(f"checking picklability of bindings")
+        logger.info("checking picklability of bindings")
         check_picklable(self.bindings)
 
 

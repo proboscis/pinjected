@@ -71,7 +71,7 @@ def test_used_by_in_edge_details():
         # Only check edges that are direct dependencies of test_obj or test_obj itself
         # dep3 is a transitive dependency and won't be displayed in edge details
         edges_to_check = ["dep1", "dep2"]
-        
+
         for edge_key in edges_to_check:
             edge = next(e for e in mock_edges if e.key == edge_key)
             edge_panel_call = None

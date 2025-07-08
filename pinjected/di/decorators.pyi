@@ -1,6 +1,7 @@
 """Type stubs for pinjected.di.decorators module."""
 
 from typing import TypeVar, overload, Callable, Any, Union
+from contextlib import _GeneratorContextManager
 from pinjected.di.injected import Injected, PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.iproxy import IProxy
@@ -57,8 +58,6 @@ def register(name: str) -> Callable[[Injected[_T]], Injected[_T]]: ...
 def cached_coroutine(coro_func: Callable[..., _T]) -> Callable[..., _T]: ...
 
 # Context manager
-from contextlib import _GeneratorContextManager
-
 def reload(*targets: str) -> _GeneratorContextManager[None]: ...
 
 # Internal helper (should not be exposed in public API, but included for completeness)

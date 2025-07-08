@@ -14,7 +14,7 @@ async def test_upload_gcs(gcp_service_account_credentials, a_upload_gcs, temp_fi
     )
 
     # Check the result
-    assert result == f"https://storage.googleapis.com/test-bucket/test-file.txt"
+    assert result == "https://storage.googleapis.com/test-bucket/test-file.txt"
 
 
 @injected_pytest

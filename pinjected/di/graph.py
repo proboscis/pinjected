@@ -9,7 +9,7 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from pprint import pformat
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, TYPE_CHECKING
 
 from returns.maybe import Maybe, Nothing, Some
 from returns.result import Failure, Result, Success, safe
@@ -29,6 +29,9 @@ from pinjected.graph_inspection import DIGraphHelper
 from pinjected.providable import Providable
 from pinjected.v2.binds import IBind
 from pinjected.visualize_di import DIGraph
+
+if TYPE_CHECKING:
+    from pinjected.di.design_interface import Design
 
 T = TypeVar("T")
 
@@ -245,7 +248,7 @@ class RichTraceLogger:
                 self.console.log(f"provide trace:{trace}")
                 self.console.log(Panel(trace_string(trace)))
             case ProvideEvent(trace, "provide", data):
-                key = trace[-1]
+                trace[-1]
                 self.console.log(Panel(trace_string(trace)))
                 self.console.log(Panel(pformat(data)))
                 # self.console.log(self.value_table(self.values))
@@ -390,8 +393,8 @@ class DependencyResolver:
     def _dfs(
         self,
         tgt: str,
-        trace: list[str] = None,
-        visited: set[str] = None,
+        trace: list[str] | None = None,
+        visited: set[str] | None = None,
         include_dynamic=False,
     ):
         if visited is None:
@@ -436,7 +439,7 @@ class DependencyResolver:
         )
 
     def _dependency_tree(
-        self, tgt: str, trace: list[str] = None
+        self, tgt: str, trace: list[str] | None = None
     ) -> Result[dict[str, Result], Exception]:
         trace = trace or [tgt]
         try:
@@ -528,7 +531,7 @@ class DependencyResolver:
     #     res = scope.provide(tgt, provider_impl, trace)
     #     return res
 
-    def _provide(self, tgt: str, scope: IScope, trace: list[str] = None):
+    def _provide(self, tgt: str, scope: IScope, trace: list[str] | None = None):
         from collections import deque
 
         from pinjected.pinjected_logging import logger
@@ -650,7 +653,7 @@ class DependencyResolver:
         match tgt:
             case InjectedByName(key):
                 res = self._provide(key, scope, trace=[key])
-            case EvaledInjected(value, ast) as e:
+            case EvaledInjected(_, ast) as e:
                 of = ast.origin_frame
                 assert not isinstance(of, Expr), (
                     f"ast.origin_frame must not be Expr. got {of} of type {type(of)}"
@@ -671,9 +674,7 @@ class DependencyResolver:
 
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(e, key)
-            case InjectedFromFunction(func, kwargs) as IF if (
-                IF.origin_frame is not None
-            ):
+            case InjectedFromFunction(_, _) as IF if IF.origin_frame is not None:
                 frame = IF.origin_frame
                 original = frame.filename + ":" + str(frame.lineno)
                 key = f"InjectedFunction#{id(tgt)!s}"
@@ -681,7 +682,7 @@ class DependencyResolver:
 
                 logger.info(f"naming new key: {key} == {original}")
                 res = provide_injected(IF, key)
-            case DelegatedVar(value, cxt) as dv:
+            case DelegatedVar(_, _) as dv:
                 res = self.provide(dv.eval(), scope)
             case Injected():
                 from pinjected.pinjected_logging import logger
@@ -765,7 +766,7 @@ def providable_to_injected(tgt: Providable) -> Injected:
             raise TypeError(
                 f"cannot use Designed here, since Designed cannot become an Injected."
             )
-        case DelegatedVar(value, cxt):
+        case DelegatedVar(_, _):
             return providable_to_injected(tgt.eval())
         case f if callable(f):
             return Injected.bind(f)
@@ -887,7 +888,7 @@ class MyObjectGraph(IObjectGraph):
         if overrides is None:
             from pinjected import EmptyDesign
 
-            overrides = EmptyDesign()
+            overrides = EmptyDesign
         child_scope = MChildScope(
             self.scope,
             set(overrides.keys()),
@@ -977,3 +978,8 @@ class SessionValue(Generic[T]):
         if self._cache is Nothing:
             self._cache = Some(self.session[self.designed.internal_injected])
         return self._cache.unwrap()
+
+    @property
+    def __value__(self) -> Any:
+        """Alias for value property used by sessioned_value_proxy_context."""
+        return self.value
