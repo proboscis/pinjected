@@ -184,6 +184,13 @@ fn analyze_file(
                         }
                     }
                 }
+
+                // Apply rules that need to see all statements
+                for rule in &active_rules {
+                    if rule.rule_id() == "PINJ019" {
+                        violations.extend(rule.check(&context));
+                    }
+                }
             }
         }
         _ => {}
