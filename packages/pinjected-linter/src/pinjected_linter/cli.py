@@ -82,6 +82,46 @@ For more information, visit: https://github.com/pinjected/pinjected
     click.echo(docs)
 
 
+def show_rule_documentation(rule_id: str):
+    """Display documentation for a specific rule."""
+    # Normalize rule ID (ensure uppercase and remove any leading/trailing whitespace)
+    rule_id = rule_id.strip().upper()
+
+    # Try multiple possible locations for documentation
+    possible_locations = [
+        # Installed package location
+        Path(__file__).parent.parent / "docs" / "rules",
+        # Development source location
+        Path(__file__).parent.parent.parent.parent / "docs" / "rules",
+        # Relative to the current working directory
+        Path.cwd() / "packages" / "pinjected-linter" / "docs" / "rules",
+        # Direct path from repo root
+        Path.cwd() / "docs" / "rules",
+    ]
+
+    doc_file = None
+    for rule_docs_dir in possible_locations:
+        if rule_docs_dir.exists():
+            doc_files = list(rule_docs_dir.glob(f"{rule_id.lower()}_*.md"))
+            if doc_files:
+                doc_file = doc_files[0]
+                break
+
+    if not doc_file:
+        click.echo(f"Error: No documentation found for rule {rule_id}", err=True)
+        click.echo("Use --show-config-docs to see available rules.", err=True)
+        sys.exit(1)
+
+    # Read and display the documentation
+    try:
+        with open(doc_file, encoding="utf-8") as f:
+            content = f.read()
+        click.echo(content)
+    except Exception as e:
+        click.echo(f"Error reading documentation: {e}", err=True)
+        sys.exit(1)
+
+
 @click.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
 @click.option(
@@ -141,6 +181,11 @@ For more information, visit: https://github.com/pinjected/pinjected
     is_flag=True,
     help="Show documentation for pyproject.toml configuration",
 )
+@click.option(
+    "--show-rule-doc",
+    type=str,
+    help="Show detailed documentation for a specific rule (e.g., PINJ001)",
+)
 def main(
     paths: tuple,
     config: Optional[str],
@@ -153,6 +198,7 @@ def main(
     severity: Optional[str],
     verbose: bool,
     show_config_docs: bool,
+    show_rule_doc: Optional[str],
 ):
     """Pinjected linter - Check your code for Pinjected best practices.
 
@@ -161,6 +207,11 @@ def main(
     # Show configuration documentation if requested
     if show_config_docs:
         show_configuration_docs()
+        return
+
+    # Show rule documentation if requested
+    if show_rule_doc:
+        show_rule_documentation(show_rule_doc)
         return
 
     # Configure logging based on verbose flag
@@ -223,13 +274,15 @@ def main(
         sys.exit(1)
 
 
-def collect_python_files(paths: List[str], exclude_patterns: Optional[List[str]] = None) -> List[Path]:
+def collect_python_files(
+    paths: List[str], exclude_patterns: Optional[List[str]] = None
+) -> List[Path]:
     """Collect all Python files from given paths.
-    
+
     Args:
         paths: List of paths to search for Python files
         exclude_patterns: List of glob patterns to exclude
-    
+
     Returns:
         List of Python file paths
     """
@@ -247,7 +300,15 @@ def collect_python_files(paths: List[str], exclude_patterns: Optional[List[str]]
             python_files.extend(path.rglob("*.py"))
 
     # Default ignored directories
-    default_ignored_dirs = {".venv", "venv", "__pycache__", ".git", ".tox", "build", "dist"}
+    default_ignored_dirs = {
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".git",
+        ".tox",
+        "build",
+        "dist",
+    }
 
     # Additional exclusions from config
     exclude_patterns = exclude_patterns or []
@@ -270,18 +331,22 @@ def collect_python_files(paths: List[str], exclude_patterns: Optional[List[str]]
                 rel_path_str = str(f)
 
             # Convert path separators for consistent matching
-            rel_path_posix = rel_path_str.replace('\\', '/')
+            rel_path_posix = rel_path_str.replace("\\", "/")
 
             # Check various pattern styles
             if (
-                fnmatch.fnmatch(rel_path_posix, pattern) or  # Full path match
-                fnmatch.fnmatch(f.name, pattern)  # Filename match
+                fnmatch.fnmatch(rel_path_posix, pattern)  # Full path match
+                or fnmatch.fnmatch(f.name, pattern)  # Filename match
             ):
                 excluded = True
                 break
 
             # Check directory patterns
-            if "/" in pattern and "**" not in pattern and fnmatch.fnmatch(rel_path_posix, pattern):
+            if (
+                "/" in pattern
+                and "**" not in pattern
+                and fnmatch.fnmatch(rel_path_posix, pattern)
+            ):
                 # For patterns like "excluded/*" or "tests/file.py"
                 excluded = True
                 break
@@ -289,18 +354,27 @@ def collect_python_files(paths: List[str], exclude_patterns: Optional[List[str]]
             # Special handling for ** patterns (glob style)
             if "**" in pattern:
                 import re
+
                 # For patterns like **/tests/**, we need to check if the path contains the pattern
                 # Remove the ** and check if the remaining pattern is in the path
                 if pattern.startswith("**/") and pattern.endswith("/**"):
                     # Pattern like **/tests/** - check if 'tests' is in the path
-                    middle_part = pattern[3:-3]  # Remove **/ from start and /** from end
-                    if f"/{middle_part}/" in f"/{rel_path_posix}/" or rel_path_posix.startswith(f"{middle_part}/"):
+                    middle_part = pattern[
+                        3:-3
+                    ]  # Remove **/ from start and /** from end
+                    if (
+                        f"/{middle_part}/" in f"/{rel_path_posix}/"
+                        or rel_path_posix.startswith(f"{middle_part}/")
+                    ):
                         excluded = True
                         break
                 elif pattern.startswith("**/"):
                     # Pattern like **/tests - check if path ends with pattern
                     suffix = pattern[3:]  # Remove **/
-                    if rel_path_posix.endswith(suffix) or f"/{suffix}/" in rel_path_posix:
+                    if (
+                        rel_path_posix.endswith(suffix)
+                        or f"/{suffix}/" in rel_path_posix
+                    ):
                         excluded = True
                         break
                 elif pattern.endswith("/**"):
@@ -324,7 +398,7 @@ def collect_python_files(paths: List[str], exclude_patterns: Optional[List[str]]
 
 def load_config(config_path: Optional[str] = None) -> dict:
     """Load configuration from TOML file.
-    
+
     If no config_path is provided, searches for:
     1. .pinjected-dynamic-linter.toml in current directory
     2. pyproject.toml with [tool.pinjected-dynamic-linter] section
@@ -345,7 +419,11 @@ def load_config(config_path: Optional[str] = None) -> dict:
             with open(path, "rb") as f:
                 config = tomllib.load(f)
                 # If it's pyproject.toml, extract the tool.pinjected-linter section
-                if path.name == "pyproject.toml" and "tool" in config and "pinjected-dynamic-linter" in config["tool"]:
+                if (
+                    path.name == "pyproject.toml"
+                    and "tool" in config
+                    and "pinjected-dynamic-linter" in config["tool"]
+                ):
                     return config["tool"]["pinjected-dynamic-linter"]
                 return config
         except Exception as e:

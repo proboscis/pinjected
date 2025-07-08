@@ -57,6 +57,12 @@ pythonpath = [
     "packages/niji_voice/src",
     "packages/injected_utils/src"
 ]
+testpaths = [
+    "test",
+    "pinjected",
+    "packages"
+]
+addopts = "--ignore=packages/pinjected-linter/rust-poc"
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -218,7 +224,7 @@ exclude = [
 # TODO: Refactor these files to reduce complexity
 "**/*.py" = ["C901", "PLR0912", "PLR0915", "PLR0911"]
 
-[tool.pinjected-dynamic-linter]
+[tool.pinjected-linter]
 # Enable all pinjected linter rules except PINJ001 and PINJ005
 enable = [
     # "PINJ001",  # Instance naming convention (@instance functions should be nouns) - EXCLUDED
@@ -242,7 +248,7 @@ enable = [
 disable = ["PINJ001", "PINJ005","PINJ015"]  # Instance and injected function naming rules excluded
 
 # Configure specific rules
-[tool.pinjected-dynamic-linter.rules.PINJ014]
+[tool.pinjected-linter.rules.PINJ014]
 # Minimum number of @injected functions to require stub file
 min_injected_functions = 3
 # Additional paths to search for stub files

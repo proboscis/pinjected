@@ -1,0 +1,18 @@
+cargo:rerun-if-changed=build.rs
+cargo:rerun-if-changed=data/
+Lexicon: # words 17737, byte size 74996, with 3684 (12595 bytes) non-exact matches
+binning: shift 0, size 2388280
+binning: shift 1, size 1276416
+binning: shift 2, size 721872
+binning: shift 3, size 446560
+binning: shift 4, size 310784
+binning: shift 5, size 244992
+binning: shift 6, size 216320
+binning: shift 7, size 207360
+binning: shift 8, size 207104
+binning: shift 9, size 223360
+binning: shift 10, size 246848
+binning: shift 11, size 303648
+binning: shift 12, size 393488
+binning: shift 13, size 557192
+PHF #0
