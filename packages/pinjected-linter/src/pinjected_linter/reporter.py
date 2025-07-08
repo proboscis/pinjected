@@ -59,7 +59,7 @@ class TerminalFormatter(OutputFormatter):
             "\n[dim]💡 Use --show-rule-doc <RULE_ID> for detailed rule information and examples[/dim]"
         )
         output_parts.append(
-            "[dim]   Example: pinjected-dynamic-linter --show-rule-doc PINJ001[/dim]"
+            "[dim]   Example: pinjected-linter --show-rule-doc PINJ001[/dim]"
         )
 
         return "\n".join(output_parts)

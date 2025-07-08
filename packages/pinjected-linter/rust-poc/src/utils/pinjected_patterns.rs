@@ -28,6 +28,20 @@ pub fn is_injected_decorator(expr: &Expr) -> bool {
                 false
             }
         }
+        Expr::Call(call) => {
+            // Handle @injected(...) decorators
+            match &*call.func {
+                Expr::Name(name) => name.id.as_str() == "injected",
+                Expr::Attribute(attr) => {
+                    if let Expr::Name(name) = &*attr.value {
+                        name.id.as_str() == "pinjected" && attr.attr.as_str() == "injected"
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            }
+        }
         _ => false,
     }
 }

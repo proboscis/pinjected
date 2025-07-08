@@ -22,12 +22,12 @@ Pinjected Linter Configuration Documentation
 ============================================
 
 The pinjected linter can be configured in your pyproject.toml file under the
-[tool.pinjected-dynamic-linter] section.
+[tool.pinjected-linter] section.
 
 Example Configuration:
 ----------------------
 
-[tool.pinjected-dynamic-linter]
+[tool.pinjected-linter]
 # Enable specific rules (if not specified, all rules are enabled)
 enable = [
     "PINJ001",  # Instance naming convention
@@ -74,7 +74,7 @@ Configuration Precedence:
 -------------------------
 1. Command line options (--enable, --disable) override all
 2. Explicit config file specified with --config
-3. pyproject.toml [tool.pinjected-dynamic-linter] section
+3. pyproject.toml [tool.pinjected-linter] section
 4. Default configuration (all rules enabled)
 
 For more information, visit: https://github.com/pinjected/pinjected
@@ -128,7 +128,7 @@ def show_rule_documentation(rule_id: str):
     "--config",
     "-c",
     type=click.Path(exists=True),
-    help="Path to configuration file (.pinjected-dynamic-linter.toml)",
+    help="Path to configuration file (.pinjected-linter.toml)",
 )
 @click.option(
     "--output-format",
@@ -400,8 +400,8 @@ def load_config(config_path: Optional[str] = None) -> dict:
     """Load configuration from TOML file.
 
     If no config_path is provided, searches for:
-    1. .pinjected-dynamic-linter.toml in current directory
-    2. pyproject.toml with [tool.pinjected-dynamic-linter] section
+    1. .pinjected-linter.toml in current directory
+    2. pyproject.toml with [tool.pinjected-linter] section
     """
     try:
         import tomllib  # Python 3.11+
@@ -422,23 +422,23 @@ def load_config(config_path: Optional[str] = None) -> dict:
                 if (
                     path.name == "pyproject.toml"
                     and "tool" in config
-                    and "pinjected-dynamic-linter" in config["tool"]
+                    and "pinjected-linter" in config["tool"]
                 ):
-                    return config["tool"]["pinjected-dynamic-linter"]
+                    return config["tool"]["pinjected-linter"]
                 return config
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}")
             return {}
 
     # Otherwise, search for config files
-    # First try .pinjected-dynamic-linter.toml in current directory
-    pinjected_config = Path(".pinjected-dynamic-linter.toml")
+    # First try .pinjected-linter.toml in current directory
+    pinjected_config = Path(".pinjected-linter.toml")
     if pinjected_config.exists():
         try:
             with open(pinjected_config, "rb") as f:
                 return tomllib.load(f)
         except Exception as e:
-            logger.error(f"Failed to load .pinjected-dynamic-linter.toml: {e}")
+            logger.error(f"Failed to load .pinjected-linter.toml: {e}")
 
     # Then try pyproject.toml
     pyproject = Path("pyproject.toml")
@@ -446,8 +446,8 @@ def load_config(config_path: Optional[str] = None) -> dict:
         try:
             with open(pyproject, "rb") as f:
                 config = tomllib.load(f)
-                if "tool" in config and "pinjected-dynamic-linter" in config["tool"]:
-                    return config["tool"]["pinjected-dynamic-linter"]
+                if "tool" in config and "pinjected-linter" in config["tool"]:
+                    return config["tool"]["pinjected-linter"]
         except Exception as e:
             logger.error(f"Failed to load pyproject.toml: {e}")
 

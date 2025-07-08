@@ -66,9 +66,7 @@ def get_database():  # This violates PINJ001
             "Use --show-rule-doc <RULE_ID> for detailed rule information and examples"
             in result.output
         )
-        assert (
-            "Example: pinjected-dynamic-linter --show-rule-doc PINJ001" in result.output
-        )
+        assert "Example: pinjected-linter --show-rule-doc PINJ001" in result.output
 
 
 class TestShowRuleDocumentationFunction:

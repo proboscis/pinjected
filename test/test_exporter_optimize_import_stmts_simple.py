@@ -175,8 +175,10 @@ def process(data):
 
         # json is used, csv and xml are not
         assert "import json" in result
-        assert "csv" not in result
-        assert "xml" not in result
+        assert "import csv" not in result
+        assert "import xml" not in result
+        # The comment about xml should still be present
+        assert "# xml is mentioned in comment but not used" in result
 
     def test_import_used_in_class(self):
         """Test import used within a class."""

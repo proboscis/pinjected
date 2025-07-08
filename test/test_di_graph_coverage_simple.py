@@ -3,9 +3,6 @@
 import pytest
 from unittest.mock import Mock
 from dataclasses import is_dataclass
-import threading
-from concurrent.futures import Future
-from returns.result import Success
 
 from pinjected.di.graph import (
     MissingDependencyException,
@@ -19,9 +16,6 @@ from pinjected.di.graph import (
     DependencyResolver,
 )
 from pinjected.exceptions import DependencyResolutionFailure
-from pinjected.v2.keys import StrBindKey
-from returns.maybe import Nothing, Some
-from pinjected.di.injected import InjectedPure
 
 
 class TestMissingDependencyException:
@@ -85,13 +79,15 @@ class TestProvideEvent:
 
     def test_provide_event_creation(self):
         """Test creating ProvideEvent instance."""
-        key = StrBindKey("test")
-        metadata = {"info": "test"}
+        trace = ["key1", "key2"]
+        kind = "provide"
+        data = {"result": "test_data"}
 
-        event = ProvideEvent(key=key, metadata=metadata)
+        event = ProvideEvent(trace=trace, kind=kind, data=data)
 
-        assert event.key == key
-        assert event.metadata == metadata
+        assert event.trace == trace
+        assert event.kind == kind
+        assert event.data == data
 
 
 class TestRichTraceLogger:
@@ -105,24 +101,26 @@ class TestRichTraceLogger:
         """Test creating RichTraceLogger instance."""
         logger = RichTraceLogger()
 
-        assert hasattr(logger, "graph")
-        assert hasattr(logger, "trace")
-        assert hasattr(logger, "result")
-        assert logger.graph is None
-        assert logger.trace == []
-        assert logger.result is None
+        assert hasattr(logger, "console")
+        assert logger.console is not None
+        # RichTraceLogger is callable
+        assert callable(logger)
 
     def test_rich_trace_logger_with_values(self):
-        """Test RichTraceLogger with custom values."""
-        mock_graph = Mock()
-        trace = ["A", "B", "C"]
-        result = Success("value")
+        """Test RichTraceLogger with custom console."""
+        from rich.console import Console
 
-        logger = RichTraceLogger(graph=mock_graph, trace=trace, result=result)
+        mock_console = Mock(spec=Console)
+        logger = RichTraceLogger(console=mock_console)
 
-        assert logger.graph is mock_graph
-        assert logger.trace == trace
-        assert logger.result == result
+        assert logger.console is mock_console
+
+        # Test calling the logger with a ProvideEvent
+        event = ProvideEvent(trace=["A", "B"], kind="request", data=None)
+        logger(event)
+
+        # Verify console.log was called
+        mock_console.log.assert_called()
 
 
 class TestMScope:
@@ -134,49 +132,55 @@ class TestMScope:
 
     def test_mscope_creation(self):
         """Test creating MScope instance."""
-        values = {StrBindKey("a"): "value_a"}
-        scope = MScope(values=values)
+        scope = MScope()
 
-        assert scope.values == values
-        assert hasattr(scope, "lock")
-        assert isinstance(scope.lock, type(threading.RLock()))
+        assert hasattr(scope, "cache")
+        assert isinstance(scope.cache, dict)
+        assert hasattr(scope, "_trace_logger")
+        assert hasattr(scope, "trace_logger")
 
-    def test_mscope_get_existing(self):
-        """Test get method for existing key."""
-        key = StrBindKey("test")
+    def test_mscope_provide_existing(self):
+        """Test provide method for existing key in cache."""
+        key = "test"
         value = "test_value"
-        scope = MScope(values={key: value})
+        scope = MScope()
+        scope.cache[key] = value
 
-        result = scope.get(key)
-        assert result == Some(value)
+        # Mock provider function
+        provider = Mock(return_value="new_value")
 
-    def test_mscope_get_missing(self):
-        """Test get method for missing key."""
-        scope = MScope(values={})
-        result = scope.get(StrBindKey("missing"))
+        result = scope.provide(key, provider, [key])
 
-        assert result == Nothing
+        # Should return cached value without calling provider
+        assert result == value
+        provider.assert_not_called()
 
-    def test_mscope_set(self):
-        """Test set method."""
-        scope = MScope(values={})
-        key = StrBindKey("new")
+    def test_mscope_provide_new(self):
+        """Test provide method for new key."""
+        key = "new"
         value = "new_value"
+        scope = MScope()
 
-        scope.set(key, value)
+        # Mock provider function
+        provider = Mock(return_value=value)
 
-        assert scope.values[key] == value
-        assert scope.get(key) == Some(value)
+        result = scope.provide(key, provider, [key])
 
-    def test_mscope_set_future(self):
-        """Test set_future method."""
-        scope = MScope(values={})
-        key = StrBindKey("future")
-        future = Future()
+        # Should call provider and cache the result
+        assert result == value
+        provider.assert_called_once()
+        assert scope.cache[key] == value
 
-        scope.set_future(key, future)
+    def test_mscope_contains(self):
+        """Test __contains__ method."""
+        scope = MScope()
+        key = "test"
 
-        assert scope.values[key] is future
+        assert key not in scope
+
+        scope.cache[key] = "value"
+
+        assert key in scope
 
 
 class TestMChildScope:
@@ -188,31 +192,47 @@ class TestMChildScope:
 
     def test_mchild_scope_creation(self):
         """Test creating MChildScope instance."""
-        parent = MScope(values={StrBindKey("parent"): "parent_value"})
-        scope = MChildScope(parent=parent)
+        parent = MScope()
+        parent.cache["parent"] = "parent_value"
+        override_targets = {"override_key"}
+
+        scope = MChildScope(parent=parent, override_targets=override_targets)
 
         assert scope.parent is parent
-        assert scope.values == {}
+        assert scope.override_targets == override_targets
+        assert isinstance(scope.cache, dict)
 
-    def test_mchild_scope_get_from_parent(self):
-        """Test get method falls back to parent."""
-        parent_key = StrBindKey("parent_key")
-        parent = MScope(values={parent_key: "parent_value"})
-        child = MChildScope(parent=parent)
+    def test_mchild_scope_provide_from_parent(self):
+        """Test provide method falls back to parent."""
+        parent = MScope()
+        parent.cache["parent_key"] = "parent_value"
 
-        # Should get from parent
-        result = child.get(parent_key)
-        assert result == Some("parent_value")
+        child = MChildScope(parent=parent, override_targets=set())
 
-    def test_mchild_scope_get_overrides_parent(self):
-        """Test child values override parent."""
-        key = StrBindKey("shared")
-        parent = MScope(values={key: "parent_value"})
-        child = MChildScope(parent=parent, values={key: "child_value"})
+        # Mock provider
+        provider = Mock(return_value="new_value")
 
-        # Should get child value
-        result = child.get(key)
-        assert result == Some("child_value")
+        # Should get from parent without calling provider
+        result = child.provide("parent_key", provider, ["parent_key"])
+        assert result == "parent_value"
+        provider.assert_not_called()
+
+    def test_mchild_scope_override_parent(self):
+        """Test child overrides parent for keys in override_targets."""
+        key = "shared"
+        parent = MScope()
+        parent.cache[key] = "parent_value"
+
+        # Key is in override_targets, so child should provide new value
+        child = MChildScope(parent=parent, override_targets={key})
+
+        provider = Mock(return_value="child_value")
+        result = child.provide(key, provider, [key])
+
+        # Should call provider and use child value
+        assert result == "child_value"
+        provider.assert_called_once()
+        assert child.cache[key] == "child_value"
 
 
 class TestOverridingScope:
@@ -224,43 +244,58 @@ class TestOverridingScope:
 
     def test_overriding_scope_creation(self):
         """Test creating OverridingScope instance."""
-        base = MScope(values={StrBindKey("base"): "base_value"})
-        overrides = {StrBindKey("override"): "override_value"}
+        src = MScope()
+        src.cache["base"] = "base_value"
+        overrides = {"override": "override_value"}
 
-        scope = OverridingScope(base=base, overrides=overrides)
+        scope = OverridingScope(src=src, overrides=overrides)
 
-        assert scope.base is base
+        assert scope.src is src
         assert scope.overrides == overrides
 
-    def test_overriding_scope_get_override(self):
-        """Test get method returns override value."""
-        key = StrBindKey("test")
-        base = MScope(values={key: "base_value"})
-        scope = OverridingScope(base=base, overrides={key: "override_value"})
+    def test_overriding_scope_provide_override(self):
+        """Test provide method returns override value."""
+        key = "test"
+        src = MScope()
+        src.cache[key] = "base_value"
 
-        result = scope.get(key)
-        assert result == Some("override_value")
+        scope = OverridingScope(src=src, overrides={key: "override_value"})
 
-    def test_overriding_scope_get_from_base(self):
-        """Test get method falls back to base."""
-        base_key = StrBindKey("base_only")
-        base = MScope(values={base_key: "base_value"})
-        scope = OverridingScope(base=base, overrides={})
+        provider = Mock(return_value="new_value")
+        result = scope.provide(key, provider, [key])
 
-        result = scope.get(base_key)
-        assert result == Some("base_value")
+        # Should return override without calling provider
+        assert result == "override_value"
+        provider.assert_not_called()
 
-    def test_overriding_scope_set_delegates(self):
-        """Test set method delegates to base."""
-        base = MScope(values={})
-        scope = OverridingScope(base=base, overrides={})
+    def test_overriding_scope_provide_from_src(self):
+        """Test provide method falls back to src."""
+        base_key = "base_only"
+        src = MScope()
+        src.cache[base_key] = "base_value"
 
-        key = StrBindKey("new")
-        value = "new_value"
-        scope.set(key, value)
+        scope = OverridingScope(src=src, overrides={})
 
-        # Should be set in base
-        assert base.get(key) == Some(value)
+        provider = Mock(return_value="new_value")
+        result = scope.provide(base_key, provider, [base_key])
+
+        # Should get from src
+        assert result == "base_value"
+        provider.assert_not_called()
+
+    def test_overriding_scope_contains(self):
+        """Test __contains__ method."""
+        src = MScope()
+        src.cache["base_key"] = "value"
+
+        scope = OverridingScope(src=src, overrides={"override_key": "value"})
+
+        # Should find in overrides
+        assert "override_key" in scope
+        # Should find in src
+        assert "base_key" in scope
+        # Should not find missing key
+        assert "missing_key" not in scope
 
 
 class TestNoMappingError:
@@ -268,10 +303,12 @@ class TestNoMappingError:
 
     def test_no_mapping_error_creation(self):
         """Test creating NoMappingError."""
-        error = NoMappingError("Test error message")
+        key = "test_key"
+        error = NoMappingError(key)
 
         assert isinstance(error, Exception)
-        assert str(error) == "Test error message"
+        assert str(error) == f"No mapping found for DI:{key}"
+        assert error.key == key
 
 
 class TestDependencyResolver:
@@ -283,21 +320,31 @@ class TestDependencyResolver:
 
     def test_dependency_resolver_creation(self):
         """Test creating DependencyResolver instance."""
-        mappings = {
-            StrBindKey("a"): InjectedPure("value_a"),
-            StrBindKey("b"): InjectedPure("value_b"),
-        }
+        from pinjected.di.design import Design
 
-        resolver = DependencyResolver(mappings=mappings)
+        # Create a mock Design with bindings
+        mock_design = Mock(spec=Design)
+        mock_design.bindings = {}  # Empty bindings dict
 
-        assert resolver.mappings == mappings
-        assert resolver.use_contextmanager is True  # default value
+        resolver = DependencyResolver(src=mock_design)
 
-    def test_dependency_resolver_with_custom_flags(self):
-        """Test DependencyResolver with custom flags."""
-        resolver = DependencyResolver(mappings={}, use_contextmanager=False)
+        assert resolver.src is mock_design
+        assert hasattr(resolver, "helper")
+        assert hasattr(resolver, "mapping")
 
-        assert resolver.use_contextmanager is False
+    def test_dependency_resolver_to_injected(self):
+        """Test _to_injected method."""
+        from pinjected.di.design import Design
+
+        # Create a mock Design with bindings
+        mock_design = Mock(spec=Design)
+        mock_design.bindings = {}
+
+        resolver = DependencyResolver(src=mock_design)
+
+        # Test with a simple providable
+        result = resolver._to_injected("test_string")
+        assert result is not None
 
 
 if __name__ == "__main__":

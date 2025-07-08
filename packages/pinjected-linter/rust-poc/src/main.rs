@@ -637,7 +637,7 @@ fn show_statistics(
     // Add help message for rule documentation
     if total_violations > 0 {
         eprintln!("\n💡 Use --show-rule-doc <RULE_ID> for detailed rule information and examples");
-        eprintln!("   Example: pinjected-dynamic-linter --show-rule-doc PINJ001");
+        eprintln!("   Example: pinjected-linter --show-rule-doc PINJ001");
     }
 }
 
