@@ -156,16 +156,16 @@ impl LintRule for MissingStubFileRule {
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        // This is a module-level rule, only check on the first statement
-        // to avoid duplicate reports
-        match context.ast {
-            Mod::Module(module) => {
-                if !module.body.is_empty() && !std::ptr::eq(context.stmt, &module.body[0]) {
-                    // Not the first statement, skip to avoid duplicates
-                    return violations;
-                }
+        // This is a module-level rule - check if we're in the module-level context
+        // (identified by a Pass statement used as a placeholder)
+        match context.stmt {
+            Stmt::Pass(_) => {
+                // This is the module-level check, proceed
             }
-            _ => return violations,
+            _ => {
+                // This is a statement-level check, skip since we handle this at module level
+                return violations;
+            }
         }
 
         // Count @injected functions
