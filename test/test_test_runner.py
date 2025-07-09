@@ -16,9 +16,9 @@ from pinjected.test_helper.test_runner import (
     a_pinjected_run_all_test,
     ensure_agen,
     ITestEvent,
-    TestMainEvent,
-    TestStatus,
-    TestEvent,
+    MainTestEvent,
+    StatusInfo,
+    EventInfo,
     a_pinjected_test_event_callback__simple,
     a_pinjected_test_event_callback,
     a_run_tests,
@@ -372,34 +372,34 @@ class TestTestEvents:
     """Tests for test event classes."""
 
     def test_test_main_event(self):
-        """Test TestMainEvent creation."""
-        event = TestMainEvent("start")
+        """Test MainTestEvent creation."""
+        event = MainTestEvent("start")
         assert event.kind == "start"
         assert isinstance(event, ITestEvent)
 
-        event2 = TestMainEvent("end")
+        event2 = MainTestEvent("end")
         assert event2.kind == "end"
 
     def test_test_status(self):
-        """Test TestStatus creation."""
-        status = TestStatus("Running test...")
+        """Test StatusInfo creation."""
+        status = StatusInfo("Running test...")
         assert status.message == "Running test..."
 
     def test_test_event(self):
-        """Test TestEvent creation."""
+        """Test EventInfo creation."""
         # With literal status
-        event1 = TestEvent("test.func", "queued")
+        event1 = EventInfo("test.func", "queued")
         assert event1.name == "test.func"
         assert event1.data == "queued"
 
         # With result
         result = Mock(spec=PinjectedTestResult)
-        event2 = TestEvent("test.func", result)
+        event2 = EventInfo("test.func", result)
         assert event2.data == result
 
-        # With TestStatus
-        status = TestStatus("message")
-        event3 = TestEvent("test.func", status)
+        # With StatusInfo
+        status = StatusInfo("message")
+        event3 = EventInfo("test.func", status)
         assert event3.data == status
 
 
@@ -429,7 +429,7 @@ class TestAPinjectedTestEventCallbackSimple:
             target=target, stdout="output", stderr="", value=Success(0), trace=None
         )
 
-        event = TestEvent("test.func", result)
+        event = EventInfo("test.func", result)
 
         await func(logger, event)
 
@@ -466,7 +466,7 @@ class TestAPinjectedTestEventCallbackSimple:
             trace="trace",
         )
 
-        event = TestEvent("test.func", result)
+        event = EventInfo("test.func", result)
 
         await func(logger, event)
 
@@ -528,8 +528,8 @@ class TestARunTests:
         assert result2 in results
 
         # Verify callbacks
-        callback.assert_any_call(TestMainEvent("start"))
-        callback.assert_any_call(TestMainEvent("end"))
+        callback.assert_any_call(MainTestEvent("start"))
+        callback.assert_any_call(MainTestEvent("end"))
 
 
 class TestAVisualizeTestResults:
@@ -644,7 +644,7 @@ class TestIntegration:
         assert callable(callback)
 
         # Test with start event
-        await callback(TestEvent("test", "start"))
+        await callback(EventInfo("test", "start"))
 
 
 if __name__ == "__main__":

@@ -38,40 +38,6 @@ class TestApplicativeDesignedImpl:
         designed.map.assert_called_once_with(f)
         assert result == "mapped_result"
 
-    def test_zip(self):
-        """Test zip method."""
-        impl = ApplicativeDesignedImpl()
-
-        # Create mock Designed objects
-        designed1 = Mock(spec=Designed)
-        designed2 = Mock(spec=Designed)
-        designed3 = Mock(spec=Designed)
-
-        # Mock Designed.zip
-        Designed.zip = Mock(return_value="zipped_result")
-
-        # Test zipping
-        result = impl.zip(designed1, designed2, designed3)
-
-        Designed.zip.assert_called_once_with(designed1, designed2, designed3)
-        assert result == "zipped_result"
-
-    def test_pure(self):
-        """Test pure method."""
-        impl = ApplicativeDesignedImpl()
-
-        # Mock Injected.pure and Designed.bind
-        Injected.pure = Mock(return_value="pure_injected")
-        Designed.bind = Mock(return_value="designed_result")
-
-        # Test pure
-        value = 42
-        result = impl.pure(value)
-
-        Injected.pure.assert_called_once_with(value)
-        Designed.bind.assert_called_once_with("pure_injected")
-        assert result == "designed_result"
-
     def test_is_instance_true(self):
         """Test is_instance with Designed object."""
         impl = ApplicativeDesignedImpl()

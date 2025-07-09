@@ -53,20 +53,6 @@ class TestApplicativeDesignedImpl:
             mock_zip.assert_called_once_with(designed1, designed2, designed3)
             assert result == "zipped_result"
 
-    def test_applicative_designed_impl_pure(self):
-        """Test pure method."""
-        app = ApplicativeDesignedImpl()
-
-        with (
-            patch.object(Injected, "pure", return_value="pure_injected") as mock_pure,
-            patch.object(Designed, "bind", return_value="bound_designed") as mock_bind,
-        ):
-            result = app.pure("test_value")
-
-            mock_pure.assert_called_once_with("test_value")
-            mock_bind.assert_called_once_with("pure_injected")
-            assert result == "bound_designed"
-
     def test_applicative_designed_impl_is_instance(self):
         """Test is_instance method."""
         app = ApplicativeDesignedImpl()

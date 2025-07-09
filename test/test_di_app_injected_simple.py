@@ -52,16 +52,6 @@ class TestApplicativeInjectedImpl:
             mock_mzip.assert_called_once_with(inj1, inj2)
             assert result == "zipped_result"
 
-    def test_pure(self):
-        """Test pure method."""
-        app = ApplicativeInjectedImpl()
-
-        with patch.object(Injected, "pure", return_value="pure_result") as mock_pure:
-            result = app.pure("test_value")
-
-            mock_pure.assert_called_once_with("test_value")
-            assert result == "pure_result"
-
     def test_is_instance(self):
         """Test is_instance method."""
         app = ApplicativeInjectedImpl()

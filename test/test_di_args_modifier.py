@@ -8,9 +8,6 @@ from pinjected import Injected
 
 def test_keep_args_pure_basic():
     """Test KeepArgsPure with basic function signature."""
-    import pytest
-
-    pytest.skip("Test isolation issue - skipping for now")
 
     def func(a, b, c=10):
         pass

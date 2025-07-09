@@ -33,61 +33,28 @@ setup-all:
 	cd packages/pinjected-linter && uv sync --group dev
 
 test:
-	@echo "Running tests sequentially by subpackage..."
-	@echo "Syncing all packages..."
-	@uv sync --all-packages
-	@echo ""
-	@echo "Testing main pinjected package..."
-	@uv run pytest test pinjected/test pinjected/tests || { \
-		exit_code=$$?; \
-		if [ $$exit_code -eq 5 ]; then \
-			echo "  No tests found in main package"; \
-		else \
-			exit $$exit_code; \
-		fi; \
-	}
-	@echo ""
-	@echo "Testing subpackages..."
-	@for pkg in packages/*/; do \
-		if [ -d "$$pkg/tests" ] || [ -d "$$pkg/test" ]; then \
-			pkg_name=$$(basename $$pkg); \
-			if [ "$$pkg_name" = "pinjected-linter" ]; then \
-				echo "Skipping $$pkg_name (tests hanging issue)..."; \
-				continue; \
-			fi; \
-			echo "Testing $$pkg_name..."; \
-			(cd $$pkg && uv run pytest) || { \
-				exit_code=$$?; \
-				if [ $$exit_code -eq 5 ]; then \
-					echo "  No tests found in $$pkg_name"; \
-				else \
-					exit $$exit_code; \
-				fi; \
-			}; \
-			echo ""; \
-		fi; \
-	done
-	@echo "✓ All tests passed"
+	@echo "Running tests with lock mechanism to prevent concurrent execution..."
+	@uv run python scripts/test_runner_with_lock.py --make-test
 
 test-all:
 	uv sync --all-packages
-	uv run pytest .
-	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
-	cd packages/anthropic && uv sync --group dev && uv run -m pytest tests
-	cd packages/wandb_util && uv sync --group dev && uv run -m pytest tests
-	cd packages/error_reports && uv sync --group dev && uv run -m pytest tests
-	cd packages/reviewer && uv sync --group dev && uv run -m pytest tests
-	cd packages/rate_limit && uv sync --group dev && uv run -m pytest tests
-	cd packages/niji_voice && uv sync --group dev && uv run -m pytest tests
-	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
-	cd packages/gcp && uv sync --group dev && uv run -m pytest tests
-	cd packages/pytest_runner && uv sync --group dev && uv run -m pytest tests
-	cd packages/pinjected-linter && uv sync --group dev && uv run -m pytest tests
+	uv run python scripts/test_runner_with_lock.py .
+	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/anthropic && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/wandb_util && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/error_reports && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/reviewer && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/rate_limit && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/niji_voice && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/injected_utils && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/pytest_runner && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	uv sync --group dev --all-packages
 
 test-cov:
-	uv run pytest . -v
-	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
+	uv run python scripts/test_runner_with_lock.py . -v
+	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 
 publish:
 	uv build

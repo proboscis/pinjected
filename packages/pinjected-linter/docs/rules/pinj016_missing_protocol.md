@@ -4,6 +4,8 @@
 
 This rule ensures that `@injected` functions specify a Protocol using the `protocol` parameter. According to pinjected best practices, all `@injected` functions should define and use a Protocol for better type safety, IDE support, and maintainability.
 
+Additionally, this rule detects when the protocol parameter is a string literal instead of a proper Protocol class, which is an error.
+
 ## Rationale
 
 From the pinjected documentation:
@@ -38,6 +40,15 @@ def cached_processor(database, /, query: str) -> list:
 @injected
 async def a_fetch_data(client, /, url: str) -> dict:
     return await client.get(url)
+
+# String literal protocol is not allowed
+@injected(protocol="ProcessorProtocol")  # Error: string literal
+def bad_processor(logger, /, data: str) -> str:
+    return data
+
+@injected(protocol="ABatchAdd1Protocol")  # Error: string literal
+async def a_batch_add_1(items: list[dict]) -> list[dict]:
+    return [dict(x=item["x"] + 1) for item in items]
 ```
 
 ### ✅ Correct
@@ -108,7 +119,8 @@ disable = ["PINJ016"]
 
 ## Severity
 
-**Warning** - While not using protocols doesn't break functionality, it misses out on significant type safety and IDE support benefits.
+- **Warning** - Missing protocol parameter. While not using protocols doesn't break functionality, it misses out on significant type safety and IDE support benefits.
+- **Error** - Using string literal as protocol parameter. This is incorrect usage and must be fixed to use a proper Protocol class.
 
 ## See Also
 

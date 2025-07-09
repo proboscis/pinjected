@@ -174,7 +174,7 @@ class TestRunnableValue:
 
     def test_runnable_value_config(self):
         """Test RunnableValue Config allows arbitrary types."""
-        assert RunnableValue.Config.arbitrary_types_allowed is True
+        assert RunnableValue.model_config.get("arbitrary_types_allowed") is True
 
 
 if __name__ == "__main__":

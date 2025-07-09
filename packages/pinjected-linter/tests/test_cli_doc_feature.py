@@ -59,7 +59,8 @@ def get_database():  # This violates PINJ001
 """)
 
         runner = CliRunner()
-        result = runner.invoke(main, [str(test_file)])
+        # Enable PINJ001 for this test to ensure we get violations
+        result = runner.invoke(main, [str(test_file), "--enable", "PINJ001"])
 
         # Check that help message is included
         assert (

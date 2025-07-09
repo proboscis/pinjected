@@ -2,7 +2,19 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from google.cloud import storage
+
+try:
+    from google.cloud import storage
+
+    HAS_GOOGLE_CLOUD = True
+except ImportError:
+    HAS_GOOGLE_CLOUD = False
+    storage = None
+
+
+pytestmark = pytest.mark.skipif(
+    not HAS_GOOGLE_CLOUD, reason="google-cloud-storage not installed"
+)
 
 
 @pytest.fixture

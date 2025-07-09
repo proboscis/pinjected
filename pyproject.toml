@@ -31,6 +31,7 @@ dependencies = [
     "pytest-xdist",
     "tqdm",
     "pre-commit>=4.2.0",
+    "filelock>=3.18.0",
 ]
 
 [project.optional-dependencies]
@@ -242,20 +243,15 @@ enable = [
     "PINJ013",  # Builtin shadowing (avoid shadowing builtins)
     "PINJ014",  # Missing stub file (.pyi for @injected functions)
     #"PINJ015",  # Missing slash (require / in @injected functions)
+    "PINJ016",  # Missing protocol parameter (also detects string literals)
     "PINJ019",  # No __main__ block with @injected/@instance functions
+    "PINJ026",  # a_ prefixed dependencies should not use Any type
+    "PINJ027",  # No nested @injected functions
+    "PINJ028",  # No design() usage inside @injected functions
 ]
 
 # Optionally disable specific rules
 disable = ["PINJ001", "PINJ005","PINJ015"]  # Instance and injected function naming rules excluded
-
-# Configure specific rules
-[tool.pinjected-linter.rules.PINJ014]
-# Minimum number of @injected functions to require stub file
-min_injected_functions = 3
-# Additional paths to search for stub files
-stub_search_paths = ["stubs", "typings", "types"]
-# Patterns to ignore
-ignore_patterns = ["**/tests/**", "**/test_*.py", "**/*_test.py"]
 
 # Exclude paths from linting
 exclude = [
@@ -268,8 +264,18 @@ exclude = [
     ".pytest_cache",
     ".ruff_cache",
     "node_modules",
+    "packages/pinjected-linter/rust-poc",  # Intentional test files for linter rules
 ]
 
 # Additional configuration options
 max_line_length = 120
 check_docstrings = true
+
+# Configure specific rules
+[tool.pinjected-linter.rules.PINJ014]
+# Minimum number of @injected functions to require stub file
+min_injected_functions = 3
+# Additional paths to search for stub files
+stub_search_paths = ["stubs", "typings", "types"]
+# Patterns to ignore
+ignore_patterns = ["**/tests/**", "**/test_*.py", "**/*_test.py"]

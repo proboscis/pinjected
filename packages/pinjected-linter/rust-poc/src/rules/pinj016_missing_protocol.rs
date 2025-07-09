@@ -114,25 +114,42 @@ impl MissingProtocolRule {
         }
     }
 
-    /// Check if an @injected decorator has a protocol parameter
-    fn has_protocol_parameter(decorator: &Expr) -> bool {
+    /// Check if an @injected decorator has a protocol parameter and if it's a string
+    /// Returns (has_protocol, is_string_literal)
+    fn check_protocol_parameter(decorator: &Expr) -> (bool, bool) {
         match decorator {
             Expr::Call(call) => {
                 // Check if this is a call to @injected
                 if !Self::is_injected_call(&call.func) {
-                    return false;
+                    return (false, false);
                 }
 
                 // Check if any keyword argument is named "protocol"
-                call.keywords.iter().any(|kw| {
-                    kw.arg
-                        .as_ref()
-                        .map_or(false, |arg| arg.as_str() == "protocol")
-                })
+                for kw in &call.keywords {
+                    if let Some(arg_name) = &kw.arg {
+                        if arg_name.as_str() == "protocol" {
+                            // Check if the value is a string literal
+                            match &kw.value {
+                                Expr::Constant(constant) => {
+                                    // Check if it's a string constant
+                                    match &constant.value {
+                                        rustpython_ast::Constant::Str(_) => {
+                                            return (true, true); // Has protocol, is string
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            }
+                            return (true, false); // Has protocol, not string
+                        }
+                    }
+                }
+                (false, false) // No protocol parameter
             }
             _ => {
                 // Simple @injected without parameters - no protocol
-                false
+                (false, false)
             }
         }
     }
@@ -147,6 +164,7 @@ impl MissingProtocolRule {
         // Check if any decorator is @injected
         let mut has_injected = false;
         let mut has_protocol = false;
+        let mut has_string_protocol = false;
 
         for decorator in &func.decorator_list {
             match decorator {
@@ -165,14 +183,28 @@ impl MissingProtocolRule {
                 Expr::Call(call) => {
                     if Self::is_injected_call(&call.func) {
                         has_injected = true;
-                        has_protocol = Self::has_protocol_parameter(decorator);
+                        let (has_proto, is_string) = Self::check_protocol_parameter(decorator);
+                        has_protocol = has_proto;
+                        has_string_protocol = is_string;
                     }
                 }
                 _ => {}
             }
         }
 
-        if has_injected && !has_protocol {
+        if has_injected && has_string_protocol {
+            // Protocol parameter is a string literal
+            Some(Violation {
+                rule_id: "PINJ016".to_string(),
+                message: format!(
+                    "@injected function '{}' has protocol parameter as string literal. Protocol must be a proper Protocol class, not a string.",
+                    func.name.as_str()
+                ),
+                offset: func.range.start().to_usize(),
+                file_path: String::new(), // Will be filled by caller
+                severity: Severity::Error,
+            })
+        } else if has_injected && !has_protocol {
             let protocol_signature = Self::generate_protocol_signature(
                 func.name.as_str(),
                 &func.args,
@@ -218,6 +250,7 @@ impl MissingProtocolRule {
         // Check if any decorator is @injected
         let mut has_injected = false;
         let mut has_protocol = false;
+        let mut has_string_protocol = false;
 
         for decorator in &func.decorator_list {
             match decorator {
@@ -236,14 +269,28 @@ impl MissingProtocolRule {
                 Expr::Call(call) => {
                     if Self::is_injected_call(&call.func) {
                         has_injected = true;
-                        has_protocol = Self::has_protocol_parameter(decorator);
+                        let (has_proto, is_string) = Self::check_protocol_parameter(decorator);
+                        has_protocol = has_proto;
+                        has_string_protocol = is_string;
                     }
                 }
                 _ => {}
             }
         }
 
-        if has_injected && !has_protocol {
+        if has_injected && has_string_protocol {
+            // Protocol parameter is a string literal
+            Some(Violation {
+                rule_id: "PINJ016".to_string(),
+                message: format!(
+                    "@injected function '{}' has protocol parameter as string literal. Protocol must be a proper Protocol class, not a string.",
+                    func.name.as_str()
+                ),
+                offset: func.range.start().to_usize(),
+                file_path: String::new(), // Will be filled by caller
+                severity: Severity::Error,
+            })
+        } else if has_injected && !has_protocol {
             let protocol_signature = Self::generate_protocol_signature(
                 func.name.as_str(),
                 &func.args,
@@ -420,5 +467,37 @@ def regular_function(data: str) -> str:
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_injected_with_string_protocol() {
+        let code = r#"
+from pinjected import injected
+
+@injected(protocol="SomeProtocol")
+def process_data(logger, /, data: str) -> str:
+    return data.upper()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ016");
+        assert!(violations[0].message.contains("string literal"));
+        assert_eq!(violations[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn test_async_injected_with_string_protocol() {
+        let code = r#"
+from pinjected import injected
+
+@injected(protocol="ABatchAdd1Protocol")
+async def a_batch_add_1(items: list[dict]) -> list[dict]:
+    return [dict(x=item["x"] + 1) for item in items]
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ016");
+        assert!(violations[0].message.contains("string literal"));
+        assert_eq!(violations[0].severity, Severity::Error);
     }
 }
