@@ -35,8 +35,9 @@ dev = [
     "ruff>=0.0.261",
 ]
 
-[project.scripts]
-pinjected-linter = "pinjected_linter.cli:main"
+# [project.scripts]
+# pinjected-linter = "pinjected_linter.cli:main"
+# Disabled: Using Rust version as pinjected-linter instead
 
 [project.urls]
 "Homepage" = "https://github.com/pinjected/pinjected"

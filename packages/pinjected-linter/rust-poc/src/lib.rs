@@ -150,7 +150,7 @@ fn analyze_file(
                 match rule.rule_id() {
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
                     "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
-                    | "PINJ017" => func_rules.push(rule),
+                    | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
                     "PINJ013" | "PINJ018" => stmt_rules.push(rule),
                     _ => {} // Already handled

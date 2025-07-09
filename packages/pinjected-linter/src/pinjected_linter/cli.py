@@ -117,6 +117,7 @@ def show_rule_documentation(rule_id: str):
         with open(doc_file, encoding="utf-8") as f:
             content = f.read()
         click.echo(content)
+        sys.exit(0)
     except Exception as e:
         click.echo(f"Error reading documentation: {e}", err=True)
         sys.exit(1)

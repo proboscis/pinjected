@@ -74,6 +74,22 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ018",
         include_str!("../../docs/rules/pinj018_double_injected.md"),
     );
+    docs.insert(
+        "PINJ019",
+        include_str!("../../docs/rules/pinj019_no_main_block.md"),
+    );
+    docs.insert(
+        "PINJ026",
+        include_str!("../../docs/rules/pinj026_a_prefix_dependency_any_type.md"),
+    );
+    docs.insert(
+        "PINJ027",
+        include_str!("../../docs/rules/pinj027_no_nested_injected.md"),
+    );
+    docs.insert(
+        "PINJ028",
+        include_str!("../../docs/rules/pinj028_no_design_in_injected.md"),
+    );
 
     docs
 }

@@ -131,7 +131,7 @@ pub fn merge_config(
             let all_rules = vec![
                 "PINJ001", "PINJ002", "PINJ003", "PINJ004", "PINJ005", "PINJ006", "PINJ007",
                 "PINJ009", "PINJ010", "PINJ011", "PINJ012", "PINJ013", "PINJ014", "PINJ015",
-                "PINJ016", "PINJ017", "PINJ018", "PINJ019",
+                "PINJ016", "PINJ017", "PINJ018", "PINJ019", "PINJ026", "PINJ027", "PINJ028",
             ];
             let enabled: Vec<String> = all_rules
                 .into_iter()
@@ -141,7 +141,8 @@ pub fn merge_config(
             enable = Some(enabled);
         }
 
-        exclude = cfg.exclude.clone();
+        // Load exclude patterns from config
+        exclude.extend(cfg.exclude.iter().cloned());
     }
 
     // Apply CLI overrides
@@ -151,7 +152,7 @@ pub fn merge_config(
         let all_rules = vec![
             "PINJ001", "PINJ002", "PINJ003", "PINJ004", "PINJ005", "PINJ006", "PINJ007", "PINJ008",
             "PINJ009", "PINJ010", "PINJ011", "PINJ012", "PINJ013", "PINJ014", "PINJ015",
-            "PINJ016", "PINJ017", "PINJ018", "PINJ019",
+            "PINJ016", "PINJ017", "PINJ018", "PINJ019", "PINJ026", "PINJ027", "PINJ028",
         ];
         let enabled: Vec<String> = all_rules
             .into_iter()

@@ -21,6 +21,9 @@ pub mod pinj016_missing_protocol;
 pub mod pinj017_missing_dependency_type_annotation;
 pub mod pinj018_double_injected;
 pub mod pinj019_no_main_block;
+pub mod pinj026_a_prefix_dependency_any_type;
+pub mod pinj027_no_nested_injected;
+pub mod pinj028_no_design_in_injected;
 // Future rules would be added here:
 // ... etc
 
@@ -50,6 +53,9 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         ),
         Box::new(pinj018_double_injected::DoubleInjectedRule::new()),
         Box::new(pinj019_no_main_block::NoMainBlockRule::new()),
+        Box::new(pinj026_a_prefix_dependency_any_type::APrefixDependencyAnyTypeRule::new()),
+        Box::new(pinj027_no_nested_injected::NoNestedInjectedRule::new()),
+        Box::new(pinj028_no_design_in_injected::NoDesignInInjectedRule::new()),
         // Add more rules here as they're implemented
     ]
 }

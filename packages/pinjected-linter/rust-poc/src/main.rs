@@ -234,6 +234,9 @@ Available Rules:
 - PINJ015: Missing slash (require / in @injected functions)
 - PINJ016: Missing protocol (require protocol parameter in @injected)
 - PINJ017: Missing type annotations (require type annotations for dependencies)
+- PINJ018: Double injected (avoid @injected decorating an @injected function)
+- PINJ019: No __main__ block (files with @injected/@instance should not use __main__)
+- PINJ026: a_ prefix dependency Any type (a_ prefixed deps should have proper types)
 
 Filtering Options:
 ------------------
@@ -390,9 +393,7 @@ fn main() -> Result<()> {
     if args.verbose {
         if let Some(ref cfg) = config {
             eprintln!("Loaded config from pyproject.toml");
-            if !cfg.exclude.is_empty() {
-                eprintln!("  Exclude patterns from config: {:?}", cfg.exclude);
-            }
+            eprintln!("  Exclude patterns from config: {:?}", cfg.exclude);
             if !cfg.enable.is_empty() {
                 eprintln!("  Enabled rules: {:?}", cfg.enable);
             }
@@ -400,7 +401,7 @@ fn main() -> Result<()> {
                 eprintln!("  Disabled rules: {:?}", cfg.disable);
             }
         }
-        eprintln!("  Final exclude patterns: {:?}", skip_patterns);
+        eprintln!("  Final exclude patterns after merge: {:?}", skip_patterns);
     }
 
     // Determine which rules to use
@@ -443,12 +444,24 @@ fn main() -> Result<()> {
                             eprintln!("Analyzing: {}", file_path.display());
                         }
                         
-                        // Skip if file matches skip patterns
-                        let should_skip = skip_patterns.iter().any(|pattern| {
-                            file_path.to_str()
-                                .map(|s| s.contains(pattern))
-                                .unwrap_or(false)
-                        });
+                        // Skip if file matches skip patterns (match logic from find_python_files)
+                        let should_skip = {
+                            let path_str = file_path.to_str().unwrap_or("");
+                            
+                            // Check each component of the path
+                            let component_match = file_path.components().any(|component| {
+                                if let Some(name) = component.as_os_str().to_str() {
+                                    skip_patterns.iter().any(|pattern| name == pattern)
+                                } else {
+                                    false
+                                }
+                            });
+                            
+                            // Also check if pattern is contained in full path
+                            let path_contains = skip_patterns.iter().any(|pattern| path_str.contains(pattern));
+                            
+                            component_match || path_contains
+                        };
                         
                         if should_skip {
                             if args.verbose {
