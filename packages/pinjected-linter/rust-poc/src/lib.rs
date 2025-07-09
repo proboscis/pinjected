@@ -145,16 +145,21 @@ fn analyze_file(
             // Group rules by type for better cache locality
             let mut stmt_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
             let mut func_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
-            let class_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
+            let mut class_rules: Vec<&Box<dyn rules::base::LintRule>> = Vec::new();
 
             for rule in &active_rules {
                 match rule.rule_id() {
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
                     "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
-                    | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032" => func_rules.push(rule),
+                    | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032" | "PINJ033" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
                     "PINJ013" | "PINJ018" | "PINJ029" => stmt_rules.push(rule),
                     _ => {} // Already handled
+                }
+                
+                // Also add rules that need to check inside classes
+                if matches!(rule.rule_id(), "PINJ033") {
+                    class_rules.push(rule);
                 }
             }
 

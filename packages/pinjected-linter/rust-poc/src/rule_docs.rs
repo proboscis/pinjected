@@ -90,6 +90,18 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ028",
         include_str!("../../docs/rules/pinj028_no_design_in_injected.md"),
     );
+    docs.insert(
+        "PINJ031",
+        include_str!("../../docs/rules/pinj031_no_injected_calls_in_decorators.md"),
+    );
+    docs.insert(
+        "PINJ032",
+        include_str!("../../docs/rules/pinj032_no_iproxy_return_type.md"),
+    );
+    docs.insert(
+        "PINJ033",
+        include_str!("../../docs/rules/pinj033_no_iproxy_argument_type.md"),
+    );
 
     docs
 }
