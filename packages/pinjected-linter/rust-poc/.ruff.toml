@@ -1,3 +1,2 @@
 [lint]
 ignore = ["F821", "E402"]
-EOF < /dev/null

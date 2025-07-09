@@ -9,16 +9,33 @@
 //! - Direct function calls to @injected functions
 //! - Await calls to @injected functions  
 //! - Any form of execution of @injected functions
+//! - Cross-module @injected function calls (imported functions)
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{has_injected_decorator, has_injected_decorator_async};
 use rustpython_ast::{Expr, ExprCall, Mod, Stmt};
-use std::collections::HashSet;
+use rustpython_parser::{parse, Mode};
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+
+/// Global cache for imported @injected functions
+/// Maps: (module_path, function_name) -> is_injected
+static IMPORT_CACHE: OnceLock<Arc<Mutex<HashMap<(String, String), bool>>>> = OnceLock::new();
+
+fn get_import_cache() -> Arc<Mutex<HashMap<(String, String), bool>>> {
+    IMPORT_CACHE
+        .get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+        .clone()
+}
 
 pub struct NoDirectInjectedCallsRule {
     /// All @injected function names in the module
     injected_functions: HashSet<String>,
+    /// Imported functions that are @injected (name -> module_path)
+    imported_injected_functions: HashMap<String, String>,
     /// Current function context
     current_function: Option<String>,
     /// Dependencies of current function (parameters before /)
@@ -31,9 +48,125 @@ impl NoDirectInjectedCallsRule {
     pub fn new() -> Self {
         Self {
             injected_functions: HashSet::new(),
+            imported_injected_functions: HashMap::new(),
             current_function: None,
             current_dependencies: HashSet::new(),
             in_injected_function: false,
+        }
+    }
+
+    /// Resolve module path from import statement
+    fn resolve_module_path(module_name: &str, current_file: &str) -> Option<PathBuf> {
+        // Get the directory of the current file
+        let current_dir = Path::new(current_file).parent()?;
+        
+        // Convert module name to file path (e.g., "module_a" -> "module_a.py")
+        let module_file = format!("{}.py", module_name.replace('.', "/"));
+        
+        // Try to find the module relative to current file
+        let relative_path = current_dir.join(&module_file);
+        if relative_path.exists() {
+            return Some(relative_path);
+        }
+        
+        // Try parent directories (basic Python path resolution)
+        let mut parent = current_dir;
+        while let Some(p) = parent.parent() {
+            let path = p.join(&module_file);
+            if path.exists() {
+                return Some(path);
+            }
+            parent = p;
+        }
+        
+        None
+    }
+
+    /// Check if a function in a module is @injected
+    fn is_function_injected(module_path: &Path, function_name: &str) -> bool {
+        let cache_key = (
+            module_path.to_string_lossy().to_string(),
+            function_name.to_string(),
+        );
+        
+        // Check cache first
+        let cache = get_import_cache();
+        if let Ok(cache_guard) = cache.lock() {
+            if let Some(&is_injected) = cache_guard.get(&cache_key) {
+                return is_injected;
+            }
+        }
+        
+        // Parse the module to check if function is @injected
+        let is_injected = if let Ok(content) = fs::read_to_string(module_path) {
+            if let Ok(ast) = parse(&content, Mode::Module, module_path.to_str().unwrap()) {
+                match &ast {
+                    Mod::Module(module) => {
+                        for stmt in &module.body {
+                            match stmt {
+                                Stmt::FunctionDef(func) => {
+                                    if func.name.as_str() == function_name {
+                                        return has_injected_decorator(func);
+                                    }
+                                }
+                                Stmt::AsyncFunctionDef(func) => {
+                                    if func.name.as_str() == function_name {
+                                        return has_injected_decorator_async(func);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            false
+        } else {
+            false
+        };
+        
+        // Cache the result
+        if let Ok(mut cache_guard) = cache.lock() {
+            cache_guard.insert(cache_key, is_injected);
+        }
+        
+        is_injected
+    }
+
+    /// Process import statements to track imported @injected functions
+    fn process_imports(&mut self, ast: &Mod, file_path: &str) {
+        match ast {
+            Mod::Module(module) => {
+                for stmt in &module.body {
+                    match stmt {
+                        Stmt::ImportFrom(import_from) => {
+                            if let Some(module_name) = &import_from.module {
+                                // Resolve the module path
+                                if let Some(module_path) = Self::resolve_module_path(module_name.as_str(), file_path) {
+                                    // Check each imported name
+                                    for alias in &import_from.names {
+                                        let imported_name = alias.name.as_str();
+                                        let local_name = alias.asname.as_ref()
+                                            .map(|s| s.as_str())
+                                            .unwrap_or(imported_name);
+                                        
+                                        // Check if this function is @injected
+                                        if Self::is_function_injected(&module_path, imported_name) {
+                                            self.imported_injected_functions.insert(
+                                                local_name.to_string(),
+                                                module_name.to_string(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -128,18 +261,28 @@ impl NoDirectInjectedCallsRule {
         };
 
         if let Some(called_func) = func_name {
-            // Check if this is a call to an @injected function
-            if self.injected_functions.contains(&called_func) {
+            // Check if this is a call to an @injected function (local or imported)
+            let is_injected = self.injected_functions.contains(&called_func) 
+                || self.imported_injected_functions.contains_key(&called_func);
+            
+            if is_injected {
                 // Check if it's declared as a dependency
                 if !self.current_dependencies.contains(&called_func) {
+                    let source = if let Some(module) = self.imported_injected_functions.get(&called_func) {
+                        format!(" (imported from '{}')", module)
+                    } else {
+                        String::new()
+                    };
+                    
                     violations.push(Violation {
                         rule_id: "PINJ009".to_string(),
                         message: format!(
-                            "@injected function '{}' makes a direct call to @injected function '{}'. \
+                            "@injected function '{}' makes a direct call to @injected function '{}{}'. \
                             Inside @injected functions, you're building a dependency graph, not executing code. \
                             Declare '{}' as a dependency (before '/') instead.",
                             self.current_function.as_ref().unwrap(),
                             called_func,
+                            source,
                             called_func
                         ),
                         offset: call.range.start().to_usize(),
@@ -172,18 +315,26 @@ impl NoDirectInjectedCallsRule {
                     };
 
                     if let Some(called_func) = func_name {
-                        if self.injected_functions.contains(&called_func)
-                            && self.in_injected_function
-                        {
+                        let is_injected = self.injected_functions.contains(&called_func)
+                            || self.imported_injected_functions.contains_key(&called_func);
+                            
+                        if is_injected && self.in_injected_function {
                             if !self.current_dependencies.contains(&called_func) {
+                                let source = if let Some(module) = self.imported_injected_functions.get(&called_func) {
+                                    format!(" (imported from '{}')", module)
+                                } else {
+                                    String::new()
+                                };
+                                
                                 violations.push(Violation {
                                     rule_id: "PINJ009".to_string(),
                                     message: format!(
-                                        "@injected function '{}' uses 'await' on a call to @injected function '{}'. \
+                                        "@injected function '{}' uses 'await' on a call to @injected function '{}{}'. \
                                         Inside @injected functions, you're building a dependency graph, not executing code. \
                                         Declare '{}' as a dependency (before '/') instead.",
                                         self.current_function.as_ref().unwrap(),
                                         called_func,
+                                        source,
                                         called_func
                                     ),
                                     offset: await_expr.range.start().to_usize(),
@@ -474,11 +625,12 @@ impl LintRule for NoDirectInjectedCallsRule {
         // Create a mutable instance for stateful tracking
         let mut checker = NoDirectInjectedCallsRule::new();
 
-        // First pass: collect all @injected functions
+        // First pass: collect all @injected functions and process imports
         checker.collect_injected_functions(context.ast);
+        checker.process_imports(context.ast, context.file_path);
 
-        // If no @injected functions, nothing to check
-        if checker.injected_functions.is_empty() {
+        // If no @injected functions (local or imported), nothing to check
+        if checker.injected_functions.is_empty() && checker.imported_injected_functions.is_empty() {
             return violations;
         }
 
@@ -494,6 +646,8 @@ mod tests {
     use super::*;
     use rustpython_ast::Mod;
     use rustpython_parser::{parse, Mode};
+    use std::fs;
+    use tempfile::TempDir;
 
     fn check_code(code: &str) -> Vec<Violation> {
         let ast = parse(code, Mode::Module, "test.py").unwrap();
@@ -661,5 +815,85 @@ def process(data):
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ009");
+    }
+
+    #[test]
+    fn test_cross_module_injected_call() {
+        // Create a temporary directory for test files
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create module_a.py with @injected function
+        let module_a_path = temp_dir.path().join("module_a.py");
+        fs::write(&module_a_path, r#"
+from pinjected import injected
+
+@injected
+def helper_function():
+    return "helper result"
+
+@injected
+async def a_async_helper():
+    return "async helper result"
+
+def regular_function():
+    return "regular result"
+"#).unwrap();
+        
+        // Create module_b.py that imports and calls functions from module_a
+        let module_b_path = temp_dir.path().join("module_b.py");
+        let module_b_content = r#"
+from pinjected import injected
+from module_a import helper_function, a_async_helper, regular_function
+
+@injected
+def process_data():
+    # ERROR: Direct call to imported @injected function
+    result = helper_function()
+    return result
+
+@injected
+async def a_process_async():
+    # ERROR: Await call to imported @injected function
+    result = await a_async_helper()
+    return result
+
+@injected
+def correct_usage(helper_function, /):
+    # OK: helper_function is declared as dependency
+    return helper_function()
+
+@injected
+def call_regular():
+    # OK: regular_function is not @injected
+    return regular_function()
+"#;
+        fs::write(&module_b_path, module_b_content).unwrap();
+        
+        // Parse and check module_b
+        let ast = parse(module_b_content, Mode::Module, module_b_path.to_str().unwrap()).unwrap();
+        let rule = NoDirectInjectedCallsRule::new();
+        let mut violations = Vec::new();
+
+        match &ast {
+            Mod::Module(module) => {
+                for stmt in &module.body {
+                    let context = RuleContext {
+                        stmt,
+                        file_path: module_b_path.to_str().unwrap(),
+                        source: module_b_content,
+                        ast: &ast,
+                    };
+                    violations.extend(rule.check(&context));
+                }
+            }
+            _ => {}
+        }
+        
+        // Should have violations for cross-module calls
+        assert!(violations.len() >= 2, "Should detect cross-module @injected calls");
+        
+        // Check that violations mention the imported module
+        let has_import_mention = violations.iter().any(|v| v.message.contains("imported from"));
+        assert!(has_import_mention, "Violations should mention the import source");
     }
 }

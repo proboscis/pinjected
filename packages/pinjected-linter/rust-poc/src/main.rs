@@ -43,7 +43,7 @@ mod exit_codes {
     author,
     version,
     about = "Pinjected linter - Check your code for Pinjected best practices",
-    long_about = "Pinjected linter - Check your code for Pinjected best practices.\n\nIf no paths are provided, the current directory is checked recursively."
+    long_about = "Pinjected linter - Check your code for Pinjected best practices.\n\nIf no paths are provided, the current directory is checked recursively.\n\nConfiguration:\n  Configure in pyproject.toml under [tool.pinjected-linter]\n  Use enable = [\"ALL\"] to enable all rules, then disable specific ones\n  See --show-config-docs for detailed configuration options"
 )]
 struct Args {
     /// Paths to analyze (files or directories)
@@ -76,6 +76,7 @@ struct Args {
     disable: Vec<String>,
 
     /// Enable only specific rules (can be used multiple times)
+    /// Note: In config files, you can use enable = ["ALL"] to enable all rules
     ///
     /// Example: -e PINJ001 -e PINJ002
     #[arg(short = 'e', long = "enable")]
@@ -178,6 +179,12 @@ struct Args {
     /// Example: pinjected-lint --modified
     #[arg(long = "modified")]
     modified: bool,
+
+    /// Exclude untracked files when using --modified
+    ///
+    /// Example: pinjected-lint --modified --no-untracked
+    #[arg(long = "no-untracked", requires = "modified")]
+    no_untracked: bool,
 }
 
 fn show_configuration_docs() {
@@ -200,7 +207,10 @@ enable = [
     # ... add more rules as needed
 ]
 
-# Or disable specific rules
+# Or enable all rules using the "ALL" keyword
+enable = ["ALL"]
+
+# Disable specific rules (works with both explicit rule lists and "ALL")
 disable = ["PINJ001", "PINJ005"]
 
 # Configure specific rules
@@ -215,6 +225,11 @@ exclude = [".venv", "venv", ".git", "__pycache__", "build", "dist"]
 # Additional configuration options
 max_line_length = 120
 check_docstrings = true
+
+# Git integration options
+[tool.pinjected-linter.git]
+# Include untracked files when using --modified (default: true)
+include_untracked = true
 
 Available Rules:
 ----------------
@@ -237,6 +252,9 @@ Available Rules:
 - PINJ018: Double injected (avoid @injected decorating an @injected function)
 - PINJ019: No __main__ block (files with @injected/@instance should not use __main__)
 - PINJ026: a_ prefix dependency Any type (a_ prefixed deps should have proper types)
+- PINJ027: No nested @injected (avoid @injected inside @injected)
+- PINJ028: No design in @injected (avoid design() inside @injected)
+- PINJ029: No @injected.pure instantiation (avoid Injected.pure in @injected)
 
 Filtering Options:
 ------------------
@@ -277,11 +295,13 @@ fn show_rule_documentation(rule_id: &str) -> Result<()> {
 }
 
 /// Get list of modified Python files in the git repository
-fn get_git_modified_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
+fn get_git_modified_files(repo_path: &Path, include_untracked: bool) -> Result<Vec<PathBuf>> {
     let repo = Repository::discover(repo_path)?;
     let mut status_options = StatusOptions::new();
-    status_options.include_untracked(true);
+    status_options.include_untracked(include_untracked);
     status_options.include_ignored(false);
+    status_options.include_unmodified(false);
+    status_options.recurse_untracked_dirs(true);
     
     let statuses = repo.statuses(Some(&mut status_options))?;
     
@@ -290,13 +310,19 @@ fn get_git_modified_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
         let status = entry.status();
         
         // Check if file is modified, new, or renamed
-        if status.contains(git2::Status::WT_MODIFIED)
-            || status.contains(git2::Status::WT_NEW)
+        // Note: For untracked files, only WT_NEW is set (no INDEX flags)
+        let is_untracked = status.contains(git2::Status::WT_NEW) 
+            && !status.contains(git2::Status::INDEX_NEW)
+            && !status.contains(git2::Status::INDEX_MODIFIED)
+            && !status.contains(git2::Status::INDEX_RENAMED);
+        
+        let is_modified = status.contains(git2::Status::WT_MODIFIED)
             || status.contains(git2::Status::WT_RENAMED)
             || status.contains(git2::Status::INDEX_MODIFIED)
             || status.contains(git2::Status::INDEX_NEW)
-            || status.contains(git2::Status::INDEX_RENAMED)
-        {
+            || status.contains(git2::Status::INDEX_RENAMED);
+        
+        if is_modified || (is_untracked && include_untracked) {
             if let Some(path_str) = entry.path() {
                 let path = PathBuf::from(path_str);
                 // Only include Python files
@@ -424,7 +450,17 @@ fn main() -> Result<()> {
         // Get the working directory to search for git repo
         let cwd = std::env::current_dir()?;
         
-        match get_git_modified_files(&cwd) {
+        // Determine whether to include untracked files
+        // Priority: CLI flag > config file > default (true)
+        let include_untracked = if args.no_untracked {
+            false
+        } else if let Some(ref cfg) = config {
+            cfg.git.include_untracked
+        } else {
+            true
+        };
+        
+        match get_git_modified_files(&cwd, include_untracked) {
             Ok(modified_files) => {
                 if modified_files.is_empty() {
                     if args.verbose {
@@ -433,6 +469,11 @@ fn main() -> Result<()> {
                 } else {
                     if args.verbose {
                         eprintln!("Found {} modified Python files to analyze", modified_files.len());
+                        if include_untracked {
+                            eprintln!("(Including untracked files)");
+                        } else {
+                            eprintln!("(Excluding untracked files)");
+                        }
                         for file in &modified_files {
                             eprintln!("  - {}", file.display());
                         }

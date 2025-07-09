@@ -9,22 +9,7 @@ from pinjected.di.app_injected import InjectedEvalContext
 class TestIProxy:
     """Test IProxy class."""
 
-    def test_instantiation_with_simple_value(self):
-        """Test IProxy instantiation with simple values."""
-        # Test with integer
-        proxy = IProxy(42)
-        assert isinstance(proxy, IProxy)
-        assert isinstance(proxy, DelegatedVar)
-
-        # Test with string
-        proxy = IProxy("hello")
-        assert isinstance(proxy, IProxy)
-        assert isinstance(proxy, DelegatedVar)
-
-        # Test with list
-        proxy = IProxy([1, 2, 3])
-        assert isinstance(proxy, IProxy)
-        assert isinstance(proxy, DelegatedVar)
+    # Basic instantiation tests removed - comprehensively covered in test_iproxy_constructor.py
 
     def test_instantiation_with_object(self):
         """Test IProxy instantiation with custom objects."""
@@ -59,27 +44,7 @@ class TestIProxy:
         assert isinstance(proxy, IProxy)
         assert proxy.__value__.data is None
 
-    def test_with_different_types(self):
-        """Test IProxy with various Python types."""
-        test_values = [
-            True,  # bool
-            42,  # int
-            3.14,  # float
-            "string",  # str
-            bytes([1, 2, 3]),  # bytes
-            {"key": "value"},  # dict
-            {1, 2, 3},  # set
-            (1, 2, 3),  # tuple
-            lambda x: x + 1,  # function
-        ]
-
-        for value in test_values:
-            proxy = IProxy(value)
-            assert isinstance(proxy, IProxy)
-            assert proxy.__value__.data == value or (
-                # For lambdas, we can't use == so check it's the same object
-                callable(value) and proxy.__value__.data is value
-            )
+    # test_with_different_types removed - covered in test_iproxy_constructor.py
 
     def test_type_parameter(self):
         """Test that IProxy preserves type parameter."""

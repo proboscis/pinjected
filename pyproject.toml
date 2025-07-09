@@ -226,29 +226,8 @@ exclude = [
 "**/*.py" = ["C901", "PLR0912", "PLR0915", "PLR0911"]
 
 [tool.pinjected-linter]
-# Enable all pinjected linter rules except PINJ001 and PINJ005
-enable = [
-    # "PINJ001",  # Instance naming convention (@instance functions should be nouns) - EXCLUDED
-    "PINJ002",  # Instance defaults (check default parameter usage)
-    "PINJ003",  # Async instance naming (a_ prefix for async @instance)
-    "PINJ004",  # Direct instance call (avoid calling @instance functions directly)
-    # "PINJ005",  # Injected function naming (should be verbs/actions) - EXCLUDED
-    "PINJ006",  # Async injected naming (a_ prefix for async @injected)
-    "PINJ007",  # Slash separator position (disabled - heuristics removed)
-    "PINJ008",  # Injected dependency declaration (dependencies before /)
-    "PINJ009",  # No await in injected (except for declared dependencies)
-    "PINJ010",  # Design usage (proper design() function usage)
-    "PINJ011",  # IProxy annotations (not for injected dependencies)
-    "PINJ012",  # Dependency cycles detection
-    "PINJ013",  # Builtin shadowing (avoid shadowing builtins)
-    "PINJ014",  # Missing stub file (.pyi for @injected functions)
-    #"PINJ015",  # Missing slash (require / in @injected functions)
-    "PINJ016",  # Missing protocol parameter (also detects string literals)
-    "PINJ019",  # No __main__ block with @injected/@instance functions
-    "PINJ026",  # a_ prefixed dependencies should not use Any type
-    "PINJ027",  # No nested @injected functions
-    "PINJ028",  # No design() usage inside @injected functions
-]
+# Enable all rules using the "ALL" keyword
+enable = ["ALL"]
 
 # Optionally disable specific rules
 disable = ["PINJ001", "PINJ005","PINJ015"]  # Instance and injected function naming rules excluded

@@ -4,7 +4,7 @@
 
 Inside `@injected` functions, you're building a dependency graph (AST), not executing code. Direct calls to other `@injected` functions are fundamentally wrong - they should be declared as dependencies and injected, not called directly.
 
-This rule detects and prevents direct calls or await expressions on `@injected` functions within other `@injected` functions.
+This rule detects and prevents direct calls or await expressions on `@injected` functions within other `@injected` functions, including those imported from other modules.
 
 ## Rationale
 
@@ -66,6 +66,47 @@ async def a_process_all(a_fetch_data, /, urls: list):
     # CORRECT: a_fetch_data is declared as a dependency
     # Note: Don't await it - return the coroutine/future
     return a_fetch_data(urls[0])
+```
+
+### Cross-Module @injected Functions
+
+The rule also detects when you import an `@injected` function from another module and call it directly:
+
+```python
+# module_a.py
+from pinjected import injected
+
+@injected
+def data_processor(/, data: str) -> str:
+    return data.upper()
+
+@injected
+async def a_async_processor(/, data: str) -> str:
+    return data.lower()
+```
+
+```python
+# module_b.py
+from pinjected import injected
+from module_a import data_processor, a_async_processor
+
+@injected
+def analyze_data(/, data: str):
+    # ERROR: Direct call to imported @injected function
+    processed = data_processor(data)
+    return processed
+
+@injected
+async def a_analyze_async(/, data: str):
+    # ERROR: Await call to imported @injected function  
+    result = await a_async_processor(data)
+    return result
+
+# Correct way:
+@injected
+def analyze_data_correct(data_processor, /, data: str):
+    # CORRECT: data_processor is declared as a dependency
+    return data_processor(data)
 ```
 
 ## Common Mistakes

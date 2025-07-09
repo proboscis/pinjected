@@ -2,6 +2,7 @@
 //!
 //! Loads configuration from pyproject.toml [tool.pinjected-linter] section
 
+use crate::rules;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,28 @@ pub struct Config {
 
     #[serde(default)]
     pub rules: HashMap<String, RuleConfig>,
+
+    #[serde(default)]
+    pub git: GitConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GitConfig {
+    /// Include untracked files when using --modified (default: true)
+    #[serde(default = "default_include_untracked")]
+    pub include_untracked: bool,
+}
+
+impl Default for GitConfig {
+    fn default() -> Self {
+        Self {
+            include_untracked: true,
+        }
+    }
+}
+
+fn default_include_untracked() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -123,20 +146,30 @@ pub fn merge_config(
     // Start with config file settings
     if let Some(cfg) = config {
         if !cfg.enable.is_empty() && cli_enable.is_empty() && cli_disable.is_empty() {
-            enable = Some(cfg.enable.clone());
-        }
-
-        if !cfg.disable.is_empty() && cli_enable.is_empty() && cli_disable.is_empty() {
-            // Convert disable to enable by filtering
-            let all_rules = vec![
-                "PINJ001", "PINJ002", "PINJ003", "PINJ004", "PINJ005", "PINJ006", "PINJ007",
-                "PINJ009", "PINJ010", "PINJ011", "PINJ012", "PINJ013", "PINJ014", "PINJ015",
-                "PINJ016", "PINJ017", "PINJ018", "PINJ019", "PINJ026", "PINJ027", "PINJ028",
-            ];
+            // Check if "ALL" is in the enable list
+            if cfg.enable.contains(&"ALL".to_string()) {
+                // Get all available rules
+                let all_rules = rules::get_all_rule_ids();
+                
+                // Apply disable filter if specified
+                let enabled: Vec<String> = if !cfg.disable.is_empty() {
+                    all_rules
+                        .into_iter()
+                        .filter(|r| !cfg.disable.contains(r))
+                        .collect()
+                } else {
+                    all_rules
+                };
+                enable = Some(enabled);
+            } else {
+                enable = Some(cfg.enable.clone());
+            }
+        } else if !cfg.disable.is_empty() && cli_enable.is_empty() && cli_disable.is_empty() {
+            // Convert disable to enable by filtering (legacy behavior when enable is empty)
+            let all_rules = rules::get_all_rule_ids();
             let enabled: Vec<String> = all_rules
                 .into_iter()
-                .filter(|r| !cfg.disable.contains(&r.to_string()))
-                .map(|s| s.to_string())
+                .filter(|r| !cfg.disable.contains(r))
                 .collect();
             enable = Some(enabled);
         }
@@ -147,17 +180,28 @@ pub fn merge_config(
 
     // Apply CLI overrides
     if !cli_enable.is_empty() {
-        enable = Some(cli_enable.to_vec());
+        // Check if "ALL" is in the CLI enable list
+        if cli_enable.contains(&"ALL".to_string()) {
+            let all_rules = rules::get_all_rule_ids();
+            
+            // Apply CLI disable filter if specified
+            let enabled: Vec<String> = if !cli_disable.is_empty() {
+                all_rules
+                    .into_iter()
+                    .filter(|r| !cli_disable.contains(r))
+                    .collect()
+            } else {
+                all_rules
+            };
+            enable = Some(enabled);
+        } else {
+            enable = Some(cli_enable.to_vec());
+        }
     } else if !cli_disable.is_empty() {
-        let all_rules = vec![
-            "PINJ001", "PINJ002", "PINJ003", "PINJ004", "PINJ005", "PINJ006", "PINJ007", "PINJ008",
-            "PINJ009", "PINJ010", "PINJ011", "PINJ012", "PINJ013", "PINJ014", "PINJ015",
-            "PINJ016", "PINJ017", "PINJ018", "PINJ019", "PINJ026", "PINJ027", "PINJ028",
-        ];
+        let all_rules = rules::get_all_rule_ids();
         let enabled: Vec<String> = all_rules
             .into_iter()
-            .filter(|r| !cli_disable.contains(&r.to_string()))
-            .map(|s| s.to_string())
+            .filter(|r| !cli_disable.contains(r))
             .collect();
         enable = Some(enabled);
     }
@@ -279,5 +323,29 @@ min_injected_functions = 5
         assert!(exclude.contains(&"custom_dir".to_string()));
         assert!(exclude.contains(&"skip_me".to_string()));
         assert!(exclude.contains(&".venv".to_string())); // Default added
+    }
+
+    #[test]
+    fn test_git_config_default() {
+        let git_config = GitConfig::default();
+        assert_eq!(git_config.include_untracked, true);
+    }
+
+    #[test]
+    fn test_load_config_with_git_section() {
+        let dir = TempDir::new().unwrap();
+        let pyproject_path = dir.path().join("pyproject.toml");
+
+        let content = r#"
+[tool.pinjected-linter]
+enable = ["PINJ001"]
+
+[tool.pinjected-linter.git]
+include_untracked = false
+"#;
+        fs::write(&pyproject_path, content).unwrap();
+
+        let config = load_config(Some(&pyproject_path)).unwrap();
+        assert_eq!(config.git.include_untracked, false);
     }
 }

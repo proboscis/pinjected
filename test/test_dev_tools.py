@@ -143,9 +143,9 @@ def test_module_attributes():
     assert hasattr(_dev_tools, "generate_merged_doc")
     assert hasattr(_dev_tools, "__design__")
 
-    # Check it's using pinjected
-    assert hasattr(_dev_tools, "instance")
-    assert hasattr(_dev_tools, "design")
+    # Check __all__ is properly defined
+    assert hasattr(_dev_tools, "__all__")
+    assert "generate_merged_doc" in _dev_tools.__all__
 
 
 if __name__ == "__main__":

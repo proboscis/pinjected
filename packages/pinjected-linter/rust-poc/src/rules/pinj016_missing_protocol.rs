@@ -197,7 +197,7 @@ impl MissingProtocolRule {
             Some(Violation {
                 rule_id: "PINJ016".to_string(),
                 message: format!(
-                    "@injected function '{}' has protocol parameter as string literal. Protocol must be a proper Protocol class, not a string.",
+                    "@injected function '{}' has protocol parameter as string literal. Protocol must be set with a type (Protocol class), not a string. Do not remove the protocol parameter, instead replace the string with a proper Protocol type.",
                     func.name.as_str()
                 ),
                 offset: func.range.start().to_usize(),
@@ -283,7 +283,7 @@ impl MissingProtocolRule {
             Some(Violation {
                 rule_id: "PINJ016".to_string(),
                 message: format!(
-                    "@injected function '{}' has protocol parameter as string literal. Protocol must be a proper Protocol class, not a string.",
+                    "@injected function '{}' has protocol parameter as string literal. Protocol must be set with a type (Protocol class), not a string. Do not remove the protocol parameter, instead replace the string with a proper Protocol type.",
                     func.name.as_str()
                 ),
                 offset: func.range.start().to_usize(),

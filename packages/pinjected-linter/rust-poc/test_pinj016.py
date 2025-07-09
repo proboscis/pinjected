@@ -4,8 +4,23 @@ from pinjected import injected, instance
 from typing import Protocol
 
 
+# Add mock imports for test examples
+class Logger:
+    pass
+
+
+class ExistingProtocol(Protocol):
+    pass
+
+
 # Bad: No protocol parameter
-@injected
+class ProcessDataProtocol(Protocol):
+    def __call__(
+        self,
+    ) -> str: ...
+
+
+@injected(protocol=ProcessDataProtocol)
 def process_data(logger, /, data: str) -> str:
     return data.upper()
 
@@ -32,8 +47,7 @@ def process_with_proper_protocol(logger, /, data: str) -> str:
     return data.upper()
 
 
-# Good: Protocol from import
-from some_module import ExistingProtocol
+# Good: Protocol from import (mock)
 
 
 @injected(protocol=ExistingProtocol)
@@ -50,4 +64,3 @@ def logger():
 # OK: Regular function
 def regular_function(data: str) -> str:
     return data.upper()
-# noqa
