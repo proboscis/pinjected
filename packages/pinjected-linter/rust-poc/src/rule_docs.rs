@@ -102,6 +102,14 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ033",
         include_str!("../../docs/rules/pinj033_no_iproxy_argument_type.md"),
     );
+    docs.insert(
+        "PINJ034",
+        include_str!("../../docs/rules/pinj034_no_lambda_in_design.md"),
+    );
+    docs.insert(
+        "PINJ035",
+        include_str!("../../docs/rules/pinj035_deprecated_design_functions.md"),
+    );
 
     docs
 }

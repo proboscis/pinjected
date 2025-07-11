@@ -28,6 +28,8 @@ pub mod pinj029_no_injected_pure_instantiation;
 pub mod pinj031_no_injected_calls_in_decorators;
 pub mod pinj032_no_iproxy_return_type;
 pub mod pinj033_no_iproxy_argument_type;
+pub mod pinj034_no_lambda_in_design;
+pub mod pinj035_deprecated_design_functions;
 // Future rules would be added here:
 // ... etc
 
@@ -64,6 +66,8 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj031_no_injected_calls_in_decorators::NoInjectedCallsInDecoratorsRule::new()),
         Box::new(pinj032_no_iproxy_return_type::NoIProxyReturnTypeRule::new()),
         Box::new(pinj033_no_iproxy_argument_type::NoIProxyArgumentTypeRule::new()),
+        Box::new(pinj034_no_lambda_in_design::NoLambdaInDesignRule::new()),
+        Box::new(pinj035_deprecated_design_functions::DeprecatedDesignFunctionsRule::new()),
         // Add more rules here as they're implemented
     ]
 }
