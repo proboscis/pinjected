@@ -7,8 +7,8 @@ use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{is_injected_decorator, is_instance_decorator};
 use rustpython_ast::{
-    Expr, ExprLambda, Ranged, Stmt, StmtAssign, StmtAsyncFunctionDef,
-    StmtExpr, StmtFunctionDef, StmtWith, WithItem,
+    Expr, ExprLambda, Ranged, Stmt, StmtAssign,
+    StmtExpr, StmtWith, WithItem,
 };
 use std::collections::HashMap;
 
