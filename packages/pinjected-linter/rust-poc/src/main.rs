@@ -537,9 +537,13 @@ fn main() -> Result<()> {
                 }
             }
             Err(e) => {
-                eprintln!("Error getting modified files from git: {}", e);
-                eprintln!("Make sure you're running this command inside a git repository");
-                process::exit(exit_codes::USAGE_ERROR);
+                // Handle non-git repository gracefully
+                if args.verbose {
+                    eprintln!("Warning: Not in a git repository: {}", e);
+                }
+                eprintln!("Warning: --modified flag requires a git repository. No files to analyze.");
+                // Exit successfully with no violations
+                // Skip to statistics without processing any files
             }
         }
     } else {
