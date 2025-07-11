@@ -103,9 +103,10 @@ def process_data(items):
     return [helper(item) for item in items]
 
 # Configure dependencies
-with design() as d:
-    d.provide(database_connection)
-    d.provide(logger)
+services = design(
+    database=database_connection,
+    logger=logger
+)
 ```
 
 ## Key Principles

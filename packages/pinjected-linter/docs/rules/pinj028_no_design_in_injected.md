@@ -39,7 +39,7 @@ async def a_test_v3_implementation(
         ) -> dict:
             return await a_auto_cached_sketch_to_line_art(sketch_path=sketch_path)
         
-        d.provide(a_tracking_sketch_to_line_art)
+        d['tracking_fn'] = a_tracking_sketch_to_line_art
     
     # This pattern shows confusion about pinjected's architecture
     result = await a_tracking_sketch_to_line_art(sketch_path=sketch_path)
@@ -52,9 +52,9 @@ def configure_dynamically(config_loader, /, env: str):
     # WRONG: Trying to configure dependencies at runtime
     with design() as d:
         if config.use_mock:
-            d.provide(mock_database)
+            d['database'] = mock_database
         else:
-            d.provide(real_database)
+            d['database'] = real_database
     
     # This doesn't work - design() is for configuration, not runtime
 ```
@@ -95,17 +95,18 @@ async def a_test_v3_implementation(
 
 # Configure dependencies OUTSIDE of @injected functions
 def configure_app(use_mock: bool = False):
-    with design() as d:
-        d.provide(a_tracking_sketch_to_line_art)
-        d.provide(a_auto_cached_sketch_to_line_art)
-        
-        # Configuration decisions happen here, not at runtime
-        if use_mock:
-            d.provide(mock_database)
-        else:
-            d.provide(real_database)
+    base_design = design(
+        a_tracking_sketch_to_line_art=a_tracking_sketch_to_line_art,
+        a_auto_cached_sketch_to_line_art=a_auto_cached_sketch_to_line_art
+    )
     
-    return d.to_graph()
+    # Configuration decisions happen here, not at runtime
+    if use_mock:
+        db_design = design(database=mock_database)
+    else:
+        db_design = design(database=real_database)
+    
+    return (base_design + db_design).to_graph()
 
 # Alternative: Use @instance for conditional dependencies
 @instance
