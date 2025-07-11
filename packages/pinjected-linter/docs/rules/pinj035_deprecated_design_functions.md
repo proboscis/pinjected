@@ -87,14 +87,14 @@ final_design = config + services + class_bindings + cleanups + injected_bindings
 ```python
 from pinjected import design, injected, instance
 
-# Method 1: Direct design() for simple values
+# Replace instances() with design() directly
 config = design(
     host="localhost",
     port=5432,
     debug=True
 )
 
-# Method 2: Using decorators with design()
+# Replace providers() - decorate functions with @injected
 @injected
 def database():
     return DatabaseConnection()
@@ -103,6 +103,7 @@ def database():
 def logger():
     return Logger()
 
+# Replace classes() - create @instance decorated factory functions
 @instance
 def user_service():
     return UserService()
@@ -111,28 +112,31 @@ def user_service():
 def auth_service():
     return AuthService()
 
-# Method 3: Using with design() context manager
-with design() as d:
-    # Add simple values
-    d['host'] = 'localhost'
-    d['port'] = 5432
-    d['debug'] = True
-    
-    # Add providers
-    d.provide(database)
-    d.provide(logger)
-    d.provide(user_service)
-    d.provide(auth_service)
+# Combine all into design()
+service_design = design(
+    database=database,      # Pass the @injected function
+    logger=logger,          # Pass the @injected function
+    user_service=user_service,    # Pass the @instance function
+    auth_service=auth_service     # Pass the @instance function
+)
 
-# Method 4: Mixed approach
-base_config = design(host="localhost", port=5432)
+# Replace destructors() - use context managers in @injected functions
+@injected
+def managed_database():
+    """Database with automatic cleanup."""
+    db = DatabaseConnection()
+    try:
+        yield db
+    finally:
+        db.close()
 
-with design() as services:
-    services.provide(database)
-    services.provide(logger)
+# Replace injecteds() - use design() directly
+injected_design = design(
+    processor=Injected.bind(lambda db, logger: Processor(db, logger))
+)
 
 # Combine designs
-final_design = base_config + services
+final_design = config + service_design + design(database=managed_database) + injected_design
 ```
 
 ## Specific Migration Patterns
@@ -142,13 +146,8 @@ final_design = base_config + services
 # Old
 config = instances(api_key="secret", timeout=30)
 
-# New - Option 1
+# New
 config = design(api_key="secret", timeout=30)
-
-# New - Option 2
-with design() as config:
-    config['api_key'] = 'secret'
-    config['timeout'] = 30
 ```
 
 ### Migrating `providers()`
@@ -159,16 +158,12 @@ def get_service():
 
 services = providers(service=get_service)
 
-# New - Option 1 (with decorator)
+# New
 @injected
 def service():
     return Service()
 
-with design() as d:
-    d.provide(service)
-
-# New - Option 2 (with Injected.bind)
-services = design(service=Injected.bind(lambda: Service()))
+services = design(service=service)  # Pass the @injected function
 ```
 
 ### Migrating `classes()`
@@ -176,7 +171,7 @@ services = design(service=Injected.bind(lambda: Service()))
 # Old
 bindings = classes(UserRepo=UserRepository, AuthService=AuthService)
 
-# New - Option 1 (with @instance)
+# New
 @instance
 def user_repo():
     return UserRepository()
@@ -185,14 +180,9 @@ def user_repo():
 def auth_service():
     return AuthService()
 
-with design() as d:
-    d.provide(user_repo)
-    d.provide(auth_service)
-
-# New - Option 2 (direct)
 bindings = design(
-    user_repo=UserRepository(),
-    auth_service=AuthService()
+    user_repo=user_repo,        # Pass the @instance function
+    auth_service=auth_service   # Pass the @instance function
 )
 ```
 
@@ -231,7 +221,7 @@ bindings = design(
 
 1. **Unified API**: Single `design()` function for all binding types
 2. **Better Tooling**: The linter can better analyze `design()` usage (e.g., PINJ034)
-3. **Context Manager Support**: The `with design()` pattern provides cleaner syntax
+3. **Composability**: Designs can be easily combined with `+` operator
 4. **Type Safety**: Better type inference with the modern API
 5. **Future Proof**: The deprecated functions will be removed in future versions
 

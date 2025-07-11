@@ -68,7 +68,7 @@ impl DeprecatedDesignFunctionsRule {
     /// Create migration suggestion for providers()
     fn create_providers_migration(&self, call: &rustpython_ast::ExprCall) -> String {
         if call.keywords.is_empty() {
-            return "Replace with: design() and @injected decorated functions".to_string();
+            return "Replace with: design() with @injected decorated functions".to_string();
         }
 
         let funcs: Vec<String> = call.keywords.iter()
@@ -76,16 +76,16 @@ impl DeprecatedDesignFunctionsRule {
             .collect();
         
         if funcs.len() == 1 {
-            format!("Replace with: @injected decorated function and d.provide({})", funcs[0])
+            format!("Replace with: @injected decorator on {} and design({}={})", funcs[0], funcs[0], funcs[0])
         } else {
-            "Replace with: @injected decorated functions and d.provide() calls".to_string()
+            "Replace with: @injected decorators on functions and design(key=function, ...)".to_string()
         }
     }
 
     /// Create migration suggestion for classes()
     fn create_classes_migration(&self, call: &rustpython_ast::ExprCall) -> String {
         if call.keywords.is_empty() {
-            return "Replace with: design() and @instance decorated functions".to_string();
+            return "Replace with: design() with @instance decorated factory functions".to_string();
         }
 
         let classes: Vec<String> = call.keywords.iter()
@@ -93,9 +93,11 @@ impl DeprecatedDesignFunctionsRule {
             .collect();
         
         if classes.len() == 1 {
-            format!("Replace with: @instance decorated function for {}", classes[0])
+            let class_name = &classes[0];
+            let factory_name = class_name.to_lowercase();
+            format!("Replace with: @instance decorated factory '{}' and design({}={})", factory_name, factory_name, factory_name)
         } else {
-            "Replace with: @instance decorated functions and d.provide() calls".to_string()
+            "Replace with: @instance decorated factory functions and design(key=factory, ...)".to_string()
         }
     }
 
@@ -269,7 +271,7 @@ services = providers(database=get_db)
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("providers()"));
-        assert!(violations[0].message.contains("Replace with: @injected decorated function"));
+        assert!(violations[0].message.contains("Replace with: @injected decorator on database and design(database=database)"));
         assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
@@ -284,7 +286,7 @@ bindings = classes(UserService=UserService, AuthService=AuthService)
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("classes()"));
-        assert!(violations[0].message.contains("Replace with: @instance decorated functions"));
+        assert!(violations[0].message.contains("Replace with: @instance decorated factory functions"));
         assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
@@ -357,7 +359,7 @@ providers(service=lambda: Service())
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("providers()"));
-        assert!(violations[0].message.contains("Replace with: @injected decorated function"));
+        assert!(violations[0].message.contains("Replace with: @injected decorator on service and design(service=service)"));
         assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 }
