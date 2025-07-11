@@ -49,7 +49,7 @@ impl DeprecatedDesignFunctionsRule {
     /// Create migration suggestion for instances()
     fn create_instances_migration(&self, call: &rustpython_ast::ExprCall) -> String {
         if call.keywords.is_empty() {
-            return "Use: design()".to_string();
+            return "Replace with: design()".to_string();
         }
 
         let args: Vec<String> = call.keywords.iter()
@@ -59,79 +59,55 @@ impl DeprecatedDesignFunctionsRule {
             .collect();
 
         if args.is_empty() {
-            "Use: design()".to_string()
+            "Replace with: design()".to_string()
         } else {
-            format!("Use: design({})", args.join(", "))
+            format!("Replace with: design({})", args.join(", "))
         }
     }
 
     /// Create migration suggestion for providers()
     fn create_providers_migration(&self, call: &rustpython_ast::ExprCall) -> String {
         if call.keywords.is_empty() {
-            return "Use: design() with @injected decorated functions".to_string();
+            return "Replace with: design() and @injected decorated functions".to_string();
         }
 
-        let mut migration = String::from("Use:\n");
+        let funcs: Vec<String> = call.keywords.iter()
+            .filter_map(|kw| kw.arg.as_ref().map(|arg| arg.to_string()))
+            .collect();
         
-        // Add decorator suggestions
-        for kw in &call.keywords {
-            if let Some(arg) = &kw.arg {
-                migration.push_str(&format!("@injected\ndef {}(...):\n    ...\n\n", arg));
-            }
+        if funcs.len() == 1 {
+            format!("Replace with: @injected decorated function and d.provide({})", funcs[0])
+        } else {
+            "Replace with: @injected decorated functions and d.provide() calls".to_string()
         }
-        
-        migration.push_str("with design() as d:\n");
-        for kw in &call.keywords {
-            if let Some(arg) = &kw.arg {
-                migration.push_str(&format!("    d.provide({})\n", arg));
-            }
-        }
-
-        migration
     }
 
     /// Create migration suggestion for classes()
     fn create_classes_migration(&self, call: &rustpython_ast::ExprCall) -> String {
         if call.keywords.is_empty() {
-            return "Use: design() with @instance decorated functions".to_string();
+            return "Replace with: design() and @instance decorated functions".to_string();
         }
 
-        let mut migration = String::from("Use:\n");
+        let classes: Vec<String> = call.keywords.iter()
+            .filter_map(|kw| kw.arg.as_ref().map(|arg| arg.to_string()))
+            .collect();
         
-        // Add decorator suggestions
-        for kw in &call.keywords {
-            if let Some(arg) = &kw.arg {
-                migration.push_str(&format!("@instance\ndef {}():\n    return {}()\n\n", 
-                    arg.to_lowercase(), arg));
-            }
+        if classes.len() == 1 {
+            format!("Replace with: @instance decorated function for {}", classes[0])
+        } else {
+            "Replace with: @instance decorated functions and d.provide() calls".to_string()
         }
-        
-        migration.push_str("with design() as d:\n");
-        for kw in &call.keywords {
-            if let Some(arg) = &kw.arg {
-                migration.push_str(&format!("    d.provide({})\n", arg.to_lowercase()));
-            }
-        }
-
-        migration
     }
 
     /// Create migration suggestion for destructors()
     fn create_destructors_migration(&self, _call: &rustpython_ast::ExprCall) -> String {
-        "Use context managers or cleanup in @injected functions:\n\
-        @injected\n\
-        def resource():\n\
-            res = create_resource()\n\
-            try:\n\
-                yield res\n\
-            finally:\n\
-                res.cleanup()".to_string()
+        "Replace with: context managers or cleanup in @injected functions".to_string()
     }
 
     /// Create migration suggestion for injecteds()
     fn create_injecteds_migration(&self, call: &rustpython_ast::ExprCall) -> String {
         if call.keywords.is_empty() {
-            return "Use: design()".to_string();
+            return "Replace with: design()".to_string();
         }
 
         let args: Vec<String> = call.keywords.iter()
@@ -140,7 +116,7 @@ impl DeprecatedDesignFunctionsRule {
             })
             .collect();
 
-        format!("Use: design({})", args.join(", "))
+        format!("Replace with: design({})", args.join(", "))
     }
 }
 
@@ -164,7 +140,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                         violations.push(Violation {
                             rule_id: "PINJ035".to_string(),
                             message: format!(
-                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}",
+                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
                                 func_name, migration
                             ),
                             offset: call.range.start().to_usize(),
@@ -181,7 +157,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                         violations.push(Violation {
                             rule_id: "PINJ035".to_string(),
                             message: format!(
-                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}",
+                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
                                 func_name, migration
                             ),
                             offset: call.range.start().to_usize(),
@@ -198,7 +174,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                         violations.push(Violation {
                             rule_id: "PINJ035".to_string(),
                             message: format!(
-                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}",
+                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
                                 func_name, migration
                             ),
                             offset: call.range.start().to_usize(),
@@ -216,7 +192,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                             violations.push(Violation {
                                 rule_id: "PINJ035".to_string(),
                                 message: format!(
-                                    "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}",
+                                    "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
                                     func_name, migration
                                 ),
                                 offset: call.range.start().to_usize(),
@@ -275,7 +251,8 @@ config = instances(host="localhost", port=5432)
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("instances()"));
         assert!(violations[0].message.contains("deprecated"));
-        assert!(violations[0].message.contains("design(host=..., port=...)"));
+        assert!(violations[0].message.contains("Replace with: design(host=..., port=...)"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
     #[test]
@@ -292,7 +269,8 @@ services = providers(database=get_db)
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("providers()"));
-        assert!(violations[0].message.contains("@injected"));
+        assert!(violations[0].message.contains("Replace with: @injected decorated function"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
     #[test]
@@ -306,7 +284,8 @@ bindings = classes(UserService=UserService, AuthService=AuthService)
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("classes()"));
-        assert!(violations[0].message.contains("@instance"));
+        assert!(violations[0].message.contains("Replace with: @instance decorated functions"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
     #[test]
@@ -323,7 +302,8 @@ cleanups = destructors(database=cleanup_db)
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("destructors()"));
-        assert!(violations[0].message.contains("context managers"));
+        assert!(violations[0].message.contains("Replace with: context managers"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
     #[test]
@@ -337,6 +317,8 @@ bindings = injecteds(service=Injected.bind(lambda: Service()))
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ035");
         assert!(violations[0].message.contains("injecteds()"));
+        assert!(violations[0].message.contains("Replace with: design(service=...)"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
     #[test]
@@ -361,6 +343,8 @@ d += instances(extra="value")
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("instances()"));
+        assert!(violations[0].message.contains("Replace with: design(extra=...)"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 
     #[test]
@@ -373,5 +357,7 @@ providers(service=lambda: Service())
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("providers()"));
+        assert!(violations[0].message.contains("Replace with: @injected decorated function"));
+        assert!(violations[0].message.contains("pinjected-linter --show-rule-doc PINJ035"));
     }
 }
