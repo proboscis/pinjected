@@ -1,47 +1,71 @@
-"""Test file for PINJ027: No nested @injected functions"""
+"""Test file for PINJ027: No nested @injected or @instance definitions"""
 
-from pinjected import injected
-from typing import Protocol, Any
+from pinjected import injected, instance
+from typing import Protocol
 
 
-# ❌ Incorrect: Nested @injected function
-@injected
-def outer_function(database, /, user_id: str):
-    # PINJ027: @injected function 'inner_processor' cannot be defined inside @injected function 'outer_function'
+# Placeholder definitions for test examples
+def process(data):
+    return data
+
+
+class DatabaseConnection:
+    pass
+
+
+class CacheService:
+    pass
+
+
+class ErrorHandler:
+    pass
+
+
+# ❌ Incorrect: @injected inside regular function
+def regular_function(user_id: str):
+    # PINJ027: @injected function 'inner_processor' cannot be defined inside function 'regular_function'
     @injected
     def inner_processor(logger, /, data: dict):
         logger.info(f"Processing: {data}")
         return process(data)
 
-    user = database.get_user(user_id)
-    return inner_processor(user.data)
+    return inner_processor({})
 
 
-# ❌ Incorrect: Nested async @injected
-@injected
-async def a_test_v3_implementation(
-    design,  # This is also wrong - design should not be a dependency
-    logger,
-    /,
-    sketch_path: str,
-) -> dict:
-    # PINJ027: Nested @injected function
-    @injected
-    async def a_tracking_sketch_to_line_art(
-        a_auto_cached_sketch_to_line_art: Any, /, sketch_path: str
-    ) -> dict:
-        return await a_auto_cached_sketch_to_line_art(sketch_path=sketch_path)
+# ❌ Incorrect: @instance inside class
+class MyService:
+    # PINJ027: @instance function 'database' cannot be defined inside class 'MyService'
+    @instance
+    def database(self, config, /):
+        return DatabaseConnection(config)
 
-    # This pattern indicates misunderstanding of pinjected's design
-    result = await a_tracking_sketch_to_line_art(sketch_path=sketch_path)
-    return result
+
+# ❌ Incorrect: @injected inside method
+class DataProcessor:
+    def process_items(self, items):
+        # PINJ027: @injected function 'item_handler' cannot be defined inside function 'process_items' inside class 'DataProcessor'
+        @injected
+        def item_handler(logger, /, item):
+            logger.info(f"Processing item: {item}")
+            return item * 2
+
+        return [item_handler(item) for item in items]
+
+
+# ❌ Incorrect: @instance inside async function
+async def setup_services():
+    # PINJ027: @instance function 'cache_service' cannot be defined inside function 'setup_services'
+    @instance
+    def cache_service(redis_config, /):
+        return CacheService(redis_config)
+
+    return cache_service()
 
 
 # ❌ Incorrect: Nested within conditional
-@injected
-def configurable_processor(config, /, data: str):
+def configurable_processor(config, data: str):
     if config.debug:
-        # PINJ027: Even inside conditionals, nested @injected is forbidden
+        # PINJ027: Even inside conditionals, @injected is forbidden
         @injected
         def debug_processor(logger, /, item):
             logger.debug(f"Debug: {item}")
@@ -49,6 +73,19 @@ def configurable_processor(config, /, data: str):
 
         return debug_processor(data)
     return data
+
+
+# ❌ Incorrect: @instance in try block
+def safe_setup():
+    try:
+        # PINJ027: @instance function 'error_handler' cannot be defined inside function 'safe_setup'
+        @instance
+        def error_handler(logger, /):
+            return ErrorHandler(logger)
+
+        return error_handler()
+    except Exception:
+        return None
 
 
 # ✅ Correct: Define protocols and functions at module level
@@ -60,11 +97,17 @@ class TrackingLineArtProtocol(Protocol):
     async def __call__(self, sketch_path: str) -> dict: ...
 
 
-# ✅ Correct: Module-level @injected functions
+# ✅ Correct: Module-level @injected and @instance functions
 @injected(protocol=ProcessorProtocol)
 def inner_processor(logger, /, data: dict) -> dict:
     logger.info(f"Processing: {data}")
     return process(data)
+
+
+@instance
+def database_connection(config, /):
+    """Database connection defined at module level - correct."""
+    return DatabaseConnection(config)
 
 
 @injected(protocol=TrackingLineArtProtocol)
@@ -99,11 +142,39 @@ async def a_test_v3_implementation_correct(
     return result
 
 
-# ✅ Correct: Regular functions inside @injected are OK
-@injected
-def process_data(logger, /, items: list):
-    # Regular function (not @injected) is fine
+# ✅ Correct: Regular functions (without decorators) can be defined anywhere
+def process_data(items: list):
+    # Regular function (not @injected/@instance) is fine
     def helper(item):
         return item * 2
 
     return [helper(item) for item in items]
+
+
+class ServiceManager:
+    def initialize(self):
+        # Regular helper function is OK
+        def setup_logging():
+            import logging
+
+            return logging.getLogger(__name__)
+
+        self.logger = setup_logging()
+
+
+# ✅ Correct: Factory pattern for conditional dependencies
+@injected
+def debug_processor(logger, /, item):
+    logger.debug(f"Debug: {item}")
+    return item
+
+
+@injected
+def regular_processor(item):
+    return item
+
+
+@injected
+def get_processor(config, debug_processor, regular_processor, /):
+    """Select processor based on config."""
+    return debug_processor if config.debug else regular_processor

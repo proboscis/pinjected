@@ -1,8 +1,8 @@
-# PINJ027: No Nested @injected Functions
+# PINJ027: No Nested @injected or @instance Definitions
 
 ## Overview
 
-This rule forbids defining `@injected` functions inside other `@injected` functions. This is a fundamental violation of how pinjected works.
+This rule forbids defining `@injected` or `@instance` functions inside any function or class. These decorators must only be used at module level.
 
 ## Rationale
 
@@ -10,121 +10,120 @@ From the pinjected documentation:
 
 > @injected functions build an AST (computation graph), not executing the functions directly.
 
-When you define an `@injected` function, you're not executing code - you're building a dependency graph. Defining an `@injected` function inside another `@injected` function doesn't make sense because:
+`@injected` and `@instance` decorators are used to declare dependencies at the module level. They cannot be defined inside functions or classes because:
 
-1. The outer `@injected` function builds a computation graph, it doesn't execute code
-2. The inner `@injected` definition would be part of the graph structure, not a callable function
-3. This violates the separation between dependency declaration and execution
+1. **Dependency Graph Building**: These decorators build a static dependency graph at module import time, not during runtime execution
+2. **Scope Violation**: Defining them inside functions/classes would make them dynamically scoped, violating the static nature of dependency injection
+3. **Module-Level Registry**: Pinjected maintains a module-level registry of all injected components which requires them to be defined at module scope
+4. **Predictable Dependencies**: All dependencies must be known at configuration time, not created dynamically during execution
 
 ## Examples
 
 ### ❌ Incorrect
 
 ```python
-from pinjected import injected
+from pinjected import injected, instance
 
-@injected
-def outer_function(database, /, user_id: str):
-    # This is wrong - you're trying to define a function in a computation graph
-    @injected
-    def inner_processor(logger, /, data: dict):
-        logger.info(f"Processing: {data}")
-        return process(data)
+# Error: @injected inside regular function
+def process_data(user_id: str):
+    @injected  # PINJ027: Cannot define @injected inside function
+    def fetch_user(database, /, uid: str):
+        return database.get_user(uid)
     
-    user = database.get_user(user_id)
-    return inner_processor(user.data)
+    return fetch_user(user_id)
 
-@injected
-async def a_test_v3_implementation(
-    design,  # This is also wrong - design should not be a dependency
-    logger,
-    /,
-    sketch_path: str
-) -> dict:
-    # Nested @injected function - FORBIDDEN
-    @injected
-    async def a_tracking_sketch_to_line_art(
-        a_auto_cached_sketch_to_line_art: Any,
-        /,
-        sketch_path: str
-    ) -> dict:
-        return await a_auto_cached_sketch_to_line_art(sketch_path=sketch_path)
-    
-    # This pattern indicates misunderstanding of pinjected's design
-    result = await a_tracking_sketch_to_line_art(sketch_path=sketch_path)
-    return result
+# Error: @instance inside class
+class ServiceManager:
+    @instance  # PINJ027: Cannot define @instance inside class
+    def database(self, config, /):
+        return DatabaseConnection(config)
+
+# Error: @injected inside method
+class DataProcessor:
+    def setup(self):
+        @injected  # PINJ027: Cannot define @injected inside method
+        def logger(log_config, /):
+            return create_logger(log_config)
+        
+        self.logger = logger()
+
+# Error: Nested in conditional
+def conditional_setup(debug_mode):
+    if debug_mode:
+        @injected  # PINJ027: Cannot define @injected inside if block
+        def debug_logger(/, msg):
+            print(f"DEBUG: {msg}")
+        return debug_logger
 ```
 
 ### ✅ Correct
 
 ```python
-from pinjected import injected, design
+from pinjected import injected, instance, design
 from typing import Protocol
 
-# Define protocols for clarity
-class ProcessorProtocol(Protocol):
-    def __call__(self, data: dict) -> dict: ...
-
-class TrackingLineArtProtocol(Protocol):
-    async def __call__(self, sketch_path: str) -> dict: ...
-
-# Define each @injected function at module level
-@injected(protocol=ProcessorProtocol)
-def inner_processor(logger, /, data: dict) -> dict:
-    logger.info(f"Processing: {data}")
-    return process(data)
-
-@injected(protocol=TrackingLineArtProtocol)
-async def a_tracking_sketch_to_line_art(
-    a_auto_cached_sketch_to_line_art,
-    /,
-    sketch_path: str
-) -> dict:
-    return await a_auto_cached_sketch_to_line_art(sketch_path=sketch_path)
-
-# Use dependency injection properly
+# All @injected and @instance definitions at module level
 @injected
-def outer_function(
-    database,
-    inner_processor: ProcessorProtocol,  # Inject as dependency
-    /,
-    user_id: str
-):
-    user = database.get_user(user_id)
-    return inner_processor(user.data)
+def fetch_user(database, /, uid: str):
+    return database.get_user(uid)
+
+@instance
+def database_connection(config, /):
+    """Instance defined at module level."""
+    return DatabaseConnection(config)
 
 @injected
-async def a_test_v3_implementation(
-    a_tracking_sketch_to_line_art: TrackingLineArtProtocol,  # Inject properly
-    logger,
-    /,
-    sketch_path: str
-) -> dict:
-    # Call the injected dependency - no await needed!
-    result = a_tracking_sketch_to_line_art(sketch_path=sketch_path)
-    return result
+def logger(log_config, /):
+    return create_logger(log_config)
 
-# Configure dependencies outside of @injected functions
+# Use regular functions for conditional logic
+@injected
+def debug_logger(/, msg):
+    print(f"DEBUG: {msg}")
+
+@injected
+def prod_logger(/, msg):
+    # Production logging logic
+    pass
+
+@injected
+def get_logger(config, debug_logger, prod_logger, /):
+    """Factory pattern for conditional dependencies."""
+    return debug_logger if config.debug else prod_logger
+
+# Classes can use injected dependencies
+class ServiceManager:
+    def __init__(self, database: DatabaseConnection):
+        self.database = database
+
+# Regular functions can be defined anywhere
+def process_data(items):
+    def helper(item):  # OK: Regular function without decorators
+        return item * 2
+    return [helper(item) for item in items]
+
+# Configure dependencies
 with design() as d:
-    d.provide(a_tracking_sketch_to_line_art)
-    d.provide(a_auto_cached_sketch_to_line_art)
+    d.provide(database_connection)
+    d.provide(logger)
 ```
 
 ## Key Principles
 
-1. **@injected functions are declarations, not implementations**: When you write an `@injected` function, you're declaring how dependencies connect, not writing executable code.
+1. **Module-level only**: Both `@injected` and `@instance` decorators must be defined at module level, never inside functions or classes.
 
-2. **All @injected functions must be defined at module level**: They are part of your application's dependency structure, not runtime logic.
+2. **Static dependency graph**: Dependencies are resolved at configuration time, not dynamically during execution.
 
-3. **Dependencies are injected, not created**: If you need another `@injected` function's functionality, inject it as a dependency.
+3. **Use factory patterns**: For conditional dependencies, use factory functions that select between different implementations.
 
-4. **No await for @injected calls inside @injected**: Inside an `@injected` function, calling another `@injected` function doesn't execute it - it builds the graph.
+4. **Regular functions are unrestricted**: Only functions decorated with `@injected` or `@instance` have this restriction. Regular functions can be defined anywhere.
 
 ## How to Fix
 
-1. Move all `@injected` function definitions to module level
-2. If you need the functionality of another `@injected` function, inject it as a dependency
-3. Remember: you're building a dependency graph, not writing procedural code
+1. **Move to module level**: Extract all `@injected` and `@instance` definitions to the module level
+2. **Use dependency injection**: Instead of defining nested functions, inject them as dependencies
+3. **Factory pattern**: For conditional dependencies, create a factory function that returns the appropriate implementation
+4. **Regular helpers**: For simple helper functions that don't need dependency injection, use regular functions (without decorators)
 
 ## Configuration
 
@@ -137,7 +136,7 @@ disable = ["PINJ027"]
 
 ## Severity
 
-**Error** - This is a fundamental violation of pinjected's design principles and will not work as expected.
+**Error** - This violates pinjected's requirement that all dependency declarations must be at module level.
 
 ## See Also
 
