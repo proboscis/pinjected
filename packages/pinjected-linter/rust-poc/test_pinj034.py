@@ -39,14 +39,14 @@ with design() as d:
     d["create_client"] = lambda config: Client(config["url"])
 
 
-# ❌ Incorrect: Lambda in provide() call
-with design() as d:
-    # PINJ034: Lambda function cannot be assigned to design context 'd'
-    d.provide(lambda: DatabaseConnection({"host": "localhost"}))
+# ❌ Incorrect: Lambda in direct assignment
+config = {"host": "localhost"}
 
-    # PINJ034: Lambda with captured variable
-    config = {"host": "localhost"}
-    d.provide(lambda: DatabaseConnection(config))
+# PINJ034: Lambda function in design()
+db_design = design(
+    database=lambda: DatabaseConnection({"host": "localhost"}),
+    cached_db=lambda: DatabaseConnection(config),  # Lambda with captured variable
+)
 
 
 # ❌ Incorrect: Non-decorated function
@@ -65,7 +65,7 @@ with design() as d:
     d["logger"] = create_logger
 
     # PINJ034: Function 'get_user_service' is not decorated
-    d.provide(get_user_service)
+    d["user_service"] = get_user_service
 
 
 # ❌ Incorrect: Inline function definition
@@ -90,15 +90,19 @@ with design() as d:
         d["logger"] = lambda: ProductionLogger()
 
 
-# ❌ Incorrect: Lambda in override
+# ❌ Incorrect: Lambda in design override
 @injected
 def original_config():
     return {"debug": False}
 
 
-with design() as d:
-    # PINJ034: Lambda in override
-    d.override(original_config, lambda: {"debug": True})
+# Base design
+base = design(config=original_config)
+
+# PINJ034: Lambda in override design
+overridden = base + design(
+    config=lambda: {"debug": True}  # Lambda function
+)
 
 
 # ✅ Correct: Use @injected decorator
@@ -114,7 +118,7 @@ def create_client(config, /):
 
 with design() as d:
     d["config"] = get_config  # OK: decorated function
-    d.provide(create_client)  # OK: decorated function
+    d["client"] = create_client  # OK: decorated function
 
 
 # ✅ Correct: Use @instance decorator
@@ -128,9 +132,10 @@ def logger():
     return Logger()
 
 
-with design() as d:
-    d.provide(database_connection)  # OK: decorated function
-    d.provide(logger)  # OK: decorated function
+service_design = design(
+    database=database_connection,  # OK: decorated function
+    logger=logger,  # OK: decorated function
+)
 
 
 # ✅ Correct: Conditional dependencies with factory pattern
@@ -149,10 +154,11 @@ def logger_factory(config, debug_logger, production_logger, /):
     return debug_logger if config["debug"] else production_logger
 
 
-with design() as d:
-    d.provide(logger_factory)
-    d.provide(debug_logger)
-    d.provide(production_logger)
+logging_design = design(
+    logger=logger_factory,
+    debug_logger=debug_logger,
+    production_logger=production_logger,
+)
 
 
 # ✅ Correct: Override with decorated function
@@ -161,21 +167,11 @@ def test_config():
     return {"debug": True}
 
 
-with design() as d:
-    d.override(original_config, test_config)  # OK: both decorated
+# Compose designs to override
+test_design = design(config=original_config) + design(config=test_config)
 
 
-# ✅ Correct: Complex configuration with __provide__
-class AppConfig:
-    @injected
-    def __provide__(self):
-        return {
-            get_config,
-            database_connection,
-            logger,
-            create_client,
-        }
-
-
-with design() as d:
-    d.provide(AppConfig().__provide__)  # OK: decorated method
+# ✅ Correct: Direct design composition
+app_design = design(
+    config=get_config, database=database_connection, logger=logger, client=create_client
+)

@@ -21,10 +21,10 @@ The design() context in pinjected is used to configure the dependency injection 
 ```python
 from pinjected import design, injected
 
-# Error: Lambda function in design
+# Error: Lambda function in design  
 with design() as d:
     d['get_config'] = lambda: {'debug': True}  # PINJ034
-    d.provide(lambda: DatabaseConnection())    # PINJ034
+    d['database'] = lambda: DatabaseConnection()  # PINJ034
     
 # Error: Regular function without decorator
 def create_logger():
@@ -32,7 +32,11 @@ def create_logger():
 
 with design() as d:
     d['logger'] = create_logger  # PINJ034
-    d.provide(create_logger)     # PINJ034
+
+# Or directly in design()
+config = design(
+    logger=create_logger  # PINJ034 - not decorated
+)
 
 # Error: Inline function definition
 with design() as d:
@@ -66,28 +70,32 @@ def logger():
     return Logger()
 
 # Correct: Configure with decorated functions
-with design() as d:
-    d.provide(get_config)
-    d.provide(database_connection)
-    d.provide(logger)
-    
-# Correct: Use __provide__ for complex configuration
-class AppConfig:
-    @injected
-    def __provide__(self):
-        return {
-            get_config,
-            database_connection,
-            logger,
-        }
+service_design = design(
+    config=get_config,
+    database=database_connection,
+    logger=logger
+)
 
-# Correct: Override with decorated functions
+# Or using context manager
+with design() as d:
+    d['config'] = get_config
+    d['database'] = database_connection  
+    d['logger'] = logger
+    
+# Correct: Combine designs
+base_design = design(
+    config=get_config,
+    database=database_connection
+)
+
+# Override with decorated functions  
 @injected
 def test_config():
     return {'debug': False}
 
-with design() as test_d:
-    test_d.override(get_config, test_config)
+test_design = base_design + design(
+    config=test_config  # Overrides get_config
+)
 ```
 
 ## Common Patterns to Refactor
@@ -103,8 +111,13 @@ with design() as d:
 def api_key():
     return 'secret-key'
 
+config = design(
+    api_key=api_key
+)
+
+# Or using context manager
 with design() as d:
-    d.provide(api_key)
+    d['api_key'] = api_key
 ```
 
 ### Pattern 2: Factory Functions
@@ -118,8 +131,9 @@ with design() as d:
 def create_client(config, /):
     return Client(config['url'])
 
-with design() as d:
-    d.provide(create_client)
+client_design = design(
+    create_client=create_client
+)
 ```
 
 ### Pattern 3: Conditional Dependencies
@@ -144,10 +158,11 @@ def production_logger():
 def logger(config, debug_logger, production_logger, /):
     return debug_logger if config['debug'] else production_logger
 
-with design() as d:
-    d.provide(logger)
-    d.provide(debug_logger)
-    d.provide(production_logger)
+logging_design = design(
+    logger=logger,
+    debug_logger=debug_logger,
+    production_logger=production_logger
+)
 ```
 
 ## How to Fix
