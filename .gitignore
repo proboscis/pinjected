@@ -35,3 +35,11 @@ packages/pinjected-linter/.coverage.*
 packages/pinjected-linter/rust-poc/target/
 test_output.txt
 packages/pinjected-linter/rust-poc/pinjected-linter
+
+# Rust artifacts
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+*.rlib
+*.d
