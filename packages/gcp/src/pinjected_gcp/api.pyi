@@ -22,6 +22,22 @@ class ADownloadGcsProtocol(Protocol):
         destination_file_path: str | Path,
     ) -> Path: ...
 
+class ADeleteGcsProtocol(Protocol):
+    """Protocol for deleting files from Google Cloud Storage."""
+    async def __call__(
+        self,
+        bucket_name: str,
+        blob_name: str,
+    ) -> bool: ...
+
+class ADeleteGcsPrefixProtocol(Protocol):
+    """Protocol for deleting all files under a prefix in Google Cloud Storage."""
+    async def __call__(
+        self,
+        bucket_name: str,
+        prefix: str,
+    ) -> int: ...
+
 # @instance function typed as IProxy
 gcp_storage_client: IProxy[storage.Client]
 
@@ -38,3 +54,13 @@ async def a_download_gcs(
     source_blob_name: str,
     destination_file_path: str | Path,
 ) -> Path: ...
+@overload
+async def a_delete_gcs(
+    bucket_name: str,
+    blob_name: str,
+) -> bool: ...
+@overload
+async def a_delete_gcs_prefix(
+    bucket_name: str,
+    prefix: str,
+) -> int: ...
