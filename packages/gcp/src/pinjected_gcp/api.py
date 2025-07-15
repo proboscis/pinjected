@@ -1,10 +1,12 @@
 import asyncio
 from pathlib import Path
+from typing import Protocol
 
 from google.cloud import storage
 from google.oauth2 import service_account
 
 from pinjected import design, injected, instance
+from pinjected.picklable_logger import PicklableLogger
 
 
 @instance
@@ -16,10 +18,33 @@ def gcp_storage_client(gcp_service_account_credentials: dict):
     return storage.Client(credentials=credentials)
 
 
-@injected
+# Protocol definitions for @injected functions
+class AUploadGcsProtocol(Protocol):
+    """Protocol for uploading files to Google Cloud Storage."""
+
+    async def __call__(
+        self,
+        bucket_name: str,
+        source_file_path: str | Path,
+        destination_blob_name: str | None = None,
+    ) -> str: ...
+
+
+class ADownloadGcsProtocol(Protocol):
+    """Protocol for downloading files from Google Cloud Storage."""
+
+    async def __call__(
+        self,
+        bucket_name: str,
+        source_blob_name: str,
+        destination_file_path: str | Path,
+    ) -> Path: ...
+
+
+@injected(protocol=AUploadGcsProtocol)
 async def a_upload_gcs(
     gcp_storage_client: storage.Client,
-    logger,
+    logger: PicklableLogger,
     /,
     bucket_name: str,
     source_file_path: str | Path,
@@ -56,10 +81,10 @@ async def a_upload_gcs(
     return result
 
 
-@injected
+@injected(protocol=ADownloadGcsProtocol)
 async def a_download_gcs(
     gcp_storage_client: storage.Client,
-    logger,
+    logger: PicklableLogger,
     /,
     bucket_name: str,
     source_blob_name: str,
