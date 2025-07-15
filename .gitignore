@@ -32,14 +32,43 @@ htmlcov/
 .pytest_cache/
 .testmondata*
 packages/pinjected-linter/.coverage.*
-packages/pinjected-linter/rust-poc/target/
 test_output.txt
-packages/pinjected-linter/rust-poc/pinjected-linter
 
 # Rust artifacts
 target/
+**/target/
 Cargo.lock
 **/*.rs.bk
 *.pdb
-*.rlib
-*.d
+
+# Rust build outputs
+**/*.rlib
+**/*.rmeta
+**/*.d
+**/*.dll
+**/*.dylib
+**/*.so
+**/*.a
+**/*.exe
+
+# Rust debug/release directories
+**/debug/
+**/release/
+
+# Rust incremental compilation
+**/incremental/
+**/.fingerprint/
+
+# Rust profiling
+**/profraw
+**/profdata
+
+# Rust documentation
+**/doc/
+
+# Rust test outputs
+**/test_output/
+
+# Specific to pinjected-linter
+packages/pinjected-linter/rust-poc/pinjected-linter
+packages/pinjected-linter/rust-poc/libpinjected_linter.*
