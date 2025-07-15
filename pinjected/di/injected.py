@@ -335,13 +335,13 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         from pinjected.di.partially_injected import Partial
 
         modifier = Injected._get_args_keeper(
-            injection_targets, inspect.signature(original_function)
+            injection_targets, inspect.signature(original_function), original_function
         )
         # TODO move this modifier to @injected decorator.
         return Partial(original_function, injection_targets, modifier)
 
     @staticmethod
-    def _get_args_keeper(injection_targets, original_sig):
+    def _get_args_keeper(injection_targets, original_sig, original_function=None):
         original_args_with_Injected = []
         for k, v in original_sig.parameters.items():
             if k not in injection_targets and v.annotation == Injected:
@@ -354,8 +354,27 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         remaining_signature: inspect.Signature = original_sig.replace(
             parameters=remaining_params
         )
+        function_name = (
+            getattr(original_function, "__name__", None) if original_function else None
+        )
+
+        # Try to get source file and line number
+        source_file = None
+        line_number = None
+        if original_function:
+            try:
+                source_file = inspect.getsourcefile(original_function)
+                line_number = inspect.getsourcelines(original_function)[1]
+            except (TypeError, OSError):
+                # Can't get source info for built-in functions or other special cases
+                pass
+
         modifier = KeepArgsPure(
-            signature=remaining_signature, targets=set(original_args_with_Injected)
+            signature=remaining_signature,
+            targets=set(original_args_with_Injected),
+            function_name=function_name,
+            source_file=source_file,
+            line_number=line_number,
         )
         return modifier
 
