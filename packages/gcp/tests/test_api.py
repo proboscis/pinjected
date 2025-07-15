@@ -11,8 +11,8 @@ from pinjected import instance
 @instance
 def test_bucket_name() -> str:
     """Use a test bucket."""
-    # This bucket should exist and the service account should have permissions
-    return "valued-mission-109412.appspot.com"
+    # Use the bucket from cyberagent-050 project that matches gcloud config
+    return "ailab-creative"
 
 
 @instance
@@ -112,9 +112,7 @@ async def test_download_gcs(
 
 
 @injected_pytest
-async def test_delete_gcs(
-    a_upload_gcs, a_delete_gcs, gcp_storage_client, test_bucket_name, test_prefix
-):
+async def test_delete_gcs(a_upload_gcs, a_delete_gcs, test_bucket_name, test_prefix):
     """Test deleting a file from GCS."""
 
     # Create a temporary file
@@ -155,7 +153,7 @@ async def test_delete_gcs(
 
 @injected_pytest
 async def test_delete_gcs_prefix(
-    a_upload_gcs, a_delete_gcs_prefix, gcp_storage_client, test_bucket_name, test_prefix
+    a_upload_gcs, a_delete_gcs_prefix, test_bucket_name, test_prefix
 ):
     """Test deleting multiple files under a prefix from GCS."""
 
@@ -228,7 +226,7 @@ async def test_delete_gcs_prefix(
 
 @injected_pytest
 async def test_large_batch_delete(
-    a_upload_gcs, a_delete_gcs_prefix, gcp_storage_client, test_bucket_name, test_prefix
+    a_upload_gcs, a_delete_gcs_prefix, test_bucket_name, test_prefix
 ):
     """Test batch deletion with many files (>100)."""
 
