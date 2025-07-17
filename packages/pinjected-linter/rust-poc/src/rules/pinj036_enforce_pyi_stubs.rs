@@ -489,24 +489,13 @@ impl LintRule for EnforcePyiStubsRule {
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         
-        // Debug output
-        if std::env::var("DEBUG_PINJ036").is_ok() {
-            eprintln!("PINJ036: check() called for file: {}", context.file_path);
-        }
-
         // This is a module-level rule - check if we're in the module-level context
         match context.stmt {
             Stmt::Pass(_) => {
                 // This is the module-level check, proceed
-                if std::env::var("DEBUG_PINJ036").is_ok() {
-                    eprintln!("PINJ036: Module-level check");
-                }
             }
             _ => {
                 // This is a statement-level check, skip
-                if std::env::var("DEBUG_PINJ036").is_ok() {
-                    eprintln!("PINJ036: Statement-level check, skipping");
-                }
                 return violations;
             }
         }
