@@ -208,10 +208,12 @@ impl MissingStubFileRule {
         sig.push_str(&runtime_args.join(", "));
         sig.push(')');
 
-        // Return type
+        // Return type - transform to IProxy[T]
         if let Some(returns) = &func.returns {
             sig.push_str(" -> ");
+            sig.push_str("IProxy[");
             sig.push_str(&self.format_type_annotation(returns));
+            sig.push(']');
         }
 
         sig.push_str(": ...");
@@ -293,10 +295,12 @@ impl MissingStubFileRule {
         sig.push_str(&runtime_args.join(", "));
         sig.push(')');
 
-        // Return type
+        // Return type - transform to IProxy[T]
         if let Some(returns) = &func.returns {
             sig.push_str(" -> ");
+            sig.push_str("IProxy[");
             sig.push_str(&self.format_type_annotation(returns));
+            sig.push(']');
         }
 
         sig.push_str(": ...");
@@ -460,6 +464,7 @@ impl MissingStubFileRule {
 
         // Add imports
         content.push_str("from typing import overload\n");
+        content.push_str("from pinjected import IProxy\n");
         
         // Note: Additional imports for return types would need to be added based on the actual types used
         // For now, we'll add a comment about this

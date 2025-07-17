@@ -90,7 +90,7 @@ def get_user(database: IProxy[Database], cache: IProxy[Cache], user_id: str) -> 
 
 # Warning: Stub file services/user_service.pyi has incorrect signatures:
 # Function 'get_user' has incorrect signature in stub file.
-# Expected: def get_user(user_id: str) -> User
+# Expected: def get_user(user_id: str) -> IProxy[User]
 # Actual: def get_user(database: IProxy[Database], cache: IProxy[Cache], user_id: str) -> User
 ```
 
@@ -126,14 +126,16 @@ async def a_create_user(
 
 # File: services/user_service.pyi
 from typing import overload
+from pinjected import IProxy
 from .models import User
 
 # Note: @overload decorator shows only runtime arguments
+# Return types are wrapped in IProxy[T]
 @overload
-def get_user(user_id: str) -> User: ...
+def get_user(user_id: str) -> IProxy[User]: ...
 
 @overload
-async def a_create_user(user_data: dict) -> User: ...
+async def a_create_user(user_data: dict) -> IProxy[User]: ...
 ```
 
 ## Stub File Content Guidelines
@@ -143,23 +145,25 @@ async def a_create_user(user_data: dict) -> User: ...
 **All `@injected` functions must use `@overload` in stub files.** This shows only the runtime arguments that users provide when calling the function, omitting the injected dependencies.
 
 Key principles:
-- Use `from typing import overload`
+- Use `from typing import overload` and `from pinjected import IProxy`
 - Show only arguments after `/` (runtime arguments)
-- Keep original return types (no transformation)
+- Transform return types to `IProxy[T]` for type `T`
 - Omit injected dependencies from signatures
 
 ### 1. Basic stub structure
 ```python
 # mymodule.pyi
 from typing import overload, List, Optional
+from pinjected import IProxy
 from .models import User, Order
 
 # Use @overload to show user-facing signatures
+# Return types are wrapped in IProxy[T]
 @overload
-def process_order(order_id: str) -> Order: ...
+def process_order(order_id: str) -> IProxy[Order]: ...
 
 @overload
-async def a_fetch_users(filter: Optional[dict] = None) -> List[User]: ...
+async def a_fetch_users(filter: Optional[dict] = None) -> IProxy[List[User]]: ...
 ```
 
 ### 2. Functions with multiple runtime arguments
@@ -185,6 +189,7 @@ def process_payment(
 
 # services/payment.pyi
 from typing import overload, Decimal, Optional
+from pinjected import IProxy
 from .models import PaymentResult
 
 # Show all runtime arguments in the @overload signature
@@ -195,7 +200,7 @@ def process_payment(
     *,
     currency: str = "USD",
     metadata: Optional[dict] = None
-) -> PaymentResult: ...
+) -> IProxy[PaymentResult]: ...
 ```
 
 ### 3. Multiple overloads for different call patterns
@@ -219,6 +224,7 @@ def find_users(
 
 # repository/user_repo.pyi
 from typing import overload, List, Dict, Any, Literal
+from pinjected import IProxy
 import pandas as pd
 from .models import User
 
@@ -230,7 +236,7 @@ def find_users(
     limit: int = 100,
     offset: int = 0,
     format: Literal["json"] = "json"
-) -> List[User]: ...
+) -> IProxy[List[User]]: ...
 
 @overload
 def find_users(
@@ -239,7 +245,7 @@ def find_users(
     limit: int = 100,
     offset: int = 0,
     format: Literal["dataframe"]
-) -> pd.DataFrame: ...
+) -> IProxy[pd.DataFrame]: ...
 ```
 
 ### 4. Functions with no runtime arguments
@@ -261,10 +267,11 @@ def get_config(
 
 # config/settings.pyi
 from typing import overload
+from pinjected import IProxy
 from .models import Config
 
 @overload
-def get_config() -> Config: ...
+def get_config() -> IProxy[Config]: ...
 ```
 
 ## Configuration
@@ -357,7 +364,7 @@ touch services/user_service.pyi
 1. **Use @overload instead of @injected**: All functions get `@overload` decorator
 2. **Show only runtime arguments**: Omit everything before `/`
 3. **No dependency imports**: Don't import injected dependency types
-4. **Original return types**: Keep return types as-is (no IProxy transformation)
+4. **Transform return types**: Wrap return types in `IProxy[T]` for type `T`
 
 ## Related Rules
 
