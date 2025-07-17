@@ -30,6 +30,7 @@ pub mod pinj032_no_iproxy_return_type;
 pub mod pinj033_no_iproxy_argument_type;
 pub mod pinj034_no_lambda_in_design;
 pub mod pinj035_deprecated_design_functions;
+pub mod pinj036_enforce_pyi_stubs;
 // Future rules would be added here:
 // ... etc
 
@@ -68,6 +69,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj033_no_iproxy_argument_type::NoIProxyArgumentTypeRule::new()),
         Box::new(pinj034_no_lambda_in_design::NoLambdaInDesignRule::new()),
         Box::new(pinj035_deprecated_design_functions::DeprecatedDesignFunctionsRule::new()),
+        Box::new(pinj036_enforce_pyi_stubs::EnforcePyiStubsRule::new()),
         // Add more rules here as they're implemented
     ]
 }

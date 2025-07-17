@@ -110,6 +110,10 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ035",
         include_str!("../../docs/rules/pinj035_deprecated_design_functions.md"),
     );
+    docs.insert(
+        "PINJ036",
+        include_str!("../../docs/rules/pinj036_enforce_pyi_stubs.md"),
+    );
 
     docs
 }

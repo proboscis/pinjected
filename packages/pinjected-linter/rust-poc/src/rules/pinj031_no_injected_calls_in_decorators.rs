@@ -179,7 +179,8 @@ impl NoInjectedCallsInDecoratorsRule {
                 }
             }
             Stmt::AsyncFunctionDef(func) => {
-                let is_special = has_injected_decorator_async(func) || has_instance_decorator_async(func);
+                let is_special =
+                    has_injected_decorator_async(func) || has_instance_decorator_async(func);
                 if is_special {
                     // Enter special function context
                     let old_func = self.current_function.take();

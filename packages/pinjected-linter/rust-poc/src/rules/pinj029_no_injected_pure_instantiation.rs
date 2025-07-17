@@ -20,10 +20,11 @@ impl NoInjectedPureInstantiationRule {
         match &*call.func {
             Expr::Attribute(attr) => {
                 // Check for Injected.pure
-                attr.attr.as_str() == "pure" && match &*attr.value {
-                    Expr::Name(name) => name.id.as_str() == "Injected",
-                    _ => false,
-                }
+                attr.attr.as_str() == "pure"
+                    && match &*attr.value {
+                        Expr::Name(name) => name.id.as_str() == "Injected",
+                        _ => false,
+                    }
             }
             _ => false,
         }
@@ -47,15 +48,15 @@ impl NoInjectedPureInstantiationRule {
     /// Format arguments for display
     fn format_arguments(call: &ExprCall) -> String {
         let mut parts = Vec::new();
-        
+
         // Count positional arguments
         for _ in &call.args {
             parts.push("...".to_string());
         }
-        
+
         // For keyword arguments in ExprCall, we need to check if there are any
         // This is a simplified version since we don't have full keyword info
-        
+
         if parts.is_empty() {
             "()".to_string()
         } else {
@@ -80,7 +81,7 @@ impl NoInjectedPureInstantiationRule {
         if let Expr::Call(inner_call) = expr {
             let callable_name = Self::extract_callable_name(&inner_call.func);
             let suggestion = Self::generate_suggestion(expr);
-            
+
             Some(Violation {
                 rule_id: "PINJ029".to_string(),
                 message: format!(
@@ -89,8 +90,7 @@ impl NoInjectedPureInstantiationRule {
                      Replace with: {}\n\
                      Reason: Code execution should be deferred until injection time.\n\
                      If this is intentional, add '# noqa: PINJ029' to suppress this warning.",
-                    callable_name,
-                    suggestion
+                    callable_name, suggestion
                 ),
                 offset: call.range.start().to_usize(),
                 file_path: String::new(),
@@ -112,14 +112,14 @@ impl NoInjectedPureInstantiationRule {
                         return self.check_injected_pure_arg(arg, call);
                     }
                 }
-                
+
                 // Recursively check nested expressions
                 for arg in &call.args {
                     if let Some(violation) = self.check_expression(arg) {
                         return Some(violation);
                     }
                 }
-                
+
                 // Check the function being called
                 if let Some(violation) = self.check_expression(&call.func) {
                     return Some(violation);

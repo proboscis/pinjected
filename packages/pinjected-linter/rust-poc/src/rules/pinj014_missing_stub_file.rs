@@ -6,7 +6,7 @@
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::has_injected_decorator;
-use rustpython_ast::{Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef, Arg, ArgWithDefault};
+use rustpython_ast::{Arg, ArgWithDefault, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -102,13 +102,11 @@ impl MissingStubFileRule {
                 let right = self.format_type_annotation(&binop.right);
                 format!("{} | {}", left, right)
             }
-            Expr::Constant(constant) => {
-                match &constant.value {
-                    rustpython_ast::Constant::None => "None".to_string(),
-                    rustpython_ast::Constant::Str(s) => format!("'{}'", s),
-                    _ => "Any".to_string(),
-                }
-            }
+            Expr::Constant(constant) => match &constant.value {
+                rustpython_ast::Constant::None => "None".to_string(),
+                rustpython_ast::Constant::Str(s) => format!("'{}'", s),
+                _ => "Any".to_string(),
+            },
             _ => "Any".to_string(),
         }
     }
@@ -116,12 +114,12 @@ impl MissingStubFileRule {
     /// Generate function signature for stub file
     fn generate_function_signature(&self, func: &StmtFunctionDef) -> String {
         let mut sig = String::new();
-        
+
         // Add async if needed
         if func.name.starts_with("a_") {
             sig.push_str("async ");
         }
-        
+
         sig.push_str("def ");
         sig.push_str(&func.name);
         sig.push('(');
@@ -133,7 +131,7 @@ impl MissingStubFileRule {
         for arg in &args.posonlyargs {
             all_args.push(self.format_arg_with_default(arg));
         }
-        
+
         if !args.posonlyargs.is_empty() {
             all_args.push("/".to_string());
         }
@@ -174,7 +172,7 @@ impl MissingStubFileRule {
     /// Generate async function signature for stub file
     fn generate_async_function_signature(&self, func: &StmtAsyncFunctionDef) -> String {
         let mut sig = String::new();
-        
+
         sig.push_str("async def ");
         sig.push_str(&func.name);
         sig.push('(');
@@ -186,7 +184,7 @@ impl MissingStubFileRule {
         for arg in &args.posonlyargs {
             all_args.push(self.format_arg_with_default(arg));
         }
-        
+
         if !args.posonlyargs.is_empty() {
             all_args.push("/".to_string());
         }
@@ -354,12 +352,12 @@ impl MissingStubFileRule {
     /// Generate the expected stub file content
     fn generate_stub_content(&self, functions: &[InjectedFunctionInfo]) -> String {
         let mut content = String::new();
-        
+
         // Add imports
         content.push_str("from typing import Any\n");
         content.push_str("from pinjected import injected, IProxy\n");
         content.push_str("\n");
-        
+
         // Add function signatures
         for func in functions {
             content.push_str("@injected\n");
@@ -367,7 +365,7 @@ impl MissingStubFileRule {
             content.push('\n');
             content.push('\n');
         }
-        
+
         content
     }
 }
@@ -440,14 +438,14 @@ impl LintRule for MissingStubFileRule {
         let injected_functions = self.collect_injected_functions(context.ast);
         let stub_file_path = Path::new(context.file_path).with_extension("pyi");
         let stub_content = self.generate_stub_content(&injected_functions);
-        
+
         let message = format!(
             "Module contains {} @injected function(s) but no .pyi stub file found.\n\nExpected stub file: {}\n\nExpected content:\n{}",
             injected_count,
             stub_file_path.display(),
             stub_content
         );
-        
+
         violations.push(Violation {
             rule_id: self.rule_id().to_string(),
             message,

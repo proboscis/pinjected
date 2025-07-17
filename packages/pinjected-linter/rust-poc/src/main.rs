@@ -302,33 +302,34 @@ fn get_git_modified_files(repo_path: &Path, include_untracked: bool) -> Result<V
     status_options.include_ignored(false);
     status_options.include_unmodified(false);
     status_options.recurse_untracked_dirs(true);
-    
+
     let statuses = repo.statuses(Some(&mut status_options))?;
-    
+
     let mut modified_files = Vec::new();
     for entry in statuses.iter() {
         let status = entry.status();
-        
+
         // Check if file is modified, new, or renamed
         // Note: For untracked files, only WT_NEW is set (no INDEX flags)
-        let is_untracked = status.contains(git2::Status::WT_NEW) 
+        let is_untracked = status.contains(git2::Status::WT_NEW)
             && !status.contains(git2::Status::INDEX_NEW)
             && !status.contains(git2::Status::INDEX_MODIFIED)
             && !status.contains(git2::Status::INDEX_RENAMED);
-        
+
         let is_modified = status.contains(git2::Status::WT_MODIFIED)
             || status.contains(git2::Status::WT_RENAMED)
             || status.contains(git2::Status::INDEX_MODIFIED)
             || status.contains(git2::Status::INDEX_NEW)
             || status.contains(git2::Status::INDEX_RENAMED);
-        
+
         if is_modified || (is_untracked && include_untracked) {
             if let Some(path_str) = entry.path() {
                 let path = PathBuf::from(path_str);
                 // Only include Python files
                 if path.extension().and_then(|s| s.to_str()) == Some("py") {
                     // Make path absolute relative to repo root
-                    let abs_path = repo.workdir()
+                    let abs_path = repo
+                        .workdir()
                         .ok_or_else(|| anyhow::anyhow!("No working directory"))?
                         .join(&path);
                     modified_files.push(abs_path);
@@ -336,7 +337,7 @@ fn get_git_modified_files(repo_path: &Path, include_untracked: bool) -> Result<V
             }
         }
     }
-    
+
     Ok(modified_files)
 }
 
@@ -449,7 +450,7 @@ fn main() -> Result<()> {
     if args.modified {
         // Get the working directory to search for git repo
         let cwd = std::env::current_dir()?;
-        
+
         // Determine whether to include untracked files
         // Priority: CLI flag > config file > default (true)
         let include_untracked = if args.no_untracked {
@@ -459,7 +460,7 @@ fn main() -> Result<()> {
         } else {
             true
         };
-        
+
         match get_git_modified_files(&cwd, include_untracked) {
             Ok(modified_files) => {
                 if modified_files.is_empty() {
@@ -468,7 +469,10 @@ fn main() -> Result<()> {
                     }
                 } else {
                     if args.verbose {
-                        eprintln!("Found {} modified Python files to analyze", modified_files.len());
+                        eprintln!(
+                            "Found {} modified Python files to analyze",
+                            modified_files.len()
+                        );
                         if include_untracked {
                             eprintln!("(Including untracked files)");
                         } else {
@@ -478,17 +482,17 @@ fn main() -> Result<()> {
                             eprintln!("  - {}", file.display());
                         }
                     }
-                    
+
                     // Lint each modified file
                     for file_path in modified_files {
                         if args.verbose {
                             eprintln!("Analyzing: {}", file_path.display());
                         }
-                        
+
                         // Skip if file matches skip patterns (match logic from find_python_files)
                         let should_skip = {
                             let path_str = file_path.to_str().unwrap_or("");
-                            
+
                             // Check each component of the path
                             let component_match = file_path.components().any(|component| {
                                 if let Some(name) = component.as_os_str().to_str() {
@@ -497,20 +501,22 @@ fn main() -> Result<()> {
                                     false
                                 }
                             });
-                            
+
                             // Also check if pattern is contained in full path
-                            let path_contains = skip_patterns.iter().any(|pattern| path_str.contains(pattern));
-                            
+                            let path_contains = skip_patterns
+                                .iter()
+                                .any(|pattern| path_str.contains(pattern));
+
                             component_match || path_contains
                         };
-                        
+
                         if should_skip {
                             if args.verbose {
                                 eprintln!("  Skipping (matches exclude pattern)");
                             }
                             continue;
                         }
-                        
+
                         match lint_path(&file_path, options.clone()) {
                             Ok(result) => {
                                 total_files += result.files_analyzed;
@@ -541,7 +547,9 @@ fn main() -> Result<()> {
                 if args.verbose {
                     eprintln!("Warning: Not in a git repository: {}", e);
                 }
-                eprintln!("Warning: --modified flag requires a git repository. No files to analyze.");
+                eprintln!(
+                    "Warning: --modified flag requires a git repository. No files to analyze."
+                );
                 // Exit successfully with no violations
                 // Skip to statistics without processing any files
             }

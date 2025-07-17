@@ -150,7 +150,7 @@ pub fn merge_config(
             if cfg.enable.contains(&"ALL".to_string()) {
                 // Get all available rules
                 let all_rules = rules::get_all_rule_ids();
-                
+
                 // Apply disable filter if specified
                 let enabled: Vec<String> = if !cfg.disable.is_empty() {
                     all_rules
@@ -183,7 +183,7 @@ pub fn merge_config(
         // Check if "ALL" is in the CLI enable list
         if cli_enable.contains(&"ALL".to_string()) {
             let all_rules = rules::get_all_rule_ids();
-            
+
             // Apply CLI disable filter if specified
             let enabled: Vec<String> = if !cli_disable.is_empty() {
                 all_rules

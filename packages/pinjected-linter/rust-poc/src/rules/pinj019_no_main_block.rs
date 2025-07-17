@@ -52,9 +52,7 @@ impl NoMainBlockRule {
 
     fn check_has_pinjected_functions(stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::FunctionDef(func) => {
-                has_injected_decorator(func) || has_instance_decorator(func)
-            }
+            Stmt::FunctionDef(func) => has_injected_decorator(func) || has_instance_decorator(func),
             Stmt::AsyncFunctionDef(func) => {
                 has_injected_decorator_async(func) || has_instance_decorator_async(func)
             }
@@ -97,7 +95,7 @@ impl LintRule for NoMainBlockRule {
         if let Some(main_block_offset) = Self::find_main_block(context.stmt) {
             // Check if the file has any pinjected functions
             let mut has_pinjected = false;
-            
+
             match context.ast {
                 Mod::Module(module) => {
                     for stmt in &module.body {

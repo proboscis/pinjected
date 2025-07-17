@@ -64,7 +64,7 @@ impl APrefixDependencyAnyTypeRule {
         // Only check positional-only args (before /) for @injected
         for (idx, arg) in args.posonlyargs.iter().enumerate() {
             let arg_name = arg.def.arg.as_str();
-            
+
             // Check if it starts with a_ and has Any annotation
             if arg_name.starts_with("a_") {
                 if let Some(annotation) = &arg.def.annotation {
@@ -126,7 +126,8 @@ impl APrefixDependencyAnyTypeRule {
         let mut violations = Vec::new();
 
         // Only check @injected functions with protocol parameter
-        if !has_injected_decorator_async(func) || !Self::has_protocol_parameter(&func.decorator_list)
+        if !has_injected_decorator_async(func)
+            || !Self::has_protocol_parameter(&func.decorator_list)
         {
             return violations;
         }

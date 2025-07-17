@@ -112,11 +112,17 @@ fn analyze_file(
         // Only run rules that don't require decorators
         rules
             .iter()
-            .filter(|r| matches!(r.rule_id(), "PINJ013")) // Only builtin shadowing
+            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036")) // Builtin shadowing and pyi enforcement
             .collect()
     } else {
         rules.iter().collect()
     };
+    
+    // Debug: Print active rules
+    if std::env::var("DEBUG_RULES").is_ok() {
+        eprintln!("DEBUG: Active rules for {}: {:?}", path.display(), 
+            active_rules.iter().map(|r| r.rule_id()).collect::<Vec<_>>());
+    }
 
     if active_rules.is_empty() {
         return Ok(violations);
@@ -132,9 +138,9 @@ fn analyze_file(
         ast: &ast,
     };
 
-    // First pass: module-level rules (PINJ012, PINJ014)
+    // First pass: module-level rules (PINJ012, PINJ014, PINJ036)
     for rule in &active_rules {
-        if matches!(rule.rule_id(), "PINJ012" | "PINJ014") {
+        if matches!(rule.rule_id(), "PINJ012" | "PINJ014" | "PINJ036") {
             violations.extend(rule.check(&module_context));
         }
     }
@@ -151,12 +157,15 @@ fn analyze_file(
                 match rule.rule_id() {
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
                     "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
-                    | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032" | "PINJ033" => func_rules.push(rule),
+                    | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032"
+                    | "PINJ033" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
-                    "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" => stmt_rules.push(rule),
+                    "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" => {
+                        stmt_rules.push(rule)
+                    }
                     _ => {} // Already handled
                 }
-                
+
                 // Also add rules that need to check inside classes
                 if matches!(rule.rule_id(), "PINJ033") {
                     class_rules.push(rule);

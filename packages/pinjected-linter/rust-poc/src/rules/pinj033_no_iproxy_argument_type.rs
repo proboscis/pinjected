@@ -31,25 +31,30 @@ impl NoIProxyArgumentTypeRule {
                 }
             }
             // Handle generic types like IProxy[SomeType]
-            Expr::Subscript(subscript) => {
-                match &*subscript.value {
-                    Expr::Name(name) => name.id.as_str() == "IProxy",
-                    Expr::Attribute(attr) => {
-                        if let Expr::Name(name) = &*attr.value {
-                            name.id.as_str() == "pinjected" && attr.attr.as_str() == "IProxy"
-                        } else {
-                            false
-                        }
+            Expr::Subscript(subscript) => match &*subscript.value {
+                Expr::Name(name) => name.id.as_str() == "IProxy",
+                Expr::Attribute(attr) => {
+                    if let Expr::Name(name) = &*attr.value {
+                        name.id.as_str() == "pinjected" && attr.attr.as_str() == "IProxy"
+                    } else {
+                        false
                     }
-                    _ => false,
                 }
-            }
+                _ => false,
+            },
             _ => false,
         }
     }
 
     /// Check function arguments for IProxy type annotations
-    fn check_arguments(&self, args: &[ArgWithDefault], func_name: &str, file_path: &str, _func_offset: usize, violations: &mut Vec<Violation>) {
+    fn check_arguments(
+        &self,
+        args: &[ArgWithDefault],
+        func_name: &str,
+        file_path: &str,
+        _func_offset: usize,
+        violations: &mut Vec<Violation>,
+    ) {
         for arg in args {
             // Skip 'self' parameter in methods
             if arg.def.arg.as_str() == "self" {
@@ -78,23 +83,46 @@ impl NoIProxyArgumentTypeRule {
     }
 
     /// Check function definition for IProxy argument types
-    fn check_function(&self, func: &rustpython_ast::StmtFunctionDef, file_path: &str, violations: &mut Vec<Violation>) {
+    fn check_function(
+        &self,
+        func: &rustpython_ast::StmtFunctionDef,
+        file_path: &str,
+        violations: &mut Vec<Violation>,
+    ) {
         // Check if function has @injected or @instance decorator
         let has_special_decorator = has_injected_decorator(func) || has_instance_decorator(func);
-        
+
         if !has_special_decorator {
             return;
         }
 
         // Check all arguments
-        self.check_arguments(&func.args.args, &func.name, file_path, func.range.start().to_usize(), violations);
-        
+        self.check_arguments(
+            &func.args.args,
+            &func.name,
+            file_path,
+            func.range.start().to_usize(),
+            violations,
+        );
+
         // Check positional-only arguments
-        self.check_arguments(&func.args.posonlyargs, &func.name, file_path, func.range.start().to_usize(), violations);
-        
+        self.check_arguments(
+            &func.args.posonlyargs,
+            &func.name,
+            file_path,
+            func.range.start().to_usize(),
+            violations,
+        );
+
         // Check keyword-only arguments
-        self.check_arguments(&func.args.kwonlyargs, &func.name, file_path, func.range.start().to_usize(), violations);
-        
+        self.check_arguments(
+            &func.args.kwonlyargs,
+            &func.name,
+            file_path,
+            func.range.start().to_usize(),
+            violations,
+        );
+
         // Check vararg
         if let Some(vararg) = &func.args.vararg {
             if let Some(annotation) = &vararg.annotation {
@@ -113,7 +141,7 @@ impl NoIProxyArgumentTypeRule {
                 }
             }
         }
-        
+
         // Check kwarg
         if let Some(kwarg) = &func.args.kwarg {
             if let Some(annotation) = &kwarg.annotation {
@@ -135,23 +163,47 @@ impl NoIProxyArgumentTypeRule {
     }
 
     /// Check async function definition for IProxy argument types
-    fn check_async_function(&self, func: &rustpython_ast::StmtAsyncFunctionDef, file_path: &str, violations: &mut Vec<Violation>) {
+    fn check_async_function(
+        &self,
+        func: &rustpython_ast::StmtAsyncFunctionDef,
+        file_path: &str,
+        violations: &mut Vec<Violation>,
+    ) {
         // Check if function has @injected or @instance decorator
-        let has_special_decorator = has_injected_decorator_async(func) || has_instance_decorator_async(func);
-        
+        let has_special_decorator =
+            has_injected_decorator_async(func) || has_instance_decorator_async(func);
+
         if !has_special_decorator {
             return;
         }
 
         // Check all arguments
-        self.check_arguments(&func.args.args, &func.name, file_path, func.range.start().to_usize(), violations);
-        
+        self.check_arguments(
+            &func.args.args,
+            &func.name,
+            file_path,
+            func.range.start().to_usize(),
+            violations,
+        );
+
         // Check positional-only arguments
-        self.check_arguments(&func.args.posonlyargs, &func.name, file_path, func.range.start().to_usize(), violations);
-        
+        self.check_arguments(
+            &func.args.posonlyargs,
+            &func.name,
+            file_path,
+            func.range.start().to_usize(),
+            violations,
+        );
+
         // Check keyword-only arguments
-        self.check_arguments(&func.args.kwonlyargs, &func.name, file_path, func.range.start().to_usize(), violations);
-        
+        self.check_arguments(
+            &func.args.kwonlyargs,
+            &func.name,
+            file_path,
+            func.range.start().to_usize(),
+            violations,
+        );
+
         // Check vararg
         if let Some(vararg) = &func.args.vararg {
             if let Some(annotation) = &vararg.annotation {
@@ -170,7 +222,7 @@ impl NoIProxyArgumentTypeRule {
                 }
             }
         }
-        
+
         // Check kwarg
         if let Some(kwarg) = &func.args.kwarg {
             if let Some(annotation) = &kwarg.annotation {

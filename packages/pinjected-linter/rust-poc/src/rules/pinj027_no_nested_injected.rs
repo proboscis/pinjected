@@ -29,7 +29,7 @@ impl NoNestedInjectedRule {
     fn has_injected_or_instance_decorator(decorator_list: &[Expr]) -> (bool, bool) {
         let mut has_injected = false;
         let mut has_instance = false;
-        
+
         for decorator in decorator_list {
             if is_injected_decorator(decorator) {
                 has_injected = true;
@@ -38,7 +38,7 @@ impl NoNestedInjectedRule {
                 has_instance = true;
             }
         }
-        
+
         (has_injected, has_instance)
     }
 
@@ -49,12 +49,17 @@ impl NoNestedInjectedRule {
         for stmt in body {
             match stmt {
                 Stmt::FunctionDef(func) => {
-                    let (has_injected, has_instance) = Self::has_injected_or_instance_decorator(&func.decorator_list);
-                    
+                    let (has_injected, has_instance) =
+                        Self::has_injected_or_instance_decorator(&func.decorator_list);
+
                     if has_injected || has_instance {
-                        let decorator_name = if has_injected { "@injected" } else { "@instance" };
+                        let decorator_name = if has_injected {
+                            "@injected"
+                        } else {
+                            "@instance"
+                        };
                         let location_desc = self.get_location_description();
-                        
+
                         violations.push(Violation {
                             rule_id: "PINJ027".to_string(),
                             message: format!(
@@ -70,19 +75,25 @@ impl NoNestedInjectedRule {
                             severity: Severity::Error,
                         });
                     }
-                    
+
                     // Check nested functions recursively
-                    self.scope_stack.push(ScopeType::Function(func.name.to_string()));
+                    self.scope_stack
+                        .push(ScopeType::Function(func.name.to_string()));
                     violations.extend(self.check_body(&func.body));
                     self.scope_stack.pop();
                 }
                 Stmt::AsyncFunctionDef(func) => {
-                    let (has_injected, has_instance) = Self::has_injected_or_instance_decorator(&func.decorator_list);
-                    
+                    let (has_injected, has_instance) =
+                        Self::has_injected_or_instance_decorator(&func.decorator_list);
+
                     if has_injected || has_instance {
-                        let decorator_name = if has_injected { "@injected" } else { "@instance" };
+                        let decorator_name = if has_injected {
+                            "@injected"
+                        } else {
+                            "@instance"
+                        };
                         let location_desc = self.get_location_description();
-                        
+
                         violations.push(Violation {
                             rule_id: "PINJ027".to_string(),
                             message: format!(
@@ -98,15 +109,17 @@ impl NoNestedInjectedRule {
                             severity: Severity::Error,
                         });
                     }
-                    
+
                     // Check nested functions recursively
-                    self.scope_stack.push(ScopeType::Function(func.name.to_string()));
+                    self.scope_stack
+                        .push(ScopeType::Function(func.name.to_string()));
                     violations.extend(self.check_body(&func.body));
                     self.scope_stack.pop();
                 }
                 Stmt::ClassDef(cls) => {
                     // Check methods inside classes
-                    self.scope_stack.push(ScopeType::Class(cls.name.to_string()));
+                    self.scope_stack
+                        .push(ScopeType::Class(cls.name.to_string()));
                     violations.extend(self.check_body(&cls.body));
                     self.scope_stack.pop();
                 }
@@ -150,51 +163,54 @@ impl NoNestedInjectedRule {
         if self.scope_stack.is_empty() {
             return "at module level".to_string();
         }
-        
+
         let mut parts = Vec::new();
         for scope in &self.scope_stack {
             match scope {
-                ScopeType::Function(name) => parts.push(format!("function '{}'" , name)),
-                ScopeType::Class(name) => parts.push(format!("class '{}'" , name)),
+                ScopeType::Function(name) => parts.push(format!("function '{}'", name)),
+                ScopeType::Class(name) => parts.push(format!("class '{}'", name)),
             }
         }
-        
+
         format!("inside {}", parts.join(" inside "))
     }
 
     /// Check a regular function definition
     fn check_function(&mut self, func: &StmtFunctionDef) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         // Check the function body for nested @injected/@instance
-        self.scope_stack.push(ScopeType::Function(func.name.to_string()));
+        self.scope_stack
+            .push(ScopeType::Function(func.name.to_string()));
         violations.extend(self.check_body(&func.body));
         self.scope_stack.pop();
-        
+
         violations
     }
 
     /// Check an async function definition
     fn check_async_function(&mut self, func: &StmtAsyncFunctionDef) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         // Check the function body for nested @injected/@instance
-        self.scope_stack.push(ScopeType::Function(func.name.to_string()));
+        self.scope_stack
+            .push(ScopeType::Function(func.name.to_string()));
         violations.extend(self.check_body(&func.body));
         self.scope_stack.pop();
-        
+
         violations
     }
-    
+
     /// Check a class definition
     fn check_class(&mut self, cls: &rustpython_ast::StmtClassDef) -> Vec<Violation> {
         let mut violations = Vec::new();
-        
+
         // Check the class body for nested @injected/@instance
-        self.scope_stack.push(ScopeType::Class(cls.name.to_string()));
+        self.scope_stack
+            .push(ScopeType::Class(cls.name.to_string()));
         violations.extend(self.check_body(&cls.body));
         self.scope_stack.pop();
-        
+
         violations
     }
 }
@@ -286,8 +302,12 @@ def outer_function(user_id: str):
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ027");
-        assert!(violations[0].message.contains("@injected function 'inner_processor'"));
-        assert!(violations[0].message.contains("inside function 'outer_function'"));
+        assert!(violations[0]
+            .message
+            .contains("@injected function 'inner_processor'"));
+        assert!(violations[0]
+            .message
+            .contains("inside function 'outer_function'"));
     }
 
     #[test]
@@ -303,7 +323,9 @@ class MyClass:
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ027");
-        assert!(violations[0].message.contains("@instance function 'my_service'"));
+        assert!(violations[0]
+            .message
+            .contains("@instance function 'my_service'"));
         assert!(violations[0].message.contains("inside class 'MyClass'"));
     }
 

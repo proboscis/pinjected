@@ -6,7 +6,7 @@
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::is_injected_decorator;
-use rustpython_ast::{Expr, Stmt, StmtAsyncFunctionDef, StmtFunctionDef, StmtWith, StmtAsyncWith};
+use rustpython_ast::{Expr, Stmt, StmtAsyncFunctionDef, StmtAsyncWith, StmtFunctionDef, StmtWith};
 
 pub struct NoDesignInInjectedRule {
     in_injected_function: Vec<String>,
@@ -32,20 +32,18 @@ impl NoDesignInInjectedRule {
     /// Check if an expression is a call to design()
     fn is_design_call(expr: &Expr) -> bool {
         match expr {
-            Expr::Call(call) => {
-                match &*call.func {
-                    Expr::Name(name) => name.id.as_str() == "design",
-                    Expr::Attribute(attr) => {
-                        if attr.attr.as_str() == "design" {
-                            if let Expr::Name(module) = &*attr.value {
-                                return module.id.as_str() == "pinjected";
-                            }
+            Expr::Call(call) => match &*call.func {
+                Expr::Name(name) => name.id.as_str() == "design",
+                Expr::Attribute(attr) => {
+                    if attr.attr.as_str() == "design" {
+                        if let Expr::Name(module) = &*attr.value {
+                            return module.id.as_str() == "pinjected";
                         }
-                        false
                     }
-                    _ => false,
+                    false
                 }
-            }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -76,7 +74,11 @@ impl NoDesignInInjectedRule {
     }
 
     /// Check an async with statement for design() usage
-    fn check_async_with_statement(&self, with_stmt: &StmtAsyncWith, parent_name: &str) -> Option<Violation> {
+    fn check_async_with_statement(
+        &self,
+        with_stmt: &StmtAsyncWith,
+        parent_name: &str,
+    ) -> Option<Violation> {
         if self.in_injected_function.is_empty() {
             return None;
         }
@@ -133,7 +135,9 @@ impl NoDesignInInjectedRule {
                 }
                 Stmt::ClassDef(cls) => {
                     // Check methods inside classes
-                    violations.extend(self.check_function_body(&cls.body, &format!("{}.{}", func_name, cls.name)));
+                    violations.extend(
+                        self.check_function_body(&cls.body, &format!("{}.{}", func_name, cls.name)),
+                    );
                 }
                 Stmt::If(if_stmt) => {
                     violations.extend(self.check_function_body(&if_stmt.body, func_name));

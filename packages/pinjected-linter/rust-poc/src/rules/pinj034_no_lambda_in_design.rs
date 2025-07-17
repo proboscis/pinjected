@@ -6,10 +6,7 @@
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{is_injected_decorator, is_instance_decorator};
-use rustpython_ast::{
-    Expr, ExprLambda, Ranged, Stmt, StmtAssign,
-    StmtExpr, StmtWith, WithItem,
-};
+use rustpython_ast::{Expr, ExprLambda, Ranged, Stmt, StmtAssign, StmtExpr, StmtWith, WithItem};
 use std::collections::HashMap;
 
 pub struct NoLambdaInDesignRule {
@@ -305,7 +302,6 @@ impl LintRule for NoLambdaInDesignRule {
         // Then check the specific statement
         match context.stmt {
             Stmt::With(with_stmt) => {
-                
                 let mut with_violations = rule.check_with_stmt(with_stmt);
                 for violation in &mut with_violations {
                     violation.file_path = context.file_path.to_string();

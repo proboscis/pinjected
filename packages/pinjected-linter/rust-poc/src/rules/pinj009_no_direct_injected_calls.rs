@@ -59,16 +59,16 @@ impl NoDirectInjectedCallsRule {
     fn resolve_module_path(module_name: &str, current_file: &str) -> Option<PathBuf> {
         // Get the directory of the current file
         let current_dir = Path::new(current_file).parent()?;
-        
+
         // Convert module name to file path (e.g., "module_a" -> "module_a.py")
         let module_file = format!("{}.py", module_name.replace('.', "/"));
-        
+
         // Try to find the module relative to current file
         let relative_path = current_dir.join(&module_file);
         if relative_path.exists() {
             return Some(relative_path);
         }
-        
+
         // Try parent directories (basic Python path resolution)
         let mut parent = current_dir;
         while let Some(p) = parent.parent() {
@@ -78,7 +78,7 @@ impl NoDirectInjectedCallsRule {
             }
             parent = p;
         }
-        
+
         None
     }
 
@@ -88,7 +88,7 @@ impl NoDirectInjectedCallsRule {
             module_path.to_string_lossy().to_string(),
             function_name.to_string(),
         );
-        
+
         // Check cache first
         let cache = get_import_cache();
         if let Ok(cache_guard) = cache.lock() {
@@ -96,7 +96,7 @@ impl NoDirectInjectedCallsRule {
                 return is_injected;
             }
         }
-        
+
         // Parse the module to check if function is @injected
         let is_injected = if let Ok(content) = fs::read_to_string(module_path) {
             if let Ok(ast) = parse(&content, Mode::Module, module_path.to_str().unwrap()) {
@@ -125,12 +125,12 @@ impl NoDirectInjectedCallsRule {
         } else {
             false
         };
-        
+
         // Cache the result
         if let Ok(mut cache_guard) = cache.lock() {
             cache_guard.insert(cache_key, is_injected);
         }
-        
+
         is_injected
     }
 
@@ -143,14 +143,18 @@ impl NoDirectInjectedCallsRule {
                         Stmt::ImportFrom(import_from) => {
                             if let Some(module_name) = &import_from.module {
                                 // Resolve the module path
-                                if let Some(module_path) = Self::resolve_module_path(module_name.as_str(), file_path) {
+                                if let Some(module_path) =
+                                    Self::resolve_module_path(module_name.as_str(), file_path)
+                                {
                                     // Check each imported name
                                     for alias in &import_from.names {
                                         let imported_name = alias.name.as_str();
-                                        let local_name = alias.asname.as_ref()
+                                        let local_name = alias
+                                            .asname
+                                            .as_ref()
                                             .map(|s| s.as_str())
                                             .unwrap_or(imported_name);
-                                        
+
                                         // Check if this function is @injected
                                         if Self::is_function_injected(&module_path, imported_name) {
                                             self.imported_injected_functions.insert(
@@ -262,18 +266,19 @@ impl NoDirectInjectedCallsRule {
 
         if let Some(called_func) = func_name {
             // Check if this is a call to an @injected function (local or imported)
-            let is_injected = self.injected_functions.contains(&called_func) 
+            let is_injected = self.injected_functions.contains(&called_func)
                 || self.imported_injected_functions.contains_key(&called_func);
-            
+
             if is_injected {
                 // Check if it's declared as a dependency
                 if !self.current_dependencies.contains(&called_func) {
-                    let source = if let Some(module) = self.imported_injected_functions.get(&called_func) {
-                        format!(" (imported from '{}')", module)
-                    } else {
-                        String::new()
-                    };
-                    
+                    let source =
+                        if let Some(module) = self.imported_injected_functions.get(&called_func) {
+                            format!(" (imported from '{}')", module)
+                        } else {
+                            String::new()
+                        };
+
                     violations.push(Violation {
                         rule_id: "PINJ009".to_string(),
                         message: format!(
@@ -317,15 +322,17 @@ impl NoDirectInjectedCallsRule {
                     if let Some(called_func) = func_name {
                         let is_injected = self.injected_functions.contains(&called_func)
                             || self.imported_injected_functions.contains_key(&called_func);
-                            
+
                         if is_injected && self.in_injected_function {
                             if !self.current_dependencies.contains(&called_func) {
-                                let source = if let Some(module) = self.imported_injected_functions.get(&called_func) {
+                                let source = if let Some(module) =
+                                    self.imported_injected_functions.get(&called_func)
+                                {
                                     format!(" (imported from '{}')", module)
                                 } else {
                                     String::new()
                                 };
-                                
+
                                 violations.push(Violation {
                                     rule_id: "PINJ009".to_string(),
                                     message: format!(
@@ -821,10 +828,12 @@ def process(data):
     fn test_cross_module_injected_call() {
         // Create a temporary directory for test files
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create module_a.py with @injected function
         let module_a_path = temp_dir.path().join("module_a.py");
-        fs::write(&module_a_path, r#"
+        fs::write(
+            &module_a_path,
+            r#"
 from pinjected import injected
 
 @injected
@@ -837,8 +846,10 @@ async def a_async_helper():
 
 def regular_function():
     return "regular result"
-"#).unwrap();
-        
+"#,
+        )
+        .unwrap();
+
         // Create module_b.py that imports and calls functions from module_a
         let module_b_path = temp_dir.path().join("module_b.py");
         let module_b_content = r#"
@@ -868,9 +879,14 @@ def call_regular():
     return regular_function()
 "#;
         fs::write(&module_b_path, module_b_content).unwrap();
-        
+
         // Parse and check module_b
-        let ast = parse(module_b_content, Mode::Module, module_b_path.to_str().unwrap()).unwrap();
+        let ast = parse(
+            module_b_content,
+            Mode::Module,
+            module_b_path.to_str().unwrap(),
+        )
+        .unwrap();
         let rule = NoDirectInjectedCallsRule::new();
         let mut violations = Vec::new();
 
@@ -888,12 +904,20 @@ def call_regular():
             }
             _ => {}
         }
-        
+
         // Should have violations for cross-module calls
-        assert!(violations.len() >= 2, "Should detect cross-module @injected calls");
-        
+        assert!(
+            violations.len() >= 2,
+            "Should detect cross-module @injected calls"
+        );
+
         // Check that violations mention the imported module
-        let has_import_mention = violations.iter().any(|v| v.message.contains("imported from"));
-        assert!(has_import_mention, "Violations should mention the import source");
+        let has_import_mention = violations
+            .iter()
+            .any(|v| v.message.contains("imported from"));
+        assert!(
+            has_import_mention,
+            "Violations should mention the import source"
+        );
     }
 }

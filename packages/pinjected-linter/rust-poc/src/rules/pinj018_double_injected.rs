@@ -105,7 +105,6 @@ impl DoubleInjectedRule {
         if !is_injected_call {
             return;
         }
-        
 
         // Check if the argument is an already @injected function
         if call.args.len() == 1 {
@@ -386,7 +385,6 @@ impl LintRule for DoubleInjectedRule {
         if checker.injected_functions.is_empty() {
             return violations;
         }
-
 
         // Second pass: check only the current statement
         checker.check_stmt(context.stmt, context.file_path, &mut violations);

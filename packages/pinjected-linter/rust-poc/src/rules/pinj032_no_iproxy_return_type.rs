@@ -31,28 +31,31 @@ impl NoIProxyReturnTypeRule {
                 }
             }
             // Handle generic types like IProxy[SomeType]
-            Expr::Subscript(subscript) => {
-                match &*subscript.value {
-                    Expr::Name(name) => name.id.as_str() == "IProxy",
-                    Expr::Attribute(attr) => {
-                        if let Expr::Name(name) = &*attr.value {
-                            name.id.as_str() == "pinjected" && attr.attr.as_str() == "IProxy"
-                        } else {
-                            false
-                        }
+            Expr::Subscript(subscript) => match &*subscript.value {
+                Expr::Name(name) => name.id.as_str() == "IProxy",
+                Expr::Attribute(attr) => {
+                    if let Expr::Name(name) = &*attr.value {
+                        name.id.as_str() == "pinjected" && attr.attr.as_str() == "IProxy"
+                    } else {
+                        false
                     }
-                    _ => false,
                 }
-            }
+                _ => false,
+            },
             _ => false,
         }
     }
 
     /// Check function definition for IProxy return type
-    fn check_function(&self, func: &rustpython_ast::StmtFunctionDef, file_path: &str, violations: &mut Vec<Violation>) {
+    fn check_function(
+        &self,
+        func: &rustpython_ast::StmtFunctionDef,
+        file_path: &str,
+        violations: &mut Vec<Violation>,
+    ) {
         // Check if function has @injected or @instance decorator
         let has_special_decorator = has_injected_decorator(func) || has_instance_decorator(func);
-        
+
         if !has_special_decorator {
             return;
         }
@@ -79,10 +82,16 @@ impl NoIProxyReturnTypeRule {
     }
 
     /// Check async function definition for IProxy return type
-    fn check_async_function(&self, func: &rustpython_ast::StmtAsyncFunctionDef, file_path: &str, violations: &mut Vec<Violation>) {
+    fn check_async_function(
+        &self,
+        func: &rustpython_ast::StmtAsyncFunctionDef,
+        file_path: &str,
+        violations: &mut Vec<Violation>,
+    ) {
         // Check if function has @injected or @instance decorator
-        let has_special_decorator = has_injected_decorator_async(func) || has_instance_decorator_async(func);
-        
+        let has_special_decorator =
+            has_injected_decorator_async(func) || has_instance_decorator_async(func);
+
         if !has_special_decorator {
             return;
         }
