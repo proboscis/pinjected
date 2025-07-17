@@ -118,11 +118,6 @@ fn analyze_file(
         rules.iter().collect()
     };
     
-    // Debug: Print active rules
-    if std::env::var("DEBUG_RULES").is_ok() {
-        eprintln!("DEBUG: Active rules for {}: {:?}", path.display(), 
-            active_rules.iter().map(|r| r.rule_id()).collect::<Vec<_>>());
-    }
 
     if active_rules.is_empty() {
         return Ok(violations);
@@ -295,6 +290,7 @@ pub fn lint_path(path: &Path, options: LinterOptions) -> Result<LintResult> {
     } else {
         all_rules
     };
+    
 
     // Create cache if requested
     let cache = if options.cache {

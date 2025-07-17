@@ -14,6 +14,42 @@ from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.keys import IBindKey, StrBindKey
 
 
+def parse_pinjected_env_vars() -> dict[str, Any]:
+    """Parse all PINJECTED_* environment variables into a kwargs dict."""
+    import os
+
+    env_kwargs = {}
+
+    for env_name, env_value in os.environ.items():
+        if env_name.startswith("PINJECTED_"):
+            # Remove PINJECTED_ prefix and convert to lowercase
+            key_name = env_name[10:].lower()  # Skip 'PINJECTED_'
+
+            if not key_name:
+                logger.warning(f"Skipping empty key from env var: {env_name}")
+                continue
+
+            env_kwargs[key_name] = env_value
+            logger.debug(f"Parsed env var {env_name} -> {key_name}={env_value!r}")
+
+    return env_kwargs
+
+
+def parse_kwargs_as_design_for_env(**kwargs):
+    """Parse kwargs into a design, handling {module.var} import syntax."""
+    from pinjected.module_var_path import load_variable_by_module_path
+
+    res = design()
+    for k, v in kwargs.items():
+        if isinstance(v, str) and v.startswith("{") and v.endswith("}"):
+            v = v[1:-1]
+            loaded = load_variable_by_module_path(v)
+            res += design(**{k: loaded})
+        else:
+            res += design(**{k: v})
+    return res
+
+
 @dataclass
 class IdeaRunConfiguration:
     name: str
@@ -208,6 +244,16 @@ class MetaContext:
 
         for k, v in key_to_path.items():
             logger.debug(f"Override Key {k} from {v}")
+
+        # Load and apply environment variables
+        env_kwargs = parse_pinjected_env_vars()
+        if env_kwargs:
+            env_design = parse_kwargs_as_design_for_env(**env_kwargs)
+            acc += env_design
+            # Track env var sources in key_to_path
+            for key_name in env_kwargs:
+                key_to_path[StrBindKey(key_name)] = f"env:PINJECTED_{key_name.upper()}"
+            logger.info(f"Applied {len(env_kwargs)} PINJECTED_* environment variables")
 
         spec = await SpecTrace.a_gather_from_path(file_path)
 
