@@ -7,6 +7,9 @@ use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::has_injected_decorator;
 use rustpython_ast::{Arg, ArgWithDefault, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
+use rustpython_parser::{parse, Mode};
+use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -111,7 +114,7 @@ impl MissingStubFileRule {
         }
     }
 
-    /// Generate function signature for stub file
+    /// Generate function signature for stub file (only runtime args after /)
     fn generate_function_signature(&self, func: &StmtFunctionDef) -> String {
         let mut sig = String::new();
 
@@ -125,38 +128,70 @@ impl MissingStubFileRule {
         sig.push('(');
 
         let args = &func.args;
-        let mut all_args = Vec::new();
+        let mut runtime_args = Vec::new();
 
-        // Position-only args
-        for arg in &args.posonlyargs {
-            all_args.push(self.format_arg_with_default(arg));
+        // Find if there are position-only args (which end with /)
+        let has_posonly = !args.posonlyargs.is_empty();
+        
+        // For @injected functions, we only want args after the /
+        // Position-only args are the injected dependencies
+        // Regular args after the / are runtime arguments
+        
+        if has_posonly {
+            // Skip position-only args (they are injected dependencies)
+            // But include regular args (they are runtime args after /)
+            
+            // Regular args (these come after the /)
+            for arg in &args.args {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // *args
+            if let Some(vararg) = &args.vararg {
+                runtime_args.push(format!("*{}", self.format_arg(vararg)));
+            } else if !args.kwonlyargs.is_empty() && args.args.is_empty() {
+                // If no *args but we have keyword-only args, add *
+                runtime_args.push("*".to_string());
+            }
+
+            // Keyword-only args
+            for arg in &args.kwonlyargs {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // **kwargs
+            if let Some(kwarg) = &args.kwarg {
+                runtime_args.push(format!("**{}", self.format_arg(kwarg)));
+            }
+        } else {
+            // No position-only separator, include all args
+            // This is for functions without explicit / separator
+            
+            // Regular args
+            for arg in &args.args {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // *args
+            if let Some(vararg) = &args.vararg {
+                runtime_args.push(format!("*{}", self.format_arg(vararg)));
+            } else if !args.kwonlyargs.is_empty() && args.args.is_empty() {
+                // If no *args but we have keyword-only args, add *
+                runtime_args.push("*".to_string());
+            }
+
+            // Keyword-only args
+            for arg in &args.kwonlyargs {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // **kwargs
+            if let Some(kwarg) = &args.kwarg {
+                runtime_args.push(format!("**{}", self.format_arg(kwarg)));
+            }
         }
 
-        if !args.posonlyargs.is_empty() {
-            all_args.push("/".to_string());
-        }
-
-        // Regular args
-        for arg in &args.args {
-            all_args.push(self.format_arg_with_default(arg));
-        }
-
-        // *args
-        if let Some(vararg) = &args.vararg {
-            all_args.push(format!("*{}", self.format_arg(vararg)));
-        }
-
-        // Keyword-only args
-        for arg in &args.kwonlyargs {
-            all_args.push(self.format_arg_with_default(arg));
-        }
-
-        // **kwargs
-        if let Some(kwarg) = &args.kwarg {
-            all_args.push(format!("**{}", self.format_arg(kwarg)));
-        }
-
-        sig.push_str(&all_args.join(", "));
+        sig.push_str(&runtime_args.join(", "));
         sig.push(')');
 
         // Return type
@@ -169,7 +204,7 @@ impl MissingStubFileRule {
         sig
     }
 
-    /// Generate async function signature for stub file
+    /// Generate async function signature for stub file (only runtime args after /)
     fn generate_async_function_signature(&self, func: &StmtAsyncFunctionDef) -> String {
         let mut sig = String::new();
 
@@ -178,38 +213,70 @@ impl MissingStubFileRule {
         sig.push('(');
 
         let args = &func.args;
-        let mut all_args = Vec::new();
+        let mut runtime_args = Vec::new();
 
-        // Position-only args
-        for arg in &args.posonlyargs {
-            all_args.push(self.format_arg_with_default(arg));
+        // Find if there are position-only args (which end with /)
+        let has_posonly = !args.posonlyargs.is_empty();
+        
+        // For @injected functions, we only want args after the /
+        // Position-only args are the injected dependencies
+        // Regular args after the / are runtime arguments
+        
+        if has_posonly {
+            // Skip position-only args (they are injected dependencies)
+            // But include regular args (they are runtime args after /)
+            
+            // Regular args (these come after the /)
+            for arg in &args.args {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // *args
+            if let Some(vararg) = &args.vararg {
+                runtime_args.push(format!("*{}", self.format_arg(vararg)));
+            } else if !args.kwonlyargs.is_empty() && args.args.is_empty() {
+                // If no *args but we have keyword-only args, add *
+                runtime_args.push("*".to_string());
+            }
+
+            // Keyword-only args
+            for arg in &args.kwonlyargs {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // **kwargs
+            if let Some(kwarg) = &args.kwarg {
+                runtime_args.push(format!("**{}", self.format_arg(kwarg)));
+            }
+        } else {
+            // No position-only separator, include all args
+            // This is for functions without explicit / separator
+            
+            // Regular args
+            for arg in &args.args {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // *args
+            if let Some(vararg) = &args.vararg {
+                runtime_args.push(format!("*{}", self.format_arg(vararg)));
+            } else if !args.kwonlyargs.is_empty() && args.args.is_empty() {
+                // If no *args but we have keyword-only args, add *
+                runtime_args.push("*".to_string());
+            }
+
+            // Keyword-only args
+            for arg in &args.kwonlyargs {
+                runtime_args.push(self.format_arg_with_default(arg));
+            }
+
+            // **kwargs
+            if let Some(kwarg) = &args.kwarg {
+                runtime_args.push(format!("**{}", self.format_arg(kwarg)));
+            }
         }
 
-        if !args.posonlyargs.is_empty() {
-            all_args.push("/".to_string());
-        }
-
-        // Regular args
-        for arg in &args.args {
-            all_args.push(self.format_arg_with_default(arg));
-        }
-
-        // *args
-        if let Some(vararg) = &args.vararg {
-            all_args.push(format!("*{}", self.format_arg(vararg)));
-        }
-
-        // Keyword-only args
-        for arg in &args.kwonlyargs {
-            all_args.push(self.format_arg_with_default(arg));
-        }
-
-        // **kwargs
-        if let Some(kwarg) = &args.kwarg {
-            all_args.push(format!("**{}", self.format_arg(kwarg)));
-        }
-
-        sig.push_str(&all_args.join(", "));
+        sig.push_str(&runtime_args.join(", "));
         sig.push(')');
 
         // Return type
@@ -354,19 +421,167 @@ impl MissingStubFileRule {
         let mut content = String::new();
 
         // Add imports
-        content.push_str("from typing import Any\n");
-        content.push_str("from pinjected import injected, IProxy\n");
+        content.push_str("from typing import overload\n");
+        
+        // Note: Additional imports for return types would need to be added based on the actual types used
+        // For now, we'll add a comment about this
+        content.push_str("# Add imports for return types and parameter types as needed\n");
         content.push_str("\n");
 
-        // Add function signatures
+        // Add function signatures with @overload
         for func in functions {
-            content.push_str("@injected\n");
+            content.push_str("@overload\n");
             content.push_str(&func.signature);
             content.push('\n');
-            content.push('\n');
+            if !functions.iter().position(|f| f.name == func.name).unwrap() == functions.len() - 1 {
+                content.push('\n');
+            }
         }
 
         content
+    }
+
+    /// Extract function signatures from a stub file
+    fn extract_stub_signatures(&self, stub_path: &Path) -> Result<HashMap<String, String>, String> {
+        let content = fs::read_to_string(stub_path)
+            .map_err(|e| format!("Failed to read stub file: {}", e))?;
+        
+        let ast = parse(&content, Mode::Module, stub_path.to_str().unwrap())
+            .map_err(|e| format!("Failed to parse stub file: {}", e))?;
+        
+        let mut signatures = HashMap::new();
+        
+        match &ast {
+            Mod::Module(module) => {
+                for stmt in &module.body {
+                    self.extract_function_signatures(stmt, &mut signatures);
+                }
+            }
+            _ => {}
+        }
+        
+        Ok(signatures)
+    }
+    
+    /// Extract function signatures from statements (handles nested functions)
+    fn extract_function_signatures(&self, stmt: &Stmt, signatures: &mut HashMap<String, String>) {
+        match stmt {
+            Stmt::FunctionDef(func) => {
+                // Check if it has @overload decorator
+                let has_overload = func.decorator_list.iter().any(|dec| {
+                    if let Expr::Name(name) = dec {
+                        name.id.as_str() == "overload"
+                    } else {
+                        false
+                    }
+                });
+                
+                if has_overload {
+                    signatures.insert(func.name.to_string(), self.format_stub_signature(func));
+                }
+                
+                // Check nested functions
+                for stmt in &func.body {
+                    self.extract_function_signatures(stmt, signatures);
+                }
+            }
+            Stmt::AsyncFunctionDef(func) => {
+                // Check if it has @overload decorator
+                let has_overload = func.decorator_list.iter().any(|dec| {
+                    if let Expr::Name(name) = dec {
+                        name.id.as_str() == "overload"
+                    } else {
+                        false
+                    }
+                });
+                
+                if has_overload {
+                    signatures.insert(func.name.to_string(), self.format_async_stub_signature(func));
+                }
+                
+                // Check nested functions
+                for stmt in &func.body {
+                    self.extract_function_signatures(stmt, signatures);
+                }
+            }
+            Stmt::ClassDef(class) => {
+                // Check methods in classes
+                for stmt in &class.body {
+                    self.extract_function_signatures(stmt, signatures);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    /// Format a function signature from stub file for comparison
+    fn format_stub_signature(&self, func: &StmtFunctionDef) -> String {
+        let sig = self.generate_function_signature(func);
+        // Remove trailing ": ..." for comparison
+        sig.trim_end_matches(": ...").to_string()
+    }
+    
+    /// Format an async function signature from stub file for comparison
+    fn format_async_stub_signature(&self, func: &StmtAsyncFunctionDef) -> String {
+        let sig = self.generate_async_function_signature(func);
+        // Remove trailing ": ..." for comparison
+        sig.trim_end_matches(": ...").to_string()
+    }
+    
+    /// Validate stub file signatures against expected signatures
+    fn validate_stub_signatures(
+        &self, 
+        stub_path: &Path, 
+        expected_functions: &[InjectedFunctionInfo]
+    ) -> Vec<String> {
+        let mut errors = Vec::new();
+        
+        // Try to parse the stub file
+        let actual_signatures = match self.extract_stub_signatures(stub_path) {
+            Ok(sigs) => sigs,
+            Err(e) => {
+                errors.push(format!("Failed to parse stub file: {}", e));
+                return errors;
+            }
+        };
+        
+        // Check each expected function
+        for expected in expected_functions {
+            let expected_sig = expected.signature.trim_end_matches(": ...").to_string();
+            
+            match actual_signatures.get(&expected.name) {
+                Some(actual_sig) => {
+                    if actual_sig.trim() != expected_sig.trim() {
+                        errors.push(format!(
+                            "Function '{}' has incorrect signature in stub file.\nExpected: {}\nActual: {}",
+                            expected.name,
+                            expected_sig,
+                            actual_sig
+                        ));
+                    }
+                }
+                None => {
+                    errors.push(format!(
+                        "Function '{}' is missing from stub file.\nExpected: {}",
+                        expected.name,
+                        expected_sig
+                    ));
+                }
+            }
+        }
+        
+        // Check for extra functions in stub file that shouldn't be there
+        for (name, sig) in &actual_signatures {
+            if !expected_functions.iter().any(|f| &f.name == name) {
+                errors.push(format!(
+                    "Unexpected function '{}' in stub file with signature: {}",
+                    name,
+                    sig
+                ));
+            }
+        }
+        
+        errors
     }
 }
 
@@ -428,14 +643,34 @@ impl LintRule for MissingStubFileRule {
             return violations;
         }
 
+        // Collect expected functions first (we'll need them either way)
+        let injected_functions = self.collect_injected_functions(context.ast);
+        
         // Look for stub file
-        if self.find_stub_file(context.file_path).is_some() {
-            // Stub file exists, no violation
+        if let Some(stub_path) = self.find_stub_file(context.file_path) {
+            // Stub file exists - validate its contents
+            let validation_errors = self.validate_stub_signatures(&stub_path, &injected_functions);
+            
+            if !validation_errors.is_empty() {
+                let message = format!(
+                    "Stub file {} has incorrect signatures:\n\n{}",
+                    stub_path.display(),
+                    validation_errors.join("\n\n")
+                );
+                
+                violations.push(Violation {
+                    rule_id: self.rule_id().to_string(),
+                    message,
+                    offset: 0, // Report at start of file
+                    file_path: context.file_path.to_string(),
+                    severity: Severity::Warning,
+                });
+            }
+            
             return violations;
         }
 
-        // No stub file found - collect functions and create violation with expected content
-        let injected_functions = self.collect_injected_functions(context.ast);
+        // No stub file found - create violation with expected content
         let stub_file_path = Path::new(context.file_path).with_extension("pyi");
         let stub_content = self.generate_stub_content(&injected_functions);
 
