@@ -230,7 +230,7 @@ exclude = [
 enable = ["ALL"]
 
 # Optionally disable specific rules
-disable = ["PINJ001", "PINJ005","PINJ015"]  # Instance and injected function naming rules excluded
+disable = ["PINJ001", "PINJ005", "PINJ015"]  # Instance and injected function naming rules excluded
 
 # Exclude paths from linting
 exclude = [
@@ -253,7 +253,7 @@ check_docstrings = true
 # Configure specific rules
 [tool.pinjected-linter.rules.PINJ014]
 # Minimum number of @injected functions to require stub file
-min_injected_functions = 3
+min_injected_functions = 1
 # Additional paths to search for stub files
 stub_search_paths = ["stubs", "typings", "types"]
 # Patterns to ignore
