@@ -3,6 +3,7 @@
 //! Modules with @injected functions should have corresponding .pyi stub files
 //! for better IDE support and type checking.
 
+use crate::config::{find_config_pyproject_toml, load_config};
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::has_injected_decorator;
@@ -31,6 +32,19 @@ impl MissingStubFileRule {
             min_injected_functions: 1,
             stub_search_paths: vec!["stubs".to_string(), "typings".to_string()],
             ignore_patterns: vec!["**/tests/**".to_string(), "**/migrations/**".to_string()],
+        }
+    }
+    
+    pub fn with_config(config: Option<&crate::config::RuleConfig>) -> Self {
+        match config {
+            Some(cfg) => Self {
+                min_injected_functions: cfg.min_injected_functions.unwrap_or(1),
+                stub_search_paths: cfg.stub_search_paths.clone()
+                    .unwrap_or_else(|| vec!["stubs".to_string(), "typings".to_string()]),
+                ignore_patterns: cfg.ignore_patterns.clone()
+                    .unwrap_or_else(|| vec!["**/tests/**".to_string(), "**/migrations/**".to_string()]),
+            },
+            None => Self::new(),
         }
     }
 
@@ -367,11 +381,35 @@ impl MissingStubFileRule {
     fn should_ignore(&self, file_path: &str) -> bool {
         // Check ignore patterns
         for pattern in &self.ignore_patterns {
-            if pattern == "**/tests/**" && file_path.contains("/tests/") {
-                return true;
+            // Handle directory patterns like "**/test/**" or "**/tests/**"
+            if pattern.starts_with("**/") && pattern.ends_with("/**") {
+                let dir_name = &pattern[3..pattern.len()-3];
+                if file_path.contains(&format!("/{}/", dir_name)) {
+                    return true;
+                }
             }
-            if pattern == "**/migrations/**" && file_path.contains("/migrations/") {
-                return true;
+            
+            // Handle file patterns like "**/test_*.py"
+            if pattern.starts_with("**/") && pattern.contains("*") {
+                if let Some(file_name) = Path::new(file_path).file_name() {
+                    let file_name_str = file_name.to_str().unwrap_or("");
+                    
+                    // Extract the pattern after "**/""
+                    let file_pattern = &pattern[3..];
+                    
+                    // Simple glob matching for patterns like "test_*.py"
+                    if file_pattern.starts_with("test_") && file_pattern.ends_with(".py") {
+                        if file_name_str.starts_with("test_") && file_name_str.ends_with(".py") {
+                            return true;
+                        }
+                    }
+                    // Handle "*_test.py" pattern
+                    else if file_pattern.starts_with("*_test.py") {
+                        if file_name_str.ends_with("_test.py") {
+                            return true;
+                        }
+                    }
+                }
             }
         }
 
@@ -625,8 +663,22 @@ impl LintRule for MissingStubFileRule {
             }
         }
 
+        // Load configuration for this file
+        let config_path = Path::new(context.file_path);
+        let config = if let Some(pyproject_path) = find_config_pyproject_toml(config_path.parent().unwrap_or(Path::new("."))) {
+            load_config(Some(&pyproject_path))
+        } else {
+            None
+        };
+        
+        let rule_config = config.as_ref()
+            .and_then(|c| c.rules.get("PINJ014"));
+        
+        // Create a properly configured rule instance
+        let configured_rule = Self::with_config(rule_config);
+
         // Count @injected functions
-        let injected_count = self.count_injected_functions(context.ast);
+        let injected_count = configured_rule.count_injected_functions(context.ast);
 
         // No @injected functions, no violation
         if injected_count == 0 {
@@ -634,22 +686,22 @@ impl LintRule for MissingStubFileRule {
         }
 
         // Check minimum threshold
-        if injected_count < self.min_injected_functions {
+        if injected_count < configured_rule.min_injected_functions {
             return violations;
         }
 
         // Check if file should be ignored
-        if self.should_ignore(context.file_path) {
+        if configured_rule.should_ignore(context.file_path) {
             return violations;
         }
 
         // Collect expected functions first (we'll need them either way)
-        let injected_functions = self.collect_injected_functions(context.ast);
+        let injected_functions = configured_rule.collect_injected_functions(context.ast);
         
         // Look for stub file
-        if let Some(stub_path) = self.find_stub_file(context.file_path) {
+        if let Some(stub_path) = configured_rule.find_stub_file(context.file_path) {
             // Stub file exists - validate its contents
-            let validation_errors = self.validate_stub_signatures(&stub_path, &injected_functions);
+            let validation_errors = configured_rule.validate_stub_signatures(&stub_path, &injected_functions);
             
             if !validation_errors.is_empty() {
                 let message = format!(
@@ -672,7 +724,7 @@ impl LintRule for MissingStubFileRule {
 
         // No stub file found - create violation with expected content
         let stub_file_path = Path::new(context.file_path).with_extension("pyi");
-        let stub_content = self.generate_stub_content(&injected_functions);
+        let stub_content = configured_rule.generate_stub_content(&injected_functions);
 
         let message = format!(
             "Module contains {} @injected function(s) but no .pyi stub file found.\n\nExpected stub file: {}\n\nExpected content:\n{}",

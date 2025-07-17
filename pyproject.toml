@@ -230,7 +230,7 @@ exclude = [
 enable = ["ALL"]
 
 # Optionally disable specific rules
-disable = ["PINJ001", "PINJ005","PINJ015", "PINJ014", "PINJ016"]  # Instance and injected function naming rules excluded
+disable = ["PINJ001", "PINJ005","PINJ015"]  # Instance and injected function naming rules excluded
 
 # Exclude paths from linting
 exclude = [
