@@ -9,7 +9,7 @@ use std::time::Instant;
 use pinjected_linter::config::{find_config_pyproject_toml, load_config, merge_config};
 use pinjected_linter::location::LineIndex;
 use pinjected_linter::{find_python_files, lint_path, LinterOptions};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod rule_docs;
 
@@ -680,26 +680,40 @@ fn main() -> Result<()> {
     }
 
     // Apply fixes if requested
-    if args.auto_fix {
+    let fix_result = if args.auto_fix {
+        eprintln!("\n🔧 Auto-fix mode enabled...");
         match apply_fixes(&all_violations) {
-            Ok(fixes_applied) => {
-                if fixes_applied > 0 {
-                    eprintln!("\nApplied {} fix(es) successfully.", fixes_applied);
+            Ok(result) => {
+                if result.fixes_applied > 0 {
+                    eprintln!("\n✅ Applied {} fix(es) successfully:", result.fixes_applied);
+                    for (rule_id, count) in &result.fixes_by_rule {
+                        eprintln!("   - {}: {} fix(es)", rule_id, count);
+                    }
+                    if result.total_fixable > result.fixes_applied {
+                        eprintln!("\n⚠️  {} auto-fixable issue(s) remain (may require manual intervention)", 
+                                  result.total_fixable - result.fixes_applied);
+                    }
+                } else if result.total_fixable > 0 {
+                    eprintln!("\n⚠️  Found {} auto-fixable issue(s) but none could be applied", result.total_fixable);
                 } else {
-                    eprintln!("\nNo fixes available to apply.");
+                    eprintln!("\nℹ️  No auto-fixable issues found");
                 }
+                Some(result)
             }
             Err(e) => {
-                eprintln!("\nError applying fixes: {}", e);
+                eprintln!("\n❌ Error applying fixes: {}", e);
                 had_file_errors = true;
+                None
             }
         }
-    }
+    } else {
+        None
+    };
 
     // Report results based on output format
     match args.output_format {
         OutputFormat::Terminal => {
-            report_terminal(&all_violations, show_source, use_color)?;
+            report_terminal(&all_violations, show_source, use_color, fix_result.as_ref())?;
         }
         OutputFormat::Json => {
             report_json(&all_violations)?;
@@ -717,6 +731,7 @@ fn main() -> Result<()> {
         elapsed.as_secs_f64(),
         use_color,
         filter_applied,
+        fix_result.as_ref(),
     );
 
     // Determine exit code based on what happened
@@ -759,17 +774,29 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn apply_fixes(violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::Violation>)]) -> Result<usize> {
+struct FixResult {
+    total_fixable: usize,
+    fixes_applied: usize,
+    fixes_by_rule: HashMap<String, usize>,
+}
+
+fn apply_fixes(violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::Violation>)]) -> Result<FixResult> {
     use std::collections::HashMap;
     
     let mut fixes_applied = 0;
-    let mut fixes_by_file: HashMap<PathBuf, Vec<pinjected_linter::models::Fix>> = HashMap::new();
+    let mut total_fixable = 0;
+    let mut fixes_by_rule: HashMap<String, usize> = HashMap::new();
+    let mut fixes_by_file: HashMap<PathBuf, Vec<(String, pinjected_linter::models::Fix)>> = HashMap::new();
     
     // Collect all fixes grouped by file
     for (_, file_violations) in violations {
         for violation in file_violations {
             if let Some(fix) = &violation.fix {
-                fixes_by_file.entry(fix.file_path.clone()).or_insert_with(Vec::new).push(fix.clone());
+                total_fixable += 1;
+                fixes_by_file
+                    .entry(fix.file_path.clone())
+                    .or_insert_with(Vec::new)
+                    .push((violation.rule_id.clone(), fix.clone()));
             }
         }
     }
@@ -778,8 +805,8 @@ fn apply_fixes(violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::
     for (file_path, fixes) in fixes_by_file {
         // For now, we'll apply the first fix for each file
         // In the future, we might need more sophisticated logic for multiple fixes
-        if let Some(fix) = fixes.first() {
-            eprintln!("Applying fix to {}: {}", file_path.display(), fix.description);
+        if let Some((rule_id, fix)) = fixes.first() {
+            eprintln!("  \x1b[32m✓\x1b[0m Applying fix to {}: {}", file_path.display(), fix.description);
             
             // Create parent directories if they don't exist
             if let Some(parent) = file_path.parent() {
@@ -789,10 +816,15 @@ fn apply_fixes(violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::
             // Write the fix content
             fs::write(&file_path, &fix.content)?;
             fixes_applied += 1;
+            *fixes_by_rule.entry(rule_id.clone()).or_insert(0) += 1;
         }
     }
     
-    Ok(fixes_applied)
+    Ok(FixResult {
+        total_fixable,
+        fixes_applied,
+        fixes_by_rule,
+    })
 }
 
 fn show_statistics(
@@ -801,19 +833,22 @@ fn show_statistics(
     elapsed_secs: f64,
     use_color: bool,
     filter_applied: bool,
+    fix_result: Option<&FixResult>,
 ) {
     use pinjected_linter::models::Severity;
 
     // Calculate total violations
     let total_violations: usize = violations.iter().map(|(_, v)| v.len()).sum();
 
-    // Count by severity
+    // Count by severity and auto-fixable status
     let mut errors = 0;
     let mut warnings = 0;
     let mut infos = 0;
+    let mut auto_fixable_count = 0;
 
     // Count by rule
     let mut rule_counts: HashMap<String, usize> = HashMap::new();
+    let mut fixable_rules: HashSet<String> = HashSet::new();
 
     for (_, file_violations) in violations {
         for violation in file_violations {
@@ -821,6 +856,11 @@ fn show_statistics(
                 Severity::Error => errors += 1,
                 Severity::Warning => warnings += 1,
                 Severity::Info => infos += 1,
+            }
+
+            if violation.fix.is_some() {
+                auto_fixable_count += 1;
+                fixable_rules.insert(violation.rule_id.clone());
             }
 
             *rule_counts.entry(violation.rule_id.clone()).or_insert(0) += 1;
@@ -855,6 +895,16 @@ fn show_statistics(
             eprintln!("  Info: {}", infos);
         }
 
+        // Show auto-fixable information if not in auto-fix mode
+        if fix_result.is_none() && auto_fixable_count > 0 {
+            eprintln!("\nAuto-fixable violations: {}", auto_fixable_count);
+            if use_color {
+                eprintln!("  \x1b[36mRun with --auto-fix to apply available fixes\x1b[0m");
+            } else {
+                eprintln!("  Run with --auto-fix to apply available fixes");
+            }
+        }
+
         // Show violations by rule (top 10)
         if !rule_counts.is_empty() {
             eprintln!("\nViolations by rule:");
@@ -862,7 +912,16 @@ fn show_statistics(
             sorted_rules.sort_by(|a, b| b.1.cmp(a.1));
 
             for (rule, count) in sorted_rules.iter().take(10) {
-                eprintln!("  {}: {}", rule, count);
+                let fixable_indicator = if fixable_rules.contains(*rule) {
+                    if use_color {
+                        " \x1b[36m[Auto-fixable]\x1b[0m"
+                    } else {
+                        " [Auto-fixable]"
+                    }
+                } else {
+                    ""
+                };
+                eprintln!("  {}: {}{}", rule, count, fixable_indicator);
             }
 
             if sorted_rules.len() > 10 {
@@ -888,6 +947,7 @@ fn report_terminal(
     violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::Violation>)],
     show_source: bool,
     use_color: bool,
+    fix_result: Option<&FixResult>,
 ) -> Result<()> {
     use pinjected_linter::models::Severity;
 
@@ -975,12 +1035,32 @@ fn report_terminal(
                         Severity::Info => print!("\x1b[34m{}\x1b[0m", violation.rule_id),
                     }
 
+                    // Check if this violation was fixed or is fixable
+                    if let Some(result) = fix_result {
+                        if violation.fix.is_some() && result.fixes_by_rule.contains_key(&violation.rule_id) {
+                            print!(" \x1b[32m[FIXED]\x1b[0m");
+                        }
+                    } else if violation.fix.is_some() {
+                        print!(" \x1b[36m[Auto-fixable]\x1b[0m");
+                    }
+
                     println!(": {}", violation.message);
                 } else {
-                    println!(
+                    let mut line_str = format!(
                         "  {}:{}: {}: {}",
                         line, column, violation.rule_id, violation.message
                     );
+                    
+                    // Check if this violation was fixed or is fixable
+                    if let Some(result) = fix_result {
+                        if violation.fix.is_some() && result.fixes_by_rule.contains_key(&violation.rule_id) {
+                            line_str.push_str(" [FIXED]");
+                        }
+                    } else if violation.fix.is_some() {
+                        line_str.push_str(" [Auto-fixable]");
+                    }
+                    
+                    println!("{}", line_str);
                 }
 
                 // Show source if requested (indented more)
