@@ -185,6 +185,12 @@ struct Args {
     /// Example: pinjected-lint --modified --no-untracked
     #[arg(long = "no-untracked", requires = "modified")]
     no_untracked: bool,
+
+    /// Automatically apply fixes for fixable violations
+    ///
+    /// Example: pinjected-lint --auto-fix
+    #[arg(long = "auto-fix")]
+    auto_fix: bool,
 }
 
 fn show_configuration_docs() {
@@ -245,7 +251,7 @@ Available Rules:
 - PINJ011: IProxy annotations (not for injected dependencies)
 - PINJ012: Dependency cycles detection
 - PINJ013: Builtin shadowing (avoid shadowing builtins)
-- PINJ014: Missing stub file (.pyi for @injected functions)
+- PINJ014: Missing stub file (.pyi for @injected functions) [Auto-fixable]
 - PINJ015: Missing slash (require / in @injected functions)
 - PINJ016: Missing protocol (require protocol parameter in @injected)
 - PINJ017: Missing type annotations (require type annotations for dependencies)
@@ -673,6 +679,23 @@ fn main() -> Result<()> {
         }
     }
 
+    // Apply fixes if requested
+    if args.auto_fix {
+        match apply_fixes(&all_violations) {
+            Ok(fixes_applied) => {
+                if fixes_applied > 0 {
+                    eprintln!("\nApplied {} fix(es) successfully.", fixes_applied);
+                } else {
+                    eprintln!("\nNo fixes available to apply.");
+                }
+            }
+            Err(e) => {
+                eprintln!("\nError applying fixes: {}", e);
+                had_file_errors = true;
+            }
+        }
+    }
+
     // Report results based on output format
     match args.output_format {
         OutputFormat::Terminal => {
@@ -734,6 +757,42 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn apply_fixes(violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::Violation>)]) -> Result<usize> {
+    use std::collections::HashMap;
+    
+    let mut fixes_applied = 0;
+    let mut fixes_by_file: HashMap<PathBuf, Vec<pinjected_linter::models::Fix>> = HashMap::new();
+    
+    // Collect all fixes grouped by file
+    for (_, file_violations) in violations {
+        for violation in file_violations {
+            if let Some(fix) = &violation.fix {
+                fixes_by_file.entry(fix.file_path.clone()).or_insert_with(Vec::new).push(fix.clone());
+            }
+        }
+    }
+    
+    // Apply fixes to each file
+    for (file_path, fixes) in fixes_by_file {
+        // For now, we'll apply the first fix for each file
+        // In the future, we might need more sophisticated logic for multiple fixes
+        if let Some(fix) = fixes.first() {
+            eprintln!("Applying fix to {}: {}", file_path.display(), fix.description);
+            
+            // Create parent directories if they don't exist
+            if let Some(parent) = file_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            
+            // Write the fix content
+            fs::write(&file_path, &fix.content)?;
+            fixes_applied += 1;
+        }
+    }
+    
+    Ok(fixes_applied)
 }
 
 fn show_statistics(
