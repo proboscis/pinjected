@@ -56,11 +56,14 @@ impl InjectedPytestDeprecatedRule {
     fn create_migration_message(&self, func_name: &str) -> String {
         format!(
             "The @injected_pytest decorator is deprecated and will be removed in a future version.\n\n\
-            Migration steps:\n\
-            1. Create a test design with your dependencies\n\
-            2. Use register_fixtures_from_design() to register fixtures\n\
-            3. Remove the @injected_pytest decorator from '{}'\n\
-            4. Add @pytest.mark.asyncio if the test is async\n\n\
+            Quick migration:\n\
+            1. Import: from pinjected.test import register_fixtures_from_design\n\
+            2. Create design: test_design = design(service=service_func, database=database_func)\n\
+            3. Register: register_fixtures_from_design(test_design)\n\
+            4. Remove @injected_pytest from '{}' and use fixtures directly\n\n\
+            Example:\n\
+            # Before: @injected_pytest\\ndef test_something(service): ...\n\
+            # After: def test_something(service): ...  # service available as pytest fixture\n\n\
             For detailed migration guide run: pinjected-linter --show-rule-doc PINJ040",
             func_name
         )
@@ -158,6 +161,8 @@ def test_user_creation(user_service, database):
         assert!(violations[0].message.contains("deprecated"));
         assert!(violations[0].message.contains("register_fixtures_from_design"));
         assert!(violations[0].message.contains("test_user_creation"));
+        assert!(violations[0].message.contains("Quick migration:"));
+        assert!(violations[0].message.contains("Example:"));
         assert_eq!(violations[0].severity, Severity::Warning);
     }
 
@@ -175,7 +180,7 @@ async def test_async_operation(user_service):
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ040");
         assert!(violations[0].message.contains("deprecated"));
-        assert!(violations[0].message.contains("@pytest.mark.asyncio"));
+        assert!(violations[0].message.contains("Remove @injected_pytest"));
         assert!(violations[0].message.contains("test_async_operation"));
     }
 
