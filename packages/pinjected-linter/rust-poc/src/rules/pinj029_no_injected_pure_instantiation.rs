@@ -95,6 +95,7 @@ impl NoInjectedPureInstantiationRule {
                 offset: call.range.start().to_usize(),
                 file_path: String::new(),
                 severity: Severity::Warning,
+                fix: None,
             })
         } else {
             None

@@ -41,6 +41,7 @@ impl LintRule for InstanceNamingRule {
                         offset: func.range.start().to_usize(),
                         file_path: context.file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
@@ -55,6 +56,7 @@ impl LintRule for InstanceNamingRule {
                         offset: func.range.start().to_usize(),
                         file_path: context.file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }

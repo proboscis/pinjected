@@ -76,6 +76,7 @@ impl NoIProxyReturnTypeRule {
                     offset: func.range.start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Error,
+                    fix: None,
                 });
             }
         }
@@ -112,6 +113,7 @@ impl NoIProxyReturnTypeRule {
                     offset: func.range.start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Error,
+                    fix: None,
                 });
             }
         }

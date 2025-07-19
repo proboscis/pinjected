@@ -106,7 +106,7 @@ impl MissingDependencyTypeAnnotationRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Warning,
-            });
+                            fix: None,});
         }
 
         violations
@@ -157,7 +157,7 @@ impl MissingDependencyTypeAnnotationRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Warning,
-            });
+                            fix: None,});
         }
 
         violations

@@ -4,7 +4,7 @@
 //! for better IDE support and type checking.
 
 use crate::config::{find_config_pyproject_toml, load_config};
-use crate::models::{RuleContext, Severity, Violation};
+use crate::models::{Fix, RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::has_injected_decorator;
 use rustpython_ast::{Arg, ArgWithDefault, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
@@ -715,13 +715,22 @@ impl LintRule for MissingStubFileRule {
                     validation_errors.join("\n\n")
                 );
                 
-                violations.push(Violation {
-                    rule_id: self.rule_id().to_string(),
+                // Generate fix content for validation errors
+                let stub_content = configured_rule.generate_stub_content(&injected_functions);
+                let fix = Fix {
+                    description: "Update stub file with correct signatures".to_string(),
+                    file_path: stub_path.clone(),
+                    content: stub_content,
+                };
+                
+                violations.push(Violation::with_fix(
+                    self.rule_id().to_string(),
                     message,
-                    offset: 0, // Report at start of file
-                    file_path: context.file_path.to_string(),
-                    severity: Severity::Warning,
-                });
+                    0, // Report at start of file
+                    context.file_path.to_string(),
+                    Severity::Warning,
+                    fix,
+                ));
             }
             
             return violations;
@@ -738,13 +747,21 @@ impl LintRule for MissingStubFileRule {
             stub_content
         );
 
-        violations.push(Violation {
-            rule_id: self.rule_id().to_string(),
+        // Create fix for missing stub file
+        let fix = Fix {
+            description: "Create missing stub file".to_string(),
+            file_path: stub_file_path.clone(),
+            content: stub_content.clone(),
+        };
+        
+        violations.push(Violation::with_fix(
+            self.rule_id().to_string(),
             message,
-            offset: 0, // Report at start of file
-            file_path: context.file_path.to_string(),
-            severity: Severity::Warning,
-        });
+            0, // Report at start of file
+            context.file_path.to_string(),
+            Severity::Warning,
+            fix,
+        ));
 
         violations
     }

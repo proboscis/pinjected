@@ -119,7 +119,7 @@ impl LintRule for NoMainBlockRule {
                     offset: main_block_offset,
                     file_path: context.file_path.to_string(),
                     severity: Severity::Error,
-                });
+                            fix: None,});
             }
         }
 

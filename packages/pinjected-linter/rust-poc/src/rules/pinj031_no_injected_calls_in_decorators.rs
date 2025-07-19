@@ -58,6 +58,7 @@ impl NoInjectedCallsInDecoratorsRule {
                         offset: call.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
                 // Check arguments

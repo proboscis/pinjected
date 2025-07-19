@@ -111,6 +111,7 @@ impl DesignUsageRule {
                         offset: keyword.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Warning,
+                        fix: None,
                     });
                 }
 
@@ -130,6 +131,7 @@ impl DesignUsageRule {
                                 offset: value_call.range.start().to_usize(),
                                 file_path: file_path.to_string(),
                                 severity: Severity::Warning,
+                                fix: None,
                             });
                         }
                     }

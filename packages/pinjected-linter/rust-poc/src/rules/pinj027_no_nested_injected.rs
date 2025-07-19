@@ -73,6 +73,7 @@ impl NoNestedInjectedRule {
                             offset: func.range.start().to_usize(),
                             file_path: String::new(),
                             severity: Severity::Error,
+                            fix: None,
                         });
                     }
 
@@ -107,6 +108,7 @@ impl NoNestedInjectedRule {
                             offset: func.range.start().to_usize(),
                             file_path: String::new(),
                             severity: Severity::Error,
+                            fix: None,
                         });
                     }
 

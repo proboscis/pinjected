@@ -134,6 +134,7 @@ impl IProxyAnnotationsRule {
                     offset: func.range.start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Warning,
+                    fix: None,
                 });
             }
         }
@@ -165,6 +166,7 @@ impl IProxyAnnotationsRule {
                     offset: func.range.start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Warning,
+                    fix: None,
                 });
             }
         }

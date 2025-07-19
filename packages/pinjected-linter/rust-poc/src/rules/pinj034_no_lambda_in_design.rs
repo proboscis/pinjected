@@ -121,6 +121,7 @@ impl NoLambdaInDesignRule {
             offset: lambda.range.start().to_usize(),
             file_path: String::new(),
             severity: Severity::Error,
+            fix: None,
         }
     }
 
@@ -135,6 +136,7 @@ impl NoLambdaInDesignRule {
             offset: 0, // Will be updated by caller
             file_path: String::new(),
             severity: Severity::Error,
+            fix: None,
         }
     }
 

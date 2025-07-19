@@ -262,6 +262,7 @@ impl LintRule for BuiltinShadowingRule {
                         offset: func.range.start().to_usize(),
                         file_path: context.file_path.to_string(),
                         severity: Severity::Warning,
+                        fix: None,
                     });
                 }
             }
@@ -285,6 +286,7 @@ impl LintRule for BuiltinShadowingRule {
                         offset: func.range.start().to_usize(),
                         file_path: context.file_path.to_string(),
                         severity: Severity::Warning,
+                        fix: None,
                     });
                 }
             }

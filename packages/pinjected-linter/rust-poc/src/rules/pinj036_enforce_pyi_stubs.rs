@@ -553,6 +553,7 @@ impl LintRule for EnforcePyiStubsRule {
                                 offset: 0,
                                 file_path: context.file_path.to_string(),
                                 severity: Severity::Warning,
+                                fix: None,
                             });
                         }
                     }
@@ -563,6 +564,7 @@ impl LintRule for EnforcePyiStubsRule {
                             offset: 0,
                             file_path: context.file_path.to_string(),
                             severity: Severity::Error,
+                            fix: None,
                         });
                     }
                 }
@@ -585,6 +587,7 @@ impl LintRule for EnforcePyiStubsRule {
                 offset: 0,
                 file_path: context.file_path.to_string(),
                 severity: Severity::Warning,
+                fix: None,
             });
         }
 

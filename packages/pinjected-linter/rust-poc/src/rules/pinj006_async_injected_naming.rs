@@ -41,6 +41,7 @@ impl LintRule for AsyncInjectedNamingRule {
                         offset: func.range.start().to_usize(),
                         file_path: context.file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }

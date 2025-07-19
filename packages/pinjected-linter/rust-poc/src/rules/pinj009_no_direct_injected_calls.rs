@@ -293,6 +293,7 @@ impl NoDirectInjectedCallsRule {
                         offset: call.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
@@ -347,6 +348,7 @@ impl NoDirectInjectedCallsRule {
                                     offset: await_expr.range.start().to_usize(),
                                     file_path: file_path.to_string(),
                                     severity: Severity::Error,
+                                    fix: None,
                                 });
                             }
                         }

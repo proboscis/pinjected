@@ -215,6 +215,7 @@ impl LintRule for DependencyCyclesRule {
                             offset: func.range.start().to_usize(),
                             file_path: context.file_path.to_string(),
                             severity: Severity::Error,
+                            fix: None,
                         });
                     }
                 }
@@ -230,6 +231,7 @@ impl LintRule for DependencyCyclesRule {
                             offset: func.range.start().to_usize(),
                             file_path: context.file_path.to_string(),
                             severity: Severity::Error,
+                            fix: None,
                         });
                     }
                 }

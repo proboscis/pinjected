@@ -203,6 +203,7 @@ impl MissingProtocolRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Error,
+                fix: None,
             })
         } else if has_injected && !has_protocol {
             let protocol_signature = Self::generate_protocol_signature(
@@ -239,6 +240,7 @@ impl MissingProtocolRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Warning,
+                fix: None,
             })
         } else {
             None
@@ -289,6 +291,7 @@ impl MissingProtocolRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Error,
+                fix: None,
             })
         } else if has_injected && !has_protocol {
             let protocol_signature = Self::generate_protocol_signature(
@@ -325,6 +328,7 @@ impl MissingProtocolRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Warning,
+                fix: None,
             })
         } else {
             None

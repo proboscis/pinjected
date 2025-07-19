@@ -67,6 +67,7 @@ impl NoDesignInInjectedRule {
                     offset: with_stmt.range.start().to_usize(),
                     file_path: String::new(),
                     severity: Severity::Error,
+                    fix: None,
                 });
             }
         }
@@ -96,6 +97,7 @@ impl NoDesignInInjectedRule {
                     offset: with_stmt.range.start().to_usize(),
                     file_path: String::new(),
                     severity: Severity::Error,
+                    fix: None,
                 });
             }
         }

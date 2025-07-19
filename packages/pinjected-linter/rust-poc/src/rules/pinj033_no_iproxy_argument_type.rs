@@ -76,6 +76,7 @@ impl NoIProxyArgumentTypeRule {
                         offset: arg.def.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
@@ -137,6 +138,7 @@ impl NoIProxyArgumentTypeRule {
                         offset: vararg.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
@@ -156,6 +158,7 @@ impl NoIProxyArgumentTypeRule {
                         offset: kwarg.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
@@ -218,6 +221,7 @@ impl NoIProxyArgumentTypeRule {
                         offset: vararg.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
@@ -237,6 +241,7 @@ impl NoIProxyArgumentTypeRule {
                         offset: kwarg.range.start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
+                        fix: None,
                     });
                 }
             }
