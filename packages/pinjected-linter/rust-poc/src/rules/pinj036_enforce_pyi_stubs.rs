@@ -6,6 +6,7 @@
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
+use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async};
 use rustpython_ast::{Arg, ArgWithDefault, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 use rustpython_parser::parse;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +18,8 @@ struct PublicSymbol {
     name: String,
     kind: SymbolKind,
     signature: Option<String>,
+    has_instance_decorator: bool,
+    return_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,11 +108,16 @@ impl EnforcePyiStubsRule {
                         format!("{}.{}", prefix, func.name)
                     };
 
+                    let has_instance = has_instance_decorator(func);
+                    let return_type = func.returns.as_ref().map(|r| self.format_type_annotation(r));
                     let signature = self.generate_function_signature(func);
+                    
                     symbols.push(PublicSymbol {
                         name: full_name,
                         kind: SymbolKind::Function,
                         signature: Some(signature),
+                        has_instance_decorator: has_instance,
+                        return_type,
                     });
                 }
             }
@@ -121,11 +129,16 @@ impl EnforcePyiStubsRule {
                         format!("{}.{}", prefix, func.name)
                     };
 
+                    let has_instance = has_instance_decorator_async(func);
+                    let return_type = func.returns.as_ref().map(|r| self.format_type_annotation(r));
                     let signature = self.generate_async_function_signature(func);
+                    
                     symbols.push(PublicSymbol {
                         name: full_name,
                         kind: SymbolKind::AsyncFunction,
                         signature: Some(signature),
+                        has_instance_decorator: has_instance,
+                        return_type,
                     });
                 }
             }
@@ -141,6 +154,8 @@ impl EnforcePyiStubsRule {
                         name: full_name.clone(),
                         kind: SymbolKind::Class,
                         signature: None,
+                        has_instance_decorator: false,
+                        return_type: None,
                     });
 
                     // Extract public methods from the class
@@ -164,6 +179,8 @@ impl EnforcePyiStubsRule {
                                 name: full_name,
                                 kind: SymbolKind::Variable,
                                 signature: None,
+                                has_instance_decorator: false,
+                                return_type: None,
                             });
                         }
                     }
@@ -184,6 +201,8 @@ impl EnforcePyiStubsRule {
                             name: full_name,
                             kind: SymbolKind::Variable,
                             signature: Some(type_ann),
+                            has_instance_decorator: false,
+                            return_type: None,
                         });
                     }
                 }
@@ -219,6 +238,13 @@ impl EnforcePyiStubsRule {
                 let base = self.format_type_annotation(&sub.value);
                 let index = self.format_type_annotation(&sub.slice);
                 format!("{}[{}]", base, index)
+            }
+            Expr::Tuple(tuple) => {
+                // Handle tuple expressions like Dict[str, str]
+                let elements: Vec<String> = tuple.elts.iter()
+                    .map(|e| self.format_type_annotation(e))
+                    .collect();
+                elements.join(", ")
             }
             Expr::Attribute(attr) => {
                 let value = self.format_type_annotation(&attr.value);
@@ -279,10 +305,12 @@ impl EnforcePyiStubsRule {
         sig.push_str(&all_args.join(", "));
         sig.push(')');
 
-        // Return type
+        // Return type - always include one, defaulting to Any if not specified
+        sig.push_str(" -> ");
         if let Some(returns) = &func.returns {
-            sig.push_str(" -> ");
             sig.push_str(&self.format_type_annotation(returns));
+        } else {
+            sig.push_str("Any");
         }
 
         sig
@@ -329,10 +357,12 @@ impl EnforcePyiStubsRule {
         sig.push_str(&all_args.join(", "));
         sig.push(')');
 
-        // Return type
+        // Return type - always include one, defaulting to Any if not specified
+        sig.push_str(" -> ");
         if let Some(returns) = &func.returns {
-            sig.push_str(" -> ");
             sig.push_str(&self.format_type_annotation(returns));
+        } else {
+            sig.push_str("Any");
         }
 
         sig
@@ -371,7 +401,18 @@ impl EnforcePyiStubsRule {
 
         module_symbols
             .iter()
-            .filter(|s| !stub_names.contains(&s.name))
+            .filter(|module_sym| {
+                // For @instance functions, they should be present as variables in stub
+                if module_sym.has_instance_decorator {
+                    // Check if it exists as a variable in stub
+                    !stub_symbols.iter().any(|stub_sym| {
+                        stub_sym.name == module_sym.name && matches!(stub_sym.kind, SymbolKind::Variable)
+                    })
+                } else {
+                    // For other symbols, just check if name exists
+                    !stub_names.contains(&module_sym.name)
+                }
+            })
             .cloned()
             .collect()
     }
@@ -382,6 +423,7 @@ impl EnforcePyiStubsRule {
 
         // Group symbols by type
         let mut functions = Vec::new();
+        let mut instance_functions = Vec::new();
         let mut classes = HashMap::new();
         let mut variables = Vec::new();
 
@@ -389,7 +431,11 @@ impl EnforcePyiStubsRule {
             match &symbol.kind {
                 SymbolKind::Function | SymbolKind::AsyncFunction => {
                     if !symbol.name.contains('.') {
-                        functions.push(symbol);
+                        if symbol.has_instance_decorator {
+                            instance_functions.push(symbol);
+                        } else {
+                            functions.push(symbol);
+                        }
                     }
                 }
                 SymbolKind::Class => {
@@ -415,6 +461,12 @@ impl EnforcePyiStubsRule {
             }
         }
 
+        // Add imports if we have @instance functions
+        if !instance_functions.is_empty() {
+            content.push_str("from pinjected import IProxy\n");
+            content.push_str("from typing import Any\n\n");
+        }
+
         // Generate variables
         if !variables.is_empty() {
             for var in &variables {
@@ -427,7 +479,18 @@ impl EnforcePyiStubsRule {
             content.push('\n');
         }
 
-        // Generate functions
+        // Generate @instance functions as IProxy declarations
+        if !instance_functions.is_empty() {
+            for func in &instance_functions {
+                let return_type = func.return_type.as_ref()
+                    .map(|s| s.as_str())
+                    .unwrap_or("Any");
+                content.push_str(&format!("{}: IProxy[{}]\n", func.name, return_type));
+            }
+            content.push('\n');
+        }
+
+        // Generate regular functions
         for func in &functions {
             if matches!(func.kind, SymbolKind::AsyncFunction) {
                 content.push_str("async ");
@@ -592,5 +655,192 @@ impl LintRule for EnforcePyiStubsRule {
         }
 
         violations
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustpython_parser::{parse, Mode};
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn check_rule(source: &str, file_path: &str) -> Vec<Violation> {
+        let rule = EnforcePyiStubsRule::new();
+        let ast = parse(source, Mode::Module, file_path).unwrap();
+        let context = RuleContext {
+            stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass {
+                range: rustpython_ast::text_size::TextRange::default(),
+            }),
+            file_path,
+            source,
+            ast: &ast,
+        };
+        rule.check(&context)
+    }
+
+    #[test]
+    fn test_instance_function_stub_generation() {
+        let code = r#"
+from pinjected import instance
+from typing import Dict
+
+@instance
+def database() -> DatabaseConnection:
+    return DatabaseConnection()
+
+@instance
+async def cache_service() -> CacheService:
+    return await CacheService.create()
+
+@instance
+def config() -> Dict[str, str]:
+    return {"api_key": "secret"}
+
+def regular_function() -> str:
+    return "hello"
+"#;
+
+        let violations = check_rule(code, "mymodule.py");
+
+        assert_eq!(violations.len(), 1);
+        let violation = &violations[0];
+        
+        // Check that the generated stub content includes IProxy declarations
+        println!("Violation message: {}", violation.message);
+        assert!(violation.message.contains("from pinjected import IProxy"));
+        assert!(violation.message.contains("database: IProxy[DatabaseConnection]"));
+        assert!(violation.message.contains("cache_service: IProxy[CacheService]"));
+        assert!(violation.message.contains("config: IProxy[Dict[str, str]]"));
+        
+        // Regular function should still be a function
+        assert!(violation.message.contains("def regular_function() -> str: ..."));
+    }
+
+    #[test]
+    fn test_instance_function_with_existing_correct_stub() {
+        let dir = tempdir().unwrap();
+        let py_path = dir.path().join("mymodule.py");
+        let pyi_path = dir.path().join("mymodule.pyi");
+
+        let py_content = r#"
+from pinjected import instance
+
+@instance
+def resource() -> MyResource:
+    return MyResource()
+"#;
+
+        let pyi_content = r#"
+from pinjected import IProxy
+
+resource: IProxy[MyResource]
+"#;
+
+        fs::write(&py_path, py_content).unwrap();
+        fs::write(&pyi_path, pyi_content).unwrap();
+
+        let rule = EnforcePyiStubsRule::new();
+        let ast = parse(py_content, Mode::Module, py_path.to_str().unwrap()).unwrap();
+        let context = RuleContext {
+            stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass {
+                range: rustpython_ast::text_size::TextRange::default(),
+            }),
+            file_path: py_path.to_str().unwrap(),
+            source: py_content,
+            ast: &ast,
+        };
+
+        let violations = rule.check(&context);
+        
+        // Should not have violations since stub is correct
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_instance_function_with_wrong_stub() {
+        let dir = tempdir().unwrap();
+        let py_path = dir.path().join("mymodule.py");
+        let pyi_path = dir.path().join("mymodule.pyi");
+
+        let py_content = r#"
+from pinjected import instance
+
+@instance
+def resource() -> MyResource:
+    return MyResource()
+"#;
+
+        let pyi_content = r#"
+def resource() -> MyResource: ...
+"#;
+
+        fs::write(&py_path, py_content).unwrap();
+        fs::write(&pyi_path, pyi_content).unwrap();
+
+        let rule = EnforcePyiStubsRule::new();
+        let ast = parse(py_content, Mode::Module, py_path.to_str().unwrap()).unwrap();
+        let context = RuleContext {
+            stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass {
+                range: rustpython_ast::text_size::TextRange::default(),
+            }),
+            file_path: py_path.to_str().unwrap(),
+            source: py_content,
+            ast: &ast,
+        };
+
+        let violations = rule.check(&context);
+        
+        // Should have violation since @instance function is declared as regular function
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("resource: IProxy[MyResource]"));
+    }
+
+    #[test]
+    fn test_mixed_functions_and_instance() {
+        let code = r#"
+from pinjected import instance, injected
+
+@instance
+def db() -> Database:
+    return Database()
+
+@injected
+def service(db, /):
+    return Service(db)
+
+class MyClass:
+    pass
+
+API_KEY = "secret"
+"#;
+
+        let violations = check_rule(code, "mymodule.py");
+
+        assert_eq!(violations.len(), 1);
+        let msg = &violations[0].message;
+        
+        // Check correct handling of different symbol types
+        assert!(msg.contains("db: IProxy[Database]"));
+        assert!(msg.contains("def service(db, /) -> Any: ..."));
+        assert!(msg.contains("class MyClass:"));
+        assert!(msg.contains("API_KEY: Any"));
+    }
+
+    #[test]
+    fn test_instance_without_return_type() {
+        let code = r#"
+from pinjected import instance
+
+@instance
+def resource():
+    return MyResource()
+"#;
+
+        let violations = check_rule(code, "mymodule.py");
+
+        assert_eq!(violations.len(), 1);
+        // Should default to Any when no return type
+        assert!(violations[0].message.contains("resource: IProxy[Any]"));
     }
 }

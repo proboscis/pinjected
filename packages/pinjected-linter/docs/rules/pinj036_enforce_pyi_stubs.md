@@ -36,6 +36,10 @@ Public API elements are those that don't start with an underscore (`_`), includi
 
 The exception is `__init__` which is considered public despite having underscores.
 
+### Special handling for @instance functions
+
+Functions decorated with `@instance` from pinjected are treated specially in stub files. Since `@instance` functions become `IProxy` objects at runtime, they should be declared as `IProxy[T]` type annotations in the stub file, not as function definitions.
+
 ## Examples
 
 ### ❌ Incorrect
@@ -111,6 +115,37 @@ async def async_function(data: dict) -> None: ...
 class MyClass:
     def __init__(self, name: str) -> None: ...
     def method(self) -> None: ...
+```
+
+### @instance functions
+
+**`resources.py`** with correct `.pyi` file for @instance functions:
+```python
+# resources.py
+from pinjected import instance
+from typing import Dict
+
+@instance
+def database() -> DatabaseConnection:
+    return DatabaseConnection()
+
+@instance 
+async def cache_service() -> CacheService:
+    return await CacheService.create()
+
+@instance
+def config() -> Dict[str, str]:
+    return {"api_key": "secret"}
+```
+
+```python
+# resources.pyi
+from pinjected import IProxy
+from typing import Dict
+
+database: IProxy[DatabaseConnection]
+cache_service: IProxy[CacheService]
+config: IProxy[Dict[str, str]]
 ```
 
 ### Test files are excluded
