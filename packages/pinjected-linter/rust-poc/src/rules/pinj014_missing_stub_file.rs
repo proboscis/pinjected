@@ -9,7 +9,7 @@ use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::has_injected_decorator;
 use rustpython_ast::{Arg, ArgWithDefault, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 use rustpython_parser::{parse, Mode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -484,6 +484,274 @@ impl MissingStubFileRule {
         content
     }
 
+    /// Merge existing stub content with new expected content
+    fn merge_stub_content(&self, existing_content: &str, functions: &[InjectedFunctionInfo]) -> String {
+        // Parse the existing content to extract its AST
+        let existing_ast = match parse(existing_content, Mode::Module, "<stub>") {
+            Ok(ast) => ast,
+            Err(_) => {
+                // If we can't parse the existing content, fall back to generating new content
+                return self.generate_stub_content(functions);
+            }
+        };
+
+        let mut result_lines = Vec::new();
+        let mut processed_functions = HashSet::new();
+        let mut has_overload_import = false;
+        let mut has_iproxy_import = false;
+        let mut import_section_ended = false;
+
+        // First pass: process imports and track what we have
+        if let Mod::Module(module) = &existing_ast {
+            for stmt in &module.body {
+                match stmt {
+                    Stmt::Import(_import) => {
+                        // Preserve import statements
+                        let import_str = self.format_import_stmt(stmt);
+                        result_lines.push(import_str);
+                    }
+                    Stmt::ImportFrom(import_from) => {
+                        // Check for necessary imports
+                        if let Some(module) = &import_from.module {
+                            if module == "typing" {
+                                for alias in &import_from.names {
+                                    if alias.name.as_str() == "overload" {
+                                        has_overload_import = true;
+                                    }
+                                }
+                            } else if module == "pinjected" {
+                                for alias in &import_from.names {
+                                    if alias.name.as_str() == "IProxy" {
+                                        has_iproxy_import = true;
+                                    }
+                                }
+                            }
+                        }
+                        let import_str = self.format_import_from_stmt(stmt);
+                        result_lines.push(import_str);
+                    }
+                    _ => {
+                        // Mark end of import section
+                        if !import_section_ended && !result_lines.is_empty() {
+                            import_section_ended = true;
+                            result_lines.push(String::new()); // Add blank line after imports
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Add missing imports at the beginning
+        let mut missing_imports = Vec::new();
+        if !has_overload_import {
+            missing_imports.push("from typing import overload".to_string());
+        }
+        if !has_iproxy_import {
+            missing_imports.push("from pinjected import IProxy".to_string());
+        }
+        
+        if !missing_imports.is_empty() {
+            // Insert missing imports at the beginning
+            for import in missing_imports.iter().rev() {
+                result_lines.insert(0, import.clone());
+            }
+            if !import_section_ended {
+                result_lines.push(String::new()); // Add blank line after imports
+            }
+        }
+
+        // Second pass: process the rest of the content
+        if let Mod::Module(module) = &existing_ast {
+            let mut _in_imports = true;
+            for stmt in &module.body {
+                match stmt {
+                    Stmt::Import(_) | Stmt::ImportFrom(_) => {
+                        // Already processed in first pass
+                        continue;
+                    }
+                    Stmt::FunctionDef(func) => {
+                        _in_imports = false;
+                        // Check if this is an @overload decorated function
+                        let has_overload = func.decorator_list.iter().any(|dec| {
+                            if let Expr::Name(name) = dec {
+                                name.id.as_str() == "overload"
+                            } else {
+                                false
+                            }
+                        });
+
+                        if has_overload {
+                            // Check if this function needs to be updated
+                            if let Some(expected) = functions.iter().find(|f| f.name == func.name.as_str()) {
+                                // Add the updated version
+                                result_lines.push("@overload".to_string());
+                                result_lines.push(expected.signature.clone());
+                                processed_functions.insert(expected.name.clone());
+                            } else {
+                                // Preserve non-injected overloads
+                                result_lines.push(self.format_function_def(func));
+                            }
+                        } else {
+                            // Preserve non-overload functions
+                            result_lines.push(self.format_function_def(func));
+                        }
+                        result_lines.push(String::new()); // Add blank line after function
+                    }
+                    Stmt::AsyncFunctionDef(func) => {
+                        _in_imports = false;
+                        // Check if this is an @overload decorated function
+                        let has_overload = func.decorator_list.iter().any(|dec| {
+                            if let Expr::Name(name) = dec {
+                                name.id.as_str() == "overload"
+                            } else {
+                                false
+                            }
+                        });
+
+                        if has_overload {
+                            // Check if this function needs to be updated
+                            if let Some(expected) = functions.iter().find(|f| f.name == func.name.as_str()) {
+                                // Add the updated version
+                                result_lines.push("@overload".to_string());
+                                result_lines.push(expected.signature.clone());
+                                processed_functions.insert(expected.name.clone());
+                            } else {
+                                // Preserve non-injected overloads
+                                result_lines.push(self.format_async_function_def(func));
+                            }
+                        } else {
+                            // Preserve non-overload functions
+                            result_lines.push(self.format_async_function_def(func));
+                        }
+                        result_lines.push(String::new()); // Add blank line after function
+                    }
+                    _ => {
+                        _in_imports = false;
+                        // Preserve all other statements (classes, variables, etc.)
+                        result_lines.push(self.format_other_stmt(stmt));
+                        result_lines.push(String::new()); // Add blank line
+                    }
+                }
+            }
+        }
+
+        // Add any missing @overload functions
+        for func in functions {
+            if !processed_functions.contains(&func.name) {
+                result_lines.push("@overload".to_string());
+                result_lines.push(func.signature.clone());
+                result_lines.push(String::new()); // Add blank line
+            }
+        }
+
+        // Join all lines, removing trailing blank lines
+        let mut final_content = result_lines.join("\n");
+        while final_content.ends_with("\n\n") {
+            final_content.pop();
+        }
+        if !final_content.ends_with('\n') {
+            final_content.push('\n');
+        }
+
+        final_content
+    }
+
+    // Helper methods for formatting statements
+    fn format_import_stmt(&self, stmt: &Stmt) -> String {
+        if let Stmt::Import(import) = stmt {
+            let names: Vec<String> = import.names.iter()
+                .map(|alias| {
+                    if let Some(asname) = &alias.asname {
+                        format!("{} as {}", alias.name, asname)
+                    } else {
+                        alias.name.to_string()
+                    }
+                })
+                .collect();
+            format!("import {}", names.join(", "))
+        } else {
+            String::new()
+        }
+    }
+
+    fn format_import_from_stmt(&self, stmt: &Stmt) -> String {
+        if let Stmt::ImportFrom(import_from) = stmt {
+            let module = import_from.module.as_ref().map(|m| m.as_str()).unwrap_or("");
+            let names: Vec<String> = import_from.names.iter()
+                .map(|alias| {
+                    if let Some(asname) = &alias.asname {
+                        format!("{} as {}", alias.name, asname)
+                    } else {
+                        alias.name.to_string()
+                    }
+                })
+                .collect();
+            format!("from {} import {}", module, names.join(", "))
+        } else {
+            String::new()
+        }
+    }
+
+    fn format_function_def(&self, func: &StmtFunctionDef) -> String {
+        // Format the function with its decorators
+        let mut lines = Vec::new();
+        for dec in &func.decorator_list {
+            lines.push(format!("@{}", self.format_decorator(dec)));
+        }
+        lines.push(self.generate_function_signature(func));
+        lines.join("\n")
+    }
+
+    fn format_async_function_def(&self, func: &StmtAsyncFunctionDef) -> String {
+        // Format the async function with its decorators
+        let mut lines = Vec::new();
+        for dec in &func.decorator_list {
+            lines.push(format!("@{}", self.format_decorator(dec)));
+        }
+        lines.push(self.generate_async_function_signature(func));
+        lines.join("\n")
+    }
+
+    fn format_decorator(&self, expr: &Expr) -> String {
+        match expr {
+            Expr::Name(name) => name.id.to_string(),
+            Expr::Attribute(attr) => {
+                let value = self.format_type_annotation(&attr.value);
+                format!("{}.{}", value, attr.attr)
+            }
+            _ => "decorator".to_string(),
+        }
+    }
+
+    fn format_other_stmt(&self, stmt: &Stmt) -> String {
+        // This is a simplified version - ideally we'd preserve exact formatting
+        match stmt {
+            Stmt::ClassDef(class) => {
+                format!("class {}:\n    ...", class.name)
+            }
+            Stmt::Assign(assign) => {
+                if let Some(target) = assign.targets.first() {
+                    if let Expr::Name(name) = target {
+                        format!("{} = ...", name.id)
+                    } else {
+                        "# assignment".to_string()
+                    }
+                } else {
+                    "# assignment".to_string()
+                }
+            }
+            Stmt::AnnAssign(annassign) => {
+                if let Expr::Name(name) = &*annassign.target {
+                    format!("{}: {} = ...", name.id, self.format_type_annotation(&annassign.annotation))
+                } else {
+                    "# annotated assignment".to_string()
+                }
+            }
+            _ => "# preserved content".to_string(),
+        }
+    }
+
     /// Extract function signatures from a stub file
     fn extract_stub_signatures(&self, stub_path: &Path) -> Result<HashMap<String, String>, String> {
         let content = fs::read_to_string(stub_path)
@@ -715,10 +983,13 @@ impl LintRule for MissingStubFileRule {
                     validation_errors.join("\n\n")
                 );
                 
-                // Generate fix content for validation errors
-                let stub_content = configured_rule.generate_stub_content(&injected_functions);
+                // Read existing stub content
+                let existing_content = fs::read_to_string(&stub_path).unwrap_or_default();
+                
+                // Generate merged content that preserves existing content
+                let stub_content = configured_rule.merge_stub_content(&existing_content, &injected_functions);
                 let fix = Fix {
-                    description: "Update stub file with correct signatures".to_string(),
+                    description: "Update stub file with correct signatures while preserving existing content".to_string(),
                     file_path: stub_path.clone(),
                     content: stub_content,
                 };
