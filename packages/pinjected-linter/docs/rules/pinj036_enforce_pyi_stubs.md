@@ -36,9 +36,16 @@ Public API elements are those that don't start with an underscore (`_`), includi
 
 The exception is `__init__` which is considered public despite having underscores.
 
-### Special handling for @instance functions
+### Special handling for pinjected decorators
 
-Functions decorated with `@instance` from pinjected are treated specially in stub files. Since `@instance` functions become `IProxy` objects at runtime, they should be declared as `IProxy[T]` type annotations in the stub file, not as function definitions.
+This rule handles pinjected decorators specially:
+
+1. **@instance functions**: Functions decorated with `@instance` become `IProxy` objects at runtime, so they are declared as `IProxy[T]` type annotations in stub files.
+
+2. **@injected functions**: Functions decorated with `@injected` remain functions but have special stub requirements:
+   - Positional-only arguments (dependencies before `/`) are removed from the signature
+   - Return types are wrapped in `IProxy[T]`
+   - Functions use the `@overload` decorator
 
 ## Examples
 
@@ -147,6 +154,65 @@ database: IProxy[DatabaseConnection]
 cache_service: IProxy[CacheService]
 config: IProxy[Dict[str, str]]
 ```
+
+### @injected functions
+
+Functions decorated with `@injected` require special handling in stub files. Since `@injected` functions have their dependencies injected (positional-only arguments before `/`), these dependencies are removed from the stub signature. Additionally, the return type is wrapped in `IProxy[T]` and the function uses the `@overload` decorator.
+
+**`services.py`** with correct `.pyi` file for @injected functions:
+```python
+# services.py
+from pinjected import injected
+from typing import List
+
+@injected
+def get_users(db: Database, cache: Cache, /, page: int = 1) -> List[User]:
+    """Get users with caching support"""
+    cached = cache.get(f"users_page_{page}")
+    if cached:
+        return cached
+    users = db.query(User).paginate(page)
+    cache.set(f"users_page_{page}", users)
+    return users
+
+@injected
+async def process_order(
+    db: Database,
+    payment: PaymentService,
+    logger: Logger,
+    /,
+    order_id: str,
+    notify: bool = True
+) -> Order:
+    """Process an order with payment and notification"""
+    order = await db.get_order(order_id)
+    await payment.charge(order.total)
+    if notify:
+        await logger.info(f"Order {order_id} processed")
+    return order
+```
+
+```python
+# services.pyi
+from typing import overload, List
+from pinjected import IProxy
+
+@overload
+def get_users(page: int = ...) -> IProxy[List[User]]: ...
+
+@overload
+async def process_order(
+    order_id: str,
+    notify: bool = ...
+) -> IProxy[Order]: ...
+```
+
+Note how:
+1. Positional-only arguments (dependencies before `/`) are removed
+2. Runtime arguments (after `/`) are preserved
+3. Return types are wrapped in `IProxy[T]`
+4. Each function uses the `@overload` decorator
+5. Default values are represented as `...` in stubs
 
 ### Test files are excluded
 

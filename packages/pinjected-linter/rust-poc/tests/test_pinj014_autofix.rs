@@ -118,7 +118,7 @@ def process_data(logger: IProxy[Logger], data: str) -> Result: ...
     
     // The fix should update the existing stub file
     assert_eq!(fix.file_path, stub_file);
-    assert_eq!(fix.description, "Update stub file with correct signatures");
+    assert_eq!(fix.description, "Update stub file with correct signatures while preserving existing content");
     
     // Check the fix content has correct signature
     assert!(fix.content.contains("def process_data(data: str) -> IProxy[Result]: ..."));
