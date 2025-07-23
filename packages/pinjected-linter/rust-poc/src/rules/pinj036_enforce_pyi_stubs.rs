@@ -7,7 +7,7 @@
 use crate::models::{Fix, RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_injected_decorator, has_injected_decorator_async};
-use rustpython_ast::{Arg, ArgWithDefault, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
+use rustpython_ast::{Arg, ArgWithDefault, Constant, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 use rustpython_parser::{parse, Mode};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -644,6 +644,7 @@ impl EnforcePyiStubsRule {
         let mut has_overload_import = false;
         let mut has_any_import = false;
         let mut existing_symbols = HashSet::new();
+        let mut classes_with_ellipsis = HashMap::new();
         
         if let Mod::Module(module) = &existing_ast {
             for stmt in &module.body {
@@ -679,6 +680,14 @@ impl EnforcePyiStubsRule {
                     }
                     Stmt::ClassDef(class) => {
                         existing_symbols.insert(class.name.to_string());
+                        // Check if this class has only ... as its body
+                        if class.body.len() == 1 {
+                            if let Stmt::Expr(expr_stmt) = &class.body[0] {
+                                if matches!(expr_stmt.value.as_ref(), Expr::Constant(c) if matches!(&c.value, Constant::Ellipsis)) {
+                                    classes_with_ellipsis.insert(class.name.to_string(), true);
+                                }
+                            }
+                        }
                     }
                     Stmt::AnnAssign(ann_assign) => {
                         if let Expr::Name(name) = ann_assign.target.as_ref() {
@@ -710,7 +719,36 @@ impl EnforcePyiStubsRule {
         let needs_overload = !has_overload_import && truly_missing.iter().any(|s| s.has_injected_decorator);
         let needs_any = !has_any_import && (needs_iproxy || truly_missing.iter().any(|s| s.signature.is_none()));
 
-        // Build the result
+        // Check if we need to expand any classes with ellipsis
+        let mut classes_to_expand = HashMap::new();
+        for symbol in &truly_missing {
+            if let Some(dot_pos) = symbol.name.find('.') {
+                let class_name = &symbol.name[..dot_pos];
+                if classes_with_ellipsis.contains_key(class_name) {
+                    classes_to_expand.entry(class_name.to_string())
+                        .or_insert_with(Vec::new)
+                        .push(symbol);
+                }
+            }
+        }
+
+        // If we have classes to expand, we need to reconstruct the entire file
+        if !classes_to_expand.is_empty() {
+            return self.reconstruct_with_expanded_classes(
+                existing_content,
+                &existing_ast,
+                &classes_to_expand,
+                &truly_missing,
+                needs_any,
+                needs_overload,
+                needs_iproxy,
+                has_any_import,
+                has_overload_import,
+                has_iproxy_import,
+            );
+        }
+
+        // Otherwise, use the old append approach
         let mut result = existing_content.to_string();
         
         // Ensure file ends with newline
@@ -772,6 +810,262 @@ impl EnforcePyiStubsRule {
         result.push_str(&self.generate_stub_content(&truly_missing));
         
         result
+    }
+
+    /// Reconstruct the stub file with expanded class definitions
+    fn reconstruct_with_expanded_classes(
+        &self,
+        _existing_content: &str,
+        existing_ast: &Mod,
+        classes_to_expand: &HashMap<String, Vec<&PublicSymbol>>,
+        all_missing_symbols: &[PublicSymbol],
+        needs_any: bool,
+        needs_overload: bool,
+        needs_iproxy: bool,
+        has_any_import: bool,
+        has_overload_import: bool,
+        has_iproxy_import: bool,
+    ) -> String {
+        let mut result = String::new();
+        let mut imports_added = false;
+
+        // First, handle imports
+        if let Mod::Module(module) = existing_ast {
+            // Collect existing imports
+            let mut import_stmts = Vec::new();
+            let mut other_stmts = Vec::new();
+            
+            for stmt in &module.body {
+                match stmt {
+                    Stmt::Import(_) | Stmt::ImportFrom(_) => {
+                        import_stmts.push(stmt);
+                    }
+                    _ => {
+                        other_stmts.push(stmt);
+                    }
+                }
+            }
+            
+            // Add existing imports
+            for stmt in &import_stmts {
+                result.push_str(&self.stmt_to_string(stmt));
+                result.push('\n');
+            }
+            
+            // Add new imports if needed
+            if needs_any && !has_any_import || needs_overload && !has_overload_import {
+                let mut typing_imports = Vec::new();
+                if needs_overload && !has_overload_import {
+                    typing_imports.push("overload");
+                }
+                if needs_any && !has_any_import {
+                    typing_imports.push("Any");
+                }
+                result.push_str(&format!("from typing import {}\n", typing_imports.join(", ")));
+                imports_added = true;
+            }
+            
+            if needs_iproxy && !has_iproxy_import {
+                result.push_str("from pinjected import IProxy\n");
+                imports_added = true;
+            }
+            
+            // Add blank line after imports
+            if !import_stmts.is_empty() || imports_added {
+                result.push('\n');
+            }
+            
+            // Process other statements
+            for stmt in &other_stmts {
+                match stmt {
+                    Stmt::ClassDef(class) if classes_to_expand.contains_key(&class.name.to_string()) => {
+                        // This is a class we need to expand
+                        let class_members = classes_to_expand.get(&class.name.to_string()).unwrap();
+                        result.push_str(&self.generate_expanded_class(&class.name, class_members, &class.decorator_list));
+                        result.push('\n');
+                    }
+                    _ => {
+                        // Keep other statements as-is
+                        result.push_str(&self.stmt_to_string(stmt));
+                        result.push('\n');
+                    }
+                }
+            }
+            
+            // Add any remaining symbols that weren't part of expanded classes
+            let expanded_symbols: HashSet<String> = classes_to_expand.values()
+                .flat_map(|members| members.iter().map(|s| s.name.clone()))
+                .collect();
+            
+            let remaining_symbols: Vec<&PublicSymbol> = all_missing_symbols.iter()
+                .filter(|s| !expanded_symbols.contains(&s.name))
+                .collect();
+            
+            if !remaining_symbols.is_empty() {
+                result.push_str("\n# Additional symbols:\n");
+                result.push_str(&self.generate_stub_content(&remaining_symbols.into_iter().cloned().collect::<Vec<_>>()));
+            }
+        }
+        
+        result
+    }
+
+    /// Generate an expanded class definition with all its members
+    fn generate_expanded_class(&self, class_name: &str, members: &[&PublicSymbol], decorators: &[Expr]) -> String {
+        let mut result = String::new();
+        
+        // Add decorators
+        for decorator in decorators {
+            result.push_str(&self.decorator_to_string(decorator));
+            result.push('\n');
+        }
+        
+        result.push_str(&format!("class {}:\n", class_name));
+        
+        if members.is_empty() {
+            result.push_str("    ...\n");
+            return result;
+        }
+        
+        // Separate members by type
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        
+        for member in members {
+            let member_name = &member.name[class_name.len() + 1..]; // Remove "ClassName."
+            match member.kind {
+                SymbolKind::Variable => fields.push((member_name, member)),
+                SymbolKind::Function | SymbolKind::AsyncFunction => methods.push((member_name, member)),
+                _ => {}
+            }
+        }
+        
+        // Generate fields first
+        for (field_name, field) in &fields {
+            result.push_str("    ");
+            if let Some(sig) = &field.signature {
+                result.push_str(&format!("{}: {}\n", field_name, sig));
+            } else {
+                result.push_str(&format!("{}: Any\n", field_name));
+            }
+        }
+        
+        // Add blank line between fields and methods if both exist
+        if !fields.is_empty() && !methods.is_empty() {
+            result.push('\n');
+        }
+        
+        // Generate methods
+        for (method_name, method) in &methods {
+            result.push_str("    ");
+            if matches!(method.kind, SymbolKind::AsyncFunction) {
+                result.push_str("async ");
+            }
+            result.push_str("def ");
+            
+            if let Some(sig) = &method.signature {
+                // Replace the full name with just the method name
+                let sig_with_method_name = sig.replace(&method.name, method_name);
+                result.push_str(&sig_with_method_name);
+            } else {
+                result.push_str(method_name);
+                result.push_str("(self, *args, **kwargs) -> Any");
+            }
+            result.push_str(": ...\n");
+        }
+        
+        result
+    }
+
+    /// Convert a statement back to string representation
+    fn stmt_to_string(&self, stmt: &Stmt) -> String {
+        // This is a simplified version - in a real implementation, 
+        // you'd want to use a proper AST-to-source converter
+        match stmt {
+            Stmt::Import(import) => {
+                let names: Vec<String> = import.names.iter()
+                    .map(|alias| {
+                        if let Some(asname) = &alias.asname {
+                            format!("{} as {}", alias.name, asname)
+                        } else {
+                            alias.name.to_string()
+                        }
+                    })
+                    .collect();
+                format!("import {}", names.join(", "))
+            }
+            Stmt::ImportFrom(import_from) => {
+                let module = import_from.module.as_deref().unwrap_or("");
+                let names: Vec<String> = import_from.names.iter()
+                    .map(|alias| {
+                        if let Some(asname) = &alias.asname {
+                            format!("{} as {}", alias.name, asname)
+                        } else {
+                            alias.name.to_string()
+                        }
+                    })
+                    .collect();
+                let level_dots = ".".repeat(import_from.level.map(|l| l.to_u32() as usize).unwrap_or(0));
+                format!("from {}{} import {}", level_dots, module, names.join(", "))
+            }
+            Stmt::ClassDef(class) => {
+                let mut result = String::new();
+                for decorator in &class.decorator_list {
+                    result.push_str(&self.decorator_to_string(decorator));
+                    result.push('\n');
+                }
+                result.push_str(&format!("class {}:\n", class.name));
+                result.push_str("    ...");
+                result
+            }
+            Stmt::FunctionDef(func) => {
+                let mut result = String::new();
+                for decorator in &func.decorator_list {
+                    result.push_str(&self.decorator_to_string(decorator));
+                    result.push('\n');
+                }
+                result.push_str(&format!("def {}(", func.name));
+                // Add simplified args
+                result.push_str("*args, **kwargs");
+                result.push_str(") -> Any: ...");
+                result
+            }
+            Stmt::AsyncFunctionDef(func) => {
+                let mut result = String::new();
+                for decorator in &func.decorator_list {
+                    result.push_str(&self.decorator_to_string(decorator));
+                    result.push('\n');
+                }
+                result.push_str(&format!("async def {}(", func.name));
+                // Add simplified args
+                result.push_str("*args, **kwargs");
+                result.push_str(") -> Any: ...");
+                result
+            }
+            Stmt::AnnAssign(ann_assign) => {
+                if let Expr::Name(name) = ann_assign.target.as_ref() {
+                    format!("{}: Any", name.id)
+                } else {
+                    "# Unknown annotation".to_string()
+                }
+            }
+            _ => "# Preserved statement".to_string()
+        }
+    }
+
+    /// Convert a decorator to string representation
+    fn decorator_to_string(&self, decorator: &Expr) -> String {
+        match decorator {
+            Expr::Name(name) => format!("@{}", name.id),
+            Expr::Attribute(attr) => {
+                if let Expr::Name(obj) = attr.value.as_ref() {
+                    format!("@{}.{}", obj.id, attr.attr)
+                } else {
+                    "@unknown".to_string()
+                }
+            }
+            _ => "@unknown".to_string()
+        }
     }
 
     /// Generate stub file content for missing symbols
