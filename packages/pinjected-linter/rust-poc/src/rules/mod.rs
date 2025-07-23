@@ -15,7 +15,7 @@ pub mod pinj010_design_usage;
 pub mod pinj011_iproxy_annotations;
 pub mod pinj012_dependency_cycles;
 pub mod pinj013_builtin_shadowing;
-pub mod pinj014_missing_stub_file;
+pub mod pinj014;
 pub mod pinj015_missing_slash;
 pub mod pinj016_missing_protocol;
 pub mod pinj017_missing_dependency_type_annotation;
@@ -53,7 +53,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj011_iproxy_annotations::IProxyAnnotationsRule::new()),
         Box::new(pinj012_dependency_cycles::DependencyCyclesRule::new()),
         Box::new(pinj013_builtin_shadowing::BuiltinShadowingRule::new()),
-        Box::new(pinj014_missing_stub_file::MissingStubFileRule::new()),
+        Box::new(pinj014::MissingStubFileRule::new()),
         Box::new(pinj015_missing_slash::MissingSlashRule::new()),
         Box::new(pinj016_missing_protocol::MissingProtocolRule::new()),
         Box::new(
