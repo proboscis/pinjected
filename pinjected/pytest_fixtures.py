@@ -29,10 +29,12 @@ async def test_user_creation(user_service, database):
 ```
 """
 
+import asyncio
 import inspect
 from collections.abc import Awaitable
 from pathlib import Path
 from typing import Dict, Optional, Set, Union
+from weakref import WeakKeyDictionary
 
 import pytest_asyncio
 from loguru import logger
@@ -45,26 +47,27 @@ from pinjected.helper_structure import MetaContext
 from pinjected.v2.keys import StrBindKey
 
 
-# Global registry to track resolver fixtures per module
-_MODULE_RESOLVER_FIXTURES: Dict[str, Set[str]] = {}
+# Global storage for shared state per test
+_test_state: WeakKeyDictionary = WeakKeyDictionary()
 
 
-class ResolverContext:
-    """Context holding a resolver and its associated task group."""
+class SharedTestState:
+    """Holds shared resolver and resolved values for a test."""
 
-    def __init__(self, resolver: AsyncResolver, task_group: TaskGroup):
-        self.resolver = resolver
-        self.task_group = task_group
-        self._closed = False
+    def __init__(self):
+        self.resolver: Optional[AsyncResolver] = None
+        self.task_group: Optional[TaskGroup] = None
+        self.resolved_values: Dict[str, any] = {}
+        self._cleanup_scheduled = False
 
     async def close(self):
         """Close the resolver and task group."""
-        if not self._closed:
-            self._closed = True
-            try:
-                await self.resolver.destruct()
-            finally:
-                await self.task_group.__aexit__(None, None, None)
+        if self.resolver:
+            await self.resolver.destruct()
+            self.resolver = None
+        if self.task_group:
+            await self.task_group.__aexit__(None, None, None)
+            self.task_group = None
 
 
 class DesignFixtures:
@@ -141,77 +144,66 @@ class DesignFixtures:
         self._binding_names_cache = binding_names
         return binding_names
 
-    def _get_module_key(self) -> str:
-        """Get a unique key for the caller module."""
-        if self.caller_module:
-            return self.caller_module.__name__
-        return self.caller_file
+    async def _get_or_create_state(self, request) -> SharedTestState:
+        """Get or create shared state for the current test."""
+        test_func = request.function
 
-    def _ensure_resolver_fixtures(self) -> None:
-        """Ensure resolver fixtures are registered for this module."""
-        module_key = self._get_module_key()
+        if test_func not in _test_state:
+            state = SharedTestState()
+            _test_state[test_func] = state
 
-        # Check if we've already registered resolver fixtures for this module
-        if module_key in _MODULE_RESOLVER_FIXTURES:
-            return
+            # Create resolver once for the test
+            caller_path = Path(self.caller_file)
+            mc = await MetaContext.a_gather_bindings_with_legacy(caller_path)
+            final_design = await mc.a_final_design
 
-        if not self.caller_module:
-            raise RuntimeError(
-                "Cannot register resolver fixtures: caller module not found"
-            )
-
-        # Mark this module as having resolver fixtures
-        _MODULE_RESOLVER_FIXTURES[module_key] = set()
-
-        # Create resolver fixtures for each scope
-        for scope in ["function", "class", "module", "session"]:
-            fixture_name = f"_pinjected_resolver_{scope}_{id(self)}"
-
-            # Store the design reference to avoid closure issues
-            design_obj = self.design_obj
-            caller_file = self.caller_file
-
-            @pytest_asyncio.fixture(scope=scope, name=fixture_name)
-            async def resolver_fixture():
-                """Shared resolver fixture for a specific scope."""
-                # Create resolver context
-                caller_path = Path(caller_file)
-                mc = await MetaContext.a_gather_bindings_with_legacy(caller_path)
-                final_design = await mc.a_final_design
-
-                # Resolve design if DelegatedVar
-                resolved_design = design_obj
-                if isinstance(design_obj, DelegatedVar):
-                    temp_resolver = AsyncResolver(final_design, callbacks=[])
-                    try:
-                        resolved_design = await temp_resolver.provide(design_obj)
-                        if not isinstance(resolved_design, Design):
-                            raise TypeError(
-                                f"DelegatedVar must resolve to Design, got {type(resolved_design)}"
-                            )
-                    finally:
-                        await temp_resolver.destruct()
-
-                # Merge designs
-                merged_design = final_design + resolved_design
-
-                # Create resolver with TaskGroup
-                tg = TaskGroup()
-                await tg.__aenter__()
-
-                design_with_tg = merged_design + design(__task_group__=tg)
-                resolver = AsyncResolver(design_with_tg, callbacks=[])
-
-                context = ResolverContext(resolver, tg)
-
+            # Resolve design if DelegatedVar
+            resolved_design = self.design_obj
+            if isinstance(self.design_obj, DelegatedVar):
+                temp_resolver = AsyncResolver(final_design, callbacks=[])
                 try:
-                    yield context
+                    resolved_design = await temp_resolver.provide(self.design_obj)
+                    if not isinstance(resolved_design, Design):
+                        raise TypeError(
+                            f"DelegatedVar must resolve to Design, got {type(resolved_design)}"
+                        )
                 finally:
-                    await context.close()
+                    await temp_resolver.destruct()
 
-            # Register the fixture in the module
-            setattr(self.caller_module, fixture_name, resolver_fixture)
-            _MODULE_RESOLVER_FIXTURES[module_key].add(fixture_name)
+            # Create TaskGroup and resolver
+            state.task_group = TaskGroup()
+            await state.task_group.__aenter__()
+
+            merged_design = (
+                final_design + resolved_design + design(__task_group__=state.task_group)
+            )
+            state.resolver = AsyncResolver(merged_design, callbacks=[])
+
+            # Schedule cleanup after test
+            if not state._cleanup_scheduled:
+                state._cleanup_scheduled = True
+
+                def cleanup():
+                    # Use existing event loop if available
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Schedule cleanup as a task in the running loop
+                            _ = asyncio.create_task(state.close())  # noqa: RUF006
+                        else:
+                            # Run in the existing loop
+                            loop.run_until_complete(state.close())
+                    except RuntimeError:
+                        # No event loop, create one just for cleanup
+                        asyncio.run(state.close())
+                    finally:
+                        # Remove from global state
+                        if test_func in _test_state:
+                            del _test_state[test_func]
+
+                request.addfinalizer(cleanup)
+
+        return _test_state[test_func]
 
     def register(
         self,
@@ -234,9 +226,6 @@ class DesignFixtures:
         if not self.caller_module:
             raise RuntimeError("Cannot register fixtures: caller module not found")
 
-        # Ensure resolver fixtures are registered
-        self._ensure_resolver_fixtures()
-
         fixture_name = fixture_name or binding_name
 
         # Avoid duplicate registration
@@ -244,19 +233,19 @@ class DesignFixtures:
             logger.warning(f"Fixture '{fixture_name}' already registered, skipping")
             return
 
-        # Get the resolver fixture name for this scope
-        resolver_fixture_name = f"_pinjected_resolver_{scope}_{id(self)}"
-
-        # Create async fixture that depends on the resolver
+        # Create async fixture
         @pytest_asyncio.fixture(scope=scope, name=fixture_name)
         async def async_fixture_impl(request):
-            """Async fixture implementation."""
-            # Get the resolver context from the appropriate scoped fixture
-            resolver_context = request.getfixturevalue(resolver_fixture_name)
+            """Async fixture implementation using shared state."""
+            state = await self._get_or_create_state(request)
+
+            # Check if already resolved
+            if binding_name in state.resolved_values:
+                return state.resolved_values[binding_name]
 
             # Use Injected.by_name to resolve the binding
             to_provide = Injected.by_name(binding_name)
-            result = await resolver_context.resolver.provide(to_provide)
+            result = await state.resolver.provide(to_provide)
 
             # Handle PartiallyInjectedFunction
             if isinstance(result, PartiallyInjectedFunction):
@@ -266,6 +255,8 @@ class DesignFixtures:
             if isinstance(result, Awaitable):
                 result = await result
 
+            # Cache the result
+            state.resolved_values[binding_name] = result
             return result
 
         # Register fixture

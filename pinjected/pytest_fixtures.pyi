@@ -1,7 +1,6 @@
 from typing import Optional, Set, Union
-from pinjected import AsyncResolver, Design
+from pinjected import Design
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.compatibility.task_group import TaskGroup
 
 def register_fixtures_from_design(
     design_obj: Union[Design, DelegatedVar[Design]],
@@ -11,9 +10,9 @@ def register_fixtures_from_design(
     exclude: Optional[Set[str]] = ...,
 ) -> DesignFixtures: ...
 
-class ResolverContext:
-    def __init__(self, resolver: AsyncResolver, task_group: TaskGroup): ...
-    async def close(self): ...
+class SharedTestState:
+    def __init__(self) -> None: ...
+    async def close(self) -> None: ...
 
 class DesignFixtures:
     def __init__(
