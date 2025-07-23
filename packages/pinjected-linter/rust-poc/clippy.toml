@@ -1,0 +1,8 @@
+# Clippy configuration for pinjected-linter
+
+# Set cognitive complexity threshold
+# Default is 25, but we'll set it to 15 for stricter enforcement
+cognitive-complexity-threshold = 15
+
+# Enable additional lints for code quality
+warn-on-all-wildcard-imports = true

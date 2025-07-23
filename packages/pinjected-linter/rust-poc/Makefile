@@ -4,11 +4,11 @@
 all: release
 
 # Development build
-build:
+build: lint
 	cargo build
 
 # Release build (optimized)
-release:
+release: lint
 	cargo build --release
 
 # Install globally via cargo
@@ -47,7 +47,12 @@ fmt:
 # Check code
 check:
 	cargo check
-	cargo clippy
+	cargo clippy -- -D warnings -W clippy::cognitive_complexity
+
+# Run strict linting (including complexity checks)
+lint:
+	@echo "Running strict linting with complexity checks..."
+	cargo clippy -- -D warnings -D clippy::cognitive_complexity -D clippy::too_many_lines -D clippy::too_many_arguments
 
 # Run on proboscis-ema source
 run-ema: release
