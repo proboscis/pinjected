@@ -98,6 +98,76 @@ impl EnforcePyiStubsRule {
         symbols
     }
 
+    /// Extract public symbols from a class body (handles class-level vs instance attributes)
+    fn extract_from_class_body(&self, stmt: &Stmt, symbols: &mut Vec<PublicSymbol>, class_name: &str) {
+        match stmt {
+            // Methods are extracted normally
+            Stmt::FunctionDef(_) | Stmt::AsyncFunctionDef(_) => {
+                self.extract_from_stmt(stmt, symbols, class_name);
+            }
+            // Class-level assignments
+            Stmt::Assign(assign) => {
+                // In a class body, only consider simple Name targets (not attribute access)
+                for target in &assign.targets {
+                    if let Expr::Name(name) = target {
+                        if !name.id.as_str().starts_with('_') {
+                            let full_name = format!("{}.{}", class_name, name.id);
+                            symbols.push(PublicSymbol {
+                                name: full_name,
+                                kind: SymbolKind::Variable,
+                                signature: None,
+                                has_instance_decorator: false,
+                                has_injected_decorator: false,
+                                return_type: None,
+                            });
+                        }
+                    }
+                    // Ignore Expr::Attribute (e.g., self.x) - these are instance attributes
+                }
+            }
+            // Class-level annotated assignments
+            Stmt::AnnAssign(ann_assign) => {
+                // Only consider simple Name targets (not self.x)
+                if let Expr::Name(name) = ann_assign.target.as_ref() {
+                    if !name.id.as_str().starts_with('_') {
+                        let full_name = format!("{}.{}", class_name, name.id);
+                        let type_ann = self.format_type_annotation(&ann_assign.annotation);
+                        symbols.push(PublicSymbol {
+                            name: full_name,
+                            kind: SymbolKind::Variable,
+                            signature: Some(type_ann),
+                            has_instance_decorator: false,
+                            has_injected_decorator: false,
+                            return_type: None,
+                        });
+                    }
+                }
+                // Ignore Expr::Attribute (e.g., self.x: int) - these are instance attributes
+            }
+            // Nested classes - process them as top-level classes within the parent class
+            Stmt::ClassDef(nested_class) => {
+                if !nested_class.name.as_str().starts_with('_') {
+                    let nested_full_name = format!("{}.{}", class_name, nested_class.name);
+                    
+                    symbols.push(PublicSymbol {
+                        name: nested_full_name.clone(),
+                        kind: SymbolKind::Class,
+                        signature: None,
+                        has_instance_decorator: false,
+                        has_injected_decorator: false,
+                        return_type: None,
+                    });
+                    
+                    // Extract nested class members
+                    for nested_stmt in &nested_class.body {
+                        self.extract_from_class_body(nested_stmt, symbols, &nested_full_name);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Extract public symbols from a statement
     fn extract_from_stmt(&self, stmt: &Stmt, symbols: &mut Vec<PublicSymbol>, prefix: &str) {
         match stmt {
@@ -176,9 +246,10 @@ impl EnforcePyiStubsRule {
                         return_type: None,
                     });
 
-                    // Extract public methods from the class
+                    // Extract public methods and class-level attributes from the class
+                    // When inside a class, we need to handle assignments differently
                     for stmt in &class.body {
-                        self.extract_from_stmt(stmt, symbols, &full_name);
+                        self.extract_from_class_body(stmt, symbols, &full_name);
                     }
                 }
             }
@@ -728,9 +799,8 @@ impl EnforcePyiStubsRule {
                     }
                 }
                 SymbolKind::Class => {
-                    if !symbol.name.contains('.') {
-                        classes.insert(symbol.name.clone(), Vec::new());
-                    }
+                    // Always create an entry for the class, even if it's nested
+                    classes.insert(symbol.name.clone(), Vec::new());
                 }
                 SymbolKind::Variable => {
                     if !symbol.name.contains('.') {
@@ -740,12 +810,31 @@ impl EnforcePyiStubsRule {
             }
         }
 
-        // Collect class methods
+        // Collect class methods, attributes, and nested classes
         for symbol in missing_symbols {
-            if let Some(dot_pos) = symbol.name.find('.') {
-                let class_name = &symbol.name[..dot_pos];
-                if let Some(methods) = classes.get_mut(class_name) {
-                    methods.push(symbol);
+            if let Some(_dot_pos) = symbol.name.find('.') {
+                // For nested class members like ComplexClass.NestedConfig.timeout,
+                // we need to find the correct class to add it to
+                let parts: Vec<&str> = symbol.name.split('.').collect();
+                
+                // Try to find the deepest class that exists
+                for i in (1..parts.len()).rev() {
+                    let class_path = parts[..i].join(".");
+                    if let Some(class_members) = classes.get_mut(&class_path) {
+                        class_members.push(symbol);
+                        break;
+                    } else if i == parts.len() - 1 && symbol.kind == SymbolKind::Class {
+                        // This is a class declaration itself
+                        // Find its parent class
+                        if i > 1 {
+                            let parent_path = parts[..i-1].join(".");
+                            if let Some(parent_members) = classes.get_mut(&parent_path) {
+                                parent_members.push(symbol);
+                                // Also create an entry for this nested class
+                                classes.insert(symbol.name.clone(), Vec::new());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -828,14 +917,57 @@ impl EnforcePyiStubsRule {
             content.push_str(": ...\n\n");
         }
 
-        // Generate classes
-        for (class_name, methods) in &classes {
+        // Generate classes with proper nesting support
+        let mut processed_nested = HashSet::new();
+        
+        
+        for (class_name, class_members) in &classes {
+            // Skip if this is a nested class that will be handled by its parent
+            if class_name.contains('.') {
+                continue;
+            }
+            
             content.push_str(&format!("class {}:\n", class_name));
 
-            if methods.is_empty() {
+            if class_members.is_empty() && !classes.keys().any(|k| k.starts_with(&format!("{}.", class_name))) {
                 content.push_str("    ...\n");
             } else {
-                for method in methods {
+                // Separate class variables from methods and nested classes
+                let mut class_vars = Vec::new();
+                let mut methods = Vec::new();
+                let mut nested_classes = HashMap::new();
+                
+                for member in class_members {
+                    // Check if this member belongs to a nested class
+                    let member_path = &member.name[class_name.len() + 1..];
+                    if member_path.contains('.') {
+                        // This is a member of a nested class, skip it here
+                        continue;
+                    }
+                    
+                    match member.kind {
+                        SymbolKind::Variable => class_vars.push(member),
+                        SymbolKind::Function | SymbolKind::AsyncFunction => methods.push(member),
+                        SymbolKind::Class => {
+                            // This is a nested class declaration
+                            nested_classes.insert(member.name.clone(), member_path.to_string());
+                        }
+                    }
+                }
+                
+                // Generate class variables first
+                for var in &class_vars {
+                    content.push_str("    ");
+                    let var_name = &var.name[class_name.len() + 1..];
+                    if let Some(sig) = &var.signature {
+                        content.push_str(&format!("{}: {}\n", var_name, sig));
+                    } else {
+                        content.push_str(&format!("{}: Any\n", var_name));
+                    }
+                }
+                
+                // Then generate methods
+                for method in &methods {
                     content.push_str("    ");
                     if matches!(method.kind, SymbolKind::AsyncFunction) {
                         content.push_str("async ");
@@ -854,6 +986,57 @@ impl EnforcePyiStubsRule {
                         content.push_str("(self, *args, **kwargs) -> Any");
                     }
                     content.push_str(": ...\n");
+                }
+                
+                // Generate nested classes
+                for (nested_full_name, nested_short_name) in &nested_classes {
+                    content.push_str("\n");
+                    content.push_str("    class ");
+                    content.push_str(&nested_short_name);
+                    content.push_str(":\n");
+                    
+                    // Find members of this nested class
+                    let nested_members = classes.get(nested_full_name);
+                    if let Some(members) = nested_members {
+                        if members.is_empty() {
+                            content.push_str("        ...\n");
+                        } else {
+                            // Process nested class members
+                            for member in members {
+                                match member.kind {
+                                    SymbolKind::Variable => {
+                                        content.push_str("        ");
+                                        let var_name = &member.name[nested_full_name.len() + 1..];
+                                        if let Some(sig) = &member.signature {
+                                            content.push_str(&format!("{}: {}\n", var_name, sig));
+                                        } else {
+                                            content.push_str(&format!("{}: Any\n", var_name));
+                                        }
+                                    }
+                                    SymbolKind::Function | SymbolKind::AsyncFunction => {
+                                        content.push_str("        ");
+                                        if matches!(member.kind, SymbolKind::AsyncFunction) {
+                                            content.push_str("async ");
+                                        }
+                                        content.push_str("def ");
+                                        let method_name = &member.name[nested_full_name.len() + 1..];
+                                        if let Some(sig) = &member.signature {
+                                            let sig_with_method_name = sig.replace(&member.name, method_name);
+                                            content.push_str(&sig_with_method_name);
+                                        } else {
+                                            content.push_str(method_name);
+                                            content.push_str("(self, *args, **kwargs) -> Any");
+                                        }
+                                        content.push_str(": ...\n");
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    } else {
+                        content.push_str("        ...\n");
+                    }
+                    processed_nested.insert(nested_full_name.clone());
                 }
             }
             content.push('\n');
@@ -1309,5 +1492,124 @@ class UserService:
         
         // Class
         assert!(fix.content.contains("class UserService:"));
+    }
+
+    #[test]
+    fn test_class_vs_instance_attributes_edge_cases() {
+        let code = r#"
+class ComplexClass:
+    # Class attributes with complex types
+    config: Dict[str, Any] = {"key": "value"}
+    _private_class_var = 10  # Should be ignored (starts with _)
+    
+    def __init__(self, name: str):
+        # Instance attributes in __init__
+        self.name = name
+        self._id = 123  # Private instance attribute
+        self.data: List[str] = []
+        
+    @classmethod
+    def from_dict(cls, data: dict):
+        # Instance attributes in classmethod
+        instance = cls("")
+        instance.extra = data
+        return instance
+    
+    def process(self):
+        # Dynamic instance attributes
+        self.processed = True
+        self.result = self._compute()
+        
+    # Nested class
+    class NestedConfig:
+        timeout = 30
+        retry_count = 3
+
+# Edge case: assignment that looks like attribute access but isn't
+some_obj.attribute = 10  # This should NOT be extracted as a symbol
+"#;
+
+        let violations = check_rule(code, "mymodule.py");
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].fix.is_some());
+        let fix = violations[0].fix.as_ref().unwrap();
+        
+        
+        // Should include class-level attributes
+        assert!(fix.content.contains("class ComplexClass:"));
+        assert!(fix.content.contains("config: Dict[str, Any]"));
+        
+        // Should NOT include private class attributes
+        assert!(!fix.content.contains("_private_class_var"));
+        
+        // Should NOT include any instance attributes as class-level attributes
+        // Note: "name" will appear as a parameter in __init__, but not as a class attribute
+        assert!(!fix.content.contains("\n    name:"));  // Check for class-level attribute
+        assert!(!fix.content.contains("_id"));
+        assert!(!fix.content.contains("\n    data:"));  // data might appear in type hints
+        assert!(!fix.content.contains("extra"));
+        assert!(!fix.content.contains("processed"));
+        assert!(!fix.content.contains("result"));
+        
+        // Should include nested class and its attributes
+        assert!(fix.content.contains("class NestedConfig:"));
+        assert!(fix.content.contains("timeout: Any"));
+        assert!(fix.content.contains("retry_count: Any"));
+        
+        // Should NOT include the module-level attribute assignment
+        assert!(!fix.content.contains("some_obj"));
+        assert!(!fix.content.contains("attribute"));
+    }
+
+    #[test]
+    fn test_class_vs_instance_attributes() {
+        let code = r#"
+class MLPlatformJobFromSchematics:
+    # Class-level attributes (should be in stub)
+    class_var: str = "hello"
+    CLASS_CONSTANT = 42
+    
+    def __init__(self):
+        # Instance attributes (should NOT be in stub)
+        self.project = "my_project"
+        self.schematics = {}
+        self.data = []
+    
+    def setup(self):
+        # Instance attributes set outside __init__ (should NOT be in stub)
+        self.runtime_config = {}
+        self.status = "ready"
+    
+    # Class-level without annotation (should be in stub)
+    default_timeout = 300
+
+# Module-level variable (should be in stub)
+MODULE_CONFIG = {"debug": True}
+"#;
+
+        let violations = check_rule(code, "mymodule.py");
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].fix.is_some());
+        let fix = violations[0].fix.as_ref().unwrap();
+        
+        println!("Generated stub content:\n{}", fix.content);
+        
+        // Should include class-level attributes
+        assert!(fix.content.contains("class MLPlatformJobFromSchematics:"));
+        assert!(fix.content.contains("class_var: str"));
+        assert!(fix.content.contains("CLASS_CONSTANT: Any"));
+        assert!(fix.content.contains("default_timeout: Any"));
+        
+        // Should include module-level variable
+        assert!(fix.content.contains("MODULE_CONFIG: Any"));
+        
+        // Should NOT include instance attributes
+        assert!(!fix.content.contains("project"));
+        assert!(!fix.content.contains("schematics"));
+        assert!(!fix.content.contains("data"));
+        assert!(!fix.content.contains("runtime_config"));
+        assert!(!fix.content.contains("status"));
     }
 }
