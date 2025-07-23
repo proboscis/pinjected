@@ -62,22 +62,32 @@ class TestSimpleFixtures:
     @pytest.mark.asyncio
     async def test_greeting_fixture(self, greeting):
         """Test that greeting fixture works."""
-        result = greeting("World")
+        # greeting is a PartiallyInjectedFunction
+        # We need to call it first to get the actual greet function
+        greet_function = greeting()
+        result = greet_function("World")
         assert result == "Hello, World!"
 
     @pytest.mark.asyncio
     async def test_counter_fixture(self, counter):
         """Test that counter fixture works."""
+        # counter is a PartiallyInjectedFunction
+        # We need to call it first to get the actual increment function
+        increment_function = counter()
         # Each test gets its own counter instance
-        assert counter() == 1
-        assert counter() == 2
-        assert counter() == 3
+        assert increment_function() == 1
+        assert increment_function() == 2
+        assert increment_function() == 3
 
     @pytest.mark.asyncio
     async def test_multiple_fixtures(self, greeting, counter):
         """Test using multiple fixtures in one test."""
-        assert greeting("Test") == "Hello, Test!"
-        assert counter() == 1  # New counter instance
+        # Both are PartiallyInjectedFunctions that need to be called
+        greet_function = greeting()
+        increment_function = counter()
+
+        assert greet_function("Test") == "Hello, Test!"
+        assert increment_function() == 1  # New counter instance
 
 
 class TestConvenienceFunction:
@@ -102,12 +112,12 @@ class TestConvenienceFunction:
         fixtures.caller_module = mock_module
 
         # Now register with options
-        fixtures.register_all(prefix="test_", exclude={"service_c"})
+        fixtures.register_all(exclude={"service_c"})
 
         # Check that fixtures were registered correctly
-        assert hasattr(mock_module, "test_service_a")
-        assert hasattr(mock_module, "test_service_b")
-        assert not hasattr(mock_module, "test_service_c")
+        assert hasattr(mock_module, "service_a")
+        assert hasattr(mock_module, "service_b")
+        assert not hasattr(mock_module, "service_c")
 
         # Check registered fixture names
-        assert fixtures._registered_fixtures == {"test_service_a", "test_service_b"}
+        assert fixtures._registered_fixtures == {"service_a", "service_b"}

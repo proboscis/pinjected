@@ -5,7 +5,6 @@ from pinjected.di.proxiable import DelegatedVar
 def register_fixtures_from_design(
     design_obj: Union[Design, DelegatedVar[Design]],
     scope: str = ...,
-    prefix: str = ...,
     include: Optional[Set[str]] = ...,
     exclude: Optional[Set[str]] = ...,
 ) -> DesignFixtures: ...
@@ -26,7 +25,6 @@ class DesignFixtures:
     def register_all(
         self,
         scope: str = ...,
-        prefix: str = ...,
         include: Optional[Set[str]] = ...,
         exclude: Optional[Set[str]] = ...,
     ) -> None: ...

@@ -58,14 +58,19 @@ class TestSharedStateFix:
         self, test_shared_counter, test_service_a, test_service_b
     ):
         """Test that all fixtures share the same counter instance in function scope."""
+        # Call the injected functions
+        actual_counter = test_shared_counter()
+        actual_service_a = test_service_a()
+        actual_service_b = test_service_b()
+
         # All should have the same counter value
-        assert test_service_a["counter_value"] == test_service_b["counter_value"]
-        assert test_service_a["counter_value"] == test_shared_counter["count"]
-        assert test_service_b["counter_value"] == test_shared_counter["count"]
+        assert actual_service_a["counter_value"] == actual_service_b["counter_value"]
+        assert actual_service_a["counter_value"] == actual_counter["count"]
+        assert actual_service_b["counter_value"] == actual_counter["count"]
 
         # Verify service names
-        assert test_service_a["service"] == "A"
-        assert test_service_b["service"] == "B"
+        assert actual_service_a["service"] == "A"
+        assert actual_service_b["service"] == "B"
 
 
 class ModuleCounterProtocol(Protocol):
@@ -96,7 +101,7 @@ module_test_design = design(
     module_service=module_service,
 )
 
-register_fixtures_from_design(module_test_design, scope="module", prefix="mod_")
+register_fixtures_from_design(module_test_design, scope="module")
 
 
 class TestModuleScopeSharing:
@@ -105,19 +110,25 @@ class TestModuleScopeSharing:
     _first_counter_value = None
 
     @pytest.mark.asyncio
-    async def test_module_scope_first(self, mod_module_counter, mod_module_service):
+    async def test_module_scope_first(self, module_counter, module_service):
         """First test to capture module-scoped values."""
-        TestModuleScopeSharing._first_counter_value = mod_module_counter["count"]
-        assert mod_module_service["counter"] == mod_module_counter["count"]
+        # Call the injected functions
+        actual_counter = module_counter()
+        actual_service = module_service()
+
+        TestModuleScopeSharing._first_counter_value = actual_counter["count"]
+        assert actual_service["counter"] == actual_counter["count"]
 
     @pytest.mark.asyncio
-    async def test_module_scope_second(self, mod_module_counter, mod_module_service):
+    async def test_module_scope_second(self, module_counter, module_service):
         """Second test should see same module-scoped values."""
         # Should be the same as in first test
-        assert (
-            mod_module_counter["count"] == TestModuleScopeSharing._first_counter_value
-        )
-        assert mod_module_service["counter"] == mod_module_counter["count"]
+        # Call the injected functions
+        actual_counter = module_counter()
+        actual_service = module_service()
+
+        assert actual_counter["count"] == TestModuleScopeSharing._first_counter_value
+        assert actual_service["counter"] == actual_counter["count"]
 
 
 # Test different scopes get different instances
@@ -125,9 +136,11 @@ class TestScopeIsolation:
     """Test that different scopes get different resolver instances."""
 
     @pytest.mark.asyncio
-    async def test_function_vs_module_scope(
-        self, test_shared_counter, mod_module_counter
-    ):
+    async def test_function_vs_module_scope(self, test_shared_counter, module_counter):
         """Test that function and module scoped fixtures have different values."""
         # These should be different because they use different resolvers
-        assert test_shared_counter["count"] != mod_module_counter["count"]
+        # Call the injected functions
+        actual_test_counter = test_shared_counter()
+        actual_module_counter = module_counter()
+
+        assert actual_test_counter["count"] != actual_module_counter["count"]

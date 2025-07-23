@@ -249,7 +249,9 @@ class DesignFixtures:
 
             # Handle PartiallyInjectedFunction
             if isinstance(result, PartiallyInjectedFunction):
-                result = result()
+                # For @injected functions, we keep the PartiallyInjectedFunction
+                # The test will decide whether to call it or not based on the use case
+                pass
 
             # Handle awaitable results
             if isinstance(result, Awaitable):
@@ -268,7 +270,6 @@ class DesignFixtures:
     def register_all(
         self,
         scope: str = "function",
-        prefix: str = "",
         include: Optional[Set[str]] = None,
         exclude: Optional[Set[str]] = None,
     ) -> None:
@@ -279,8 +280,6 @@ class DesignFixtures:
         ----------
         scope : str
             The pytest fixture scope for all fixtures
-        prefix : str
-            A prefix to add to all fixture names
         include : Optional[Set[str]]
             If provided, only register these bindings
         exclude : Optional[Set[str]]
@@ -302,8 +301,7 @@ class DesignFixtures:
 
         # Register each binding
         for binding_name in bindings_to_register:
-            fixture_name = f"{prefix}{binding_name}"
-            self.register(binding_name, scope=scope, fixture_name=fixture_name)
+            self.register(binding_name, scope=scope)
 
         logger.info(f"Registered {len(bindings_to_register)} fixtures from Design")
 
@@ -311,7 +309,6 @@ class DesignFixtures:
 def register_fixtures_from_design(
     design_obj: Union[Design, DelegatedVar[Design]],
     scope: str = "function",
-    prefix: str = "",
     include: Optional[Set[str]] = None,
     exclude: Optional[Set[str]] = None,
 ) -> DesignFixtures:
@@ -334,7 +331,6 @@ def register_fixtures_from_design(
     register_fixtures_from_design(
         test_design,
         scope='module',  # Module-level fixtures
-        prefix='app_',   # Prefix all fixtures with 'app_'
         exclude={'logger', 'config'}  # Don't register these
     )
     ```
@@ -345,8 +341,6 @@ def register_fixtures_from_design(
         The pinjected Design object containing bindings
     scope : str
         The pytest fixture scope ('function', 'class', 'module', 'session')
-    prefix : str
-        A prefix to add to all fixture names
     include : Optional[Set[str]]
         If provided, only register these bindings
     exclude : Optional[Set[str]]
@@ -358,5 +352,5 @@ def register_fixtures_from_design(
         The DesignFixtures instance (for advanced use cases)
     """
     fixtures = DesignFixtures(design_obj)
-    fixtures.register_all(scope=scope, prefix=prefix, include=include, exclude=exclude)
+    fixtures.register_all(scope=scope, include=include, exclude=exclude)
     return fixtures
