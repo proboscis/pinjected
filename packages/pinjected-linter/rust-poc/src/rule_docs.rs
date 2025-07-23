@@ -118,6 +118,10 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ040",
         include_str!("../../docs/rules/pinj040_injected_pytest_deprecated.md"),
     );
+    docs.insert(
+        "PINJ041",
+        include_str!("../../docs/rules/pinj041_stub_iproxy_explanation.md"),
+    );
 
     docs
 }
