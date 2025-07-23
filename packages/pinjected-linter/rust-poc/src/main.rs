@@ -322,13 +322,17 @@ fn get_git_modified_files(repo_path: &Path, include_untracked: bool) -> Result<V
             && !status.contains(git2::Status::INDEX_MODIFIED)
             && !status.contains(git2::Status::INDEX_RENAMED);
 
+        let is_deleted = status.contains(git2::Status::WT_DELETED)
+            || status.contains(git2::Status::INDEX_DELETED);
+        
         let is_modified = status.contains(git2::Status::WT_MODIFIED)
             || status.contains(git2::Status::WT_RENAMED)
             || status.contains(git2::Status::INDEX_MODIFIED)
             || status.contains(git2::Status::INDEX_NEW)
             || status.contains(git2::Status::INDEX_RENAMED);
 
-        if is_modified || (is_untracked && include_untracked) {
+        // Only include files that exist (not deleted)
+        if !is_deleted && (is_modified || (is_untracked && include_untracked)) {
             if let Some(path_str) = entry.path() {
                 let path = PathBuf::from(path_str);
                 // Only include Python files
@@ -338,7 +342,11 @@ fn get_git_modified_files(repo_path: &Path, include_untracked: bool) -> Result<V
                         .workdir()
                         .ok_or_else(|| anyhow::anyhow!("No working directory"))?
                         .join(&path);
-                    modified_files.push(abs_path);
+                    
+                    // Double-check that the file actually exists
+                    if abs_path.exists() {
+                        modified_files.push(abs_path);
+                    }
                 }
             }
         }
