@@ -22,7 +22,7 @@ from typing import Dict, List, Protocol
 
 import pytest
 
-from pinjected import design, injected, Injected
+from pinjected import design, injected, Injected, IProxy
 from pinjected.picklable_logger import PicklableLogger
 from pinjected.pytest_fixtures import register_fixtures_from_design
 
@@ -267,7 +267,7 @@ complex_design = design(
 )
 
 # Register fixtures
-register_fixtures_from_design(complex_design)
+register_fixtures_from_design(IProxy(complex_design))
 
 
 class TestComplexDependencies:
