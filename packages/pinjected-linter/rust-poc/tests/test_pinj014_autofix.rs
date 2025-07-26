@@ -1,4 +1,4 @@
-use pinjected_linter::rules::pinj014_missing_stub_file::MissingStubFileRule;
+use pinjected_linter::rules::pinj014::MissingStubFileRule;
 use pinjected_linter::rules::base::LintRule;
 use pinjected_linter::models::RuleContext;
 use rustpython_parser::{parse, Mode};

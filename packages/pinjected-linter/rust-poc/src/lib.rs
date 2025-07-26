@@ -1,7 +1,17 @@
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::cognitive_complexity)]
+#![warn(clippy::too_many_lines)]
+#![warn(clippy::too_many_arguments)]
+// Allow some common patterns that are fine in this codebase
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::must_use_candidate)]
+
 pub mod config;
 pub mod location;
 pub mod models;
 pub mod noqa;
+pub mod rule_docs;
 pub mod rules;
 pub mod utils;
 
