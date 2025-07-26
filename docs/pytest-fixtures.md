@@ -148,6 +148,8 @@ class TestAuthService:
 
 #### Option 2: Class-Specific Designs (Proposed API)
 
+⚠️ **NOTE: The following features are NOT YET IMPLEMENTED. They are proposed APIs for future development.**
+
 For more control, we propose these APIs for class-specific fixture registration:
 
 ```python
@@ -290,13 +292,15 @@ class TestAdminFeatures:
 
 ### Implementation Status
 
-**Note**: The class-based APIs (`@add_fixtures_from_design`, `__pinjected_design__`, `@fixture_override`) are proposed features and not yet implemented. Currently, you should use module-level registration (Option 1) for class-based tests.
+⚠️ **IMPORTANT**: The class-based APIs (`@add_fixtures_from_design`, `__pinjected_design__`, `@fixture_override`) are **proposed features and NOT YET IMPLEMENTED**. 
+
+Currently, you should use module-level registration (Option 1) for class-based tests. These proposed APIs are included in the documentation as a reference for future development and to gather community feedback.
 
 Here's a potential implementation approach for `@add_fixtures_from_design`:
 
 ```python
 # Proposed implementation (not yet available)
-def add_fixtures_from_design(design_obj, scope="function", prefix="", exclude=None):
+def add_fixtures_from_design(design_obj, scope="function", exclude=None):
     """Decorator to add fixtures from a design to a test class."""
     def decorator(cls):
         # Register fixtures in the module where the class is defined
@@ -304,11 +308,9 @@ def add_fixtures_from_design(design_obj, scope="function", prefix="", exclude=No
         fixtures = DesignFixtures(design_obj)
         fixtures.caller_module = module
         
-        # Add class name as prefix to avoid conflicts
-        class_prefix = f"{prefix}{cls.__name__.lower()}_" if not prefix else prefix
+        # Register all fixtures with specified scope
         fixtures.register_all(
             scope=scope,
-            prefix=class_prefix,
             exclude=exclude
         )
         
@@ -326,29 +328,32 @@ To implement similar functionality today, you can:
 from pinjected import design
 from pinjected.test import register_fixtures_from_design
 
-# Define class-specific designs
-user_fixtures = register_fixtures_from_design(
-    user_test_design,
-    prefix="user_",
-    scope="class"
+# Define class-specific designs with unique binding names
+user_test_design = design(
+    user_database=in_memory_database,
+    user_service=user_service_impl,
 )
 
-admin_fixtures = register_fixtures_from_design(
-    admin_test_design,
-    prefix="admin_",
-    scope="class"
+admin_test_design = design(
+    admin_database=admin_database,
+    admin_service=admin_service_impl,
+    admin_permissions=admin_permissions_impl,
 )
+
+# Register fixtures
+register_fixtures_from_design(user_test_design, scope="class")
+register_fixtures_from_design(admin_test_design, scope="class")
 
 class TestUserService:
     @pytest.mark.asyncio
-    async def test_create(self, user_user_service, user_database):
-        # Use prefixed fixtures
+    async def test_create(self, user_service, user_database):
+        # Use fixtures with unique names
         pass
 
 class TestAdminService:
     @pytest.mark.asyncio
-    async def test_admin(self, admin_admin_service, admin_permissions):
-        # Use prefixed fixtures
+    async def test_admin(self, admin_service, admin_permissions):
+        # Use fixtures with unique names
         pass
 ```
 
@@ -362,11 +367,12 @@ The `register_fixtures_from_design` function supports several options:
 register_fixtures_from_design(
     test_design,
     scope="function",        # Fixture scope: function, class, module, session
-    prefix="test_",          # Prefix for all fixture names
     include={"service_a"},   # Only register these bindings
     exclude={"logger"}       # Exclude these bindings
 )
 ```
+
+**Note**: The `prefix` parameter shown in some examples is not currently implemented. To avoid naming conflicts, consider using unique binding names in your Design objects.
 
 ### Scoped Fixtures
 
@@ -404,20 +410,24 @@ register_fixtures_from_design(
 )
 ```
 
-### Prefixing Fixtures
+### Avoiding Naming Conflicts
 
-Add prefixes to avoid naming conflicts:
+**Note**: The `prefix` parameter is not currently implemented. To avoid naming conflicts, consider these approaches:
 
+1. Use unique binding names in your Design objects:
 ```python
-# All fixtures will be prefixed
-register_fixtures_from_design(test_design, prefix="app_")
+test_design = design(
+    test_database=test_database_impl,
+    test_cache=test_cache_impl,
+)
 
 # Usage
 @pytest.mark.asyncio
-async def test_something(app_database, app_cache):
-    # Use app_database and app_cache
+async def test_something(test_database, test_cache):
     pass
 ```
+
+2. Use separate Design objects with different binding names for different test modules.
 
 ## API Reference
 
@@ -427,7 +437,6 @@ async def test_something(app_database, app_cache):
 def register_fixtures_from_design(
     design_obj: Union[Design, DelegatedVar[Design]],
     scope: str = 'function',
-    prefix: str = '',
     include: Optional[Set[str]] = None,
     exclude: Optional[Set[str]] = None
 ) -> DesignFixtures:
@@ -436,7 +445,6 @@ def register_fixtures_from_design(
 **Parameters:**
 - `design_obj`: The pinjected Design object containing bindings
 - `scope`: Pytest fixture scope ('function', 'class', 'module', 'session')
-- `prefix`: Prefix to add to all fixture names
 - `include`: Set of binding names to include (if provided, only these are registered)
 - `exclude`: Set of binding names to exclude from registration
 
@@ -459,7 +467,6 @@ class DesignFixtures:
     def register_all(
         self,
         scope: str = 'function',
-        prefix: str = '',
         include: Optional[Set[str]] = None,
         exclude: Optional[Set[str]] = None
     ) -> None
@@ -615,35 +622,35 @@ test_design = design(
 from pinjected.test import register_fixtures_from_design
 from .test_design import test_design
 
-# Register all fixtures with test_ prefix
-register_fixtures_from_design(test_design, prefix="test_")
+# Register all fixtures from the design
+register_fixtures_from_design(test_design)
 
 # test_user_service.py
 import pytest
 
 @pytest.mark.asyncio
-async def test_user_registration(test_user_service, test_email_service, test_database):
+async def test_user_registration(user_service, email_service, database):
     # Register a user
-    user = await test_user_service.register("user@example.com", "password")
+    user = await user_service.register("user@example.com", "password")
     
     # Check user in database
-    assert user.id in test_database["users"]
+    assert user.id in database["users"]
     
     # Check welcome email was sent
-    emails = test_email_service.get_sent_emails()
+    emails = email_service.get_sent_emails()
     assert len(emails) == 1
     assert emails[0]["to"] == "user@example.com"
     assert "Welcome" in emails[0]["subject"]
 
 @pytest.mark.asyncio
-async def test_user_login(test_auth_service, test_user_service, test_database):
+async def test_user_login(auth_service, user_service, database):
     # Create user first
-    await test_user_service.register("user@example.com", "password")
+    await user_service.register("user@example.com", "password")
     
     # Test login
-    session = await test_auth_service.login("user@example.com", "password")
+    session = await auth_service.login("user@example.com", "password")
     assert session.user_email == "user@example.com"
-    assert session.id in test_database["sessions"]
+    assert session.id in database["sessions"]
 ```
 
 ### Example: Testing with Mixed Fixtures
@@ -655,10 +662,10 @@ def sample_data():
     return {"id": 123, "name": "Test"}
 
 @pytest.mark.asyncio  
-async def test_mixed_fixtures(test_database, test_user_service, sample_data):
-    # test_database and test_user_service from pinjected
+async def test_mixed_fixtures(database, user_service, sample_data):
+    # database and user_service from pinjected
     # sample_data from regular pytest
-    user = await test_user_service.create_user(sample_data["name"])
+    user = await user_service.create_user(sample_data["name"])
     assert user.name == sample_data["name"]
 ```
 
