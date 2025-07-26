@@ -95,6 +95,7 @@ class DesignFixtures:
         self.design_obj = design_obj
         self._registered_fixtures: Set[str] = set()
         self._binding_names_cache: Optional[Set[str]] = None
+        self._resolved_design_cache: Optional[Design] = None
 
         # Detect caller file if not provided
         if caller_file is None:
@@ -124,9 +125,23 @@ class DesignFixtures:
 
         # For DelegatedVar, we need to resolve it first to inspect bindings
         if isinstance(self.design_obj, DelegatedVar):
-            logger.warning(
-                "Cannot extract binding names from DelegatedVar until resolved. "
-                "Consider using register() with explicit binding names."
+            logger.info(
+                "Resolving DelegatedVar to extract binding names for fixture registration"
+            )
+            # Run async resolution in sync context
+            resolved_design = asyncio.run(self._resolve_delegated_var())
+            if resolved_design:
+                # Cache the resolved design for later use
+                self._resolved_design_cache = resolved_design
+                if hasattr(resolved_design, "bindings"):
+                    bindings = resolved_design.bindings
+                    for key, binding in bindings.items():
+                        if isinstance(key, StrBindKey) or hasattr(key, "name"):
+                            binding_names.add(key.name)
+                        elif isinstance(key, str):
+                            binding_names.add(key)
+            logger.debug(
+                f"Extracted {len(binding_names)} binding names from resolved DelegatedVar"
             )
             self._binding_names_cache = binding_names
             return binding_names
@@ -144,6 +159,29 @@ class DesignFixtures:
         self._binding_names_cache = binding_names
         return binding_names
 
+    async def _resolve_delegated_var(self) -> Optional[Design]:
+        """Resolve a DelegatedVar[Design] to extract its bindings."""
+        if not isinstance(self.design_obj, DelegatedVar):
+            return None
+
+        # Get MetaContext for proper resolution
+        caller_path = Path(self.caller_file)
+        mc = await MetaContext.a_gather_bindings_with_legacy(caller_path)
+        final_design = await mc.a_final_design
+
+        # Create resolver and resolve the DelegatedVar
+        resolver = AsyncResolver(final_design, callbacks=[])
+        try:
+            resolved_design = await resolver.provide(self.design_obj)
+            if not isinstance(resolved_design, Design):
+                logger.error(
+                    f"DelegatedVar resolved to {type(resolved_design)}, expected Design"
+                )
+                return None
+            return resolved_design
+        finally:
+            await resolver.destruct()
+
     async def _get_or_create_state(self, request) -> SharedTestState:
         """Get or create shared state for the current test."""
         test_func = request.function
@@ -158,8 +196,11 @@ class DesignFixtures:
             final_design = await mc.a_final_design
 
             # Resolve design if DelegatedVar
-            resolved_design = self.design_obj
-            if isinstance(self.design_obj, DelegatedVar):
+            if self._resolved_design_cache:
+                # Use cached resolved design if available
+                resolved_design = self._resolved_design_cache
+            elif isinstance(self.design_obj, DelegatedVar):
+                # Resolve DelegatedVar if not already cached
                 temp_resolver = AsyncResolver(final_design, callbacks=[])
                 try:
                     resolved_design = await temp_resolver.provide(self.design_obj)
@@ -167,8 +208,11 @@ class DesignFixtures:
                         raise TypeError(
                             f"DelegatedVar must resolve to Design, got {type(resolved_design)}"
                         )
+                    self._resolved_design_cache = resolved_design
                 finally:
                     await temp_resolver.destruct()
+            else:
+                resolved_design = self.design_obj
 
             # Create TaskGroup and resolver
             state.task_group = TaskGroup()
