@@ -1,6 +1,6 @@
 //! Common patterns for detecting pinjected decorators and constructs
 
-use rustpython_ast::{Expr, Keyword, StmtAsyncFunctionDef, StmtFunctionDef};
+use rustpython_ast::{Expr, Keyword, StmtAsyncFunctionDef, StmtClassDef, StmtFunctionDef};
 
 /// Check if an expression is an @instance decorator
 pub fn is_instance_decorator(expr: &Expr) -> bool {
@@ -343,4 +343,48 @@ pub fn find_slash_position_async(func: &StmtAsyncFunctionDef) -> Option<usize> {
     } else {
         Some(func.args.posonlyargs.len())
     }
+}
+
+/// Check if an expression is a @dataclass decorator
+pub fn is_dataclass_decorator(expr: &Expr) -> bool {
+    match expr {
+        Expr::Name(name) => name.id.as_str() == "dataclass",
+        Expr::Attribute(attr) => {
+            if let Expr::Name(name) = &*attr.value {
+                name.id.as_str() == "dataclasses" && attr.attr.as_str() == "dataclass"
+            } else {
+                false
+            }
+        }
+        Expr::Call(call) => {
+            // Handle @dataclass(...) decorators
+            match &*call.func {
+                Expr::Name(name) => name.id.as_str() == "dataclass",
+                Expr::Attribute(attr) => {
+                    if let Expr::Name(name) = &*attr.value {
+                        name.id.as_str() == "dataclasses" && attr.attr.as_str() == "dataclass"
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Check if a class has @dataclass decorator
+pub fn has_dataclass_decorator(cls: &StmtClassDef) -> bool {
+    cls.decorator_list.iter().any(|d| is_dataclass_decorator(d))
+}
+
+/// Check if a class has @injected decorator
+pub fn has_injected_decorator_class(cls: &StmtClassDef) -> bool {
+    cls.decorator_list.iter().any(|d| is_injected_decorator(d))
+}
+
+/// Check if a class has both @injected and @dataclass decorators
+pub fn has_injected_dataclass_decorators(cls: &StmtClassDef) -> bool {
+    has_dataclass_decorator(cls) && has_injected_decorator_class(cls)
 }

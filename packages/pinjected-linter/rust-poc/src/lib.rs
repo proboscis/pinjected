@@ -172,7 +172,7 @@ fn analyze_file(
                 }
 
                 // Also add rules that need to check inside classes
-                if matches!(rule.rule_id(), "PINJ033") {
+                if matches!(rule.rule_id(), "PINJ033" | "PINJ041") {
                     class_rules.push(rule);
                 }
             }
