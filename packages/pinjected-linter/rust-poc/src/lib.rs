@@ -165,7 +165,7 @@ fn analyze_file(
                     | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032"
                     | "PINJ033" | "PINJ040" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
-                    "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" => {
+                    "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" | "PINJ042" => {
                         stmt_rules.push(rule)
                     }
                     _ => {} // Already handled
@@ -207,7 +207,7 @@ fn analyze_file(
 
                 // Apply rules that need to see all statements
                 for rule in &active_rules {
-                    if rule.rule_id() == "PINJ019" {
+                    if matches!(rule.rule_id(), "PINJ019" | "PINJ042") {
                         violations.extend(rule.check(&context));
                     }
                 }

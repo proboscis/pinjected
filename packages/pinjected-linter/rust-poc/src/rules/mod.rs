@@ -33,6 +33,7 @@ pub mod pinj035_deprecated_design_functions;
 pub mod pinj036_enforce_pyi_stubs;
 pub mod pinj040_injected_pytest_deprecated;
 pub mod pinj041_no_underscore_defaults_in_injected_dataclass;
+pub mod pinj042_no_unmarked_injected_calls;
 // Future rules would be added here:
 // ... etc
 
@@ -74,6 +75,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj036_enforce_pyi_stubs::EnforcePyiStubsRule::new()),
         Box::new(pinj040_injected_pytest_deprecated::InjectedPytestDeprecatedRule::new()),
         Box::new(pinj041_no_underscore_defaults_in_injected_dataclass::NoUnderscoreDefaultsInInjectedDataclassRule::new()),
+        Box::new(pinj042_no_unmarked_injected_calls::NoUnmarkedInjectedCallsRule::new()),
         // Add more rules here as they're implemented
     ]
 }
@@ -92,4 +94,26 @@ pub fn get_all_rule_ids() -> Vec<String> {
         .into_iter()
         .map(|rule| rule.rule_id().to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_rules_loaded() {
+        let rules = get_all_rules();
+        let rule_ids: Vec<_> = rules.iter().map(|r| r.rule_id()).collect();
+        
+        println!("Total rules: {}", rule_ids.len());
+        for id in &rule_ids {
+            println!("Rule: {}", id);
+        }
+        
+        // Check specific rules exist
+        assert!(rule_ids.contains(&"PINJ001"));
+        assert!(rule_ids.contains(&"PINJ009"));
+        assert!(rule_ids.contains(&"PINJ041"));
+        assert!(rule_ids.contains(&"PINJ042"), "PINJ042 not found!");
+    }
 }
