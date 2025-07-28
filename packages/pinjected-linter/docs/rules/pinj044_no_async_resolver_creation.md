@@ -2,37 +2,42 @@
 
 ## Overview
 
-`AsyncResolver` is an internal implementation detail of pinjected and should never be instantiated directly by users. Use the proper pinjected API methods instead.
+Direct instantiation of `AsyncResolver` is not recommended. Use the CLI approach (`python -m pinjected run`) for running pinjected applications instead.
 
 ## Rationale
 
-`AsyncResolver` is a low-level internal class that handles dependency resolution within pinjected. Direct usage of `AsyncResolver`:
+Direct usage of `AsyncResolver` is discouraged because:
 
-1. **Breaks Encapsulation**: Exposes internal implementation details that may change
-2. **Bypasses Safety Features**: Skips validation and safety checks built into the public API
-3. **Complicates Migration**: Makes code harder to upgrade when pinjected internals change
-4. **Missing Features**: Doesn't benefit from high-level features like automatic cleanup, proper error handling, and lifecycle management
-5. **API Instability**: Internal classes are not part of the stable API and may change without notice
+1. **Configuration Flexibility**: CLI execution allows easy parameter overrides without code changes
+2. **Code Volume**: Direct usage increases boilerplate code
+3. **Design Philosophy**: Goes against pinjected's principle of separating configuration from execution
+4. **Limited Features**: Misses out on CLI features like parameter overrides, design switching, and dependency visualization
+5. **Maintenance**: Direct usage couples your code to internal implementation details
 
-The pinjected library provides proper high-level APIs that should be used instead.
+The CLI approach provides a cleaner, more flexible, and maintainable solution.
 
 ## Examples
 
 ### ❌ Incorrect
 
 ```python
-from pinjected import AsyncResolver, design
+from pinjected import AsyncResolver, design, instance, IProxy
 
-# VIOLATION: Direct AsyncResolver creation
-d = design(database="test_db", cache="redis")
-resolver = AsyncResolver(d)
-result = await resolver.provide("database")
+# VIOLATION: Direct AsyncResolver in __main__ block
+if __name__ == "__main__":
+    d = design(db_path="./data.db")
+    resolver = AsyncResolver(d)  # Error without explicit marking
+    
+    service = resolver.provide(my_service)
+    print(service)
 
-# VIOLATION: Module import style
-import pinjected
-resolver = pinjected.AsyncResolver(pinjected.design())
+# VIOLATION: AsyncResolver in regular functions
+def get_database():
+    d = design(database="test_db")
+    resolver = AsyncResolver(d)
+    return resolver.provide("database")
 
-# VIOLATION: In class initialization
+# VIOLATION: AsyncResolver as class attribute
 class ServiceManager:
     def __init__(self):
         self.resolver = AsyncResolver(design())
@@ -40,9 +45,9 @@ class ServiceManager:
     async def get_service(self, name):
         return await self.resolver.provide(name)
 
-# VIOLATION: Factory function
-def create_test_resolver():
-    return AsyncResolver(design(test_mode=True))
+# VIOLATION: Factory functions creating resolvers
+def create_resolver(config):
+    return AsyncResolver(design(**config))
 ```
 
 ### ✅ Correct
@@ -101,7 +106,7 @@ async_design = design(
 
 ## Special Cases
 
-If you absolutely need to use `AsyncResolver` directly (extremely rare), you can mark it with a special comment:
+If you absolutely need to use `AsyncResolver` directly (extremely rare), you must explicitly mark it with a special comment:
 
 ```python
 from pinjected import AsyncResolver, design

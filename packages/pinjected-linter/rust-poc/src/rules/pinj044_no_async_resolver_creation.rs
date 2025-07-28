@@ -1,7 +1,7 @@
-//! PINJ044: No direct AsyncResolver creation
+//! PINJ044: Direct AsyncResolver creation not recommended
 //!
-//! AsyncResolver is an internal implementation detail and should never be instantiated directly by users.
-//! Users should use the proper pinjected API methods instead.
+//! Direct instantiation of AsyncResolver is not recommended. While it can be used in __main__ blocks
+//! for script execution, the CLI approach is the preferred method for running pinjected applications.
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
@@ -93,13 +93,13 @@ impl NoAsyncResolverCreationRule {
                 violations.push(Violation {
                     rule_id: "PINJ044".to_string(),
                     message: format!(
-                        "AsyncResolver should not be instantiated directly. \
-                        AsyncResolver is an internal implementation detail of pinjected.\n\n\
-                        Instead, use the proper API:\n\
+                        "Direct AsyncResolver instantiation is not allowed.\n\n\
+                        Use the proper pinjected API instead:\n\
                         - For running applications: use 'python -m pinjected run <module.path>'\n\
                         - For testing: use register_fixtures_from_design() with pytest\n\
                         - For dependency inspection: use design inspection methods\n\n\
-                        If you absolutely need direct AsyncResolver access (rare), mark with:\n\
+                        Direct usage increases code volume and reduces flexibility.\n\n\
+                        If you must use AsyncResolver directly (rare), explicitly mark with:\n\
                         # pinjected: allow-async-resolver"
                     ),
                     offset: expr.range().start().to_usize(),
