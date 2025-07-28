@@ -1,7 +1,7 @@
-//! PINJ044: Direct AsyncResolver creation not recommended
+//! PINJ044: Direct AsyncResolver creation not allowed
 //!
-//! Direct instantiation of AsyncResolver is not recommended. While it can be used in __main__ blocks
-//! for script execution, the CLI approach is the preferred method for running pinjected applications.
+//! Direct instantiation of AsyncResolver is not allowed. The CLI approach (`python -m pinjected run`)
+//! is the required method for running pinjected applications.
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
@@ -303,7 +303,7 @@ result = await resolver.provide("value")
         let violations = check_code(code, "test_app.py");
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ044");
-        assert!(violations[0].message.contains("should not be instantiated directly"));
+        assert!(violations[0].message.contains("not allowed"));
     }
 
     #[test]
