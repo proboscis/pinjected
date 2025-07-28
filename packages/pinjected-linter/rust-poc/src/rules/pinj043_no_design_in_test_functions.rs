@@ -86,7 +86,7 @@ impl NoDesignInTestFunctionsRule {
                     rule_id: "PINJ043".to_string(),
                     message: format!(
                         "design() cannot be used inside test function '{}'. \
-                        The 'with design()' context manager only works for IProxy entrypoint declarations, not for test dependency resolution.\n\n\
+                        Creating a design inside a test function does not inject dependencies into the test scope.\n\n\
                         Use register_fixtures_from_design() instead (recommended):\n\
                         # At module level:\n\
                         test_design = design(\n\
@@ -126,7 +126,7 @@ impl NoDesignInTestFunctionsRule {
                     rule_id: "PINJ043".to_string(),
                     message: format!(
                         "design() cannot be used inside test function '{}'. \
-                        The 'async with design()' pattern is not supported for test dependency resolution.\n\n\
+                        Creating a design inside a test function does not inject dependencies into the test scope.\n\n\
                         Use register_fixtures_from_design() instead (recommended):\n\
                         # At module level:\n\
                         test_design = design(\n\
@@ -244,7 +244,7 @@ impl LintRule for NoDesignInTestFunctionsRule {
     }
 
     fn description(&self) -> &str {
-        "design() cannot be used inside test functions. The 'with design()' pattern only works for IProxy entrypoints. Use register_fixtures_from_design() instead."
+        "design() cannot be used inside test functions. Creating a design inside a test does not inject dependencies. Use register_fixtures_from_design() instead."
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {

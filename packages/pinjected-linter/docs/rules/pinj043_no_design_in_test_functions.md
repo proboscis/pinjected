@@ -31,31 +31,28 @@ def test_user_creation():
     # VIOLATION: design() inside test function - THIS DOES NOT WORK!
     # The with design() context manager is only for IProxy entrypoints
     with design() as d:
-        d.provide(user_service)  # This will not inject dependencies
-        d.provide(database)      # This will not inject dependencies
+        d.provide("user_service", MockUserService())
+        d.provide("database", MockDatabase())
     
-    # These variables are undefined - the code will fail
-    user = user_service.create_user("test@example.com")
+    # This doesn't inject anything - user_service and database are undefined
+    user = user_service.create_user("test@example.com")  # NameError!
     assert user.id in database
 
-@pytest.mark.asyncio
-async def test_async_operation():
-    # VIOLATION: async design() in test - NOT SUPPORTED!
-    async with design() as d:
-        d.provide(async_service)  # This does nothing in test context
-    
-    # async_service is undefined - runtime error
-    result = await async_service.do_something()
-    assert result is not None
+def test_another_violation():
+    # VIOLATION: Trying to use design to get dependencies - WRONG!
+    d = design(
+        user_service=MockUserService(),
+        database=MockDatabase()
+    )
+    # This doesn't make dependencies available in test scope
+    user = user_service.create_user("test@example.com")  # NameError!
 
 @pytest.mark.parametrize("value", [1, 2, 3])
 def test_parametrized(value):
     # VIOLATION: design() in test - WILL NOT WORK!
-    with design() as d:
-        d.provide(service)  # Not functional in test functions
-    
-    # service is undefined - test will fail
-    assert service.process(value) > 0
+    test_design = design(service=MockService())
+    # service is not available in test function scope
+    assert service.process(value) > 0  # NameError!
 ```
 
 ### ✅ Correct - Recommended Approach Using register_fixtures_from_design
@@ -295,10 +292,10 @@ To fix violations of this rule, migrate to using `register_fixtures_from_design(
 # Before (design() in test - NOT WORKING)
 def test_something():
     with design() as d:
-        d.provide(service=MyService())
-        d.provide(database=MockDatabase())
-    # service and database are undefined - test fails
-    result = service.method()
+        d.provide("service", MyService())
+        d.provide("database", MockDatabase())
+    # service and database are NOT in scope - test fails
+    result = service.method()  # NameError!
 
 # After (using register_fixtures_from_design)
 from pinjected.test import register_fixtures_from_design
@@ -321,10 +318,9 @@ def test_something(service, database):
 ```python
 # Before (design() in test - NOT WORKING)
 def test_something():
-    with design() as d:
-        d.provide(service=MyService())
-    # service is undefined - test fails
-    result = service.method()
+    test_design = design(service=MyService())
+    # service is NOT available in test scope
+    result = service.method()  # NameError!
 
 # After (using @injected_pytest)
 from pinjected.test import injected_pytest

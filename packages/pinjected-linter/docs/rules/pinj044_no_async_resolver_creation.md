@@ -75,9 +75,10 @@ app_design = design(
 # For testing: use pytest fixtures
 from pinjected.test import register_fixtures_from_design
 
-test_design = design()
-test_design.provide(database="test_db")
-test_design.provide(cache="test_cache")
+test_design = design(
+    database="test_db",
+    cache="test_cache"
+)
 register_fixtures_from_design(test_design)
 
 def test_with_fixtures(database, cache):
