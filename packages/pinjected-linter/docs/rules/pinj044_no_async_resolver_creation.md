@@ -2,11 +2,11 @@
 
 ## Overview
 
-Direct instantiation of `AsyncResolver` is not recommended. Use the CLI approach (`python -m pinjected run`) for running pinjected applications instead.
+Direct instantiation of `AsyncResolver` is not allowed. Use the CLI approach (`python -m pinjected run`) for running pinjected applications instead.
 
 ## Rationale
 
-Direct usage of `AsyncResolver` is discouraged because:
+Direct usage of `AsyncResolver` is not allowed because:
 
 1. **Configuration Flexibility**: CLI execution allows easy parameter overrides without code changes
 2. **Code Volume**: Direct usage increases boilerplate code
