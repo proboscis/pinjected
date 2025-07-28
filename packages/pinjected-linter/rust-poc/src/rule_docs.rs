@@ -126,6 +126,14 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ042",
         include_str!("../../docs/rules/pinj042_no_unmarked_injected_calls.md"),
     );
+    docs.insert(
+        "PINJ043",
+        include_str!("../../docs/rules/pinj043_no_design_in_test_functions.md"),
+    );
+    docs.insert(
+        "PINJ044",
+        include_str!("../../docs/rules/pinj044_no_async_resolver_creation.md"),
+    );
 
     docs
 }
