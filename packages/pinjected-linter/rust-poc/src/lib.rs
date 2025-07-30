@@ -143,9 +143,9 @@ fn analyze_file(
         ast: &ast,
     };
 
-    // First pass: module-level rules (PINJ012, PINJ014, PINJ036)
+    // First pass: module-level rules (PINJ012, PINJ014, PINJ036, PINJ049)
     for rule in &active_rules {
-        if matches!(rule.rule_id(), "PINJ012" | "PINJ014" | "PINJ036") {
+        if matches!(rule.rule_id(), "PINJ012" | "PINJ014" | "PINJ036" | "PINJ049") {
             violations.extend(rule.check(&module_context));
         }
     }

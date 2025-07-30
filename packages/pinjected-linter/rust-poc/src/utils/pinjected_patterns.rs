@@ -13,6 +13,20 @@ pub fn is_instance_decorator(expr: &Expr) -> bool {
                 false
             }
         }
+        Expr::Call(call) => {
+            // Handle @instance(...) decorators
+            match &*call.func {
+                Expr::Name(name) => name.id.as_str() == "instance",
+                Expr::Attribute(attr) => {
+                    if let Expr::Name(name) = &*attr.value {
+                        name.id.as_str() == "pinjected" && attr.attr.as_str() == "instance"
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            }
+        }
         _ => false,
     }
 }

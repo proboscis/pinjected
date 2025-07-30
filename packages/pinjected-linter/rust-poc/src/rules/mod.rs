@@ -40,6 +40,7 @@ pub mod pinj045_no_mode_parameters;
 pub mod pinj046_mutable_attribute_naming;
 pub mod pinj047_max_mutable_attributes;
 pub mod pinj048_no_default_dependencies_in_injected;
+pub mod pinj049_enforce_protocol_type_annotations;
 // Future rules would be added here:
 // ... etc
 
@@ -88,6 +89,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj046_mutable_attribute_naming::MutableAttributeNamingRule::new()),
         Box::new(pinj047_max_mutable_attributes::MaxMutableAttributesRule::new()),
         Box::new(pinj048_no_default_dependencies_in_injected::NoDefaultDependenciesInInjectedRule::new()),
+        Box::new(pinj049_enforce_protocol_type_annotations::EnforceProtocolTypeAnnotationsRule::new()),
         // Add more rules here as they're implemented
     ]
 }
@@ -133,5 +135,6 @@ mod tests {
         assert!(rule_ids.contains(&"PINJ046"), "PINJ046 not found!");
         assert!(rule_ids.contains(&"PINJ047"), "PINJ047 not found!");
         assert!(rule_ids.contains(&"PINJ048"), "PINJ048 not found!");
+        assert!(rule_ids.contains(&"PINJ049"), "PINJ049 not found!");
     }
 }
