@@ -37,6 +37,9 @@ pub mod pinj042_no_unmarked_injected_calls;
 pub mod pinj043_no_design_in_test_functions;
 pub mod pinj044_no_async_resolver_creation;
 pub mod pinj045_no_mode_parameters;
+pub mod pinj046_mutable_attribute_naming;
+pub mod pinj047_max_mutable_attributes;
+pub mod pinj048_no_default_dependencies_in_injected;
 // Future rules would be added here:
 // ... etc
 
@@ -82,6 +85,9 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj043_no_design_in_test_functions::NoDesignInTestFunctionsRule::new()),
         Box::new(pinj044_no_async_resolver_creation::NoAsyncResolverCreationRule::new()),
         Box::new(pinj045_no_mode_parameters::NoModeParametersRule::new()),
+        Box::new(pinj046_mutable_attribute_naming::MutableAttributeNamingRule::new()),
+        Box::new(pinj047_max_mutable_attributes::MaxMutableAttributesRule::new()),
+        Box::new(pinj048_no_default_dependencies_in_injected::NoDefaultDependenciesInInjectedRule::new()),
         // Add more rules here as they're implemented
     ]
 }
@@ -124,5 +130,8 @@ mod tests {
         assert!(rule_ids.contains(&"PINJ043"), "PINJ043 not found!");
         assert!(rule_ids.contains(&"PINJ044"), "PINJ044 not found!");
         assert!(rule_ids.contains(&"PINJ045"), "PINJ045 not found!");
+        assert!(rule_ids.contains(&"PINJ046"), "PINJ046 not found!");
+        assert!(rule_ids.contains(&"PINJ047"), "PINJ047 not found!");
+        assert!(rule_ids.contains(&"PINJ048"), "PINJ048 not found!");
     }
 }

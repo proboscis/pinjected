@@ -409,8 +409,15 @@ fn main() -> Result<()> {
     };
 
     // Merge config with command line arguments
+    if args.verbose {
+        eprintln!("CLI enable: {:?}", args.enable);
+        eprintln!("CLI disable: {:?}", args.disable);
+    }
     let (enable_rules, skip_patterns) =
         merge_config(config.as_ref(), &args.enable, &args.disable, &args.skip);
+    if args.verbose {
+        eprintln!("After merge_config, enable_rules: {:?}", enable_rules);
+    }
 
     // Quick count mode
     if args.count {

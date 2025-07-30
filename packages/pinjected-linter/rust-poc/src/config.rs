@@ -57,6 +57,9 @@ pub struct RuleConfig {
     pub min_injected_functions: Option<usize>,
     pub stub_search_paths: Option<Vec<String>>,
     pub ignore_patterns: Option<Vec<String>>,
+    
+    // PINJ047 specific
+    pub max_mutable_attributes: Option<usize>,
 }
 
 /// Find pyproject.toml file starting from a path and walking up
