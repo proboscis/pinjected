@@ -142,20 +142,36 @@ async def a_create_user(user_data: dict) -> IProxy[User]: ...
 
 ### Important: Use @overload for User-Facing Interface
 
-**All `@injected` functions must use `@overload` in stub files.** This shows only the runtime arguments that users provide when calling the function, omitting the injected dependencies.
+**CRITICAL: All `@injected` functions MUST use `@overload` (not `@injected`) in stub files.** This is intentional and required for proper IDE support.
+
+**Why @overload instead of @injected?**
+- **IDE Compatibility**: The `@overload` decorator is a standard typing mechanism that IDEs understand
+- **User-Facing Interface**: Shows only the runtime arguments that users provide (after `/`), hiding injected dependencies
+- **Type Checker Support**: Type checkers like mypy correctly process `@overload` signatures
+- **Prevents Confusion**: Using `@injected` in stub files would show internal dependencies to users
+
+**DO NOT change @overload to @injected** - this is a deliberate design choice for IDE integration.
 
 Key principles:
 - Use `from typing import overload` and `from pinjected import IProxy`
 - Show only arguments after `/` (runtime arguments)
 - Transform return types to `IProxy[T]` for type `T`
 - Omit injected dependencies from signatures
+- Keep the `@overload` decorator - do not replace with `@injected`
 
 ### 1. Basic stub structure
+
+✅ **CORRECT: Using @overload**
 ```python
 # mymodule.pyi
 from typing import overload, List, Optional
 from pinjected import IProxy
 from .models import User, Order
+
+# IMPORTANT: @injected functions MUST use @overload in .pyi files
+# The @overload decorator is required to properly type-hint the user-facing interface
+# This allows IDEs to show only runtime arguments (after /) to users
+# DO NOT change @overload to @injected - this is intentional for IDE support
 
 # Use @overload to show user-facing signatures
 # Return types are wrapped in IProxy[T]
@@ -164,6 +180,19 @@ def process_order(order_id: str) -> IProxy[Order]: ...
 
 @overload
 async def a_fetch_users(filter: Optional[dict] = None) -> IProxy[List[User]]: ...
+```
+
+❌ **INCORRECT: Using @injected in stub file**
+```python
+# mymodule.pyi - WRONG!
+from pinjected import injected, IProxy
+from .models import User, Order
+
+# WRONG: DO NOT use @injected in .pyi files
+@injected  # This will confuse IDEs and type checkers
+def process_order(order_id: str) -> IProxy[Order]: ...
+
+# The linter will flag this as an error and require @overload instead
 ```
 
 ### 2. Functions with multiple runtime arguments

@@ -7,7 +7,7 @@
 **Severity:** Error  
 **Auto-fixable:** No
 
-Functions should not accept mode, flag, or strategy parameters (str, bool, enum) that control behavior. This violates the Single Responsibility Principle (SRP).
+Functions should not accept mode or flag parameters (str, bool, enum) that control behavior paths. This violates the Single Responsibility Principle (SRP). Note that strategy objects passed as runtime parameters are acceptable - this rule focuses on primitive mode flags that cause branching logic.
 
 ## Rationale
 
@@ -19,7 +19,7 @@ Mode parameters lead to several issues:
 4. **Difficult maintenance**: Adding new modes requires modifying existing code
 5. **Hidden dependencies**: The actual behavior depends on runtime values rather than explicit dependencies
 
-Instead, use the strategy pattern with dependency injection to separate different behaviors into distinct, testable components.
+Instead, use the strategy pattern to separate different behaviors into distinct, testable components. Strategy objects can be passed as runtime parameters or injected as dependencies, depending on your use case.
 
 ## Rule Details
 
@@ -27,8 +27,9 @@ This rule checks `@injected` functions for parameters that indicate mode/flag be
 
 ### What is detected:
 
-1. **Mode-indicating parameter names**: `mode`, `type`, `kind`, `variant`, `strategy`, `format`, `style`, `method`, `approach`, `option`, `flag`, `switch`, `toggle`
-2. **Boolean flag prefixes**: `use_`, `enable_`, `disable_`, `is_`, `should_`, `with_`
+1. **Mode-indicating parameter names**: `mode`, `type`, `kind`, `variant`, `format`, `style`, `method`, `approach`, `option`, `flag`, `switch`, `toggle` (Note: `strategy` is no longer flagged as it often represents legitimate objects)
+2. **Boolean flag prefixes**: `use_`, `enable_`, `disable_`, `is_`, `should_` (excluding parameters containing `strategy`, `handler`, `processor`, or `provider`)
+3. **Conditional prefixes**: `with_` and `include_` are only flagged if they also contain mode-indicating words
 3. **Type annotations**: 
    - `bool` type parameters
    - `Literal` type hints (e.g., `Literal['fast', 'slow']`)
@@ -150,6 +151,35 @@ class CachedFetcher:
 @injected
 def fetch_data(fetcher: DataFetcher, /, endpoint: str) -> dict:
     return fetcher.fetch(endpoint)
+```
+
+✅ **Good:** Strategy objects as runtime parameters
+```python
+# These are legitimate uses - strategy objects can be runtime parameters
+@injected
+async def a_run_market_backtest(
+    logger,
+    /,
+    a_ee_signal_based_trading_strategy: TradingStrategy,  # OK: Strategy object
+    market_data: MarketData,
+    config: BacktestConfig
+) -> BacktestResult:
+    # Strategy is a proper object, not a mode flag
+    return await a_ee_signal_based_trading_strategy.backtest(market_data, config)
+
+@injected
+def process_with_handler(
+    logger,
+    /,
+    data: Data,
+    error_handler: ErrorHandler,  # OK: Handler object
+    result_processor: ResultProcessor  # OK: Processor object
+) -> Result:
+    try:
+        result = process(data)
+        return result_processor.process(result)
+    except Exception as e:
+        return error_handler.handle(e)
 ```
 
 ## Common Patterns and Solutions

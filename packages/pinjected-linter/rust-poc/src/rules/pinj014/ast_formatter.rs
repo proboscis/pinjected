@@ -2,8 +2,7 @@
 
 use rustpython_ast::{Constant, Expr, Stmt, StmtAsyncFunctionDef, StmtClassDef, StmtFunctionDef};
 use super::signature_formatter::SignatureFormatter;
-use crate::utils::pinjected_patterns::has_injected_decorator;
-use super::injected_function_analyzer::has_injected_decorator_async;
+use crate::utils::pinjected_patterns::{has_injected_decorator, has_injected_decorator_async};
 
 pub struct AstFormatter {
     sig_formatter: SignatureFormatter,

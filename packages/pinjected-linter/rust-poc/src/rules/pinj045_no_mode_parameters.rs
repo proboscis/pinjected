@@ -21,11 +21,11 @@ impl NoModeParametersRule {
     /// Check if a parameter name indicates it's a mode/flag parameter
     fn is_mode_parameter_name(name: &str) -> bool {
         let mode_indicators = [
-            "mode", "type", "kind", "variant", "strategy", "format", "style",
+            "mode", "type", "kind", "variant", "format", "style",
             "method", "approach", "option", "flag", "switch", "toggle",
         ];
         
-        // Check exact matches
+        // Check exact matches (but not 'strategy' as it's often a legitimate object)
         if mode_indicators.contains(&name) {
             return true;
         }
@@ -40,7 +40,9 @@ impl NoModeParametersRule {
         // Check boolean flag patterns
         if name.starts_with("use_") || name.starts_with("enable_") || 
            name.starts_with("disable_") || name.starts_with("is_") ||
-           name.starts_with("should_") || name.starts_with("with_") {
+           name.starts_with("should_") || name.starts_with("with_") ||
+           name.starts_with("include_") {
+            // These are boolean flag prefixes, indicating a flag parameter
             return true;
         }
         
@@ -93,9 +95,26 @@ impl NoModeParametersRule {
         for arg in &args.posonlyargs {
             let param_name = arg.def.arg.as_str();
             
-            // Check by parameter name
+            // First check type annotation
+            let mut is_bool_type = false;
+            if let Some(annotation) = &arg.def.annotation {
+                if let Expr::Name(name) = &**annotation {
+                    if name.id.as_str() == "bool" {
+                        is_bool_type = true;
+                    }
+                }
+            }
+            
+            // Check by parameter name, but consider type
             if Self::is_mode_parameter_name(param_name) {
-                let reason = if param_name.starts_with("use_") || param_name.starts_with("enable_") {
+                // If it's not a bool type and has include_/with_ prefix, 
+                // it might be a legitimate object parameter
+                if !is_bool_type && (param_name.starts_with("include_") || param_name.starts_with("with_")) {
+                    // Skip - it's likely an object, not a flag
+                    continue;
+                }
+                
+                let reason = if is_bool_type || param_name.starts_with("use_") || param_name.starts_with("enable_") {
                     "boolean flag parameter".to_string()
                 } else {
                     "mode/strategy parameter".to_string()
@@ -104,23 +123,22 @@ impl NoModeParametersRule {
                 continue;
             }
             
-            // Check by type annotation
+            // If not flagged by name, check if it's a bool type
+            if is_bool_type {
+                mode_parameters.push((
+                    param_name.to_string(), 
+                    "boolean flag parameter".to_string()
+                ));
+                continue;
+            }
+            
+            // Check for other mode type annotations (Literal, Enum)
             if let Some(annotation) = &arg.def.annotation {
-                if Self::is_mode_type_annotation(annotation) {
-                    // For bool type, always consider it a flag
-                    if let Expr::Name(name) = &**annotation {
-                        if name.id.as_str() == "bool" {
-                            mode_parameters.push((
-                                param_name.to_string(), 
-                                "boolean flag parameter".to_string()
-                            ));
-                            continue;
-                        }
-                    }
-                    
+                if Self::is_mode_type_annotation(annotation) && !is_bool_type {
                     // For other types, only flag if the name also suggests it's a mode
+                    // Don't flag "strategy" as it's often a legitimate object
                     if param_name.contains("mode") || param_name.contains("type") || 
-                       param_name.contains("format") || param_name.contains("strategy") {
+                       param_name.contains("format") {
                         mode_parameters.push((
                             param_name.to_string(),
                             "mode parameter with type annotation".to_string()
@@ -134,9 +152,26 @@ impl NoModeParametersRule {
         for arg in &args.args {
             let param_name = arg.def.arg.as_str();
             
-            // Check by parameter name
+            // First check type annotation
+            let mut is_bool_type = false;
+            if let Some(annotation) = &arg.def.annotation {
+                if let Expr::Name(name) = &**annotation {
+                    if name.id.as_str() == "bool" {
+                        is_bool_type = true;
+                    }
+                }
+            }
+            
+            // Check by parameter name, but consider type
             if Self::is_mode_parameter_name(param_name) {
-                let reason = if param_name.starts_with("use_") || param_name.starts_with("enable_") {
+                // If it's not a bool type and has include_/with_ prefix, 
+                // it might be a legitimate object parameter
+                if !is_bool_type && (param_name.starts_with("include_") || param_name.starts_with("with_")) {
+                    // Skip - it's likely an object, not a flag
+                    continue;
+                }
+                
+                let reason = if is_bool_type || param_name.starts_with("use_") || param_name.starts_with("enable_") {
                     "boolean flag parameter".to_string()
                 } else {
                     "mode/strategy parameter".to_string()
@@ -145,23 +180,23 @@ impl NoModeParametersRule {
                 continue;
             }
             
-            // Check by type annotation
+            // If not flagged by name, check if it's a bool type
+            if is_bool_type {
+                mode_parameters.push((
+                    param_name.to_string(), 
+                    "boolean flag parameter".to_string()
+                ));
+                continue;
+            }
+            
+            // Check for other mode type annotations (Literal, Enum)
             if let Some(annotation) = &arg.def.annotation {
-                if Self::is_mode_type_annotation(annotation) {
-                    // For bool type, always consider it a flag
-                    if let Expr::Name(name) = &**annotation {
-                        if name.id.as_str() == "bool" {
-                            mode_parameters.push((
-                                param_name.to_string(), 
-                                "boolean flag parameter".to_string()
-                            ));
-                            continue;
-                        }
-                    }
+                if Self::is_mode_type_annotation(annotation) && !is_bool_type {
                     
                     // For other types, only flag if the name also suggests it's a mode
+                    // Don't flag "strategy" as it's often a legitimate object
                     if param_name.contains("mode") || param_name.contains("type") || 
-                       param_name.contains("format") || param_name.contains("strategy") {
+                       param_name.contains("format") {
                         mode_parameters.push((
                             param_name.to_string(),
                             "mode parameter with type annotation".to_string()
@@ -175,24 +210,37 @@ impl NoModeParametersRule {
         for arg in &args.kwonlyargs {
             let param_name = arg.def.arg.as_str();
             
+            // First check type annotation
+            let mut is_bool_type = false;
+            if let Some(annotation) = &arg.def.annotation {
+                if let Expr::Name(name) = &**annotation {
+                    if name.id.as_str() == "bool" {
+                        is_bool_type = true;
+                    }
+                }
+            }
+            
+            // Check by parameter name, but consider type
             if Self::is_mode_parameter_name(param_name) {
-                let reason = if param_name.starts_with("use_") || param_name.starts_with("enable_") {
+                // If it's not a bool type and has include_/with_ prefix, 
+                // it might be a legitimate object parameter
+                if !is_bool_type && (param_name.starts_with("include_") || param_name.starts_with("with_")) {
+                    // Skip - it's likely an object, not a flag
+                    continue;
+                }
+                
+                let reason = if is_bool_type || param_name.starts_with("use_") || param_name.starts_with("enable_") {
                     "boolean flag parameter".to_string()
                 } else {
                     "mode/strategy parameter".to_string()
                 };
                 mode_parameters.push((param_name.to_string(), reason));
-            } else if let Some(annotation) = &arg.def.annotation {
-                if Self::is_mode_type_annotation(annotation) {
-                    if let Expr::Name(name) = &**annotation {
-                        if name.id.as_str() == "bool" {
-                            mode_parameters.push((
-                                param_name.to_string(), 
-                                "boolean flag parameter".to_string()
-                            ));
-                        }
-                    }
-                }
+            } else if is_bool_type {
+                // If not flagged by name but is bool type, still flag it
+                mode_parameters.push((
+                    param_name.to_string(), 
+                    "boolean flag parameter".to_string()
+                ));
             }
         }
 
@@ -214,7 +262,7 @@ impl NoModeParametersRule {
             let message = format!(
                 "@injected function '{}' has parameter '{}' which is a {}. \
                 This violates the Single Responsibility Principle (SRP). \
-                Use the strategy pattern with dependency injection instead.",
+                Consider refactoring to avoid mode parameters that change behavior paths.",
                 func.name.as_str(),
                 param_name,
                 reason
@@ -248,7 +296,7 @@ impl NoModeParametersRule {
             let message = format!(
                 "@injected async function '{}' has parameter '{}' which is a {}. \
                 This violates the Single Responsibility Principle (SRP). \
-                Use the strategy pattern with dependency injection instead.",
+                Consider refactoring to avoid mode parameters that change behavior paths.",
                 func.name.as_str(),
                 param_name,
                 reason
@@ -448,5 +496,102 @@ def process_data(data: list, mode: str, use_cache: bool, format_type: str):
         let violations = check_code(code);
         assert_eq!(violations.len(), 3);
         // Should catch mode, use_cache, and format_type
+    }
+
+    #[test]
+    fn test_legitimate_strategy_parameter() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+async def a_run_market_backtest(
+    logger,
+    /,
+    a_ee_signal_based_trading_strategy: TradingStrategy,
+    market_data: MarketData,
+    config: BacktestConfig
+):
+    return await a_ee_signal_based_trading_strategy.backtest(market_data, config)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0, "Strategy objects should not be flagged");
+    }
+
+    #[test]
+    fn test_include_with_bool_is_flagged() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def analyze_market(
+    analyzer,
+    /,
+    market_data: MarketData,
+    include_llm_strategy: bool
+):
+    # include_llm_strategy is a boolean flag, should be flagged
+    return analyzer.analyze(market_data, include_llm_strategy)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1, "include_ prefix with bool type should be flagged");
+        assert!(violations[0].message.contains("include_llm_strategy"));
+    }
+    
+    #[test]
+    fn test_include_strategy_object_not_flagged() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def analyze_market(
+    analyzer,
+    /,
+    market_data: MarketData,
+    include_llm_strategy: LLMStrategy
+):
+    # include_llm_strategy is a strategy object, not a boolean flag
+    return analyzer.analyze(market_data, include_llm_strategy)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0, "Strategy objects with include_ prefix should not be flagged");
+    }
+
+    #[test] 
+    fn test_all_boolean_flags_are_flagged() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def process_request(
+    logger,
+    /,
+    request: Request,
+    use_custom_handler: bool,  # Should be flagged - boolean flag
+    enable_result_processor: bool,  # Should be flagged - boolean flag
+    with_auth_provider: bool  # Should be flagged - boolean flag
+):
+    pass
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 3, "All boolean parameters should be flagged");
+    }
+
+    #[test]
+    fn test_include_mode_is_flagged() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def process_data(
+    processor,
+    /,
+    data: Data,
+    include_debug_mode: bool  # Should be flagged - contains 'mode'
+):
+    pass
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("include_debug_mode"));
     }
 }

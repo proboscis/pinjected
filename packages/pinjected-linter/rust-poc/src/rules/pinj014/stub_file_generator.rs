@@ -29,6 +29,13 @@ impl StubFileGenerator {
         lines.push("from typing import overload".to_string());
         lines.push("from pinjected import IProxy".to_string());
         lines.push(String::new());
+        
+        // Add explanatory comment
+        lines.push("# IMPORTANT: @injected functions MUST use @overload in .pyi files".to_string());
+        lines.push("# The @overload decorator is required to properly type-hint the user-facing interface".to_string());
+        lines.push("# This allows IDEs to show only runtime arguments (after /) to users".to_string());
+        lines.push("# DO NOT change @overload to @injected - this is intentional for IDE support".to_string());
+        lines.push(String::new());
 
         // Add @overload decorated function signatures
         for func in functions {

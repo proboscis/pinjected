@@ -1,7 +1,7 @@
 //! Analysis of @injected functions in Python modules
 
-use crate::utils::pinjected_patterns::has_injected_decorator;
-use rustpython_ast::{Expr, Mod, Stmt, StmtAsyncFunctionDef};
+use crate::utils::pinjected_patterns::{has_injected_decorator, has_injected_decorator_async};
+use rustpython_ast::{Mod, Stmt};
 use super::signature_formatter::SignatureFormatter;
 
 #[derive(Debug, Clone)]
@@ -127,20 +127,4 @@ impl InjectedFunctionAnalyzer {
 
         count
     }
-}
-
-// Helper for async functions
-pub fn has_injected_decorator_async(func: &StmtAsyncFunctionDef) -> bool {
-    for dec in &func.decorator_list {
-        if let Expr::Name(name) = dec {
-            if name.id.as_str() == "injected" {
-                return true;
-            }
-        } else if let Expr::Attribute(attr) = dec {
-            if attr.attr.as_str() == "injected" {
-                return true;
-            }
-        }
-    }
-    false
 }

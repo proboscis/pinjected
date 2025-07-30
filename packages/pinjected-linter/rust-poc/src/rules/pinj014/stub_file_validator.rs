@@ -131,7 +131,7 @@ impl StubFileValidator {
                 Some(actual_sig) => {
                     if actual_sig.trim() != expected_sig.trim() {
                         errors.push(format!(
-                            "Function '{}' has incorrect signature in stub file.\nExpected: {}\nActual: {}",
+                            "Function '{}' has incorrect signature in stub file.\nExpected: {}\nActual: {}\nReminder: @injected functions must use @overload decorator in .pyi files",
                             expected.name,
                             expected_sig,
                             actual_sig
@@ -140,7 +140,7 @@ impl StubFileValidator {
                 }
                 None => {
                     errors.push(format!(
-                        "Function '{}' is missing from stub file.\nExpected: {}",
+                        "Function '{}' is missing from stub file.\nExpected: {}\nNote: Use @overload (not @injected) in .pyi files for IDE support",
                         expected.name,
                         expected_sig
                     ));
@@ -152,7 +152,7 @@ impl StubFileValidator {
         for (name, sig) in &actual_signatures {
             if !expected_functions.iter().any(|f| &f.name == name) {
                 errors.push(format!(
-                    "Unexpected function '{}' in stub file with signature: {}",
+                    "Function '{}' exists in stub file but not in Python file.\nStub signature: {}\nRemove this function from the .pyi file or add the corresponding @injected function to the .py file",
                     name,
                     sig
                 ));
