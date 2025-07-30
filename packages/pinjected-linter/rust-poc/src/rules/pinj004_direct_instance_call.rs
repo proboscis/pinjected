@@ -79,8 +79,7 @@ impl DirectInstanceCallRule {
                 violations.push(Violation {
                     rule_id: "PINJ004".to_string(),
                     message: format!(
-                        "Direct call to @instance function '{}'. \
-                        @instance functions should be used in design() or as dependencies, not called directly.",
+                        "Direct call to @instance function '{}'. @instance functions should be used in design() or as dependencies, not called directly.",
                         name.id
                     ),
                     offset: call.range.start().to_usize(),

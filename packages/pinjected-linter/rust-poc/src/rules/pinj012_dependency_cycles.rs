@@ -208,7 +208,7 @@ impl LintRule for DependencyCyclesRule {
                         violations.push(Violation {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
-                                "Circular dependency detected:\n  {} → {}",
+                                "Circular dependency detected: {} → {}.",
                                 cycle_str,
                                 cycle[0] // Complete the cycle
                             ),
@@ -224,7 +224,7 @@ impl LintRule for DependencyCyclesRule {
                         violations.push(Violation {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
-                                "Circular dependency detected:\n  {} → {}",
+                                "Circular dependency detected: {} → {}.",
                                 cycle_str,
                                 cycle[0] // Complete the cycle
                             ),

@@ -63,8 +63,7 @@ impl NoNestedInjectedRule {
                         violations.push(Violation {
                             rule_id: "PINJ027".to_string(),
                             message: format!(
-                                "{} function '{}' cannot be defined {}. \
-                                {} functions must be defined at module level only.",
+                                "{} function '{}' cannot be defined {}. {} functions must be defined at module level only.",
                                 decorator_name,
                                 func.name.as_str(),
                                 location_desc,
@@ -98,8 +97,7 @@ impl NoNestedInjectedRule {
                         violations.push(Violation {
                             rule_id: "PINJ027".to_string(),
                             message: format!(
-                                "{} function '{}' cannot be defined {}. \
-                                {} functions must be defined at module level only.",
+                                "{} function '{}' cannot be defined {}. {} functions must be defined at module level only.",
                                 decorator_name,
                                 func.name.as_str(),
                                 location_desc,

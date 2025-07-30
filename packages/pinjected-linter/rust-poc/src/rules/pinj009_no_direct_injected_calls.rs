@@ -282,9 +282,7 @@ impl NoDirectInjectedCallsRule {
                     violations.push(Violation {
                         rule_id: "PINJ009".to_string(),
                         message: format!(
-                            "@injected function '{}' makes a direct call to @injected function '{}{}'. \
-                            Inside @injected functions, you're building a dependency graph, not executing code. \
-                            Declare '{}' as a dependency (before '/') instead.",
+                            "@injected function '{}' makes a direct call to @injected function '{}{}'. Inside @injected functions, you're building a dependency graph, not executing code. Declare '{}' as a dependency (before '/') instead.",
                             self.current_function.as_ref().unwrap(),
                             called_func,
                             source,
@@ -337,9 +335,7 @@ impl NoDirectInjectedCallsRule {
                                 violations.push(Violation {
                                     rule_id: "PINJ009".to_string(),
                                     message: format!(
-                                        "@injected function '{}' uses 'await' on a call to @injected function '{}{}'. \
-                                        Inside @injected functions, you're building a dependency graph, not executing code. \
-                                        Declare '{}' as a dependency (before '/') instead.",
+                                        "@injected function '{}' uses 'await' on a call to @injected function '{}{}'. Inside @injected functions, you're building a dependency graph, not executing code. Declare '{}' as a dependency (before '/') instead.",
                                         self.current_function.as_ref().unwrap(),
                                         called_func,
                                         source,

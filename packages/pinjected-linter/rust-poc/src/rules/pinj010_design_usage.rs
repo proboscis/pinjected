@@ -104,8 +104,7 @@ impl DesignUsageRule {
                     violations.push(Violation {
                         rule_id: "PINJ010".to_string(),
                         message: format!(
-                            "design() parameter '{}' looks like a decorator name. \
-                            design() should map dependency names to their providers or values.",
+                            "design() parameter '{}' looks like a decorator name. design() should map dependency names to their providers or values.",
                             arg_name
                         ),
                         offset: keyword.range.start().to_usize(),
@@ -123,9 +122,7 @@ impl DesignUsageRule {
                             violations.push(Violation {
                                 rule_id: "PINJ010".to_string(),
                                 message: format!(
-                                    "Calling @instance function '{}()' in design(). \
-                                    @instance functions should be referenced, not called. \
-                                    Use '{}': {} instead of '{}': {}()",
+                                    "Calling @instance function '{}()' in design(). @instance functions should be referenced, not called. Use '{}': {} instead of '{}': {}().",
                                     func_name.id, arg_name, func_name.id, arg_name, func_name.id
                                 ),
                                 offset: value_call.range.start().to_usize(),

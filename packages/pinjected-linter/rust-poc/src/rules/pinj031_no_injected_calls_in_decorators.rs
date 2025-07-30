@@ -50,9 +50,7 @@ impl NoInjectedCallsInDecoratorsRule {
                     violations.push(Violation {
                         rule_id: "PINJ031".to_string(),
                         message: format!(
-                            "Function '{}' calls injected() inside its body. \
-                            @instance and @injected functions build dependency graphs, they don't execute code. \
-                            Remove the injected() call - dependencies should be declared as function parameters.",
+                            "Function '{}' calls injected() inside its body. @instance and @injected functions build dependency graphs, they don't execute code. Remove the injected() call - dependencies should be declared as function parameters.",
                             self.current_function.as_ref().unwrap()
                         ),
                         offset: call.range.start().to_usize(),

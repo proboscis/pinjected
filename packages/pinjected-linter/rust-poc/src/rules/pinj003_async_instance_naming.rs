@@ -36,8 +36,7 @@ impl LintRule for AsyncInstanceNamingRule {
                     violations.push(Violation {
                         rule_id: self.rule_id().to_string(),
                         message: format!(
-                            "Async @instance function '{}' should not have 'a_' prefix. \
-                            The 'a_' prefix is only for @injected functions.",
+                            "@instance async function '{}' should not have 'a_' prefix. The 'a_' prefix is only for @injected functions.",
                             func.name
                         ),
                         offset: func.range.start().to_usize(),

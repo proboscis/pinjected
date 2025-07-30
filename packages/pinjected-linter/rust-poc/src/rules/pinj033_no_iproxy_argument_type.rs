@@ -66,11 +66,7 @@ impl NoIProxyArgumentTypeRule {
                     violations.push(Violation {
                         rule_id: "PINJ033".to_string(),
                         message: format!(
-                            "@injected/@instance function '{}' has argument '{}' with IProxy type annotation. \
-                            This indicates a misunderstanding of how pinjected works. \
-                            Function arguments in @injected and @instance functions should have ordinary type annotations, not IProxy. \
-                            IProxy is an internal interface used by pinjected. \
-                            Dependencies are resolved automatically and passed as actual instances, not proxies.",
+                            "@injected/@instance function '{}' has argument '{}' with IProxy type annotation. This indicates a misunderstanding of how pinjected works. Function arguments in @injected and @instance functions should have ordinary type annotations, not IProxy. IProxy is an internal interface used by pinjected. Dependencies are resolved automatically and passed as actual instances, not proxies.",
                             func_name, arg.def.arg
                         ),
                         offset: arg.def.range.start().to_usize(),
@@ -131,8 +127,7 @@ impl NoIProxyArgumentTypeRule {
                     violations.push(Violation {
                         rule_id: "PINJ033".to_string(),
                         message: format!(
-                            "@injected/@instance function '{}' has *args with IProxy type annotation. \
-                            This indicates a misunderstanding of how pinjected works.",
+                            "@injected/@instance function '{}' has *args with IProxy type annotation. This indicates a misunderstanding of how pinjected works.",
                             func.name
                         ),
                         offset: vararg.range.start().to_usize(),
@@ -151,8 +146,7 @@ impl NoIProxyArgumentTypeRule {
                     violations.push(Violation {
                         rule_id: "PINJ033".to_string(),
                         message: format!(
-                            "@injected/@instance function '{}' has **kwargs with IProxy type annotation. \
-                            This indicates a misunderstanding of how pinjected works.",
+                            "@injected/@instance function '{}' has **kwargs with IProxy type annotation. This indicates a misunderstanding of how pinjected works.",
                             func.name
                         ),
                         offset: kwarg.range.start().to_usize(),
@@ -214,8 +208,7 @@ impl NoIProxyArgumentTypeRule {
                     violations.push(Violation {
                         rule_id: "PINJ033".to_string(),
                         message: format!(
-                            "@injected/@instance function '{}' has *args with IProxy type annotation. \
-                            This indicates a misunderstanding of how pinjected works.",
+                            "@injected/@instance function '{}' has *args with IProxy type annotation. This indicates a misunderstanding of how pinjected works.",
                             func.name
                         ),
                         offset: vararg.range.start().to_usize(),
@@ -234,8 +227,7 @@ impl NoIProxyArgumentTypeRule {
                     violations.push(Violation {
                         rule_id: "PINJ033".to_string(),
                         message: format!(
-                            "@injected/@instance function '{}' has **kwargs with IProxy type annotation. \
-                            This indicates a misunderstanding of how pinjected works.",
+                            "@injected/@instance function '{}' has **kwargs with IProxy type annotation. This indicates a misunderstanding of how pinjected works.",
                             func.name
                         ),
                         offset: kwarg.range.start().to_usize(),

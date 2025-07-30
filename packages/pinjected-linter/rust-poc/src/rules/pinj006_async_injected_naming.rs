@@ -34,8 +34,7 @@ impl LintRule for AsyncInjectedNamingRule {
                     violations.push(Violation {
                         rule_id: self.rule_id().to_string(),
                         message: format!(
-                            "Async @injected function '{}' must have 'a_' prefix. \
-                            This helps distinguish async functions in dependency injection.",
+                            "@injected async function '{}' must have 'a_' prefix. This helps distinguish async functions in dependency injection.",
                             func.name
                         ),
                         offset: func.range.start().to_usize(),

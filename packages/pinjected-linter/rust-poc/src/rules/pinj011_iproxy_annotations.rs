@@ -125,9 +125,7 @@ impl IProxyAnnotationsRule {
                 violations.push(Violation {
                     rule_id: "PINJ011".to_string(),
                     message: format!(
-                        "@instance function '{}' returns a service type but doesn't use IProxy. \
-                        Entry point services should return IProxy[T] for proper dependency tracking. \
-                        Change return type to IProxy[{}]",
+                        "@instance function '{}' returns a service type but doesn't use IProxy. Entry point services should return IProxy[T] for proper dependency tracking. Change return type to IProxy[{}].",
                         func.name,
                         annotation_str
                     ),
@@ -157,9 +155,7 @@ impl IProxyAnnotationsRule {
                 violations.push(Violation {
                     rule_id: "PINJ011".to_string(),
                     message: format!(
-                        "@instance function '{}' returns a service type but doesn't use IProxy. \
-                        Entry point services should return IProxy[T] for proper dependency tracking. \
-                        Change return type to IProxy[{}]",
+                        "@instance function '{}' returns a service type but doesn't use IProxy. Entry point services should return IProxy[T] for proper dependency tracking. Change return type to IProxy[{}].",
                         func.name,
                         annotation_str
                     ),

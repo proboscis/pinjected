@@ -260,9 +260,7 @@ impl NoModeParametersRule {
 
         for (param_name, reason) in mode_params {
             let message = format!(
-                "@injected function '{}' has parameter '{}' which is a {}. \
-                This violates the Single Responsibility Principle (SRP). \
-                Consider refactoring to avoid mode parameters that change behavior paths.",
+                "@injected function '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters that change behavior paths.",
                 func.name.as_str(),
                 param_name,
                 reason
@@ -294,9 +292,7 @@ impl NoModeParametersRule {
 
         for (param_name, reason) in mode_params {
             let message = format!(
-                "@injected async function '{}' has parameter '{}' which is a {}. \
-                This violates the Single Responsibility Principle (SRP). \
-                Consider refactoring to avoid mode parameters that change behavior paths.",
+                "@injected async function '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters that change behavior paths.",
                 func.name.as_str(),
                 param_name,
                 reason

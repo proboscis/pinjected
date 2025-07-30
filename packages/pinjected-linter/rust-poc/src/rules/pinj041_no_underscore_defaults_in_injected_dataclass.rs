@@ -111,9 +111,7 @@ impl NoUnderscoreDefaultsInInjectedDataclassRule {
 
                         if !violation_messages.is_empty() {
                             let message = format!(
-                                "Attribute '{}' in @injected @dataclass '{}' {}. \
-                                Underscore-prefixed attributes are injected by pinjected, so defaults/Optional types are ignored. \
-                                Use design() to configure injected values instead.",
+                                "Attribute '{}' in @injected @dataclass '{}' {}. Underscore-prefixed attributes are injected by pinjected, so defaults/Optional types are ignored. Use design() to configure injected values instead.",
                                 name.id,
                                 class_name,
                                 violation_messages.join(" and ")

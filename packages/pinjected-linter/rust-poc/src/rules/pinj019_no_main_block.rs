@@ -112,14 +112,13 @@ impl LintRule for NoMainBlockRule {
                 violations.push(Violation {
                     rule_id: self.rule_id().to_string(),
                     message: format!(
-                        "Files with @injected/@instance functions should not use __main__ blocks. \
-                         Pinjected is designed to be run using: python -m pinjected run <module.function>. \
-                         See https://pinjected.readthedocs.io/en/latest/ for more information."
+                        "Files with @injected/@instance functions should not use __main__ blocks. Pinjected is designed to be run using: python -m pinjected run <module.function>. See https://pinjected.readthedocs.io/en/latest/ for more information."
                     ),
                     offset: main_block_offset,
                     file_path: context.file_path.to_string(),
                     severity: Severity::Error,
-                            fix: None,});
+                    fix: None,
+                });
             }
         }
 

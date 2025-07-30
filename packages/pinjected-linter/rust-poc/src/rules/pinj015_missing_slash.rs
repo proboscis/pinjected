@@ -246,11 +246,7 @@ impl LintRule for MissingSlashRule {
                             violations.push(Violation {
                                 rule_id: self.rule_id().to_string(),
                                 message: format!(
-                                    "@injected function '{}' is missing the '/' separator. \
-                                    Without '/', ALL arguments are treated as runtime arguments (not injected). \
-                                    If you need dependency injection, add '/' after the dependencies. {}. \
-                                    If this is intentional (no dependencies), add 'pinjected: no dependencies' \
-                                    to the docstring or as a comment.",
+                                    "@injected function '{}' is missing the '/' separator. Without '/', ALL arguments are treated as runtime arguments (not injected). If you need dependency injection, add '/' after the dependencies. {}. If this is intentional (no dependencies), add 'pinjected: no dependencies' to the docstring or as a comment.",
                                     func.name,
                                     suggestion
                                 ),
@@ -274,11 +270,7 @@ impl LintRule for MissingSlashRule {
                             violations.push(Violation {
                                 rule_id: self.rule_id().to_string(),
                                 message: format!(
-                                    "@injected function '{}' is missing the '/' separator. \
-                                    Without '/', ALL arguments are treated as runtime arguments (not injected). \
-                                    If you need dependency injection, add '/' after the dependencies. {}. \
-                                    If this is intentional (no dependencies), add 'pinjected: no dependencies' \
-                                    to the docstring or as a comment.",
+                                    "@injected function '{}' is missing the '/' separator. Without '/', ALL arguments are treated as runtime arguments (not injected). If you need dependency injection, add '/' after the dependencies. {}. If this is intentional (no dependencies), add 'pinjected: no dependencies' to the docstring or as a comment.",
                                     func.name,
                                     suggestion
                                 ),

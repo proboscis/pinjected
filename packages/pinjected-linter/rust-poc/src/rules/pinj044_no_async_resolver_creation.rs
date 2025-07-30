@@ -93,14 +93,7 @@ impl NoAsyncResolverCreationRule {
                 violations.push(Violation {
                     rule_id: "PINJ044".to_string(),
                     message: format!(
-                        "Direct AsyncResolver instantiation is not allowed.\n\n\
-                        Use the proper pinjected API instead:\n\
-                        - For running applications: use 'python -m pinjected run <module.path>'\n\
-                        - For testing: use register_fixtures_from_design() with pytest\n\
-                        - For dependency inspection: use design inspection methods\n\n\
-                        Direct usage increases code volume and reduces flexibility.\n\n\
-                        If you must use AsyncResolver directly (rare), explicitly mark with:\n\
-                        # pinjected: allow-async-resolver"
+                        "Direct AsyncResolver instantiation is not allowed. Use the proper pinjected API instead: For running applications: use 'python -m pinjected run <module.path>'. For testing: use register_fixtures_from_design() with pytest. For dependency inspection: use design inspection methods. Direct usage increases code volume and reduces flexibility. If you must use AsyncResolver directly (rare), explicitly mark with: # pinjected: allow-async-resolver."
                     ),
                     offset: expr.range().start().to_usize(),
                     file_path: context.file_path.to_string(),

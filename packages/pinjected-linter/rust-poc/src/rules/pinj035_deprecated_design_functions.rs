@@ -151,7 +151,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                         violations.push(Violation {
                             rule_id: "PINJ035".to_string(),
                             message: format!(
-                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
+                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version. {}. For detailed migration guide run: pinjected-linter --show-rule-doc PINJ035.",
                                 func_name, migration
                             ),
                             offset: call.range.start().to_usize(),
@@ -169,7 +169,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                         violations.push(Violation {
                             rule_id: "PINJ035".to_string(),
                             message: format!(
-                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
+                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version. {}. For detailed migration guide run: pinjected-linter --show-rule-doc PINJ035.",
                                 func_name, migration
                             ),
                             offset: call.range.start().to_usize(),
@@ -187,7 +187,7 @@ impl LintRule for DeprecatedDesignFunctionsRule {
                         violations.push(Violation {
                             rule_id: "PINJ035".to_string(),
                             message: format!(
-                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version.\n\n{}\n\nFor detailed migration guide run: pinjected-linter --show-rule-doc PINJ035",
+                                "Function '{}()' is deprecated since pinjected 0.3.0 and will be removed in a future version. {}. For detailed migration guide run: pinjected-linter --show-rule-doc PINJ035.",
                                 func_name, migration
                             ),
                             offset: call.range.start().to_usize(),

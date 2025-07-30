@@ -113,9 +113,7 @@ impl DoubleInjectedRule {
                     violations.push(Violation {
                         rule_id: "PINJ018".to_string(),
                         message: format!(
-                            "Function '{}' is already decorated with @injected. \
-                            Calling injected() on it is redundant and incorrect. \
-                            Use '{}.proxy(...)' directly instead of 'injected({}).proxy(...)'.",
+                            "Function '{}' is already decorated with @injected. Calling injected() on it is redundant and incorrect. Use '{}.proxy(...)' directly instead of 'injected({}).proxy(...)'.",
                             name.id, name.id, name.id
                         ),
                         offset: call.range.start().to_usize(),

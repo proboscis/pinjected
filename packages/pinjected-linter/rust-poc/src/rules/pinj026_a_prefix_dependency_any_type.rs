@@ -115,7 +115,8 @@ impl APrefixDependencyAnyTypeRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Warning,
-                            fix: None,});
+                fix: None,
+            });
         }
 
         violations
@@ -160,7 +161,8 @@ impl APrefixDependencyAnyTypeRule {
                 offset: func.range.start().to_usize(),
                 file_path: String::new(), // Will be filled by caller
                 severity: Severity::Warning,
-                            fix: None,});
+                fix: None,
+            });
         }
 
         violations

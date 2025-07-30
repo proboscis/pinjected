@@ -85,11 +85,7 @@ impl NoInjectedPureInstantiationRule {
             Some(Violation {
                 rule_id: "PINJ029".to_string(),
                 message: format!(
-                    "Avoid executing code inside Injected.pure() during module loading.\n\
-                     Found: Injected.pure({}(...))\n\
-                     Replace with: {}\n\
-                     Reason: Code execution should be deferred until injection time.\n\
-                     If this is intentional, add '# noqa: PINJ029' to suppress this warning.",
+                    "Avoid executing code inside Injected.pure() during module loading. Found: Injected.pure({}(...)). Replace with: {}. Reason: Code execution should be deferred until injection time. If this is intentional, add '# noqa: PINJ029' to suppress this warning.",
                     callable_name, suggestion
                 ),
                 offset: call.range.start().to_usize(),

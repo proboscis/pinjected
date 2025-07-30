@@ -59,9 +59,7 @@ impl NoDesignInInjectedRule {
                 return Some(Violation {
                     rule_id: "PINJ028".to_string(),
                     message: format!(
-                        "design() context manager cannot be used inside @injected function '{}'. \
-                        design() is for configuring dependency blueprints outside of execution context. \
-                        Move the design() configuration outside of @injected functions.",
+                        "design() context manager cannot be used inside @injected function '{}'. design() is for configuring dependency blueprints outside of execution context. Move the design() configuration outside of @injected functions.",
                         parent_name
                     ),
                     offset: with_stmt.range.start().to_usize(),
@@ -89,9 +87,7 @@ impl NoDesignInInjectedRule {
                 return Some(Violation {
                     rule_id: "PINJ028".to_string(),
                     message: format!(
-                        "design() context manager cannot be used inside @injected function '{}'. \
-                        design() is for configuring dependency blueprints outside of execution context. \
-                        Move the design() configuration outside of @injected functions.",
+                        "design() context manager cannot be used inside @injected function '{}'. design() is for configuring dependency blueprints outside of execution context. Move the design() configuration outside of @injected functions.",
                         parent_name
                     ),
                     offset: with_stmt.range.start().to_usize(),

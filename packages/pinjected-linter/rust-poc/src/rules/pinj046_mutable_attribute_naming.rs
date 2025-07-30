@@ -239,9 +239,7 @@ impl MutableAttributeNamingRule {
                 };
                 
                 let message = format!(
-                    "Class '{}' has attribute '{}' assigned outside __init__/__post_init__ ({}), \
-                    making it mutable. Mutable attributes must be prefixed with '{}' to indicate \
-                    their mutable nature.",
+                    "Class '{}' has attribute '{}' assigned outside __init__/__post_init__ ({}), making it mutable. Mutable attributes must be prefixed with '{}' to indicate their mutable nature.",
                     class_def.name.as_str(),
                     attr_name,
                     assign_type,

@@ -66,11 +66,7 @@ impl NoIProxyReturnTypeRule {
                 violations.push(Violation {
                     rule_id: "PINJ032".to_string(),
                     message: format!(
-                        "@injected/@instance function '{}' has IProxy return type annotation. \
-                        This indicates a misunderstanding of how pinjected works. \
-                        @injected and @instance functions should have ordinary return type annotations, not IProxy. \
-                        IProxy is an internal interface used by pinjected. \
-                        Please read the pinjected documentation to understand the correct usage.",
+                        "@injected/@instance function '{}' has IProxy return type annotation. This indicates a misunderstanding of how pinjected works. @injected and @instance functions should have ordinary return type annotations, not IProxy. IProxy is an internal interface used by pinjected. Please read the pinjected documentation to understand the correct usage.",
                         func.name
                     ),
                     offset: func.range.start().to_usize(),
@@ -103,11 +99,7 @@ impl NoIProxyReturnTypeRule {
                 violations.push(Violation {
                     rule_id: "PINJ032".to_string(),
                     message: format!(
-                        "@injected/@instance function '{}' has IProxy return type annotation. \
-                        This indicates a misunderstanding of how pinjected works. \
-                        @injected and @instance functions should have ordinary return type annotations, not IProxy. \
-                        IProxy is an internal interface used by pinjected. \
-                        Please read the pinjected documentation to understand the correct usage.",
+                        "@injected/@instance function '{}' has IProxy return type annotation. This indicates a misunderstanding of how pinjected works. @injected and @instance functions should have ordinary return type annotations, not IProxy. IProxy is an internal interface used by pinjected. Please read the pinjected documentation to understand the correct usage.",
                         func.name
                     ),
                     offset: func.range.start().to_usize(),

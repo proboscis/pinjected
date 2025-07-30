@@ -243,24 +243,21 @@ impl MaxMutableAttributesRule {
             
             let message = if self.max_mutable_attributes == 0 {
                 format!(
-                    "Class '{}' has {} mutable attributes ({}), but mutable attributes are not allowed. \
-                    Classes should be immutable; use functional patterns or the strategy pattern instead.",
+                    "Class '{}' has {} mutable attributes ({}), but mutable attributes are not allowed. Classes should be immutable; use functional patterns or the strategy pattern instead.",
                     class_def.name.as_str(),
                     attr_list.len(),
                     attr_list.join(", ")
                 )
             } else if self.max_mutable_attributes == 1 {
                 format!(
-                    "Class '{}' has {} mutable attributes ({}), exceeding the limit of 1. \
-                    Consider refactoring to reduce mutable state or use composition.",
+                    "Class '{}' has {} mutable attributes ({}), exceeding the limit of 1. Consider refactoring to reduce mutable state or use composition.",
                     class_def.name.as_str(),
                     attr_list.len(),
                     attr_list.join(", ")
                 )
             } else {
                 format!(
-                    "Class '{}' has {} mutable attributes ({}), exceeding the limit of {}. \
-                    Consider refactoring to reduce mutable state.",
+                    "Class '{}' has {} mutable attributes ({}), exceeding the limit of {}. Consider refactoring to reduce mutable state.",
                     class_def.name.as_str(),
                     attr_list.len(),
                     attr_list.join(", "),

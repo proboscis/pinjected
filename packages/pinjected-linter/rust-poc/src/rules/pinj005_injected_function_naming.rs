@@ -90,8 +90,7 @@ impl LintRule for InjectedFunctionNamingRule {
                         violations.push(Violation {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
-                                "@injected function '{}' uses noun form. Use verb form instead. \
-                                Consider renaming to '{}'",
+                                "@injected function '{}' uses noun form. Use verb form instead. Consider renaming to '{}'.",
                                 function_name, suggestion
                             ),
                             offset: func.range.start().to_usize(),

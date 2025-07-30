@@ -114,8 +114,7 @@ impl NoLambdaInDesignRule {
         Violation {
             rule_id: "PINJ034".to_string(),
             message: format!(
-                "Lambda function cannot be assigned to design context '{}'. \
-                Use @injected or @instance decorated functions instead.",
+                "Lambda function cannot be assigned to design context '{}'. Use @injected or @instance decorated functions instead.",
                 design_var
             ),
             offset: lambda.range.start().to_usize(),
@@ -129,8 +128,7 @@ impl NoLambdaInDesignRule {
         Violation {
             rule_id: "PINJ034".to_string(),
             message: format!(
-                "Function '{}' is not decorated with @injected or @instance. \
-                Only decorated functions should be assigned to design context '{}'.",
+                "Function '{}' is not decorated with @injected or @instance. Only decorated functions should be assigned to design context '{}'.",
                 func_name, design_var
             ),
             offset: 0, // Will be updated by caller

@@ -35,7 +35,7 @@ impl LintRule for InstanceNamingRule {
                     violations.push(Violation {
                         rule_id: self.rule_id().to_string(),
                         message: format!(
-                            "@instance function '{}' should be a noun (e.g., 'logger', 'database')",
+                            "@instance function '{}' should be a noun. Consider using a name like 'logger' or 'database'.",
                             func.name
                         ),
                         offset: func.range.start().to_usize(),
@@ -50,7 +50,7 @@ impl LintRule for InstanceNamingRule {
                     violations.push(Violation {
                         rule_id: self.rule_id().to_string(),
                         message: format!(
-                            "@instance function '{}' should be a noun (e.g., 'logger', 'database')",
+                            "@instance function '{}' should be a noun. Consider using a name like 'logger' or 'database'.",
                             func.name
                         ),
                         offset: func.range.start().to_usize(),
