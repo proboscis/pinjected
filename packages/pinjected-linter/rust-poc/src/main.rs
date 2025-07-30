@@ -261,6 +261,7 @@ Available Rules:
 - PINJ027: No nested @injected (avoid @injected inside @injected)
 - PINJ028: No design in @injected (avoid design() inside @injected)
 - PINJ029: No @injected.pure instantiation (avoid Injected.pure in @injected)
+- PINJ045: No mode/flag parameters (avoid mode/flag parameters that control behavior)
 
 Filtering Options:
 ------------------

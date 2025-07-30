@@ -163,7 +163,7 @@ fn analyze_file(
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
                     "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
                     | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032"
-                    | "PINJ033" | "PINJ040" | "PINJ043" => func_rules.push(rule),
+                    | "PINJ033" | "PINJ040" | "PINJ043" | "PINJ045" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
                     "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" | "PINJ042" | "PINJ044" => {
                         stmt_rules.push(rule)

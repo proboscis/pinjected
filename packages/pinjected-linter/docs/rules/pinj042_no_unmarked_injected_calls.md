@@ -4,6 +4,8 @@
 
 This rule forbids calling `@injected` functions from non-`@injected` contexts without explicitly marking the call as intentional. `@injected` functions are designed to be used through the dependency injection system, and direct calls bypass the entire DI framework.
 
+**Exception**: Module-level calls to create IProxy entrypoints are allowed when explicitly typed as `IProxy[T]` with a type parameter.
+
 This rule complements PINJ009:
 - **PINJ009**: Handles calls *within* `@injected` functions (must declare as dependency)
 - **PINJ042**: Handles calls *outside* `@injected` functions (must mark as intentional)
@@ -72,6 +74,14 @@ def create_emailer():
         # ERROR: Unmarked call in nested function
         return email_service(addr, "Hello")
     return send
+
+# Module-level call without IProxy type annotation
+# ERROR: Module-level calls must be typed as IProxy[T]
+default_emailer = email_service("default@example.com", "Default")
+
+# Module-level call with bare IProxy (no type parameter)
+# ERROR: IProxy must have a type parameter
+typed_emailer: IProxy = email_service("typed@example.com", "Typed")
 ```
 
 ### ✅ Correct - Option 1: Mark as Intentional
@@ -149,6 +159,49 @@ def main():
     # Run through DI system
     asyncio.run(design.run(email_service, "user@example.com", "Hello"))
 ```
+
+### ✅ Correct - Option 4: Module-Level IProxy Entrypoints
+
+Module-level calls to `@injected` functions are allowed when creating IProxy entrypoints, but **only when explicitly typed as `IProxy[T]` with a type parameter**:
+
+```python
+from pinjected import injected, IProxy
+from typing import Any
+
+@injected
+def database_service(connection_pool, logger, /, query: str):
+    logger.info(f"Executing query: {query}")
+    return connection_pool.execute(query)
+
+@injected
+def api_handler(auth_service, db_service, /):
+    async def handle(request):
+        # Handler implementation
+        pass
+    return handle
+
+# CORRECT: Module-level IProxy entrypoints with type parameters
+# These create dependency injection entry points for the module
+user_query_service: IProxy[DatabaseService] = database_service("SELECT * FROM users")
+admin_api: IProxy[ApiHandler] = api_handler()
+
+# Use Any if the specific type is unknown or dynamic
+dynamic_service: IProxy[Any] = database_service("config")
+
+# Also valid with qualified names
+import pinjected
+my_service: pinjected.IProxy[ServiceType] = api_handler()
+```
+
+This pattern is commonly used to:
+- Define module-level entry points for dependency injection
+- Create reusable IProxy instances that can be imported by other modules
+- Set up application-wide service configurations
+
+**Important**: The `IProxy[T]` type annotation with a type parameter is mandatory for module-level calls. This ensures:
+- You understand you're creating an IProxy object, not executing the function
+- Proper type checking for dependency resolution
+- Clear documentation of expected return types
 
 ## Suppressing the Rule
 

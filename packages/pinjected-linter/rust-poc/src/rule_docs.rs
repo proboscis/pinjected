@@ -134,6 +134,10 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ044",
         include_str!("../../docs/rules/pinj044_no_async_resolver_creation.md"),
     );
+    docs.insert(
+        "PINJ045",
+        include_str!("../../docs/rules/pinj045_no_mode_parameters.md"),
+    );
 
     docs
 }

@@ -33,6 +33,10 @@ pub struct NoUnmarkedInjectedCallsRule {
     in_injected_function: bool,
     /// Stack to track nested function contexts
     function_stack: Vec<bool>,
+    /// Whether we're at module level (not inside any function/class)
+    is_module_level: bool,
+    /// Track if current statement is an IProxy-typed assignment
+    is_iproxy_assignment: bool,
 }
 
 impl NoUnmarkedInjectedCallsRule {
@@ -42,6 +46,8 @@ impl NoUnmarkedInjectedCallsRule {
             imported_injected_functions: HashMap::new(),
             in_injected_function: false,
             function_stack: Vec::new(),
+            is_module_level: true,
+            is_iproxy_assignment: false,
         }
     }
 
@@ -144,6 +150,32 @@ impl NoUnmarkedInjectedCallsRule {
         false
     }
 
+    /// Check if a type annotation is IProxy with type parameter
+    fn is_iproxy_annotation(&self, annotation: &Expr) -> bool {
+        match annotation {
+            // Reject bare IProxy - must have type parameter
+            Expr::Name(_) => false,
+            // Reject bare pinjected.IProxy - must have type parameter  
+            Expr::Attribute(_) => false,
+            Expr::Subscript(subscript) => {
+                // Only accept IProxy[T] or pinjected.IProxy[T]
+                if let Expr::Name(name) = &*subscript.value {
+                    name.id.to_string() == "IProxy"
+                } else if let Expr::Attribute(attr) = &*subscript.value {
+                    // Handle pinjected.IProxy[SomeType]
+                    if let Expr::Name(name) = &*attr.value {
+                        name.id.to_string() == "pinjected" && attr.attr.to_string() == "IProxy"
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
     /// Check if a call is to an @injected function and not properly marked
     fn check_call(&self, call: &ExprCall, context: &RuleContext, violations: &mut Vec<Violation>) {
         // Skip if we're inside an @injected function (PINJ009 handles this)
@@ -173,6 +205,11 @@ impl NoUnmarkedInjectedCallsRule {
             if is_local_injected || is_imported_injected {
                 // Check if the call has explicit marking
                 if !self.has_explicit_marking(context.source, call.range.start().to_usize()) {
+                    // Skip if this is a module-level IProxy-typed assignment
+                    if self.is_module_level && self.is_iproxy_assignment {
+                        return;
+                    }
+
                     let source_info = if is_imported_injected {
                         if let Some(module) = self.imported_injected_functions.get(&called_func) {
                             format!(" (imported from '{}')", module)
@@ -183,9 +220,31 @@ impl NoUnmarkedInjectedCallsRule {
                         String::new()
                     };
 
-                    violations.push(Violation {
-                        rule_id: "PINJ042".to_string(),
-                        message: format!(
+                    // Context-aware error message
+                    let message = if self.is_module_level {
+                        format!(
+                            "Module-level call to @injected function '{}'{} requires IProxy[T] type annotation!\n\n\
+                            UNDERSTANDING MODULE-LEVEL CALLS:\n\
+                            - At module level, calling @injected functions creates IProxy entrypoints\n\
+                            - These are used to define module-level dependency injection entry points\n\
+                            - You MUST explicitly type the variable as IProxy[T] with a type parameter\n\n\
+                            CORRECT USAGE:\n\
+                            # Explicitly typed as IProxy with type parameter\n\
+                            my_entrypoint: IProxy[ServiceType] = {}(\"args\")\n\
+                            # Or use Any if type is unknown\n\
+                            my_entrypoint: IProxy[Any] = {}(\"args\")\n\n\
+                            WHY TYPE PARAMETER IS REQUIRED:\n\
+                            - Ensures proper type checking for dependency resolution\n\
+                            - Makes the expected return type explicit\n\
+                            - Prevents runtime type errors in the DI system\n\n\
+                            If this is not meant to be an entrypoint, consider moving this call inside a function.",
+                            called_func,
+                            source_info,
+                            called_func,
+                            called_func
+                        )
+                    } else {
+                        format!(
                             "Calling @injected function '{}'{} directly returns an IProxy, not the actual function!\n\n\
                             WHY THIS IS FORBIDDEN:\n\
                             - @injected functions return IProxy objects when called directly\n\
@@ -193,15 +252,22 @@ impl NoUnmarkedInjectedCallsRule {
                             - Only resolved functions (through DI) can be called with runtime arguments\n\n\
                             CORRECT APPROACH:\n\
                             1. Use dependency injection: Declare '{}' as a dependency in an @injected function\n\
-                            2. Use Design().run() or similar DI execution methods\n\n\
+                            2. Convert this function to @injected and declare '{}' as a dependency\n\
+                            3. Use Design().run() or similar DI execution methods\n\n\
                             ONLY IF ABSOLUTELY NECESSARY (rare cases like tests/migration):\n\
                             Add this comment to the line: # pinjected: explicit-call\n\
                             Example: result = {}(args)  # pinjected: explicit-call",
                             called_func,
                             source_info,
                             called_func,
+                            called_func,
                             called_func
-                        ),
+                        )
+                    };
+
+                    violations.push(Violation {
+                        rule_id: "PINJ042".to_string(),
+                        message,
                         offset: call.range.start().to_usize(),
                         file_path: context.file_path.to_string(),
                         severity: Severity::Error,
@@ -264,6 +330,8 @@ impl NoUnmarkedInjectedCallsRule {
                 let was_injected = has_injected_decorator(func);
                 self.function_stack.push(self.in_injected_function);
                 self.in_injected_function = was_injected;
+                let was_module_level = self.is_module_level;
+                self.is_module_level = false;
                 
                 // Check function body
                 for stmt in &func.body {
@@ -272,11 +340,14 @@ impl NoUnmarkedInjectedCallsRule {
                 
                 // Restore context
                 self.in_injected_function = self.function_stack.pop().unwrap_or(false);
+                self.is_module_level = was_module_level;
             }
             Stmt::AsyncFunctionDef(func) => {
                 let was_injected = has_injected_decorator_async(func);
                 self.function_stack.push(self.in_injected_function);
                 self.in_injected_function = was_injected;
+                let was_module_level = self.is_module_level;
+                self.is_module_level = false;
                 
                 // Check function body
                 for stmt in &func.body {
@@ -285,12 +356,18 @@ impl NoUnmarkedInjectedCallsRule {
                 
                 // Restore context
                 self.in_injected_function = self.function_stack.pop().unwrap_or(false);
+                self.is_module_level = was_module_level;
             }
             Stmt::ClassDef(class) => {
+                let was_module_level = self.is_module_level;
+                self.is_module_level = false;
+                
                 // Check methods
                 for stmt in &class.body {
                     self.check_stmt(stmt, context, violations);
                 }
+                
+                self.is_module_level = was_module_level;
             }
             Stmt::Expr(expr_stmt) => {
                 self.check_expr(&expr_stmt.value, context, violations);
@@ -299,8 +376,18 @@ impl NoUnmarkedInjectedCallsRule {
                 self.check_expr(&assign.value, context, violations);
             }
             Stmt::AnnAssign(ann_assign) => {
+                // Check if this is an IProxy-typed assignment
+                let has_iproxy_annotation = self.is_iproxy_annotation(&ann_assign.annotation);
+                
                 if let Some(value) = &ann_assign.value {
+                    // Set the flag before checking the expression
+                    let was_iproxy_assignment = self.is_iproxy_assignment;
+                    self.is_iproxy_assignment = has_iproxy_annotation;
+                    
                     self.check_expr(value, context, violations);
+                    
+                    // Restore the flag
+                    self.is_iproxy_assignment = was_iproxy_assignment;
                 }
             }
             Stmt::Return(ret) => {
@@ -543,5 +630,137 @@ data = list(map(lambda x: transform(x), [1, 2, 3]))
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ042");
+    }
+
+    #[test]
+    fn test_module_level_bare_iproxy_typed_assignment() {
+        let code = r#"
+from pinjected import injected, IProxy
+
+@injected
+def a_ensure_namespace(namespace, /):
+    return namespace
+
+# This should be detected - bare IProxy without type parameter
+run_test_ensure_namespace: IProxy = a_ensure_namespace("test-namespace2")
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("requires IProxy[T] type annotation"));
+        assert!(violations[0].message.contains("IProxy[ServiceType]"));
+    }
+
+    #[test]
+    fn test_module_level_iproxy_subscript_typed_assignment() {
+        let code = r#"
+from pinjected import injected, IProxy
+
+@injected
+def service(db, logger, /):
+    return db
+
+# This should NOT be detected - module level with IProxy[T] type annotation
+my_service: IProxy[Database] = service()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_module_level_non_iproxy_assignment() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def service(db, logger, /):
+    return db
+
+# This should be detected - module level without IProxy type annotation
+my_service = service()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("Module-level call"));
+        assert!(violations[0].message.contains("requires IProxy[T] type annotation"));
+        assert!(violations[0].message.contains("IProxy[ServiceType]"));
+    }
+
+    #[test]
+    fn test_module_level_with_wrong_type_annotation() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def service(db, logger, /):
+    return db
+
+# This should be detected - wrong type annotation (not IProxy)
+my_service: str = service()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("Module-level call"));
+    }
+
+    #[test]
+    fn test_module_level_pinjected_iproxy_with_type() {
+        let code = r#"
+from pinjected import injected
+import pinjected
+
+@injected
+def service(db, logger, /):
+    return db
+
+# This should NOT be detected - pinjected.IProxy[T] is valid
+my_service: pinjected.IProxy[Database] = service()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_module_level_bare_pinjected_iproxy() {
+        let code = r#"
+from pinjected import injected
+import pinjected
+
+@injected
+def service(db, logger, /):
+    return db
+
+# This should be detected - bare pinjected.IProxy without type parameter
+my_service: pinjected.IProxy = service()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("requires IProxy[T] type annotation"));
+    }
+
+    #[test]
+    fn test_non_module_level_remains_unchanged() {
+        let code = r#"
+from pinjected import injected, IProxy
+
+@injected
+def service(db, logger, /):
+    return db
+
+def regular_function():
+    # This should still be detected - not at module level
+    my_service: IProxy = service()
+    return my_service
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        // Should get the non-module-level error message
+        assert!(violations[0].message.contains("directly returns an IProxy"));
+        assert!(violations[0].message.contains("Use dependency injection"));
+        assert!(!violations[0].message.contains("Module-level call"));
     }
 }
