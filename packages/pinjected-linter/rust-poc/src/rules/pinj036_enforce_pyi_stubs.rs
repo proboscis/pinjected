@@ -53,10 +53,10 @@ impl EnforcePyiStubsRule {
     fn should_exclude(&self, file_path: &str) -> bool {
         let path = Path::new(file_path);
 
-        // Check if filename starts with 'test'
+        // Check if filename matches test_*.py pattern (pytest files)
         if let Some(file_name) = path.file_name() {
             let name = file_name.to_str().unwrap_or("");
-            if name.starts_with("test") {
+            if name.starts_with("test_") && name.ends_with(".py") {
                 return true;
             }
         }
@@ -1854,6 +1854,35 @@ some_obj.attribute = 10  # This should NOT be extracted as a symbol
         // Should NOT include the module-level attribute assignment
         assert!(!fix.content.contains("some_obj"));
         assert!(!fix.content.contains("attribute"));
+    }
+
+    #[test]
+    fn test_exclude_pytest_files() {
+        // Test that test_*.py files are excluded
+        let rule = EnforcePyiStubsRule::new();
+        
+        // Test various pytest file patterns
+        assert!(rule.should_exclude("test_example.py"));
+        assert!(rule.should_exclude("test_module_functionality.py"));
+        assert!(rule.should_exclude("/path/to/test_something.py"));
+        assert!(rule.should_exclude("./test_utils.py"));
+        
+        // Test that non-test files are not excluded
+        assert!(!rule.should_exclude("example.py"));
+        assert!(!rule.should_exclude("my_test.py")); // doesn't start with test_
+        assert!(!rule.should_exclude("testing.py")); // starts with test but not test_
+        
+        // Verify with actual rule check
+        let code = r#"
+def some_function():
+    return "This is a test file"
+"#;
+        
+        let violations = check_rule(code, "test_example.py");
+        assert_eq!(violations.len(), 0, "test_*.py files should be excluded from stub checks");
+        
+        let violations = check_rule(code, "regular_module.py");
+        assert_eq!(violations.len(), 1, "non-test files should require stubs");
     }
 
     #[test]

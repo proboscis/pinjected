@@ -21,10 +21,9 @@ The rule checks for:
 ### Exclusions
 
 The following files are automatically excluded from this check:
-- Files starting with `test` (e.g., `test_module.py`)
+- Pytest files matching the pattern `test_*.py` (e.g., `test_module.py`, `test_utils.py`)
 - Files in `tests/` or `test/` directories
 - Files in `migrations/` directories
-- Temporary files
 
 ### What constitutes public API?
 
