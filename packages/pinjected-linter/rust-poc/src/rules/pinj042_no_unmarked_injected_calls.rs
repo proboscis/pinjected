@@ -37,6 +37,10 @@ pub struct NoUnmarkedInjectedCallsRule {
     is_module_level: bool,
     /// Track if current statement is an IProxy-typed assignment
     is_iproxy_assignment: bool,
+    /// Whether we're currently inside a pytest test function
+    in_pytest_function: bool,
+    /// Stack to track nested pytest function contexts
+    pytest_function_stack: Vec<bool>,
 }
 
 impl NoUnmarkedInjectedCallsRule {
@@ -48,6 +52,8 @@ impl NoUnmarkedInjectedCallsRule {
             function_stack: Vec::new(),
             is_module_level: true,
             is_iproxy_assignment: false,
+            in_pytest_function: false,
+            pytest_function_stack: Vec::new(),
         }
     }
 
@@ -113,6 +119,43 @@ impl NoUnmarkedInjectedCallsRule {
     fn resolve_import_path(&self, module_name: &str) -> Option<String> {
         // Simplified - in real implementation would resolve actual paths
         Some(module_name.to_string())
+    }
+
+    /// Check if a function is a pytest test function
+    fn is_test_function(func_name: &str, decorator_list: &[Expr]) -> bool {
+        // Check if function name starts with "test_"
+        if func_name.starts_with("test_") {
+            return true;
+        }
+
+        // Check for pytest decorators
+        for decorator in decorator_list {
+            if Self::is_pytest_decorator(decorator) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Check if an expression is a pytest decorator that makes a function a test
+    fn is_pytest_decorator(expr: &Expr) -> bool {
+        match expr {
+            Expr::Attribute(attr) => {
+                // Check for pytest.mark.* decorators
+                if let Expr::Attribute(inner_attr) = &*attr.value {
+                    if let Expr::Name(name) = &*inner_attr.value {
+                        return name.id.as_str() == "pytest" && inner_attr.attr.as_str() == "mark";
+                    }
+                }
+                // Check for direct pytest.* decorators
+                if let Expr::Name(name) = &*attr.value {
+                    return name.id.as_str() == "pytest";
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     /// Check if imported function is @injected (simplified version)
@@ -221,7 +264,44 @@ impl NoUnmarkedInjectedCallsRule {
                     };
 
                     // Context-aware error message
-                    let message = if self.is_module_level {
+                    let message = if self.in_pytest_function {
+                        format!(
+                            "Calling @injected function '{}'{} directly in pytest test function!\n\n\
+                            WHY THIS IS FORBIDDEN:\n\
+                            - @injected functions return IProxy objects when called directly\n\
+                            - In pytest, dependencies should be requested as fixtures, not called directly\n\
+                            - Direct calls bypass pytest's dependency injection system\n\n\
+                            CORRECT APPROACH FOR PYTEST:\n\
+                            1. Use pytest fixtures: Declare '{}' as a fixture parameter\n\
+                            2. Set up fixtures using register_fixtures_from_design() at module level\n\
+                            3. Let pytest inject the resolved dependency\n\n\
+                            EXAMPLE:\n\
+                            # At module level:\n\
+                            from pinjected import design\n\
+                            from pinjected.test import register_fixtures_from_design\n\n\
+                            test_design = design(\n\
+                                {}={}(),\n\
+                                # ... other dependencies\n\
+                            )\n\
+                            register_fixtures_from_design(test_design)\n\n\
+                            # In your test:\n\
+                            def test_something({}, other_fixture):\n\
+                                # {} is now the resolved function, not an IProxy\n\
+                                result = {}(args)  # This works!\n\n\
+                            NOTE ON BYPASSING THIS ERROR:\n\
+                            While you can add '# pinjected: explicit-call' to suppress this error, this is PROBABLY WRONG\n\
+                            and should NOT be done without supervisor's instruction. It's a complex feature that bypasses\n\
+                            the dependency injection system and can lead to runtime errors.",
+                            called_func,
+                            source_info,
+                            called_func,
+                            called_func,
+                            called_func,
+                            called_func,
+                            called_func,
+                            called_func
+                        )
+                    } else if self.is_module_level {
                         format!(
                             "Module-level call to @injected function '{}'{} requires IProxy[T] type annotation!\n\n\
                             UNDERSTANDING MODULE-LEVEL CALLS:\n\
@@ -237,7 +317,11 @@ impl NoUnmarkedInjectedCallsRule {
                             - Ensures proper type checking for dependency resolution\n\
                             - Makes the expected return type explicit\n\
                             - Prevents runtime type errors in the DI system\n\n\
-                            If this is not meant to be an entrypoint, consider moving this call inside a function.",
+                            If this is not meant to be an entrypoint, consider moving this call inside a function.\n\n\
+                            NOTE ON BYPASSING THIS ERROR:\n\
+                            While you can add '# pinjected: explicit-call' to suppress this error, this is PROBABLY WRONG\n\
+                            and should NOT be done without supervisor's instruction. It's a complex feature that bypasses\n\
+                            the dependency injection system and can lead to runtime errors.",
                             called_func,
                             source_info,
                             called_func,
@@ -250,15 +334,30 @@ impl NoUnmarkedInjectedCallsRule {
                             - @injected functions return IProxy objects when called directly\n\
                             - They are NOT meant to be executed without dependency resolution\n\
                             - Only resolved functions (through DI) can be called with runtime arguments\n\n\
-                            CORRECT APPROACH:\n\
+                            CORRECT APPROACHES:\n\
                             1. Use dependency injection: Declare '{}' as a dependency in an @injected function\n\
                             2. Convert this function to @injected and declare '{}' as a dependency\n\
                             3. Use Design().run() or similar DI execution methods\n\n\
-                            ONLY IF ABSOLUTELY NECESSARY (rare cases like tests/migration):\n\
-                            Add this comment to the line: # pinjected: explicit-call\n\
-                            Example: result = {}(args)  # pinjected: explicit-call",
+                            EXAMPLE 1 - Using dependency injection:\n\
+                            @injected\n\
+                            def my_function({}, /, data):\n\
+                                return {}(data)\n\n\
+                            EXAMPLE 2 - Using Design:\n\
+                            with design({}: {}()) as d:\n\
+                                result = d.run(lambda {}: {}(data))\n\n\
+                            Direct calls to @injected functions should be avoided. If you're seeing this in legacy code,\n\
+                            consider refactoring to use proper dependency injection patterns.\n\n\
+                            NOTE ON BYPASSING THIS ERROR:\n\
+                            While you can add '# pinjected: explicit-call' to suppress this error, this is PROBABLY WRONG\n\
+                            and should NOT be done without supervisor's instruction. It's a complex feature that bypasses\n\
+                            the dependency injection system and can lead to runtime errors.",
                             called_func,
                             source_info,
+                            called_func,
+                            called_func,
+                            called_func,
+                            called_func,
+                            called_func,
                             called_func,
                             called_func,
                             called_func
@@ -328,8 +427,15 @@ impl NoUnmarkedInjectedCallsRule {
         match stmt {
             Stmt::FunctionDef(func) => {
                 let was_injected = has_injected_decorator(func);
+                let is_pytest = Self::is_test_function(&func.name, &func.decorator_list);
+                
+                // Push current states
                 self.function_stack.push(self.in_injected_function);
+                self.pytest_function_stack.push(self.in_pytest_function);
+                
+                // Update states
                 self.in_injected_function = was_injected;
+                self.in_pytest_function = is_pytest;
                 let was_module_level = self.is_module_level;
                 self.is_module_level = false;
                 
@@ -340,12 +446,20 @@ impl NoUnmarkedInjectedCallsRule {
                 
                 // Restore context
                 self.in_injected_function = self.function_stack.pop().unwrap_or(false);
+                self.in_pytest_function = self.pytest_function_stack.pop().unwrap_or(false);
                 self.is_module_level = was_module_level;
             }
             Stmt::AsyncFunctionDef(func) => {
                 let was_injected = has_injected_decorator_async(func);
+                let is_pytest = Self::is_test_function(&func.name, &func.decorator_list);
+                
+                // Push current states
                 self.function_stack.push(self.in_injected_function);
+                self.pytest_function_stack.push(self.in_pytest_function);
+                
+                // Update states
                 self.in_injected_function = was_injected;
+                self.in_pytest_function = is_pytest;
                 let was_module_level = self.is_module_level;
                 self.is_module_level = false;
                 
@@ -356,6 +470,7 @@ impl NoUnmarkedInjectedCallsRule {
                 
                 // Restore context
                 self.in_injected_function = self.function_stack.pop().unwrap_or(false);
+                self.in_pytest_function = self.pytest_function_stack.pop().unwrap_or(false);
                 self.is_module_level = was_module_level;
             }
             Stmt::ClassDef(class) => {
@@ -507,7 +622,8 @@ def regular_function(data):
         assert!(violations[0].message.contains("service"));
         assert!(violations[0].message.contains("returns an IProxy"));
         assert!(violations[0].message.contains("WHY THIS IS FORBIDDEN"));
-        assert!(violations[0].message.contains("explicit-call"));
+        assert!(violations[0].message.contains("CORRECT APPROACHES"));
+        assert!(violations[0].message.contains("PROBABLY WRONG"));
     }
 
     #[test]
@@ -762,5 +878,119 @@ def regular_function():
         assert!(violations[0].message.contains("directly returns an IProxy"));
         assert!(violations[0].message.contains("Use dependency injection"));
         assert!(!violations[0].message.contains("Module-level call"));
+    }
+
+    #[test]
+    fn test_pytest_function_call() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def a_create_test_backtest_config(db, logger, /):
+    return {"db": db, "logger": logger}
+
+def test_backtest_integration():
+    # This should be detected with pytest-specific message
+    config = a_create_test_backtest_config()
+    assert config is not None
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("directly in pytest test function"));
+        assert!(violations[0].message.contains("dependencies should be requested as fixtures"));
+        assert!(violations[0].message.contains("register_fixtures_from_design"));
+        assert!(violations[0].message.contains("CORRECT APPROACH FOR PYTEST"));
+        assert!(violations[0].message.contains("PROBABLY WRONG"));
+    }
+
+    #[test]
+    fn test_pytest_function_with_await() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+async def a_create_test_backtest_config(db, logger, /):
+    return {"db": db, "logger": logger}
+
+async def test_async_backtest():
+    # This should be detected with pytest-specific message
+    config = await a_create_test_backtest_config()
+    assert config is not None
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("directly in pytest test function"));
+        assert!(violations[0].message.contains("CORRECT APPROACH FOR PYTEST"));
+        assert!(violations[0].message.contains("PROBABLY WRONG"));
+    }
+
+    #[test]
+    fn test_pytest_function_with_explicit_call() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def a_create_test_backtest_config(db, logger, /):
+    return {"db": db, "logger": logger}
+
+def test_backtest_integration():
+    # This should NOT be detected - has explicit marking
+    config = a_create_test_backtest_config()  # pinjected: explicit-call
+    assert config is not None
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_pytest_decorator_function() {
+        let code = r#"
+from pinjected import injected
+import pytest
+
+@injected
+def service(db, /):
+    return db
+
+@pytest.mark.parametrize("input", [1, 2, 3])
+def test_with_params(input):
+    # This should be detected with pytest-specific message
+    result = service()
+    assert result is not None
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        assert!(violations[0].message.contains("directly in pytest test function"));
+        assert!(violations[0].message.contains("dependencies should be requested as fixtures"));
+    }
+
+    #[test]
+    fn test_non_test_function_in_test_file() {
+        let code = r#"
+from pinjected import injected
+
+@injected
+def service(db, /):
+    return db
+
+def helper_function():
+    # This should get the regular error message, not pytest-specific
+    result = service()
+    return result
+
+def test_something():
+    # This test doesn't directly call the injected function
+    result = helper_function()
+    assert result is not None
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "PINJ042");
+        // Should get regular error message for helper_function
+        assert!(violations[0].message.contains("directly returns an IProxy"));
+        assert!(!violations[0].message.contains("pytest test function"));
     }
 }

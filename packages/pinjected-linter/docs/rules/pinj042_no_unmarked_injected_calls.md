@@ -84,35 +84,7 @@ default_emailer = email_service("default@example.com", "Default")
 typed_emailer: IProxy = email_service("typed@example.com", "Typed")
 ```
 
-### ✅ Correct - Option 1: Mark as Intentional
-
-```python
-from pinjected import injected
-
-@injected
-def email_service(smtp_client, logger, /, recipient: str, message: str):
-    logger.info(f"Sending email to {recipient}")
-    return smtp_client.send(recipient, message)
-
-# Mark with explicit comment
-def send_notification(user_email: str):
-    # CORRECT: Explicitly marked as intentional
-    email_service(user_email, "Welcome!")  # pinjected: explicit-call
-    
-class NotificationHandler:
-    def notify(self, email: str):
-        # CORRECT: Using noqa to suppress
-        result = email_service(email, "Alert!")  # noqa: PINJ042
-        return result
-
-# For testing or special cases
-def test_email_service():
-    # CORRECT: Marked for testing purposes
-    result = email_service("test@example.com", "Test")  # pinjected: explicit-call
-    assert result.success
-```
-
-### ✅ Correct - Option 2: Use Dependency Injection
+### ✅ Correct - Option 1: Use Dependency Injection (Recommended)
 
 ```python
 from pinjected import injected, instance
@@ -136,6 +108,50 @@ def notification_handler(email_service):
             # CORRECT: Using injected email_service
             return email_service(email, "Alert!")
     return Handler()
+```
+
+### ✅ Correct - Option 2: Use Pytest Fixtures (For Tests)
+
+When writing pytest tests, dependencies should be requested as fixtures:
+
+```python
+from pinjected import injected, design
+from pinjected.test import register_fixtures_from_design
+
+@injected
+def email_service(smtp_client, logger, /, recipient: str, message: str):
+    logger.info(f"Sending email to {recipient}")
+    return smtp_client.send(recipient, message)
+
+@injected
+def database_service(connection, /):
+    return connection
+
+# At module level: Set up test design
+test_design = design(
+    email_service=email_service(),
+    database_service=database_service(),
+    smtp_client=MockSMTPClient(),
+    logger=MockLogger(),
+    connection=MockConnection()
+)
+register_fixtures_from_design(test_design)
+
+# In test functions: Use as fixtures
+def test_email_sending(email_service, database_service):
+    # CORRECT: email_service is the resolved function, not an IProxy
+    result = email_service("test@example.com", "Test message")
+    assert result.success
+    
+    # Can use multiple fixtures
+    db_result = database_service.query("SELECT * FROM emails")
+    assert len(db_result) > 0
+
+@pytest.mark.asyncio
+async def test_async_service(email_service):
+    # Works with async tests too
+    result = await email_service.send_async("test@example.com", "Async test")
+    assert result.delivered
 ```
 
 ### ✅ Correct - Option 3: Run Through DI System
@@ -203,59 +219,75 @@ This pattern is commonly used to:
 - Proper type checking for dependency resolution
 - Clear documentation of expected return types
 
-## Suppressing the Rule
+## Suppressing the Rule (NOT RECOMMENDED)
 
-In cases where you need to call an `@injected` function directly (e.g., testing, migration, special entry points), you can suppress this rule using one of these methods:
+⚠️ **WARNING**: While you can suppress this rule, doing so is PROBABLY WRONG and should NOT be done without supervisor's instruction. The `# pinjected: explicit-call` comment is a complex feature that bypasses the dependency injection system and can lead to runtime errors.
 
-### Method 1: Explicit Marking (Preferred)
+**Before suppressing this rule, consider:**
+1. Can you refactor to use proper dependency injection?
+2. For tests, can you use pytest fixtures with `register_fixtures_from_design()`?
+3. Can you use `Design().run()` to properly resolve dependencies?
+
+If you absolutely must suppress (rare cases like legacy code migration):
+
+### Method 1: Explicit Marking (Use With Extreme Caution)
 ```python
+# ⚠️ DANGEROUS: Only use with supervisor approval
 result = injected_function(args)  # pinjected: explicit-call
 ```
 
-This clearly indicates that the direct call is intentional and understood.
-
-### Method 2: Standard noqa
+### Method 2: Standard noqa (Also Requires Justification)
 ```python
+# ⚠️ Bypassing DI system - approved by [supervisor name]
 result = injected_function(args)  # noqa: PINJ042
 ```
 
-### Method 3: Explanation Comment
-```python
-# Direct call needed for backwards compatibility
-result = injected_function(args)  # pinjected: explicit-call - legacy API
-```
+**Remember**: These suppressions bypass the entire dependency injection system. The function's dependencies will NOT be resolved, and you'll get an IProxy object instead of the actual function result.
 
 ## Common Scenarios
 
-### Testing
+### Testing (Use Pytest Fixtures Instead)
 ```python
+# ❌ WRONG: Direct call in test
 def test_service():
-    # Testing often requires direct calls
-    result = my_service("test")  # pinjected: explicit-call - unit test
+    result = my_service("test")  # pinjected: explicit-call
+    assert result == expected
+
+# ✅ CORRECT: Use pytest fixtures
+def test_service(my_service):  # my_service injected as fixture
+    result = my_service("test")
     assert result == expected
 ```
 
-### Main Entry Points
+### Main Entry Points (Use Design Instead)
 ```python
+# ❌ WRONG: Direct call in main
 if __name__ == "__main__":
-    # Entry points may need direct calls before setting up DI
-    initial_config = load_config()  # pinjected: explicit-call - bootstrap
+    initial_config = load_config()  # pinjected: explicit-call
+
+# ✅ CORRECT: Use Design for entry points
+if __name__ == "__main__":
+    design = Design()
+    # Configure dependencies
+    asyncio.run(design.run(load_config))
 ```
 
-### Migration Code
+### Migration Code (Requires Approval)
 ```python
-# During migration from non-DI to DI architecture
+# ⚠️ Only during approved migration phase
+# TODO: Remove after migration to DI (ticket #12345)
 def legacy_wrapper(data):
-    # Temporary direct call during migration
-    return new_injected_service(data)  # noqa: PINJ042 - migration phase
+    # Temporary - approved by [supervisor name]
+    return new_injected_service(data)  # noqa: PINJ042
 ```
 
 ## Best Practices
 
-1. **Prefer Dependency Injection**: Convert regular functions to `@injected` when they need injected dependencies
-2. **Use @instance for Entry Points**: Entry points that need DI services should use `@instance`
-3. **Document Intentional Calls**: When marking as intentional, add a comment explaining why
-4. **Minimize Direct Calls**: Direct calls should be exceptional, not routine
+1. **Always Use Dependency Injection**: Convert regular functions to `@injected` when they need injected dependencies
+2. **Use Pytest Fixtures for Tests**: Use `register_fixtures_from_design()` instead of direct calls in tests
+3. **Use @instance for Entry Points**: Entry points that need DI services should use `@instance`
+4. **Avoid explicit-call**: The `# pinjected: explicit-call` comment is probably wrong - seek supervisor approval first
+5. **No Direct Calls**: Direct calls to `@injected` functions should be eliminated, not suppressed
 
 ## Configuration
 

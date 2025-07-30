@@ -85,19 +85,7 @@ impl NoDesignInTestFunctionsRule {
                 return Some(Violation {
                     rule_id: "PINJ043".to_string(),
                     message: format!(
-                        "design() cannot be used inside test function '{}'. \
-                        Creating a design inside a test function does not inject dependencies into the test scope.\n\n\
-                        Use register_fixtures_from_design() instead (recommended):\n\
-                        # At module level:\n\
-                        test_design = design(\n\
-                        ⠀⠀⠀⠀my_service=MyService(),\n\
-                        ⠀⠀⠀⠀database=MockDatabase()\n\
-                        )\n\
-                        register_fixtures_from_design(test_design)\n\n\
-                        # In test function:\n\
-                        def test_something(my_service, database):  # Injected as fixtures\n\
-                        ⠀⠀⠀⠀result = my_service.method()\n\
-                        ⠀⠀⠀⠀assert result == expected",
+                        "design() cannot be used inside test function '{}'. Creating a design inside a test function does not inject dependencies into the test scope. Use register_fixtures_from_design() instead. At module level: test_design = design(my_service=MyService(), database=MockDatabase()); register_fixtures_from_design(test_design). In test function: def test_something(my_service, database): result = my_service.method(); assert result == expected.",
                         parent_name
                     ),
                     offset: with_stmt.range.start().to_usize(),
@@ -125,20 +113,7 @@ impl NoDesignInTestFunctionsRule {
                 return Some(Violation {
                     rule_id: "PINJ043".to_string(),
                     message: format!(
-                        "design() cannot be used inside test function '{}'. \
-                        Creating a design inside a test function does not inject dependencies into the test scope.\n\n\
-                        Use register_fixtures_from_design() instead (recommended):\n\
-                        # At module level:\n\
-                        test_design = design(\n\
-                        ⠀⠀⠀⠀async_service=AsyncService(),\n\
-                        ⠀⠀⠀⠀database=MockDatabase()\n\
-                        )\n\
-                        register_fixtures_from_design(test_design)\n\n\
-                        # In test function:\n\
-                        @pytest.mark.asyncio\n\
-                        async def test_something(async_service, database):  # Injected as fixtures\n\
-                        ⠀⠀⠀⠀result = await async_service.async_method()\n\
-                        ⠀⠀⠀⠀assert result == expected",
+                        "design() cannot be used inside test function '{}'. Creating a design inside a test function does not inject dependencies into the test scope. Use register_fixtures_from_design() instead. At module level: test_design = design(async_service=AsyncService(), database=MockDatabase()); register_fixtures_from_design(test_design). In test function: @pytest.mark.asyncio async def test_something(async_service, database): result = await async_service.async_method(); assert result == expected.",
                         parent_name
                     ),
                     offset: with_stmt.range.start().to_usize(),

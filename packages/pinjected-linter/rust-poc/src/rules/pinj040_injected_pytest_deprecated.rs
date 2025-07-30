@@ -55,16 +55,7 @@ impl InjectedPytestDeprecatedRule {
     /// Create migration suggestion
     fn create_migration_message(&self, func_name: &str) -> String {
         format!(
-            "The @injected_pytest decorator is deprecated and will be removed in a future version.\n\n\
-            Quick migration:\n\
-            1. Import: from pinjected.test import register_fixtures_from_design\n\
-            2. Create design: test_design = design(service=service_func, database=database_func)\n\
-            3. Register: register_fixtures_from_design(test_design)\n\
-            4. Remove @injected_pytest from '{}' and use fixtures directly\n\n\
-            Example:\n\
-            # Before: @injected_pytest\\ndef test_something(service): ...\n\
-            # After: def test_something(service): ...  # service available as pytest fixture\n\n\
-            For detailed migration guide run: pinjected-linter --show-rule-doc PINJ040",
+            "The @injected_pytest decorator is deprecated and will be removed in a future version. Quick migration: 1. Import: from pinjected.test import register_fixtures_from_design. 2. Create design: test_design = design(service=service_func, database=database_func). 3. Register: register_fixtures_from_design(test_design). 4. Remove @injected_pytest from '{}' and use fixtures directly. Example: Before: @injected_pytest def test_something(service): ... After: def test_something(service): ... # service available as pytest fixture. For detailed migration guide run: pinjected-linter --show-rule-doc PINJ040.",
             func_name
         )
     }
