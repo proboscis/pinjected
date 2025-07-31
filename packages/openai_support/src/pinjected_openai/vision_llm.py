@@ -384,7 +384,7 @@ async def a_vision_llm__openai(
     max_completion_tokens=None,  # same as max_tokens
     response_format: openai.types.chat.completion_create_params.ResponseFormat = None,
     detail: Literal["auto", "low", "high"] = "auto",
-    reasoning_effort: Literal["low", "medium", "high"] = None,
+    reasoning_effort: Literal["low", "medium", "high"] | None = None,
 ) -> str:
     if max_completion_tokens is None:
         if max_tokens is None:

@@ -176,7 +176,7 @@ if __name__ == "__main__":
     # @future_safe for FutureResultE -> IOResultE
     @future_safe
     async def error_func():
-        logger.warning(f"calling error func")
+        logger.warning("calling error func")
         raise Exception("error")
 
     fut_res: FutureResultE[str] = error_func()
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     def recover2(fail):
         return FutureResult.from_value("recovered")
 
-    logger.info(f"check recovering")
+    logger.info("check recovering")
     recovered: FutureResultE = fut_res.lash(recover)
     recovered_2 = fut_res.lash(recover2)
     recovered_3 = fut_res.lash(lambda x: FutureResult.from_value("recovered"))

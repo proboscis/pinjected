@@ -55,13 +55,16 @@ class DependencyGraphDescriptionGenerator:
 
         value_str = str(value)
 
-        if isinstance(value, dict) and "documentation" in value:
-            if value["documentation"]:
-                doc = value["documentation"]
-                doc = doc.replace("\\n", "\n")
-                doc = re.sub(r"[ \t]+", " ", doc)
-                value["documentation"] = doc
-                value_str = str(value)
+        if (
+            isinstance(value, dict)
+            and "documentation" in value
+            and value["documentation"]
+        ):
+            doc = value["documentation"]
+            doc = doc.replace("\\n", "\n")
+            doc = re.sub(r"[ \t]+", " ", doc)
+            value["documentation"] = doc
+            value_str = str(value)
 
         return value_str
 

@@ -92,7 +92,7 @@ def injected_pytest(
 
 def _to_pytest(
     p: Injected, override: Union[Design, DelegatedVar[Design]], caller_file: str
-):  # noqa: C901
+):
     """
     pinjectedのインスタンスをpytestで実行可能なテスト関数に変換する内部関数
 
@@ -105,7 +105,7 @@ def _to_pytest(
         pytest互換のテスト関数
     """
 
-    async def impl():  # noqa: C901, PLR0912
+    async def impl():
         caller_path = Path(caller_file)
         mc: MetaContext = await MetaContext.a_gather_bindings_with_legacy(caller_path)
         final_design = await mc.a_final_design

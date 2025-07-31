@@ -11,7 +11,7 @@ from tqdm import tqdm
 from pinjected import *
 
 
-def convert_mp4_to_mp3(input_file: str, output_file: str = None) -> str:
+def convert_mp4_to_mp3(input_file: str, output_file: str | None = None) -> str:
     """
     Convert an MP4 file to MP3 format.
 
@@ -170,8 +170,8 @@ async def a_transcribe_mp3_file(
     a_transcribe_audio_segment,
     /,
     file: Path,
-    start_sec: float = None,
-    end_sec: float = None,
+    start_sec: float | None = None,
+    end_sec: float | None = None,
 ) -> str:
     segment = await get_audio_segment(file)
 

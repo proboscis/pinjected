@@ -1,7 +1,7 @@
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import TypeVar
+from typing import TypeVar, TYPE_CHECKING
 
 from cytoolz import merge
 from makefun import create_function
@@ -21,6 +21,9 @@ from pinjected.di.proxiable import DelegatedVar
 from pinjected.v2.binds import BindInjected, ExprBind, IBind
 from pinjected.v2.callback import IResolverCallback
 from pinjected.v2.keys import IBindKey, StrBindKey
+
+if TYPE_CHECKING:
+    from pinjected.di.metadata.bind_metadata import BindMetadata
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -357,7 +360,7 @@ class DesignImpl(Design):
         res = dict()
         for k, v in self.bindings.items():
             match v:
-                case BindInjected(InjectedFromFunction(f, args)):
+                case BindInjected(InjectedFromFunction(f, _)):
                     res[k] = f.__name__
                 case BindInjected(InjectedPure(value)):
                     res[k] = str(value)
@@ -368,7 +371,7 @@ class DesignImpl(Design):
     def _ensure_provider_name(self, k, method):
         """set appropriate name for provider function to be recognized by pinject"""
         name = f"provide_{k}"
-        if not method.__name__ == name:
+        if method.__name__ != name:
             # there are cases where you cannot directly set __name__ attribute.
             # and sometimes pinject.inject decorator is already applied so wrapping that again is not appropriate
             # so, the solution is to first try setting __name__ and then try wrapping if failed.
@@ -379,7 +382,7 @@ class DesignImpl(Design):
                 from pinjected.pinjected_logging import logger
 
                 logger.warning(
-                    f"somehow failed to assign new name to a provider function. trying to wrap."
+                    "somehow failed to assign new name to a provider function. trying to wrap."
                 )
 
                 def _wrapper(self, *args, **kwargs):

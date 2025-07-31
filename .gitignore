@@ -13,6 +13,7 @@ requirements*.lock
 uv.lock
 CLAUDE.md
 .claude/
+tmp/
 
 # IDE Plugin build artifacts
 ide-plugins/pycharm/.gradle/
@@ -21,3 +22,53 @@ ide-plugins/pycharm/.project
 ide-plugins/pycharm/.settings/
 ide-plugins/pycharm/.classpath
 ide-plugins/pycharm/bin/
+
+# Coverage files
+.coverage
+.coverage.*
+coverage.json
+coverage.xml
+htmlcov/
+.pytest_cache/
+.testmondata*
+packages/pinjected-linter/.coverage.*
+test_output.txt
+
+# Rust artifacts
+target/
+**/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Rust build outputs
+**/*.rlib
+**/*.rmeta
+**/*.d
+**/*.dll
+**/*.dylib
+**/*.so
+**/*.a
+**/*.exe
+
+# Rust debug/release directories
+**/debug/
+**/release/
+
+# Rust incremental compilation
+**/incremental/
+**/.fingerprint/
+
+# Rust profiling
+**/profraw
+**/profdata
+
+# Rust documentation
+**/doc/
+
+# Rust test outputs
+**/test_output/
+
+# Specific to pinjected-linter
+packages/pinjected-linter/rust-poc/pinjected-linter
+packages/pinjected-linter/rust-poc/libpinjected_linter.*

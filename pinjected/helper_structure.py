@@ -14,6 +14,42 @@ from pinjected.v2.async_resolver import AsyncResolver
 from pinjected.v2.keys import IBindKey, StrBindKey
 
 
+def parse_pinjected_env_vars() -> dict[str, Any]:
+    """Parse all PINJECTED_* environment variables into a kwargs dict."""
+    import os
+
+    env_kwargs = {}
+
+    for env_name, env_value in os.environ.items():
+        if env_name.startswith("PINJECTED_"):
+            # Remove PINJECTED_ prefix and convert to lowercase
+            key_name = env_name[10:].lower()  # Skip 'PINJECTED_'
+
+            if not key_name:
+                logger.warning(f"Skipping empty key from env var: {env_name}")
+                continue
+
+            env_kwargs[key_name] = env_value
+            logger.debug(f"Parsed env var {env_name} -> {key_name}={env_value!r}")
+
+    return env_kwargs
+
+
+def parse_kwargs_as_design_for_env(**kwargs):
+    """Parse kwargs into a design, handling {module.var} import syntax."""
+    from pinjected.module_var_path import load_variable_by_module_path
+
+    res = design()
+    for k, v in kwargs.items():
+        if isinstance(v, str) and v.startswith("{") and v.endswith("}"):
+            v = v[1:-1]
+            loaded = load_variable_by_module_path(v)
+            res += design(**{k: loaded})
+        else:
+            res += design(**{k: v})
+    return res
+
+
 @dataclass
 class IdeaRunConfiguration:
     name: str
@@ -67,7 +103,7 @@ class MetaContext:
     key_to_path: dict[IBindKey, str] = field(default_factory=dict)
 
     @staticmethod
-    async def a_gather_from_path(  # noqa: C901
+    async def a_gather_from_path(
         file_path: Path, meta_design_name: str = "__meta_design__"
     ):
         """
@@ -137,7 +173,7 @@ class MetaContext:
             )
 
     @staticmethod
-    async def a_gather_bindings_with_legacy(file_path):  # noqa: C901
+    async def a_gather_bindings_with_legacy(file_path):
         """
         iterate through modules, for __pinjected__.py and __init__.py, looking at __meta_design__ and __design__.
         __pinjected__.py and __design__ will override the deprecated __meta_design__ and __init__.py
@@ -163,17 +199,61 @@ class MetaContext:
                 ovr = await _a_resolve(var.var)
                 if StrBindKey("overrides") in var.var:
                     logger.debug(
-                        f"Now `overrides` are merged with `__meta_design__`. __meta_design__ and `overrides` is deprecated. use __design__ instead."
+                        "Now `overrides` are merged with `__meta_design__`. __meta_design__ and `overrides` is deprecated. use __design__ instead."
                     )
                     ovr += await AsyncResolver(var.var).provide("overrides")
             elif var.var_path.endswith("__design__"):
                 ovr = await _a_resolve(var.var)
-            for k, bind in ovr.bindings.items():
-                key_to_path[k] = var.var_path
+
+            # Extract binding locations from design metadata if available
+            with logger.contextualize(tag="extract_binding_locations"):
+                for k, bind in ovr.bindings.items():
+                    # Try to get location from binding metadata
+                    location_str = None
+                    try:
+                        if hasattr(bind, "metadata"):
+                            # Get metadata using the property
+                            metadata_maybe = bind.metadata
+                            from returns.maybe import Nothing
+
+                            if metadata_maybe != Nothing:
+                                metadata = metadata_maybe.unwrap()
+                                if (
+                                    hasattr(metadata, "code_location")
+                                    and metadata.code_location != Nothing
+                                ):
+                                    location = metadata.code_location.unwrap()
+                                    from pinjected.di.metadata.location_data import (
+                                        ModuleVarLocation,
+                                    )
+
+                                    if isinstance(location, ModuleVarLocation):
+                                        location_str = (
+                                            f"{location.path}:{location.line}"
+                                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to extract metadata for {k}: {e}")
+
+                    # If no metadata location, use the file path instead of module path
+                    if location_str is None:
+                        # Use the actual file path which is more useful than module path
+                        location_str = str(var.module_file_path)
+
+                    key_to_path[k] = location_str
             acc += ovr
 
         for k, v in key_to_path.items():
             logger.debug(f"Override Key {k} from {v}")
+
+        # Load and apply environment variables
+        env_kwargs = parse_pinjected_env_vars()
+        if env_kwargs:
+            env_design = parse_kwargs_as_design_for_env(**env_kwargs)
+            acc += env_design
+            # Track env var sources in key_to_path
+            for key_name in env_kwargs:
+                key_to_path[StrBindKey(key_name)] = f"env:PINJECTED_{key_name.upper()}"
+            logger.info(f"Applied {len(env_kwargs)} PINJECTED_* environment variables")
 
         spec = await SpecTrace.a_gather_from_path(file_path)
 

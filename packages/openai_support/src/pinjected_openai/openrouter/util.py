@@ -9,7 +9,24 @@ from typing import (
     get_origin,
 )
 
+import httpx
+import json_repair
+import PIL
+from injected_utils.injected_cache_utils import async_cached, sqlite_dict
+from openai import AsyncOpenAI
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from pinjected import Injected, IProxy, design, injected, instance
+from pinjected_openai.compatibles import a_openai_compatible_llm
+from pinjected_openai.vision_llm import to_content
+from pydantic import BaseModel, ValidationError
 from returns.result import ResultE, safe
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 
 # Custom exceptions for schema compatibility issues
@@ -38,25 +55,6 @@ class GeminiCompatibilityError(SchemaCompatibilityError):
         message = f"Gemini API compatibility issues found in {model.__name__}: {issues}"
         super().__init__(message)
 
-
-import httpx
-import json_repair
-import PIL
-from injected_utils.injected_cache_utils import async_cached, sqlite_dict
-from openai import AsyncOpenAI
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from pinjected_openai.compatibles import a_openai_compatible_llm
-from pinjected_openai.vision_llm import to_content
-from pydantic import BaseModel, ValidationError
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
-from pinjected import Injected, IProxy, design, injected, instance
 
 # from vision_llm import a_vision_llm__gpt4o
 
@@ -155,6 +153,12 @@ class OpenRouterModel(BaseModel):
         "extra": "allow"  # Allow extra fields for compatibility with changing API
     }
 
+    def supports_json_output(self) -> bool:
+        """Check if the model supports JSON structured output."""
+        if self.architecture.capabilities:
+            return self.architecture.capabilities.json
+        return False
+
 
 class OpenRouterModelTable(BaseModel):
     """Collection of models available in the OpenRouter API."""
@@ -172,6 +176,20 @@ class OpenRouterModelTable(BaseModel):
 
     def safe_pricing(self, model_id: str) -> ResultE[OpenRouterModelPricing]:
         return safe(self.pricing)(model_id)
+
+    def get_model(self, model_id: str) -> OpenRouterModel | None:
+        """Get a model by its ID."""
+        for model in self.data:
+            if model.id == model_id:
+                return model
+        return None
+
+    def supports_json_output(self, model_id: str) -> bool:
+        """Check if a model supports JSON structured output by its ID."""
+        model = self.get_model(model_id)
+        if model:
+            return model.supports_json_output()
+        return False
 
 
 @instance
@@ -249,7 +267,7 @@ class OpenRouterChatCompletion(Protocol):
         model: str,
         max_tokens: int = 8192,
         temperature: float = 1,
-        images: list[PIL.Image.Image] = None,
+        images: list[PIL.Image.Image] | None = None,
         response_format: BaseModel | None = None,
         provider: dict[str, Any] | None = None,
         **kwargs,
@@ -267,9 +285,9 @@ async def a_openrouter_chat_completion__without_fix(
     model: str,
     max_tokens: int = 8192,
     temperature: float = 1,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     response_format=None,
-    provider: dict = None,
+    provider: dict | None = None,
     **kwargs,
 ):
     """
@@ -472,7 +490,7 @@ def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
             # 自己参照型をチェック（簡易版）
             if field_type == model:
                 issues.append(
-                    f"自己参照モデルはOpenAPI 3.0で問題を引き起こす可能性があります"
+                    "自己参照モデルはOpenAPI 3.0で問題を引き起こす可能性があります"
                 )
 
             # 入れ子になったモデルを再帰的にチェック
@@ -509,7 +527,7 @@ def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
             extra = model.model_config.json_schema_extra
             if isinstance(extra, dict) and "discriminator" in extra:
                 issues.append(
-                    f"discriminatorはOpenAPI 3.0の実装によっては完全にサポートされていない場合があります"
+                    "discriminatorはOpenAPI 3.0の実装によっては完全にサポートされていない場合があります"
                 )
 
         if issues:
@@ -621,7 +639,7 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
         elif inspect.isclass(field_type) and issubclass(field_type, BaseModel):
             # 自己参照型をチェック
             if field_type == model:
-                issues.append(f"自己参照モデルはGemini APIではサポートされていません")
+                issues.append("自己参照モデルはGemini APIではサポートされていません")
 
             # 入れ子になったモデルを再帰的にチェック
             nested_issues = is_gemini_compatible(field_type)
@@ -685,9 +703,9 @@ async def a_openrouter_chat_completion(
     model: str,
     max_tokens: int = 8192,
     temperature: float = 1,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     response_format=None,
-    provider: dict = None,
+    provider: dict | None = None,
     **kwargs,
 ):
     """
@@ -709,23 +727,39 @@ async def a_openrouter_chat_completion(
     :return:
     """
     provider_filter = dict()
+    supports_json = openrouter_model_table.supports_json_output(model)
+    use_json_fix_fallback = False
+
     if response_format is not None and issubclass(response_format, BaseModel):
         # Check OpenAPI 3.0 compatibility for all models
         if issues := is_openapi3_compatible(response_format):
             raise OpenAPI3CompatibilityError(response_format, issues)
 
         # Additional Gemini-specific compatibility check when model contains 'gemini'
-        if "gemini" in model.lower():
-            if gemini_issues := is_gemini_compatible(response_format):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
+        if "gemini" in model.lower() and (
+            gemini_issues := is_gemini_compatible(response_format)
+        ):
+            raise GeminiCompatibilityError(response_format, gemini_issues)
 
-        provider_filter["provider"] = {"require_parameters": True}
-        openai_response_format = build_openrouter_response_format(response_format)
-        provider_filter["response_format"] = openai_response_format
+        # Only add response_format to payload if model supports JSON
+        if supports_json:
+            provider_filter["provider"] = {"require_parameters": True}
+            openai_response_format = build_openrouter_response_format(response_format)
+            provider_filter["response_format"] = openai_response_format
+        else:
+            # Model doesn't support JSON, we'll use JSON fix fallback
+            use_json_fix_fallback = True
+            logger.warning(
+                f"Model {model} does not support JSON output. "
+                f"Will use fallback JSON fix mechanism."
+            )
+
+        # Always add schema example to prompt for better results
         schema_prompt = await a_cached_schema_example_provider(
             response_format.model_json_schema()
         )
-        prompt += f"""The response must follow the following json format example:{schema_prompt}"""
+        prompt += f"""\n\nThe response must follow the following json format example:{schema_prompt}"""
+
     if provider is not None:
         p = provider_filter.get("provider", dict())
         p.update(provider)
@@ -772,6 +806,20 @@ async def a_openrouter_chat_completion(
     data = res["choices"][0]["message"]["content"]
 
     if response_format is not None and issubclass(response_format, BaseModel):
+        # If model doesn't support JSON, always use JSON fix
+        if use_json_fix_fallback:
+            fix_prompt = f"""
+Extract and format the following response into the required JSON structure.
+# Original Prompt:
+{prompt}
+# Response
+{data}
+"""
+            return await a_structured_llm_for_json_fix(
+                fix_prompt, response_format=response_format
+            )
+
+        # Model supports JSON, try to parse normally
         try:
             if "```" in data:
                 data = data.split("```")[1].strip()
@@ -783,7 +831,7 @@ async def a_openrouter_chat_completion(
             try:
                 data_dict = json_repair.loads(data)
                 return response_format.model_validate(data_dict)
-            except Exception as e:
+            except Exception:
                 logger.warning(f"json_repair could not repair.{data}")
                 fix_prompt = f"""
 An LLM failed to answer the following input with a correct json format.
@@ -820,9 +868,10 @@ async def a_llm__openrouter(
             raise OpenAPI3CompatibilityError(response_format, issues)
 
         # Additional Gemini-specific compatibility check when model contains 'gemini'
-        if "gemini" in model.lower():
-            if gemini_issues := is_gemini_compatible(response_format):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
+        if "gemini" in model.lower() and (
+            gemini_issues := is_gemini_compatible(response_format)
+        ):
+            raise GeminiCompatibilityError(response_format, gemini_issues)
 
     res: ChatCompletion = await a_openai_compatible_llm(
         api=openrouter_api,
@@ -885,7 +934,7 @@ test_openrouter_chat_completion: IProxy = a_openrouter_chat_completion(
 )
 
 test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+    prompt="What is the capital of Japan?",
     model="deepseek/deepseek-chat",
     # model="deepseek/deepseek-r1-distill-qwen-32b",
     response_format=Text,
@@ -894,7 +943,7 @@ test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_compl
 # this must raise error though...
 test_openrouter_chat_completion_with_structure_optional: IProxy = (
     a_openrouter_chat_completion(
-        prompt=f"What is the capital of Japan?",
+        prompt="What is the capital of Japan?",
         model="deepseek/deepseek-chat",
         response_format=OptionalText,
     )
@@ -918,14 +967,14 @@ class PersonWithUnion(BaseModel):
 
 # Test with gemini-pro model
 test_gemini_pro_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+    prompt="What is the capital of Japan?",
     model="google/gemini-pro",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
 
 # Test with gemini-flash model
 test_gemini_flash_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+    prompt="What is the capital of Japan?",
     model="google/gemini-2.0-flash-001",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
@@ -938,7 +987,7 @@ class SimpleResponse(BaseModel):
 
 
 test_gemini_flash_with_compatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan? Answer with high confidence.",
+    prompt="What is the capital of Japan? Answer with high confidence.",
     model="google/gemini-2.0-flash-001",
     response_format=SimpleResponse,  # This should be compatible with Gemini
 )
@@ -1014,13 +1063,36 @@ test_is_gemini_compatible_complex_list: IProxy = Injected.pure(
 ).proxy(PersonWithComplexList)
 
 test_return_empty_item: IProxy = a_openrouter_chat_completion(
-    prompt=f"Please answer with empty lines.",
+    prompt="Please answer with empty lines.",
     model="deepseek/deepseek-chat",
     response_format=Text,
 )
 
 test_resize_image: IProxy = a_resize_image_below_5mb(
     PIL.Image.new("RGB", (4000, 4000), color="red")
+)
+
+# Test cases for JSON support detection
+test_model_supports_json: IProxy = Injected.partial(
+    openrouter_model_table.supports_json_output, model_id="openai/gpt-4o"
+)
+
+test_model_no_json_support: IProxy = Injected.partial(
+    openrouter_model_table.supports_json_output, model_id="meta-llama/llama-2-70b-chat"
+)
+
+# Test completion with model that doesn't support JSON (should use fallback)
+test_completion_no_json_support: IProxy = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with the city name and country.",
+    model="meta-llama/llama-2-70b-chat",  # Model without JSON support
+    response_format=SimpleResponse,
+)
+
+# Test completion with model that supports JSON
+test_completion_with_json_support: IProxy = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with the city name and country.",
+    model="openai/gpt-4o",  # This model should support JSON
+    response_format=SimpleResponse,
 )
 
 

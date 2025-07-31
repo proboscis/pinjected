@@ -17,7 +17,7 @@ from abc import ABC
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, Callable
 
 import rich
 from returns.result import Failure, ResultE, Success
@@ -26,6 +26,7 @@ from rich.spinner import Spinner
 
 from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
+from loguru import logger as LoguruLogger
 from pinjected.run_helpers.run_injected import a_run_target__mp
 from pinjected.test_helper.rich_task_viz import RichTaskVisualizer, task_visualizer
 from pinjected.test_helper.test_aggregator import (
@@ -70,9 +71,47 @@ class CommandException(Exception):
         return self.__class__, (self.message, self.code, self.stdout, self.stderr)
 
 
-@injected
+# Forward declare Protocol classes - will be defined after ITestEvent
+class APinjectedRunTestProtocol(Protocol):
+    async def __call__(self, target: VariableInFile) -> PinjectedTestResult: ...
+
+
+class APinjectedRunTestMultiprocessProtocol(Protocol):
+    async def __call__(self, target: VariableInFile) -> PinjectedTestResult: ...
+
+
+class APinjectedRunAllTestProtocol(Protocol):
+    async def __call__(self, root: Path) -> AsyncIterator[PinjectedTestResult]: ...
+
+
+class EnsureAgenProtocol(Protocol):
+    def __call__(
+        self, items: list[VariableInFile] | AsyncIterator[VariableInFile]
+    ) -> AsyncIterator[VariableInFile]: ...
+
+
+class ARunTestsProtocol(Protocol):
+    async def __call__(
+        self, tests: list[VariableInFile] | AsyncIterator[VariableInFile]
+    ) -> AsyncIterator[PinjectedTestResult]: ...
+
+
+class AVisualizeTestResultsProtocol(Protocol):
+    async def __call__(
+        self, tests: list[PinjectedTestResult] | AsyncIterator[PinjectedTestResult]
+    ) -> Any: ...
+
+
+class TestTaggedProtocol(Protocol):
+    def __call__(self, *tags: str) -> Any: ...
+
+
+@injected(protocol=APinjectedRunTestProtocol)
 async def a_pinjected_run_test(
-    logger, a_pinjected_test_event_callback, /, target: VariableInFile
+    logger: LoguruLogger,
+    a_pinjected_test_event_callback: Callable[["ITestEvent"], Any],
+    /,
+    target: VariableInFile,
 ) -> PinjectedTestResult:
     import sys
 
@@ -98,13 +137,13 @@ async def a_pinjected_run_test(
                 line = line.decode()
                 data += line
                 # logger.info(f"{kind}: {escape_loguru_tags(line)}")
-                await a_pinjected_test_event_callback(TestEvent(key, TestStatus(line)))
+                await a_pinjected_test_event_callback(EventInfo(key, StatusInfo(line)))
             return data
         except Exception as e:
             logger.error(f"read_stream failed with {e}")
             raise e
 
-    await a_pinjected_test_event_callback(TestEvent(key, "start"))
+    await a_pinjected_test_event_callback(EventInfo(key, "start"))
     async with TaskGroup() as tg:
         # logger.info(f"waiting for command to finish: {command}")
         read_stdout_task = tg.create_task(read_stream(proc.stdout, "stdout"))
@@ -138,13 +177,13 @@ async def a_pinjected_run_test(
     res = PinjectedTestResult(
         target=target, stdout=stdout, stderr=stderr, value=result, trace=trace
     )
-    await a_pinjected_test_event_callback(TestEvent(key, res))
+    await a_pinjected_test_event_callback(EventInfo(key, res))
     return res
 
 
-@injected
+@injected(protocol=APinjectedRunTestMultiprocessProtocol)
 async def a_pinjected_run_test__multiprocess(
-    logger, /, target: VariableInFile
+    logger: LoguruLogger, /, target: VariableInFile
 ) -> PinjectedTestResult:
     """
     1. get the ModuleVarPath from VariableInFile. but how?
@@ -174,11 +213,11 @@ def pinjected_test_aggregator():
     return PinjectedTestAggregator()
 
 
-@injected
+@injected(protocol=APinjectedRunAllTestProtocol)
 async def a_pinjected_run_all_test(
     pinjected_test_aggregator: PinjectedTestAggregator,
-    a_pinjected_run_test,
-    logger,
+    a_pinjected_run_test: APinjectedRunTestProtocol,
+    logger: LoguruLogger,
     /,
     root: Path,
 ):
@@ -191,8 +230,10 @@ async def a_pinjected_run_all_test(
         yield await task
 
 
-@injected
-def ensure_agen(items: list[VariableInFile] | AsyncIterator[VariableInFile]):
+@injected(protocol=EnsureAgenProtocol)
+def ensure_agen(
+    items: list[VariableInFile] | AsyncIterator[VariableInFile],
+) -> AsyncIterator[VariableInFile]:
     if isinstance(items, list):
 
         async def gen():
@@ -207,27 +248,34 @@ class ITestEvent(ABC):
     pass
 
 
+# Protocol that depends on ITestEvent
+class APinjectedTestEventCallbackSimpleProtocol(Protocol):
+    async def __call__(self, e: ITestEvent) -> None: ...
+
+
 @dataclass
-class TestMainEvent(ITestEvent):
+class MainTestEvent(ITestEvent):
     kind: Literal["start", "end"]
 
 
 @dataclass
-class TestStatus:
+class StatusInfo:
     message: str
 
 
 @dataclass
-class TestEvent(ITestEvent):
+class EventInfo(ITestEvent):
     name: str
-    data: Literal["queued", "start"] | PinjectedTestResult | TestStatus
+    data: Literal["queued", "start"] | PinjectedTestResult | StatusInfo
 
 
-@injected
-async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
-    # logger.info(f"TestEvent: {e}")
+@injected(protocol=APinjectedTestEventCallbackSimpleProtocol)
+async def a_pinjected_test_event_callback__simple(
+    logger: LoguruLogger, /, e: ITestEvent
+) -> None:
+    # logger.info(f"EventInfo: {e}")
     match e:
-        case TestEvent(name, PinjectedTestResult() as res):
+        case EventInfo(_, PinjectedTestResult() as res):
             import rich
             from rich.panel import Panel
 
@@ -249,7 +297,7 @@ async def a_pinjected_test_event_callback__simple(logger, /, e: ITestEvent):
                 # logger.success(f"{res.target.to_module_var_path().path} -> {res.value}")
 
 
-@instance
+@instance(callable=True)
 async def a_pinjected_test_event_callback(
     logger,
 ):
@@ -276,15 +324,15 @@ async def a_pinjected_test_event_callback(
         # because the testfunction can be called solely.
 
         match e:
-            # case TestMainEvent('start'):
+            # case MainTestEvent('start'):
             #     viz = await viz_iter.__aenter__()
-            # case TestMainEvent('end'):
+            # case MainTestEvent('end'):
             #     await viz_iter.__aexit__(None, None, None)
             #     for res in failures:
             #         show_failure(res)
-            # case TestEvent(_, 'queued'):
+            # case EventInfo(_, 'queued'):
             #     viz.add(e.name, "queued", "")
-            case TestEvent(key, "start"):
+            case EventInfo(key, "start"):
                 if viz is None:
                     viz_iter = viz_fac()
                     viz = await viz_iter.__aenter__()
@@ -293,18 +341,18 @@ async def a_pinjected_test_event_callback(
                 spinner = Spinner("aesthetic")
                 spinners[e.name] = spinner
                 viz.update_status(e.name, spinner)
-            case TestEvent(_, TestStatus(msg)):
+            case EventInfo(_, StatusInfo(msg)):
                 viz.update_message(e.name, escape(msg))
-            case TestEvent(key, PinjectedTestResult() as res):
+            case EventInfo(key, PinjectedTestResult() as res):
                 active_tests.remove(key)
                 if res.failed():
-                    viz.update_status(e.name, f"[bold red]Failed[/bold red]")
+                    viz.update_status(e.name, "[bold red]Failed[/bold red]")
                     lines = res.stderr.split("\n")
                     viz.update_message(e.name, f"{lines[-3:]}")
                     failures.append(res)
                 else:
-                    viz.update_status(e.name, f"[bold green]Success[/bold green]")
-                    viz.update_message(e.name, f"done")
+                    viz.update_status(e.name, "[bold green]Success[/bold green]")
+                    viz.update_message(e.name, "done")
 
                 if not active_tests:
                     await viz_iter.__aexit__(None, None, None)
@@ -315,14 +363,14 @@ async def a_pinjected_test_event_callback(
     return impl
 
 
-@injected
+@injected(protocol=ARunTestsProtocol)
 async def a_run_tests(
-    a_pinjected_run_test,
-    ensure_agen,
-    a_pinjected_test_event_callback,
+    a_pinjected_run_test: APinjectedRunTestProtocol,
+    ensure_agen: EnsureAgenProtocol,
+    a_pinjected_test_event_callback: Callable[["ITestEvent"], Any],
     /,
     tests: list[VariableInFile] | AsyncIterator[VariableInFile],
-):
+) -> AsyncIterator[PinjectedTestResult]:
     # hmm, i want a queue here...
     from pinjected.pinjected_logging import logger
 
@@ -331,7 +379,7 @@ async def a_run_tests(
     queue = asyncio.Queue()
     results = asyncio.Queue()
 
-    await a_pinjected_test_event_callback(TestMainEvent("start"))
+    await a_pinjected_test_event_callback(MainTestEvent("start"))
     async with TaskGroup() as tg:
 
         async def enqueue():
@@ -339,7 +387,7 @@ async def a_run_tests(
                 fut = asyncio.Future()
                 key = target.to_module_var_path().path
                 await queue.put(("task", target, fut))
-                await a_pinjected_test_event_callback(TestEvent(key, "queued"))
+                await a_pinjected_test_event_callback(EventInfo(key, "queued"))
 
             for _ in range(n_worker):
                 await queue.put(("stop", target, None))
@@ -350,7 +398,7 @@ async def a_run_tests(
                 if task == "stop":
                     await results.put(("stop", None))
                     break
-                key = target.to_module_var_path().path
+                target.to_module_var_path().path
                 res = await a_pinjected_run_test(target)
                 fut.set_result(res)
                 await results.put(("result", res))
@@ -372,16 +420,16 @@ async def a_run_tests(
         await enqueue_task
         for wt in worker_tasks:
             await wt
-    await a_pinjected_test_event_callback(TestMainEvent("end"))
+    await a_pinjected_test_event_callback(MainTestEvent("end"))
 
 
-@injected
+@injected(protocol=AVisualizeTestResultsProtocol)
 async def a_visualize_test_results(
-    logger,
-    ensure_agen,
+    logger: LoguruLogger,
+    ensure_agen: EnsureAgenProtocol,
     /,
     tests: list[PinjectedTestResult] | AsyncIterator[PinjectedTestResult],
-):
+) -> None:
     results = []
     async for res in ensure_agen(tests):
         res: PinjectedTestResult
@@ -434,8 +482,8 @@ def test_current_file():
     )
 
 
-@injected
-def test_tagged(*tags: str):
+@injected(protocol=TestTaggedProtocol)
+def test_tagged(*tags: str) -> None:
     raise NotImplementedError
 
 

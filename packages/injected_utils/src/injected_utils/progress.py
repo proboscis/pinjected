@@ -9,7 +9,7 @@ from pinjected import *
 from pinjected.compatibility.task_group import TaskGroup
 
 
-def ensure_agen(tasks) -> AsyncIterator:  # noqa: C901
+def ensure_agen(tasks) -> AsyncIterator:
     """Convert various input types to async generators.
 
     Args:

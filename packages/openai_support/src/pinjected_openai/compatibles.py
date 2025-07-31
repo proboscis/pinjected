@@ -18,7 +18,7 @@ async def a_openai_compatible_llm(
     text: str,
     images: list[Image] | None = None,
     response_format=None,
-    max_completion_tokens: int = None,
+    max_completion_tokens: int | None = None,
     reasoning_effort=None,
     detail: Literal["auto", "low", "high"] = "auto",
 ) -> ChatCompletion:

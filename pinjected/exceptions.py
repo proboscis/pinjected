@@ -28,7 +28,9 @@ class DependencyResolutionFailure:
 
 
 class DependencyResolutionError(RuntimeError):
-    def __init__(self, msg: str, causes: list[DependencyResolutionFailure] = None):
+    def __init__(
+        self, msg: str, causes: list[DependencyResolutionFailure] | None = None
+    ):
         super().__init__(msg)
         if causes is None:
             causes = []

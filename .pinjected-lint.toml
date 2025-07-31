@@ -1,0 +1,46 @@
+# Pinjected Linter Configuration
+
+# Exclude paths from linting
+exclude = [
+    ".venv",
+    "venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".ruff_cache",
+    "node_modules",
+    "packages/pinjected-linter/rust-poc",  # Intentional test files for linter rules
+]
+
+# Enable all rules except PINJ001, PINJ005, and PINJ015
+enable = [
+    "PINJ002",  # Instance defaults (check default parameter usage)
+    "PINJ003",  # Async instance naming (a_ prefix for async @instance)
+    "PINJ004",  # Direct instance call (avoid calling @instance functions directly)
+    "PINJ006",  # Async injected naming (a_ prefix for async @injected)
+    "PINJ007",  # Slash separator position (disabled - heuristics removed)
+    "PINJ008",  # Injected dependency declaration (dependencies before /)
+    "PINJ009",  # No await in injected (except for declared dependencies)
+    "PINJ010",  # Design usage (proper design() function usage)
+    "PINJ011",  # IProxy annotations (not for injected dependencies)
+    "PINJ012",  # Dependency cycles detection
+    "PINJ013",  # Builtin shadowing (avoid shadowing builtins)
+    "PINJ014",  # Missing stub file (.pyi for @injected functions)
+    "PINJ016",  # Missing protocol parameter (also detects string literals)
+    "PINJ017",  # Missing type annotations
+    "PINJ019",  # No __main__ block with @injected/@instance functions
+    "PINJ026",  # a_ prefixed dependencies should not use Any type
+    "PINJ027",  # No nested @injected functions
+    "PINJ028",  # No design() usage inside @injected functions
+]
+
+# Disable specific rules
+disable = ["PINJ001", "PINJ005", "PINJ015"]
+
+# Configure specific rules
+[rules.PINJ014]
+min_injected_functions = 3
+stub_search_paths = ["stubs", "typings", "types"]
+ignore_patterns = ["**/tests/**", "**/test_*.py", "**/*_test.py"]

@@ -3,6 +3,7 @@ import sys
 
 def _init_loguru_logger():
     from loguru import logger as loguru_logger
+    from pinjected.picklable_logger import PicklableLogger
 
     default_format = (
         "<green>{time:HH:mm:ss.SSS} | "
@@ -15,7 +16,7 @@ def _init_loguru_logger():
         "<magenta>[{extra[tag]}]</magenta> | "
         "<cyan>{file.name}:{function}</cyan>:<cyan>{line}</cyan> |</green> "
     )
-    logger = loguru_logger  # .bind(tag="pinjected")
+    # Configure the global loguru logger
     loguru_logger.remove()
     loguru_logger.add(
         sys.stderr,
@@ -29,7 +30,8 @@ def _init_loguru_logger():
         format=tagged_format + "<level>{message}</level>",
         colorize=True,
     )
-    return logger
+    # Return a picklable wrapper
+    return PicklableLogger()
 
 
 def _init_logger():

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ISessionScope(ABC):
     @abstractmethod
-    def provide(self, bidning_key, default_provider_fn):
+    def provide(self, binding_key, default_provider_fn):
         pass
 
 
@@ -25,7 +25,7 @@ class SessionScope(ISessionScope):
             from pinjected.pinjected_logging import logger
 
             self.provide_depth += 1
-            indent = "| " * self.provide_depth
+            "| " * self.provide_depth
             self.pending.append(binding_key)
             logger.debug(f"Providing:{'<-'.join([k._name for k in self.pending])}")
             # logger.debug(f"SessionScope: {indent} -> {binding_key._name}")

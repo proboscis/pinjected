@@ -174,11 +174,9 @@ def eval_injected(expr: Expr[Injected]) -> EvaledInjected:
 
 
 def walk_replace(expr: Expr, transformer: Callable[[Expr], Expr]):
-    memo = dict()
-
     def impl(expr):
         match expr:
-            case Object(DelegatedVar(Expr() as nested_expr, cxt) as dv):
+            case Object(DelegatedVar(Expr() as nested_expr, _)):
                 res = impl(nested_expr)
             case Object(x):
                 res = transformer(Object(x))
@@ -212,9 +210,9 @@ def await_awaitables(expr: Expr[T]) -> Expr:
         match expr:
             case Object(object(__is_awaitable__=True)):
                 return UnaryOp("await", expr)
-            case Call(Object(object(__is_async_function__=True)), args, kwargs) as call:
+            case Call(Object(object(__is_async_function__=True)), _, _) as call:
                 return UnaryOp("await", call)
-            case Call(object(__is_async_function__=True), args, kwargs) as call:
+            case Call(object(__is_async_function__=True), _, _) as call:
                 return UnaryOp("await", call)
             case _:
                 return expr

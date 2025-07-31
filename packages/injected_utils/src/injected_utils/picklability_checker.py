@@ -107,7 +107,7 @@ def dfs_picklability(
                     ):
                         new_trace = trace + f".{k}"
                         yield from dfs(attr, new_trace)
-            if isinstance(tgt, DelegatedVar) or isinstance(tgt, Expr):
+            if isinstance(tgt, (DelegatedVar, Expr)):
                 pass
             elif hasattr(tgt, "__closure__") and tgt.__closure__ is not None:
                 for i, cell in enumerate(tgt.__closure__):

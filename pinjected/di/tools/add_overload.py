@@ -12,18 +12,27 @@ def process_file(file_path):
         source_code = file.read()
     tree = ast.parse(source_code)
     import_overload = False
+
+    # Build parent map to track parent nodes
+    parent_map = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parent_map[child] = parent
+
+    # Process function nodes with their parents
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef):
+            parent = parent_map.get(node, tree)
             if has_injected_decorator(node):
                 original_signature = get_function_signature(node)
                 updated_signature = update_function_signature(original_signature)
                 overload_signature = generate_overload_signature(
                     node.name, updated_signature
                 )
-                inject_overload_signature(tree, node, overload_signature)
+                inject_overload_signature(parent, node, overload_signature)
                 import_overload = True
             else:
-                remove_overload_signature(tree, node)
+                remove_overload_signature(parent, node)
     if import_overload:
         add_overload_import(tree)
     updated_source_code = ast.unparse(tree)
@@ -116,9 +125,15 @@ def get_function_signature(node: ast.FunctionDef) -> inspect.Signature:
 def update_function_signature(original_signature):
     logger.info(f"Original signature: {original_signature}")
     updated_parameters = []
-    for param in original_signature.parameters.values():
-        if param.kind != inspect.Parameter.POSITIONAL_ONLY:
+    param_list = list(original_signature.parameters.values())
+
+    for i, param in enumerate(param_list):
+        # Keep 'self' parameter even if it's positional-only
+        if (
+            i == 0 and param.name == "self"
+        ) or param.kind != inspect.Parameter.POSITIONAL_ONLY:
             updated_parameters.append(param)
+
     updated_signature = original_signature.replace(parameters=updated_parameters)
     logger.info(f"Updated signature: {updated_signature}")
     return updated_signature
@@ -136,7 +151,7 @@ def generate_overload_signature(func_name, signature):
             )
     return_annotation = signature.return_annotation
     signature_str = f"@overload\ndef {func_name}({', '.join(param_annotations)})"
-    if return_annotation != inspect.Signature.empty and return_annotation is not None:
+    if return_annotation != inspect.Signature.empty:
         signature_str += f" -> {get_annotation_string(return_annotation)}"
     signature_str += (
         ':\n    """Signature of the function after being injected."""\n    ...'
@@ -145,6 +160,8 @@ def generate_overload_signature(func_name, signature):
 
 
 def get_annotation_string(annotation):
+    if annotation is None:
+        return "None"
     if isinstance(annotation, str):
         return annotation
     if isinstance(annotation, type) or hasattr(annotation, "__name__"):
@@ -152,20 +169,28 @@ def get_annotation_string(annotation):
     return str(annotation)
 
 
-def inject_overload_signature(tree, node, overload_signature):
+def inject_overload_signature(parent, node, overload_signature):
     overload_node = ast.parse(textwrap.dedent(overload_signature)).body[0]
-    remove_overload_signature(tree, node)
-    tree.body.insert(tree.body.index(node), overload_node)
+    remove_overload_signature(parent, node)
+
+    # Get the body attribute from parent (works for Module, ClassDef, etc.)
+    body = parent.body
+    body.insert(body.index(node), overload_node)
 
 
-def remove_overload_signature(tree, node):
-    prev_node = tree.body[tree.body.index(node) - 1]
-    if (
-        isinstance(prev_node, ast.FunctionDef)
-        and prev_node.name == node.name
-        and has_overload_decorator(prev_node)
-    ):
-        tree.body.remove(prev_node)
+def remove_overload_signature(parent, node):
+    # Get the body attribute from parent (works for Module, ClassDef, etc.)
+    body = parent.body
+    node_index = body.index(node)
+
+    if node_index > 0:
+        prev_node = body[node_index - 1]
+        if (
+            isinstance(prev_node, ast.FunctionDef)
+            and prev_node.name == node.name
+            and has_overload_decorator(prev_node)
+        ):
+            body.remove(prev_node)
 
 
 def has_overload_decorator(node):

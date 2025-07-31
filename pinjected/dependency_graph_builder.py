@@ -47,7 +47,7 @@ class DependencyGraphBuilder:
         return deps_map
 
     def create_edge_info(
-        self, key: str, dependencies: list[str], used_by: list[str] = None
+        self, key: str, dependencies: list[str], used_by: list[str] | None = None
     ) -> EdgeInfo:
         """
         Create an EdgeInfo object for a dependency key.

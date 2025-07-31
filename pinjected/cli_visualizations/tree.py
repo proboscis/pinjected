@@ -39,7 +39,7 @@ def format_path_for_display(path: str, max_length: int = 50) -> str:
     return path
 
 
-def get_binding_location_info(  # noqa: C901, PLR0912
+def get_binding_location_info(
     d: DIGraph, node: str, binding_sources: dict | None = None
 ) -> str:
     """Extract binding location information for a node.
@@ -87,7 +87,7 @@ def get_binding_location_info(  # noqa: C901, PLR0912
     return ""
 
 
-def format_injected_for_tree(injected: Injected) -> str:  # noqa: C901, PLR0911, PLR0912
+def format_injected_for_tree(injected: Injected) -> str:
     """依存関係ツリー表示用にInjectedをフォーマットする"""
     if isinstance(injected, InjectedWithDefaultDesign):
         return format_injected_for_tree(injected.src)
@@ -99,7 +99,7 @@ def format_injected_for_tree(injected: Injected) -> str:  # noqa: C901, PLR0911,
     elif isinstance(injected, InjectedPure):
         v = injected.value
         if isinstance(v, str):
-            return f"<str instance>"
+            return "<str instance>"
         if isinstance(v, type):
             return f"<class '{v.__name__}'>"
         if callable(v):
@@ -125,7 +125,7 @@ def format_injected_for_tree(injected: Injected) -> str:  # noqa: C901, PLR0911,
         return injected.__class__.__name__
 
 
-def design_rich_tree(tgt_design, root, binding_sources=None):  # noqa: C901
+def design_rich_tree(tgt_design, root, binding_sources=None):
     """依存関係をリッチなツリー形式で表示する
 
     Args:

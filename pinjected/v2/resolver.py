@@ -13,12 +13,13 @@ from pinjected.v2.events import (
 
 try:
     import nest_asyncio
-    import uvloop
+    import importlib.util
 
-    logger.error(
-        f"nest_asyncio is disabled since uvloop is also installed! nest_asyncio.apply do not work with uvloop!"
-    )
-    nest_asyncio.apply = lambda: None
+    if importlib.util.find_spec("uvloop") is not None:
+        logger.error(
+            "nest_asyncio is disabled since uvloop is also installed! nest_asyncio.apply do not work with uvloop!"
+        )
+        nest_asyncio.apply = lambda: None
 except ImportError:
     pass
 
@@ -32,6 +33,10 @@ from dataclasses import dataclass, field
 from typing import Any, Union
 
 from pinjected.pinjected_logging import logger
+from pinjected.di.expr_util import Cache, Call, Expr, UnaryOp, show_expr
+from pinjected.v2.binds import IBind
+from pinjected.v2.keys import IBindKey
+from pinjected.v2.provide_context import ProvideContext
 
 #
 #
@@ -43,11 +48,6 @@ from pinjected.pinjected_logging import logger
 PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS = (
     os.environ.get("PINJECTED_SHOW_DETAILED_EVALUATION_CONTEXTS", "0") == "1"
 )
-
-from pinjected.di.expr_util import Cache, Call, Expr, UnaryOp, show_expr
-from pinjected.v2.binds import IBind
-from pinjected.v2.keys import IBindKey
-from pinjected.v2.provide_context import ProvideContext
 
 Providable = Union[str, IBindKey, Callable, IBind]
 
@@ -63,6 +63,7 @@ class IScope(ABC):
         pass
 
 
+@dataclass
 class ScopeNode(IScope):
     objects: dict[IBindKey, Any] = field(default_factory=dict)
 

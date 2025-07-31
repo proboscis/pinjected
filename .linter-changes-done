@@ -1,0 +1,4 @@
+Linter changes completed at $(date):
+- Rust linter groups output by file
+- Command renamed to pinjected-linter
+Test failures are pre-existing (23% coverage)

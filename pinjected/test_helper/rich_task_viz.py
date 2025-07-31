@@ -55,7 +55,7 @@ class RichTaskVisualizer:
         table.add_column("Status", style="magenta")
         table.add_column("Message", style="green")
 
-        for name in self.statuses.keys():
+        for name in self.statuses:
             status = self.statuses[name]
             message = self.messages[name]
             table.add_row(name, status, message)
