@@ -12,6 +12,31 @@ A comprehensive linter for the Pinjected dependency injection library that enfor
 
 ## Installation
 
+### Option 1: Rust Binary (Recommended - 26x faster)
+
+Install the Rust binary directly with a one-liner:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/proboscis/pinjected/main/packages/pinjected-linter/rust-poc/remote-install.sh | bash
+```
+
+**Prerequisites:** Requires [Rust and Cargo](https://rustup.rs/) to be installed.
+
+**Alternative Rust installation methods:**
+```bash
+# Clone and install locally
+git clone https://github.com/proboscis/pinjected.git
+cd pinjected/packages/pinjected-linter/rust-poc
+cargo install --path . --force
+
+# Or use the local install script
+./install.sh
+```
+
+### Option 2: Python Wrapper
+
+Install the Python wrapper (delegates to Rust binary if available):
+
 ```bash
 pip install pinjected-linter
 ```
