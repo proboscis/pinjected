@@ -153,6 +153,12 @@ class OpenRouterModel(BaseModel):
         "extra": "allow"  # Allow extra fields for compatibility with changing API
     }
 
+    def supports_json_output(self) -> bool:
+        """Check if the model supports JSON structured output."""
+        if self.architecture.capabilities:
+            return self.architecture.capabilities.json
+        return False
+
 
 class OpenRouterModelTable(BaseModel):
     """Collection of models available in the OpenRouter API."""
@@ -170,6 +176,20 @@ class OpenRouterModelTable(BaseModel):
 
     def safe_pricing(self, model_id: str) -> ResultE[OpenRouterModelPricing]:
         return safe(self.pricing)(model_id)
+
+    def get_model(self, model_id: str) -> OpenRouterModel | None:
+        """Get a model by its ID."""
+        for model in self.data:
+            if model.id == model_id:
+                return model
+        return None
+
+    def supports_json_output(self, model_id: str) -> bool:
+        """Check if a model supports JSON structured output by its ID."""
+        model = self.get_model(model_id)
+        if model:
+            return model.supports_json_output()
+        return False
 
 
 @instance
@@ -707,6 +727,9 @@ async def a_openrouter_chat_completion(
     :return:
     """
     provider_filter = dict()
+    supports_json = openrouter_model_table.supports_json_output(model)
+    use_json_fix_fallback = False
+
     if response_format is not None and issubclass(response_format, BaseModel):
         # Check OpenAPI 3.0 compatibility for all models
         if issues := is_openapi3_compatible(response_format):
@@ -718,13 +741,25 @@ async def a_openrouter_chat_completion(
         ):
             raise GeminiCompatibilityError(response_format, gemini_issues)
 
-        provider_filter["provider"] = {"require_parameters": True}
-        openai_response_format = build_openrouter_response_format(response_format)
-        provider_filter["response_format"] = openai_response_format
+        # Only add response_format to payload if model supports JSON
+        if supports_json:
+            provider_filter["provider"] = {"require_parameters": True}
+            openai_response_format = build_openrouter_response_format(response_format)
+            provider_filter["response_format"] = openai_response_format
+        else:
+            # Model doesn't support JSON, we'll use JSON fix fallback
+            use_json_fix_fallback = True
+            logger.warning(
+                f"Model {model} does not support JSON output. "
+                f"Will use fallback JSON fix mechanism."
+            )
+
+        # Always add schema example to prompt for better results
         schema_prompt = await a_cached_schema_example_provider(
             response_format.model_json_schema()
         )
-        prompt += f"""The response must follow the following json format example:{schema_prompt}"""
+        prompt += f"""\n\nThe response must follow the following json format example:{schema_prompt}"""
+
     if provider is not None:
         p = provider_filter.get("provider", dict())
         p.update(provider)
@@ -771,6 +806,20 @@ async def a_openrouter_chat_completion(
     data = res["choices"][0]["message"]["content"]
 
     if response_format is not None and issubclass(response_format, BaseModel):
+        # If model doesn't support JSON, always use JSON fix
+        if use_json_fix_fallback:
+            fix_prompt = f"""
+Extract and format the following response into the required JSON structure.
+# Original Prompt:
+{prompt}
+# Response
+{data}
+"""
+            return await a_structured_llm_for_json_fix(
+                fix_prompt, response_format=response_format
+            )
+
+        # Model supports JSON, try to parse normally
         try:
             if "```" in data:
                 data = data.split("```")[1].strip()
@@ -782,7 +831,7 @@ async def a_openrouter_chat_completion(
             try:
                 data_dict = json_repair.loads(data)
                 return response_format.model_validate(data_dict)
-            except Exception as e:
+            except Exception:
                 logger.warning(f"json_repair could not repair.{data}")
                 fix_prompt = f"""
 An LLM failed to answer the following input with a correct json format.
@@ -1021,6 +1070,29 @@ test_return_empty_item: IProxy = a_openrouter_chat_completion(
 
 test_resize_image: IProxy = a_resize_image_below_5mb(
     PIL.Image.new("RGB", (4000, 4000), color="red")
+)
+
+# Test cases for JSON support detection
+test_model_supports_json: IProxy = Injected.partial(
+    openrouter_model_table.supports_json_output, model_id="openai/gpt-4o"
+)
+
+test_model_no_json_support: IProxy = Injected.partial(
+    openrouter_model_table.supports_json_output, model_id="meta-llama/llama-2-70b-chat"
+)
+
+# Test completion with model that doesn't support JSON (should use fallback)
+test_completion_no_json_support: IProxy = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with the city name and country.",
+    model="meta-llama/llama-2-70b-chat",  # Model without JSON support
+    response_format=SimpleResponse,
+)
+
+# Test completion with model that supports JSON
+test_completion_with_json_support: IProxy = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with the city name and country.",
+    model="openai/gpt-4o",  # This model should support JSON
+    response_format=SimpleResponse,
 )
 
 
