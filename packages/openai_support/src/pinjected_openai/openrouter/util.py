@@ -820,8 +820,8 @@ async def a_openrouter_chat_completion(
             raise OpenRouterTimeOutError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
 
-    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).map(
-        lambda x: x.calc_cost_dict(res["usage"])
+    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
+        safe(lambda x: x.calc_cost_dict(res["usage"]))
     )
     openrouter_state["cumulative_cost"] = openrouter_state.get(
         "cumulative_cost", 0
