@@ -813,6 +813,9 @@ async def a_openrouter_chat_completion(
         if "Rate limit" in str(res):
             logger.warning(f"Rate limit error in response: {pformat(res)}")
             raise OpenRouterRateLimitError(res)
+        if "Timed out" in str(res):
+            logger.warning(f"Timed out error in response: {pformat(res)}")
+            raise OpenRouterTimeOutError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
 
     cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).map(
