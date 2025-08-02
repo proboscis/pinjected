@@ -691,8 +691,8 @@ class OpenRouterRateLimitError(Exception):
 @injected
 @retry(
     retry=retry_if_exception_type((httpx.ReadTimeout, OpenRouterRateLimitError)),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=5, max=60),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=5, max=120),
 )
 async def a_openrouter_chat_completion(
     a_openrouter_post,
@@ -796,6 +796,7 @@ async def a_openrouter_chat_completion(
     if "error" in res:
         # "Rate limit" maybe in str(res). we need to wait
         if "Rate limit" in str(res):
+            logger.warning(f"Rate limit error in response: {pformat(res)}")
             raise OpenRouterRateLimitError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
 
