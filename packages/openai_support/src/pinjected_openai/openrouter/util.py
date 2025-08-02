@@ -56,6 +56,14 @@ class GeminiCompatibilityError(SchemaCompatibilityError):
         super().__init__(message)
 
 
+class OpenRouterRateLimitError(Exception):
+    pass
+
+
+class OpenRouterTimeOutError(Exception):
+    pass
+
+
 # from vision_llm import a_vision_llm__gpt4o
 
 
@@ -275,6 +283,11 @@ class OpenRouterChatCompletion(Protocol):
 
 
 @injected
+@retry(
+    retry=retry_if_exception_type((httpx.ReadTimeout, OpenRouterRateLimitError)),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=5, max=120),
+)
 async def a_openrouter_chat_completion__without_fix(
     a_openrouter_post,
     logger,
@@ -342,9 +355,15 @@ async def a_openrouter_chat_completion__without_fix(
 
     res = await a_openrouter_post(payload)
     if "error" in res:
-        raise RuntimeError(
-            f"Error in response. \nPayload:{payload}\nResponse:{pformat(res)}"
-        )
+        # "Rate limit" maybe in str(res). we need to wait
+        if "Rate limit" in str(res):
+            logger.warning(f"Rate limit error in response: {pformat(res)}")
+            raise OpenRouterRateLimitError(res)
+        if "Timed out" in str(res):
+            logger.warning(f"Timed out error in response: {pformat(res)}")
+            raise OpenRouterTimeOutError(res)
+        raise RuntimeError(f"Error in response: {pformat(res)}")
+
     cost_dict = openrouter_model_table.pricing(model).calc_cost_dict(res["usage"])
     openrouter_state["cumulative_cost"] = openrouter_state.get(
         "cumulative_cost", 0
@@ -682,10 +701,6 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
 
     __gemini_compatibility_cache[model] = incompatibilities
     return incompatibilities
-
-
-class OpenRouterRateLimitError(Exception):
-    pass
 
 
 @injected
