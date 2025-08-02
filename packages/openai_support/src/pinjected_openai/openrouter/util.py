@@ -684,11 +684,15 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
     return incompatibilities
 
 
+class OpenRouterRateLimitError(Exception):
+    pass
+
+
 @injected
 @retry(
-    retry=retry_if_exception_type(httpx.ReadTimeout),
+    retry=retry_if_exception_type((httpx.ReadTimeout, OpenRouterRateLimitError)),
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
+    wait=wait_exponential(multiplier=1, min=5, max=60),
 )
 async def a_openrouter_chat_completion(
     a_openrouter_post,
@@ -790,6 +794,9 @@ async def a_openrouter_chat_completion(
     # logger.debug(f"payload:{pformat(payload)}")
     res = await a_openrouter_post(payload)
     if "error" in res:
+        # "Rate limit" maybe in str(res). we need to wait
+        if "Rate limit" in str(res):
+            raise OpenRouterRateLimitError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
 
     cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).map(
