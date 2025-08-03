@@ -396,13 +396,15 @@ async def a_openrouter_chat_completion__without_fix(
             raise OpenRouterTimeOutError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
 
-    cost_dict = openrouter_model_table.pricing(model).calc_cost_dict(res["usage"])
+    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
+        safe(lambda x: x.calc_cost_dict(res["usage"]))
+    )
     openrouter_state["cumulative_cost"] = openrouter_state.get(
         "cumulative_cost", 0
-    ) + sum(cost_dict.values())
+    ) + sum(cost_dict.value_or(dict()).values())
 
     logger.info(
-        f"Cost of completion: {cost_dict}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
+        f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
     )
     data = res["choices"][0]["message"]["content"]
 
