@@ -2,9 +2,11 @@
 //!
 //! Class attributes that are assigned outside of __init__ or __post_init__
 //! are considered mutable and must be prefixed with mut_ (public) or _mut (private).
+//! This includes dataclass fields with default values that are mutated later.
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
+use crate::utils::pinjected_patterns::has_dataclass_decorator;
 use rustpython_ast::{
     Expr, ExprAttribute, ExprName, Stmt, StmtAssign, StmtAugAssign, StmtClassDef,
     StmtFunctionDef, StmtAnnAssign,
@@ -54,6 +56,22 @@ impl MutableAttributeNamingRule {
     /// Collect all attribute assignments in a class
     fn collect_class_attributes(&self, class_def: &StmtClassDef) -> Vec<(String, String, usize, bool)> {
         let mut attributes = Vec::new();
+        let is_dataclass = has_dataclass_decorator(class_def);
+        
+        // First, collect dataclass fields with default values if it's a dataclass
+        let mut dataclass_fields_with_defaults = Vec::new();
+        if is_dataclass {
+            for stmt in &class_def.body {
+                if let Stmt::AnnAssign(ann_assign) = stmt {
+                    // Check if this is a field with a default value
+                    if ann_assign.value.is_some() {
+                        if let Expr::Name(name) = &*ann_assign.target {
+                            dataclass_fields_with_defaults.push(name.id.as_str().to_string());
+                        }
+                    }
+                }
+            }
+        }
         
         for stmt in &class_def.body {
             match stmt {
@@ -69,9 +87,43 @@ impl MutableAttributeNamingRule {
                     self.collect_aug_assign_attributes(aug_assign, false, &mut attributes);
                 }
                 Stmt::AnnAssign(ann_assign) => {
-                    self.collect_ann_assign_attributes(ann_assign, false, &mut attributes);
+                    // For dataclasses, don't treat field definitions as assignments
+                    if !is_dataclass {
+                        self.collect_ann_assign_attributes(ann_assign, false, &mut attributes);
+                    }
                 }
                 _ => {}
+            }
+        }
+        
+        // For dataclasses, add fields with defaults that are assigned in methods as mutable
+        if is_dataclass {
+            // Find which dataclass fields are assigned in methods
+            let mut assigned_fields = std::collections::HashSet::new();
+            for (attr_name, _, _, is_init) in &attributes {
+                if !is_init && dataclass_fields_with_defaults.contains(attr_name) {
+                    assigned_fields.insert(attr_name.clone());
+                }
+            }
+            
+            // Add entries for dataclass fields with defaults that are mutated
+            for field_name in assigned_fields {
+                // Find the field declaration to get its offset
+                for stmt in &class_def.body {
+                    if let Stmt::AnnAssign(ann_assign) = stmt {
+                        if let Expr::Name(name) = &*ann_assign.target {
+                            if name.id.as_str() == field_name {
+                                attributes.push((
+                                    field_name.clone(),
+                                    "dataclass field with default".to_string(),
+                                    ann_assign.range.start().to_usize(),
+                                    false, // Not in init
+                                ));
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
         
@@ -215,16 +267,21 @@ impl MutableAttributeNamingRule {
     fn check_class(&self, class_def: &StmtClassDef) -> Vec<Violation> {
         let mut violations = Vec::new();
         let attributes = self.collect_class_attributes(class_def);
+        let is_dataclass = has_dataclass_decorator(class_def);
         
-        // Find unique mutable attributes (assigned outside __init__/__post_init__)
+        // For dataclasses, only flag fields that have defaults AND are mutated
+        // For non-dataclasses, flag all fields mutated outside __init__/__post_init__
         let mut seen_mutable_attrs = std::collections::HashSet::new();
         let mutable_attrs: Vec<_> = attributes
             .iter()
-            .filter(|(attr_name, _, _, is_init)| {
+            .filter(|(attr_name, assign_type, _, is_init)| {
                 if *is_init {
                     false
+                } else if is_dataclass {
+                    // For dataclasses, only include if it's a dataclass field with default
+                    assign_type == "dataclass field with default" && seen_mutable_attrs.insert(attr_name.clone())
                 } else {
-                    // Only include if we haven't seen this attribute before
+                    // For non-dataclasses, include all mutations outside init
                     seen_mutable_attrs.insert(attr_name.clone())
                 }
             })
@@ -446,6 +503,96 @@ class MyClass:
     
     def update(self):
         self.__private = 1  # Dunder attributes are special
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_dataclass_fields_with_defaults_mutated() {
+        let code = r#"
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class TradeLifecycle:
+    # State tracking fields with defaults
+    trade_id: str = ""
+    order_status: Optional[str] = None
+    close_price: Optional[float] = None
+    pnl: Optional[float] = None
+    
+    def execute_trade(self):
+        self.trade_id = "TRADE123"  # Mutating field with default
+        self.order_status = "EXECUTED"  # Mutating field with default
+    
+    def close_trade(self):
+        self.close_price = 100.0  # Mutating field with default
+        self.pnl = 50.0  # Mutating field with default
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 4);
+        assert!(violations.iter().any(|v| v.message.contains("'trade_id'") && v.message.contains("dataclass field with default")));
+        assert!(violations.iter().any(|v| v.message.contains("'order_status'") && v.message.contains("dataclass field with default")));
+        assert!(violations.iter().any(|v| v.message.contains("'close_price'") && v.message.contains("dataclass field with default")));
+        assert!(violations.iter().any(|v| v.message.contains("'pnl'") && v.message.contains("dataclass field with default")));
+    }
+
+    #[test]
+    fn test_dataclass_fields_without_defaults_ignored() {
+        let code = r#"
+from dataclasses import dataclass
+
+@dataclass
+class MyClass:
+    name: str  # No default value
+    count: int  # No default value
+    
+    def update(self):
+        self.name = "updated"  # OK - no default value
+        self.count = 10  # OK - no default value
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_dataclass_mutable_fields_properly_named() {
+        let code = r#"
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class TradeLifecycle:
+    # Properly named mutable fields
+    mut_trade_id: str = ""
+    mut_order_status: Optional[str] = None
+    _mut_internal_state: Optional[str] = None
+    
+    def execute_trade(self):
+        self.mut_trade_id = "TRADE123"  # OK - properly named
+        self.mut_order_status = "EXECUTED"  # OK - properly named
+        self._mut_internal_state = "active"  # OK - properly named
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_dataclass_fields_in_init_ignored() {
+        let code = r#"
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class MyClass:
+    status: Optional[str] = None
+    
+    def __init__(self):
+        self.status = "initialized"  # OK - in __init__
+    
+    def __post_init__(self):
+        self.status = "post_initialized"  # OK - in __post_init__
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 0);
