@@ -20,7 +20,10 @@ from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 from pinjected import Injected, IProxy, design, injected, instance
-from pinjected_openai.compatibles import a_openai_compatible_llm, AOpenaiCompatibleLlmProtocol
+from pinjected_openai.compatibles import (
+    a_openai_compatible_llm,
+    AOpenaiCompatibleLlmProtocol,
+)
 from pinjected_openai.vision_llm import to_content
 from pydantic import BaseModel, ValidationError
 from returns.result import ResultE, safe
@@ -1016,11 +1019,13 @@ test_openrouter_chat_completion: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan?", model="deepseek/deepseek-chat"
 )
 
-test_openrouter_chat_completion_with_structure: IProxy[Any] = a_openrouter_chat_completion(
-    prompt="What is the capital of Japan?",
-    model="deepseek/deepseek-chat",
-    # model="deepseek/deepseek-r1-distill-qwen-32b",
-    response_format=Text,
+test_openrouter_chat_completion_with_structure: IProxy[Any] = (
+    a_openrouter_chat_completion(
+        prompt="What is the capital of Japan?",
+        model="deepseek/deepseek-chat",
+        # model="deepseek/deepseek-r1-distill-qwen-32b",
+        response_format=Text,
+    )
 )
 
 # this must raise error though...
@@ -1075,20 +1080,22 @@ test_gemini_flash_with_compatible_schema: IProxy[Any] = a_openrouter_chat_comple
     response_format=SimpleResponse,  # This should be compatible with Gemini
 )
 
-test_is_openapi3_compatible: IProxy[Any] = Injected.pure(is_openapi3_compatible).proxy(Text)
+test_is_openapi3_compatible: IProxy[Any] = Injected.pure(is_openapi3_compatible).proxy(
+    Text
+)
 test_is_openapi3_compatible_optional: IProxy[Any] = Injected.pure(
     is_openapi3_compatible
 ).proxy(OptionalText)
 
 # Tests for is_gemini_compatible function
 test_is_gemini_compatible: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(Text)
-test_is_gemini_compatible_optional: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(
-    OptionalText
-)
+test_is_gemini_compatible_optional: IProxy[Any] = Injected.pure(
+    is_gemini_compatible
+).proxy(OptionalText)
 
-test_is_gemini_compatible_union: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(
-    PersonWithUnion
-)
+test_is_gemini_compatible_union: IProxy[Any] = Injected.pure(
+    is_gemini_compatible
+).proxy(PersonWithUnion)
 
 
 # Create example models with Dictionary for testing
