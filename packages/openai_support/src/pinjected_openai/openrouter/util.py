@@ -320,7 +320,7 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
+async def a_openrouter_chat_completion__without_fix(
     a_openrouter_post: AOpenrouterPostProtocol,
     logger: Any,
     openrouter_model_table: OpenRouterModelTable,
@@ -759,7 +759,7 @@ class AOpenrouterChatCompletionProtocol(Protocol):
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion(  # noqa: PINJ045
+async def a_openrouter_chat_completion(
     a_openrouter_post: AOpenrouterPostProtocol,
     logger: Any,
     a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
@@ -935,7 +935,7 @@ class ALlmOpenrouterProtocol(Protocol):
 
 
 @injected(protocol=ALlmOpenrouterProtocol)
-async def a_llm__openrouter(  # noqa: PINJ045
+async def a_llm__openrouter(
     openrouter_model_table: OpenRouterModelTable,
     openrouter_api: Any,
     a_openai_compatible_llm: AOpenaiCompatibleLlmProtocol,
