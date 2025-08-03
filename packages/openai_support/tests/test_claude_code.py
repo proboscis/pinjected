@@ -82,6 +82,67 @@ async def test_claude_code_subprocess_error():
             )
 
         assert "Claude Code failed" in str(exc_info.value)
+        assert "stderr: Error: API key not found" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_claude_code_subprocess_error_with_stdout_only():
+    """Test error handling when only stdout is present."""
+    from pinjected_openai.claude_code import a_claude_code_subprocess
+
+    with (
+        patch("asyncio.create_subprocess_exec") as mock_subprocess,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        # Mock process with error and stdout only
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.communicate = AsyncMock(
+            return_value=(b"Some error output in stdout", b"")
+        )
+        mock_subprocess.return_value = mock_process
+
+        mock_logger = Mock()
+
+        with pytest.raises(ClaudeCodeError) as exc_info:
+            await a_claude_code_subprocess.src_function(
+                "claude", "/tmp", mock_logger, prompt="Test prompt", model="opus"
+            )
+
+        assert "Claude Code failed" in str(exc_info.value)
+        assert "stdout: Some error output in stdout" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_claude_code_subprocess_error_with_both_outputs():
+    """Test error handling when both stdout and stderr are present."""
+    from pinjected_openai.claude_code import a_claude_code_subprocess
+
+    with (
+        patch("asyncio.create_subprocess_exec") as mock_subprocess,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        # Mock process with error and both outputs
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.communicate = AsyncMock(
+            return_value=(b"Stdout message", b"Stderr message")
+        )
+        mock_subprocess.return_value = mock_process
+
+        mock_logger = Mock()
+
+        with pytest.raises(ClaudeCodeError) as exc_info:
+            await a_claude_code_subprocess.src_function(
+                "claude", "/tmp", mock_logger, prompt="Test prompt", model="opus"
+            )
+
+        error_str = str(exc_info.value)
+        assert "Claude Code failed" in error_str
+        assert "stderr: Stderr message" in error_str
+        assert "stdout: Stdout message" in error_str
+        # Verify both are included with separator
+        assert " | " in error_str
 
 
 @pytest.mark.asyncio
@@ -234,9 +295,11 @@ async def test_claude_code_structured_with_retry_fix():
     # Check the retry prompt contains fix instructions
     second_call_prompt = mock_subprocess.call_args_list[1][1]["prompt"]
     assert "failed to produce valid JSON" in second_call_prompt
-    assert "Previous attempts:" in second_call_prompt
-    assert "Execution error" in second_call_prompt
-    assert "Test prompt" in second_call_prompt
+    assert "Previous attempts and their errors:" in second_call_prompt
+    assert "Execution error" in second_call_prompt  # The failed response
+    assert "Error:" in second_call_prompt  # The error details
+    assert "Test prompt" in second_call_prompt  # Original request
+    assert "IMPORTANT:" in second_call_prompt  # Additional instructions
 
 
 @pytest.mark.asyncio

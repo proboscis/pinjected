@@ -145,7 +145,19 @@ async def a_claude_code_subprocess(
         )
 
         if process.returncode != 0:
-            error_msg = stderr.decode() if stderr else "Unknown error"
+            stdout_text = stdout.decode() if stdout else ""
+            stderr_text = stderr.decode() if stderr else ""
+
+            # Build comprehensive error message
+            error_parts = []
+            if stderr_text:
+                error_parts.append(f"stderr: {stderr_text}")
+            if stdout_text:
+                error_parts.append(f"stdout: {stdout_text}")
+            if not error_parts:
+                error_parts.append("No output captured")
+
+            error_msg = " | ".join(error_parts)
             logger.error(
                 f"Claude Code failed with return code {process.returncode}: {error_msg}"
             )
@@ -210,6 +222,7 @@ async def a_claude_code_structured(  # noqa: PINJ045
     attempts = 0
     max_attempts = 3
     previous_responses = []
+    previous_errors = []
 
     while attempts < max_attempts:
         attempts += 1
@@ -226,15 +239,19 @@ Provide only the JSON object, no additional text or markdown code blocks."""
             # Retry attempts with fix prompt
             fix_prompt = f"""Your previous response(s) failed to produce valid JSON.
 
-Previous attempts:
-{chr(10).join(f"Attempt {i + 1}: {resp}" for i, resp in enumerate(previous_responses))}
+Previous attempts and their errors:
+{chr(10).join(f"Attempt {i + 1}:{chr(10)}Response: {resp}{chr(10)}Error: {err}{chr(10)}" for i, (resp, err) in enumerate(zip(previous_responses, previous_errors)))}
 
 Please fix your response and provide a valid JSON object that matches this schema:
 {schema_str}
 
 Original request: {prompt}
 
-Remember: Provide ONLY the JSON object, no additional text or markdown code blocks."""
+IMPORTANT: 
+- Provide ONLY the JSON object
+- No markdown code blocks (no ```)
+- No additional text or explanation
+- Make sure all JSON syntax is correct (proper quotes, commas, brackets)"""
             full_prompt = fix_prompt
 
         # Get response
@@ -256,6 +273,7 @@ Remember: Provide ONLY the JSON object, no additional text or markdown code bloc
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning(f"Attempt {attempts}: Failed to parse JSON response: {e}")
+            previous_errors.append(str(e))
 
             if attempts < max_attempts:
                 # Try json_repair as fallback before next attempt
@@ -265,6 +283,10 @@ Remember: Provide ONLY the JSON object, no additional text or markdown code bloc
                 except Exception as repair_error:
                     logger.warning(
                         f"Attempt {attempts}: JSON repair also failed: {repair_error}"
+                    )
+                    # Update error message to include both failures
+                    previous_errors[-1] = (
+                        f"JSON parse error: {e}, Repair error: {repair_error}"
                     )
                     continue
             else:
