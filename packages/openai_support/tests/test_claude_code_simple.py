@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import json
 
 
-class TestResponse(BaseModel):
+class SimpleTestResponse(BaseModel):
     message: str
     value: int
 
@@ -42,7 +42,7 @@ async def test_json_parsing():
     """Test JSON parsing with pydantic model."""
     json_str = '{"message": "test", "value": 42}'
 
-    result = TestResponse.model_validate_json(json_str)
+    result = SimpleTestResponse.model_validate_json(json_str)
     assert result.message == "test"
     assert result.value == 42
 
@@ -56,7 +56,7 @@ async def test_json_parsing_with_markdown():
     if "```json" in markdown_str:
         json_str = markdown_str.split("```json")[1].split("```")[0].strip()
 
-    result = TestResponse.model_validate_json(json_str)
+    result = SimpleTestResponse.model_validate_json(json_str)
     assert result.message == "test"
     assert result.value == 42
 
@@ -64,7 +64,7 @@ async def test_json_parsing_with_markdown():
 @pytest.mark.asyncio
 async def test_schema_generation():
     """Test pydantic schema generation."""
-    schema = TestResponse.model_json_schema()
+    schema = SimpleTestResponse.model_json_schema()
 
     assert "properties" in schema
     assert "message" in schema["properties"]
@@ -75,7 +75,7 @@ async def test_schema_generation():
 
 def test_prompt_building():
     """Test prompt building with schema."""
-    schema = TestResponse.model_json_schema()
+    schema = SimpleTestResponse.model_json_schema()
     schema_str = json.dumps(schema, indent=2)
 
     base_prompt = "What is 2+2?"
