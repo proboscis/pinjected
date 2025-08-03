@@ -122,7 +122,7 @@ fn analyze_file(
         // Only run rules that don't require decorators
         rules
             .iter()
-            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036" | "PINJ046" | "PINJ047")) // Builtin shadowing, pyi enforcement, and mutable attribute rules
+            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036" | "PINJ046" | "PINJ047" | "PINJ050")) // Builtin shadowing, pyi enforcement, mutable attribute rules, and os.environ
             .collect()
     } else {
         rules.iter().collect()
@@ -143,9 +143,9 @@ fn analyze_file(
         ast: &ast,
     };
 
-    // First pass: module-level rules (PINJ012, PINJ014, PINJ036, PINJ049)
+    // First pass: module-level rules (PINJ012, PINJ014, PINJ036, PINJ049, PINJ050)
     for rule in &active_rules {
-        if matches!(rule.rule_id(), "PINJ012" | "PINJ014" | "PINJ036" | "PINJ049") {
+        if matches!(rule.rule_id(), "PINJ012" | "PINJ014" | "PINJ036" | "PINJ049" | "PINJ050") {
             violations.extend(rule.check(&module_context));
         }
     }
