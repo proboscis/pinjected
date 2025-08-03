@@ -110,7 +110,8 @@ impl EnforcePyiStubsRule {
                 // In a class body, only consider simple Name targets (not attribute access)
                 for target in &assign.targets {
                     if let Expr::Name(name) = target {
-                        if !name.id.as_str().starts_with('_') {
+                        // Include all variables, both public and private
+                        if true {
                             let full_name = format!("{}.{}", class_name, name.id);
                             symbols.push(PublicSymbol {
                                 name: full_name,
@@ -129,7 +130,8 @@ impl EnforcePyiStubsRule {
             Stmt::AnnAssign(ann_assign) => {
                 // Only consider simple Name targets (not self.x)
                 if let Expr::Name(name) = ann_assign.target.as_ref() {
-                    if !name.id.as_str().starts_with('_') {
+                    // Include all variables, both public and private
+                    if true {
                         let full_name = format!("{}.{}", class_name, name.id);
                         let type_ann = self.format_type_annotation(&ann_assign.annotation);
                         symbols.push(PublicSymbol {
@@ -146,7 +148,8 @@ impl EnforcePyiStubsRule {
             }
             // Nested classes - process them as top-level classes within the parent class
             Stmt::ClassDef(nested_class) => {
-                if !nested_class.name.as_str().starts_with('_') {
+                // Include all nested classes, both public and private
+                if true {
                     let nested_full_name = format!("{}.{}", class_name, nested_class.name);
                     
                     symbols.push(PublicSymbol {
@@ -172,7 +175,8 @@ impl EnforcePyiStubsRule {
     fn extract_from_stmt(&self, stmt: &Stmt, symbols: &mut Vec<PublicSymbol>, prefix: &str) {
         match stmt {
             Stmt::FunctionDef(func) => {
-                if !func.name.as_str().starts_with('_') || func.name.as_str() == "__init__" {
+                // Include all methods, both public and private
+                if true {
                     let full_name = if prefix.is_empty() {
                         func.name.to_string()
                     } else {
@@ -201,7 +205,8 @@ impl EnforcePyiStubsRule {
                 }
             }
             Stmt::AsyncFunctionDef(func) => {
-                if !func.name.as_str().starts_with('_') {
+                // Include all methods, both public and private
+                if true {
                     let full_name = if prefix.is_empty() {
                         func.name.to_string()
                     } else {
@@ -230,7 +235,8 @@ impl EnforcePyiStubsRule {
                 }
             }
             Stmt::ClassDef(class) => {
-                if !class.name.as_str().starts_with('_') {
+                // Include all classes, both public and private
+                if true {
                     let full_name = if prefix.is_empty() {
                         class.name.to_string()
                     } else {
@@ -257,7 +263,8 @@ impl EnforcePyiStubsRule {
                 // Extract module-level variable assignments
                 for target in &assign.targets {
                     if let Expr::Name(name) = target {
-                        if !name.id.as_str().starts_with('_') {
+                        // Include all variables, both public and private
+                        if true {
                             let full_name = if prefix.is_empty() {
                                 name.id.to_string()
                             } else {
@@ -279,7 +286,8 @@ impl EnforcePyiStubsRule {
             Stmt::AnnAssign(ann_assign) => {
                 // Extract annotated module-level variables
                 if let Expr::Name(name) = ann_assign.target.as_ref() {
-                    if !name.id.as_str().starts_with('_') {
+                    // Include all variables, both public and private
+                    if true {
                         let full_name = if prefix.is_empty() {
                             name.id.to_string()
                         } else {
@@ -1834,8 +1842,8 @@ some_obj.attribute = 10  # This should NOT be extracted as a symbol
         assert!(fix.content.contains("class ComplexClass:"));
         assert!(fix.content.contains("config: Dict[str, Any]"));
         
-        // Should NOT include private class attributes
-        assert!(!fix.content.contains("_private_class_var"));
+        // Should now include private class attributes (changed behavior)
+        assert!(fix.content.contains("_private_class_var"));
         
         // Should NOT include any instance attributes as class-level attributes
         // Note: "name" will appear as a parameter in __init__, but not as a class attribute
@@ -1917,7 +1925,8 @@ MODULE_CONFIG = {"debug": True}
         assert!(violations[0].fix.is_some());
         let fix = violations[0].fix.as_ref().unwrap();
         
-        println!("Generated stub content:\n{}", fix.content);
+        println!("Generated stub content:
+{}", fix.content);
         
         // Should include class-level attributes
         assert!(fix.content.contains("class MLPlatformJobFromSchematics:"));
@@ -1934,5 +1943,58 @@ MODULE_CONFIG = {"debug": True}
         assert!(!fix.content.contains("data"));
         assert!(!fix.content.contains("runtime_config"));
         assert!(!fix.content.contains("status"));
+    }
+
+    #[test]
+    fn test_private_methods_required_in_stub() {
+        let code = r#"
+class MyClass:
+    def public_method(self) -> str:
+        return "public"
+    
+    def _private_method(self) -> int:
+        return 42
+    
+    def __init__(self):
+        pass
+
+def public_function() -> None:
+    pass
+
+def _private_function() -> str:
+    return "private"
+
+_PRIVATE_VAR = 10
+PUBLIC_VAR = 20
+"#;
+
+        let violations = check_rule(code, "test.py");
+        
+        // Should report missing stub file
+        assert_eq!(violations.len(), 1, "Should detect missing stub file");
+        
+        let violation = &violations[0];
+        assert!(violation.fix.is_some(), "Should provide a fix");
+        
+        let fix = violation.fix.as_ref().unwrap();
+        println!("Generated stub content:
+{}", fix.content);
+        
+        // Check that private methods are included with proper signatures
+        assert!(fix.content.contains("def _private_method(self) -> int: ..."), 
+                "Should include private method _private_method with signature");
+        
+        // Check that private functions are included
+        assert!(fix.content.contains("def _private_function() -> str: ..."), 
+                "Should include private function _private_function");
+        
+        // Check that private variables are included
+        assert!(fix.content.contains("_PRIVATE_VAR: Any"), 
+                "Should include private variable _PRIVATE_VAR");
+        
+        // Check that public symbols are still included
+        assert!(fix.content.contains("def public_method(self) -> str: ..."));
+        assert!(fix.content.contains("def public_function() -> None: ..."));
+        assert!(fix.content.contains("PUBLIC_VAR: Any"));
     }
 }
