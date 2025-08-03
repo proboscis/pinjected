@@ -151,6 +151,7 @@ lint.ignore = [
     "RUF003", # commenting for full-character parenthesis
     "RUF002", # commenting for full-character brackets
     "RUF001", # Full character comment
+    "RUF100", # Unused noqa directive (we use noqa for pinjected-linter)
     #
     "COM812", # trailing comma
     "S101", # use of assert

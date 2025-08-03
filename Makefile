@@ -17,7 +17,7 @@ sync:
 
 lint:
 	uvx ruff check
-	flake8
+	uv run flake8
 
 setup-all:
 	cd packages/openai_support && uv sync --group dev

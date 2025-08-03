@@ -1,11 +1,12 @@
 import time
-from typing import Protocol
+from typing import Protocol, Any
 
 from httpx import ReadTimeout
 from injected_utils import async_cached, lzma_sqlite, sqlite_dict
 from pinjected_openai.openrouter.util import (
     Text,
     a_openrouter_chat_completion__without_fix,
+    AOpenrouterChatCompletionProtocol,
 )
 from pydantic import BaseModel
 
@@ -23,10 +24,21 @@ class StructuredLLM(Protocol):
         pass
 
 
-@injected
-async def a_sllm_openrouter(
-    a_openrouter_chat_completion,
-    logger,
+class ASllmOpenrouterProtocol(Protocol):
+    async def __call__(
+        self,
+        text: str,
+        model: str,
+        images=None,
+        response_format: type[BaseModel] | None = None,
+        max_tokens: int = 8192,
+    ) -> Any: ...
+
+
+@injected(protocol=ASllmOpenrouterProtocol)
+async def a_sllm_openrouter(  # noqa: PINJ045
+    a_openrouter_chat_completion: AOpenrouterChatCompletionProtocol,
+    logger: Any,
     /,
     text: str,
     model: str,

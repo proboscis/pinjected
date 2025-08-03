@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Any, Protocol
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
@@ -9,9 +9,23 @@ from pydantic import BaseModel
 from pinjected import *
 
 
-@injected
-async def a_openai_compatible_llm(
-    logger,
+class AOpenaiCompatibleLlmProtocol(Protocol):
+    async def __call__(
+        self,
+        api: AsyncOpenAI,
+        model: str,
+        text: str,
+        images: list[Image] | None = None,
+        response_format=None,
+        max_completion_tokens: int | None = None,
+        reasoning_effort=None,
+        detail: Literal["auto", "low", "high"] = "auto",
+    ) -> ChatCompletion: ...
+
+
+@injected(protocol=AOpenaiCompatibleLlmProtocol)
+async def a_openai_compatible_llm(  # noqa: PINJ045
+    logger: Any,
     /,
     api: AsyncOpenAI,
     model: str,
