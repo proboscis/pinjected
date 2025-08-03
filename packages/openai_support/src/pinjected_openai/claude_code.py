@@ -89,6 +89,7 @@ def claude_command_path_str() -> str:
 @injected(protocol=ClaudeCodeSubprocessProtocol)
 async def a_claude_code_subprocess(
     claude_command_path_str: str,
+    claude_code_working_dir: str,
     logger: Logger,
     /,
     prompt: str,
@@ -101,6 +102,7 @@ async def a_claude_code_subprocess(
 
     Args:
         claude_command_path_str: Path to claude command (injected)
+        claude_code_working_dir: Working directory for subprocess execution (injected)
         logger: Logger instance (injected)
         prompt: The text prompt to send to Claude
         model: Model to use - "sonnet" or "opus" (default: "opus")
@@ -123,16 +125,18 @@ async def a_claude_code_subprocess(
     cmd = [claude_cmd, "-p", "--model", model]
 
     logger.info(
-        f"Executing Claude Code with prompt length: {len(prompt)}, model: {model}, using command: {claude_cmd}"
+        f"Executing Claude Code with prompt length: {len(prompt)}, model: {model}, "
+        f"using command: {claude_cmd}, working dir: {claude_code_working_dir}"
     )
 
     try:
-        # Create subprocess
+        # Create subprocess with working directory
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            cwd=claude_code_working_dir,
         )
 
         # Send prompt and get response
@@ -186,6 +190,7 @@ async def a_claude_code_structured(  # noqa: PINJ045
 ) -> BaseModel:
     """
     Execute Claude Code and parse structured response.
+    Includes retry mechanism for malformed JSON responses.
 
     Args:
         a_claude_code_subprocess: Subprocess executor
@@ -200,38 +205,76 @@ async def a_claude_code_structured(  # noqa: PINJ045
     # Build prompt with JSON schema
     schema = response_format.model_json_schema()
     schema_str = json.dumps(schema, indent=2)
-    full_prompt = f"""{prompt}
+
+    # Track attempts and responses for potential retries
+    attempts = 0
+    max_attempts = 3
+    previous_responses = []
+
+    while attempts < max_attempts:
+        attempts += 1
+
+        if attempts == 1:
+            # First attempt with normal prompt
+            full_prompt = f"""{prompt}
 
 You must respond with a valid JSON object that matches this schema:
 {schema_str}
 
 Provide only the JSON object, no additional text or markdown code blocks."""
-
-    # Get response
-    response_text = await a_claude_code_subprocess(prompt=full_prompt, **kwargs)
-
-    # Parse and validate response
-    try:
-        # Try to extract JSON from the content
-        if "```json" in response_text:
-            json_str = response_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            json_str = response_text.split("```")[1].split("```")[0].strip()
         else:
-            json_str = response_text
+            # Retry attempts with fix prompt
+            fix_prompt = f"""Your previous response(s) failed to produce valid JSON.
 
-        # Parse and validate
-        return response_format.model_validate_json(json_str)
+Previous attempts:
+{chr(10).join(f"Attempt {i + 1}: {resp}" for i, resp in enumerate(previous_responses))}
 
-    except (json.JSONDecodeError, ValidationError) as e:
-        logger.warning(f"Failed to parse JSON response: {e}")
-        # Try json_repair as fallback
+Please fix your response and provide a valid JSON object that matches this schema:
+{schema_str}
+
+Original request: {prompt}
+
+Remember: Provide ONLY the JSON object, no additional text or markdown code blocks."""
+            full_prompt = fix_prompt
+
+        # Get response
+        response_text = await a_claude_code_subprocess(prompt=full_prompt, **kwargs)
+        previous_responses.append(response_text)
+
+        # Parse and validate response
         try:
-            repaired = json_repair.loads(response_text)
-            return response_format.model_validate(repaired)
-        except Exception as repair_error:
-            logger.error(f"JSON repair also failed: {repair_error}")
-            raise ClaudeCodeError(f"Failed to parse structured response: {e}")
+            # Try to extract JSON from the content
+            if "```json" in response_text:
+                json_str = response_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_text:
+                json_str = response_text.split("```")[1].split("```")[0].strip()
+            else:
+                json_str = response_text
+
+            # Parse and validate
+            return response_format.model_validate_json(json_str)
+
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.warning(f"Attempt {attempts}: Failed to parse JSON response: {e}")
+
+            if attempts < max_attempts:
+                # Try json_repair as fallback before next attempt
+                try:
+                    repaired = json_repair.loads(response_text)
+                    return response_format.model_validate(repaired)
+                except Exception as repair_error:
+                    logger.warning(
+                        f"Attempt {attempts}: JSON repair also failed: {repair_error}"
+                    )
+                    continue
+            else:
+                # Final attempt failed
+                logger.error(
+                    f"All {max_attempts} attempts failed to produce valid JSON"
+                )
+                raise ClaudeCodeError(
+                    f"Failed to parse structured response after {max_attempts} attempts: {e}"
+                )
 
 
 @injected(protocol=StructuredLLM)
@@ -249,6 +292,7 @@ async def a_sllm_claude_code(  # noqa: PINJ045
     images=None,
     response_format: type[BaseModel] | None = None,
     max_tokens: int = 8192,
+    model: str = "opus",
 ) -> Any:
     """
     StructuredLLM implementation using Claude Code subprocess.
@@ -262,6 +306,7 @@ async def a_sllm_claude_code(  # noqa: PINJ045
         images: Images (currently not supported)
         response_format: Optional pydantic BaseModel for structured output
         max_tokens: Maximum tokens (currently not used by subprocess)
+        model: Model to use - "sonnet" or "opus" (default: "opus")
 
     Returns:
         Response from Claude (structured or plain text)
@@ -272,7 +317,9 @@ async def a_sllm_claude_code(  # noqa: PINJ045
         )
 
     with logger.contextualize(tag="claude_code_sllm"):
-        logger.info(f"Calling Claude Code with prompt length: {len(text)}")
+        logger.info(
+            f"Calling Claude Code with prompt length: {len(text)}, model: {model}"
+        )
 
         try:
             if response_format is not None:
@@ -280,10 +327,11 @@ async def a_sllm_claude_code(  # noqa: PINJ045
                 result = await a_claude_code_structured(
                     prompt=text,
                     response_format=response_format,
+                    model=model,
                 )
             else:
                 # Use plain text handler
-                result = await a_claude_code_subprocess(prompt=text)
+                result = await a_claude_code_subprocess(prompt=text, model=model)
 
             logger.success("Claude Code call completed successfully")
             return result

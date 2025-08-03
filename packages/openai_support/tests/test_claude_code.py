@@ -36,6 +36,7 @@ async def test_claude_code_subprocess_plain_text():
         mock_logger = Mock()
         result = await a_claude_code_subprocess.src_function(
             "claude",  # claude_command_path_str
+            "/tmp",  # claude_code_working_dir
             mock_logger,
             prompt="What is the capital of Japan?",
             model="opus",
@@ -50,6 +51,10 @@ async def test_claude_code_subprocess_plain_text():
         assert args[1] == "-p"
         assert "--model" in args
         assert "opus" in args
+        # Check that cwd was passed
+        kwargs = mock_subprocess.call_args[1]
+        assert "cwd" in kwargs
+        assert kwargs["cwd"] == "/tmp"
 
 
 @pytest.mark.asyncio
@@ -73,7 +78,7 @@ async def test_claude_code_subprocess_error():
 
         with pytest.raises(ClaudeCodeError) as exc_info:
             await a_claude_code_subprocess.src_function(
-                "claude", mock_logger, prompt="Test prompt", model="opus"
+                "claude", "/tmp", mock_logger, prompt="Test prompt", model="opus"
             )
 
         assert "Claude Code failed" in str(exc_info.value)
@@ -97,7 +102,12 @@ async def test_claude_code_subprocess_timeout():
 
         with pytest.raises(ClaudeCodeTimeoutError) as exc_info:
             await a_claude_code_subprocess.src_function(
-                "claude", mock_logger, prompt="Test prompt", model="opus", timeout=1.0
+                "claude",
+                "/tmp",
+                mock_logger,
+                prompt="Test prompt",
+                model="opus",
+                timeout=1.0,
             )
 
         assert "timed out" in str(exc_info.value)
@@ -114,6 +124,7 @@ async def test_claude_code_subprocess_not_found():
         with pytest.raises(ClaudeCodeNotFoundError) as exc_info:
             await a_claude_code_subprocess.src_function(
                 "/path/to/nonexistent/claude",
+                "/tmp",
                 mock_logger,
                 prompt="Test prompt",
                 model="opus",
@@ -132,7 +143,10 @@ async def test_claude_code_structured():
     mock_logger = Mock()
 
     result = await a_claude_code_structured.src_function(
-        mock_subprocess, mock_logger, prompt="Test prompt", response_format=MockResponse
+        mock_subprocess,
+        mock_logger,
+        prompt="Test prompt",
+        response_format=MockResponse,
     )
 
     assert isinstance(result, MockResponse)
@@ -156,7 +170,10 @@ async def test_claude_code_structured_with_markdown():
     mock_logger = Mock()
 
     result = await a_claude_code_structured.src_function(
-        mock_subprocess, mock_logger, prompt="Test prompt", response_format=MockResponse
+        mock_subprocess,
+        mock_logger,
+        prompt="Test prompt",
+        response_format=MockResponse,
     )
 
     assert isinstance(result, MockResponse)
@@ -175,12 +192,51 @@ async def test_claude_code_structured_with_json_repair():
 
     # json_repair should fix the invalid JSON
     result = await a_claude_code_structured.src_function(
-        mock_subprocess, mock_logger, prompt="Test prompt", response_format=MockResponse
+        mock_subprocess,
+        mock_logger,
+        prompt="Test prompt",
+        response_format=MockResponse,
     )
 
     assert isinstance(result, MockResponse)
     assert "Hello" in result.message
     assert result.status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_claude_code_structured_with_retry_fix():
+    """Test structured response parsing with retry mechanism when initial response fails."""
+    from pinjected_openai.claude_code import a_claude_code_structured
+
+    # Mock subprocess to fail first time, then succeed with fixed JSON
+    mock_subprocess = AsyncMock(
+        side_effect=[
+            "Execution error",  # First attempt fails
+            '{"message": "Fixed on retry", "status": "success"}',  # Second attempt succeeds
+        ]
+    )
+    mock_logger = Mock()
+
+    result = await a_claude_code_structured.src_function(
+        mock_subprocess,
+        mock_logger,
+        prompt="Test prompt",
+        response_format=MockResponse,
+    )
+
+    assert isinstance(result, MockResponse)
+    assert result.message == "Fixed on retry"
+    assert result.status == "success"
+
+    # Verify subprocess was called twice (initial + 1 retry)
+    assert mock_subprocess.call_count == 2
+
+    # Check the retry prompt contains fix instructions
+    second_call_prompt = mock_subprocess.call_args_list[1][1]["prompt"]
+    assert "failed to produce valid JSON" in second_call_prompt
+    assert "Previous attempts:" in second_call_prompt
+    assert "Execution error" in second_call_prompt
+    assert "Test prompt" in second_call_prompt
 
 
 @pytest.mark.asyncio
@@ -212,7 +268,9 @@ async def test_sllm_claude_code_plain():
     )
 
     assert result == "Tokyo"
-    mock_subprocess.assert_called_once_with(prompt="What is the capital of Japan?")
+    mock_subprocess.assert_called_once_with(
+        prompt="What is the capital of Japan?", model="opus"
+    )
     mock_structured.assert_not_called()
 
 
@@ -252,7 +310,9 @@ async def test_sllm_claude_code_structured():
 
     mock_subprocess.assert_not_called()
     mock_structured.assert_called_once_with(
-        prompt="What is the capital of Japan?", response_format=MockResponse
+        prompt="What is the capital of Japan?",
+        response_format=MockResponse,
+        model="opus",
     )
 
 
