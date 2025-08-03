@@ -89,6 +89,7 @@ def claude_command_path_str() -> str:
 @injected(protocol=ClaudeCodeSubprocessProtocol)
 async def a_claude_code_subprocess(
     claude_command_path_str: str,
+    claude_code_working_dir: str,
     logger: Logger,
     /,
     prompt: str,
@@ -101,6 +102,7 @@ async def a_claude_code_subprocess(
 
     Args:
         claude_command_path_str: Path to claude command (injected)
+        claude_code_working_dir: Working directory for subprocess execution (injected)
         logger: Logger instance (injected)
         prompt: The text prompt to send to Claude
         model: Model to use - "sonnet" or "opus" (default: "opus")
@@ -123,16 +125,18 @@ async def a_claude_code_subprocess(
     cmd = [claude_cmd, "-p", "--model", model]
 
     logger.info(
-        f"Executing Claude Code with prompt length: {len(prompt)}, model: {model}, using command: {claude_cmd}"
+        f"Executing Claude Code with prompt length: {len(prompt)}, model: {model}, "
+        f"using command: {claude_cmd}, working dir: {claude_code_working_dir}"
     )
 
     try:
-        # Create subprocess
+        # Create subprocess with working directory
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            cwd=claude_code_working_dir,
         )
 
         # Send prompt and get response
@@ -249,6 +253,7 @@ async def a_sllm_claude_code(  # noqa: PINJ045
     images=None,
     response_format: type[BaseModel] | None = None,
     max_tokens: int = 8192,
+    model: str = "opus",
 ) -> Any:
     """
     StructuredLLM implementation using Claude Code subprocess.
@@ -262,6 +267,7 @@ async def a_sllm_claude_code(  # noqa: PINJ045
         images: Images (currently not supported)
         response_format: Optional pydantic BaseModel for structured output
         max_tokens: Maximum tokens (currently not used by subprocess)
+        model: Model to use - "sonnet" or "opus" (default: "opus")
 
     Returns:
         Response from Claude (structured or plain text)
@@ -272,7 +278,9 @@ async def a_sllm_claude_code(  # noqa: PINJ045
         )
 
     with logger.contextualize(tag="claude_code_sllm"):
-        logger.info(f"Calling Claude Code with prompt length: {len(text)}")
+        logger.info(
+            f"Calling Claude Code with prompt length: {len(text)}, model: {model}"
+        )
 
         try:
             if response_format is not None:
@@ -280,10 +288,11 @@ async def a_sllm_claude_code(  # noqa: PINJ045
                 result = await a_claude_code_structured(
                     prompt=text,
                     response_format=response_format,
+                    model=model,
                 )
             else:
                 # Use plain text handler
-                result = await a_claude_code_subprocess(prompt=text)
+                result = await a_claude_code_subprocess(prompt=text, model=model)
 
             logger.success("Claude Code call completed successfully")
             return result

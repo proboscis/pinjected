@@ -25,6 +25,7 @@ async def test_claude_code_subprocess_sonnet_model():
         # Call with sonnet model
         result = await a_claude_code_subprocess.src_function(
             "/usr/local/bin/claude",  # claude_command_path_str
+            "/tmp",  # claude_code_working_dir
             MagicMock(),  # logger
             prompt="Test prompt",
             model="sonnet",
@@ -57,6 +58,7 @@ async def test_claude_code_subprocess_opus_model():
         # Call with opus model (default)
         result = await a_claude_code_subprocess.src_function(
             "/usr/local/bin/claude",  # claude_command_path_str
+            "/tmp",  # claude_code_working_dir
             MagicMock(),  # logger
             prompt="Test prompt",
             model="opus",
@@ -86,8 +88,8 @@ async def test_sllm_claude_code_model_parameter():
         text="Test prompt",
     )
 
-    # Verify subprocess was called without model parameter
-    mock_subprocess.assert_called_once_with(prompt="Test prompt")
+    # Verify subprocess was called with default model parameter
+    mock_subprocess.assert_called_once_with(prompt="Test prompt", model="opus")
     assert result == "Test response"
 
 

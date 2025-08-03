@@ -44,6 +44,7 @@ async def a_sllm_claude_code(
     images=...,
     response_format: type[BaseModel] | None = ...,
     max_tokens: int = ...,
+    model: str = ...,
 ) -> IProxy[Any]: ...
 
 test_claude_code_plain: IProxy
