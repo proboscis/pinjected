@@ -1,5 +1,4 @@
 import inspect
-from collections.abc import Awaitable, Callable
 from typing import (
     Any,
     Literal,
@@ -7,7 +6,11 @@ from typing import (
     Union,
     get_args,
     get_origin,
+    TYPE_CHECKING,
 )
+
+if TYPE_CHECKING:
+    from pinjected_openai.openrouter.instances import StructuredLLM
 
 import httpx
 import json_repair
@@ -17,7 +20,7 @@ from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 from pinjected import Injected, IProxy, design, injected, instance
-from pinjected_openai.compatibles import a_openai_compatible_llm
+from pinjected_openai.compatibles import a_openai_compatible_llm, AOpenaiCompatibleLlmProtocol
 from pinjected_openai.vision_llm import to_content
 from pydantic import BaseModel, ValidationError
 from returns.result import ResultE, safe
@@ -178,9 +181,9 @@ class OpenRouterModelTable(BaseModel):
     }
 
     def pricing(self, model_id: str) -> OpenRouterModelPricing:
-        if not hasattr(self, "_pricing"):
-            self._pricing = {model.id: model.pricing for model in self.data}
-        return self._pricing[model_id]
+        if not hasattr(self, "_mut_pricing"):
+            self._mut_pricing = {model.id: model.pricing for model in self.data}
+        return self._mut_pricing[model_id]
 
     def safe_pricing(self, model_id: str) -> ResultE[OpenRouterModelPricing]:
         return safe(self.pricing)(model_id)
@@ -204,7 +207,7 @@ class OpenRouterModelTable(BaseModel):
 @retry(
     stop=stop_after_attempt(5),
 )
-async def openrouter_model_table(logger) -> OpenRouterModelTable:
+async def openrouter_model_table(logger: Any) -> OpenRouterModelTable:
     async with httpx.AsyncClient() as client:
         response = await client.get("https://openrouter.ai/api/v1/models")
         response.raise_for_status()
@@ -236,7 +239,11 @@ def openrouter_timeout_sec() -> float:
     return 120
 
 
-@injected
+class AOpenrouterPostProtocol(Protocol):
+    async def __call__(self, payload: dict) -> dict: ...
+
+
+@injected(protocol=AOpenrouterPostProtocol)
 async def a_openrouter_post(
     openrouter_api_key: str, openrouter_timeout_sec: float, /, payload: dict
 ) -> dict:
@@ -254,11 +261,19 @@ async def a_openrouter_post(
         return response.json()
 
 
+class SimpleLlmProtocol(Protocol):
+    async def __call__(self, prompt: str) -> Any: ...
+
+
+class ACachedSchemaExampleProviderProtocol(Protocol):
+    async def __call__(self, model_schema: dict) -> Any: ...
+
+
 @async_cached(sqlite_dict(injected("cache_root_path") / "schema_examples.sqlite"))
-@injected
+@injected(protocol=ACachedSchemaExampleProviderProtocol)
 async def a_cached_schema_example_provider(
-    a_llm_for_json_schema_example, /, model_schema: dict
-):
+    a_llm_for_json_schema_example: SimpleLlmProtocol, /, model_schema: dict
+) -> Any:
     prompt = f"""
     Provide example json objects that follows the schema of the model:{model_schema}
     Beware the example must not be in yaml format.
@@ -282,15 +297,29 @@ class OpenRouterChatCompletion(Protocol):
     ) -> Any: ...
 
 
-@injected
+class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
+    async def __call__(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 8192,
+        temperature: float = 1,
+        images: list[PIL.Image.Image] | None = None,
+        response_format=None,
+        provider: dict | None = None,
+        **kwargs,
+    ) -> Any: ...
+
+
+@injected(protocol=AOpenrouterChatCompletionWithoutFixProtocol)
 @retry(
     retry=retry_if_exception_type((httpx.ReadTimeout, OpenRouterRateLimitError)),
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion__without_fix(
-    a_openrouter_post,
-    logger,
+async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
+    a_openrouter_post: AOpenrouterPostProtocol,
+    logger: Any,
     openrouter_model_table: OpenRouterModelTable,
     openrouter_state: dict,
     /,
@@ -302,7 +331,7 @@ async def a_openrouter_chat_completion__without_fix(
     response_format=None,
     provider: dict | None = None,
     **kwargs,
-):
+) -> Any:
     """
     :param prompt:
     :param model:
@@ -409,8 +438,12 @@ def build_openrouter_response_format(response_format):
     return openai_response_format
 
 
-@injected
-async def a_resize_image_below_5mb(logger, /, img: PIL.Image.Image):
+class AResizeImageBelow5mbProtocol(Protocol):
+    async def __call__(self, img: PIL.Image.Image) -> PIL.Image.Image: ...
+
+
+@injected(protocol=AResizeImageBelow5mbProtocol)
+async def a_resize_image_below_5mb(logger: Any, /, img: PIL.Image.Image):
     """
     画像を5MB以下にリサイズします。
     元の画像のアスペクト比を保持しながら、必要に応じて徐々に縮小します。
@@ -703,18 +736,32 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
     return incompatibilities
 
 
-@injected
+class AOpenrouterChatCompletionProtocol(Protocol):
+    async def __call__(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 8192,
+        temperature: float = 1,
+        images: list[PIL.Image.Image] | None = None,
+        response_format=None,
+        provider: dict | None = None,
+        **kwargs,
+    ) -> Any: ...
+
+
+@injected(protocol=AOpenrouterChatCompletionProtocol)
 @retry(
     retry=retry_if_exception_type((httpx.ReadTimeout, OpenRouterRateLimitError)),
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion(
-    a_openrouter_post,
-    logger,
-    a_cached_schema_example_provider: Callable[[type], Awaitable[str]],
-    a_resize_image_below_5mb,
-    a_structured_llm_for_json_fix,
+async def a_openrouter_chat_completion(  # noqa: PINJ045
+    a_openrouter_post: AOpenrouterPostProtocol,
+    logger: Any,
+    a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
+    a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
+    a_structured_llm_for_json_fix: "StructuredLLM",
     openrouter_model_table: OpenRouterModelTable,
     openrouter_state: dict,
     /,
@@ -874,12 +921,22 @@ Please fix the following json object (Response) to match the schema:
         return data
 
 
-@injected
-async def a_llm__openrouter(
+class ALlmOpenrouterProtocol(Protocol):
+    async def __call__(
+        self,
+        text: str,
+        model: str,
+        response_format=None,
+        **kwargs,
+    ) -> Any: ...
+
+
+@injected(protocol=ALlmOpenrouterProtocol)
+async def a_llm__openrouter(  # noqa: PINJ045
     openrouter_model_table: OpenRouterModelTable,
-    openrouter_api,
-    a_openai_compatible_llm,
-    logger,
+    openrouter_api: Any,
+    a_openai_compatible_llm: AOpenaiCompatibleLlmProtocol,
+    logger: Any,
     openrouter_state: dict,
     /,
     text: str,
@@ -932,34 +989,34 @@ class OptionalText(BaseModel):
     text_lines: list[str] | None
 
 
-test_call_gpt4o: IProxy = a_openrouter_chat_completion__without_fix(
+test_call_gpt4o: IProxy[Any] = a_openrouter_chat_completion__without_fix(
     prompt="What is the capital of Japan?", model="openai/gpt-4o"
 )
 
-test_openai_compatible_llm: IProxy = a_openai_compatible_llm(
+test_openai_compatible_llm: IProxy[Any] = a_openai_compatible_llm(
     api=openrouter_api,
     model="deepseek/deepseek-chat",
     text="What is the capital of Japan?",
 )
 
-test_openrouter_text: IProxy = a_llm__openrouter(
+test_openrouter_text: IProxy[Any] = a_llm__openrouter(
     "What is the capital of Japan?", "deepseek/deepseek-chat"
 )
 
-test_openrouter_structure: IProxy = a_llm__openrouter(
+test_openrouter_structure: IProxy[Any] = a_llm__openrouter(
     f"What is the capital of Japan?.{Text.model_json_schema()}",
     # "deepseek/deepseek-chat",
     "deepseek/deepseek-r1-distill-qwen-32b",
     response_format=Text,
 )
 
-test_openrouter_model_table: IProxy = openrouter_model_table
+test_openrouter_model_table: IProxy[Any] = openrouter_model_table
 
-test_openrouter_chat_completion: IProxy = a_openrouter_chat_completion(
+test_openrouter_chat_completion: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan?", model="deepseek/deepseek-chat"
 )
 
-test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_completion(
+test_openrouter_chat_completion_with_structure: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan?",
     model="deepseek/deepseek-chat",
     # model="deepseek/deepseek-r1-distill-qwen-32b",
@@ -967,7 +1024,7 @@ test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_compl
 )
 
 # this must raise error though...
-test_openrouter_chat_completion_with_structure_optional: IProxy = (
+test_openrouter_chat_completion_with_structure_optional: IProxy[Any] = (
     a_openrouter_chat_completion(
         prompt="What is the capital of Japan?",
         model="deepseek/deepseek-chat",
@@ -992,14 +1049,14 @@ class PersonWithUnion(BaseModel):
 # These should raise GeminiCompatibilityError with Gemini-specific compatibility issues
 
 # Test with gemini-pro model
-test_gemini_pro_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
+test_gemini_pro_with_incompatible_schema: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan?",
     model="google/gemini-pro",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
 
 # Test with gemini-flash model
-test_gemini_flash_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
+test_gemini_flash_with_incompatible_schema: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan?",
     model="google/gemini-2.0-flash-001",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
@@ -1012,24 +1069,24 @@ class SimpleResponse(BaseModel):
     confidence: float
 
 
-test_gemini_flash_with_compatible_schema: IProxy = a_openrouter_chat_completion(
+test_gemini_flash_with_compatible_schema: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan? Answer with high confidence.",
     model="google/gemini-2.0-flash-001",
     response_format=SimpleResponse,  # This should be compatible with Gemini
 )
 
-test_is_openapi3_compatible: IProxy = Injected.pure(is_openapi3_compatible).proxy(Text)
-test_is_openapi3_compatible_optional: IProxy = Injected.pure(
+test_is_openapi3_compatible: IProxy[Any] = Injected.pure(is_openapi3_compatible).proxy(Text)
+test_is_openapi3_compatible_optional: IProxy[Any] = Injected.pure(
     is_openapi3_compatible
 ).proxy(OptionalText)
 
 # Tests for is_gemini_compatible function
-test_is_gemini_compatible: IProxy = Injected.pure(is_gemini_compatible).proxy(Text)
-test_is_gemini_compatible_optional: IProxy = Injected.pure(is_gemini_compatible).proxy(
+test_is_gemini_compatible: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(Text)
+test_is_gemini_compatible_optional: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(
     OptionalText
 )
 
-test_is_gemini_compatible_union: IProxy = Injected.pure(is_gemini_compatible).proxy(
+test_is_gemini_compatible_union: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(
     PersonWithUnion
 )
 
@@ -1060,13 +1117,13 @@ class PersonWithComplexValueDict(BaseModel):
     ]  # String keys, complex values - partially compatible
 
 
-test_is_gemini_compatible_dict: IProxy = Injected.pure(is_gemini_compatible).proxy(
+test_is_gemini_compatible_dict: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(
     PersonWithDict
 )
-test_is_gemini_compatible_complex_key_dict: IProxy = Injected.pure(
+test_is_gemini_compatible_complex_key_dict: IProxy[Any] = Injected.pure(
     is_gemini_compatible
 ).proxy(PersonWithComplexDict)
-test_is_gemini_compatible_complex_value_dict: IProxy = Injected.pure(
+test_is_gemini_compatible_complex_value_dict: IProxy[Any] = Injected.pure(
     is_gemini_compatible
 ).proxy(PersonWithComplexValueDict)
 
@@ -1084,38 +1141,38 @@ class PersonWithComplexList(BaseModel):
     addresses: list[Address]
 
 
-test_is_gemini_compatible_complex_list: IProxy = Injected.pure(
+test_is_gemini_compatible_complex_list: IProxy[Any] = Injected.pure(
     is_gemini_compatible
 ).proxy(PersonWithComplexList)
 
-test_return_empty_item: IProxy = a_openrouter_chat_completion(
+test_return_empty_item: IProxy[Any] = a_openrouter_chat_completion(
     prompt="Please answer with empty lines.",
     model="deepseek/deepseek-chat",
     response_format=Text,
 )
 
-test_resize_image: IProxy = a_resize_image_below_5mb(
+test_resize_image: IProxy[Any] = a_resize_image_below_5mb(
     PIL.Image.new("RGB", (4000, 4000), color="red")
 )
 
 # Test cases for JSON support detection
-test_model_supports_json: IProxy = Injected.partial(
+test_model_supports_json: IProxy[Any] = Injected.partial(
     openrouter_model_table.supports_json_output, model_id="openai/gpt-4o"
 )
 
-test_model_no_json_support: IProxy = Injected.partial(
+test_model_no_json_support: IProxy[Any] = Injected.partial(
     openrouter_model_table.supports_json_output, model_id="meta-llama/llama-2-70b-chat"
 )
 
 # Test completion with model that doesn't support JSON (should use fallback)
-test_completion_no_json_support: IProxy = a_openrouter_chat_completion(
+test_completion_no_json_support: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan? Answer with the city name and country.",
     model="meta-llama/llama-2-70b-chat",  # Model without JSON support
     response_format=SimpleResponse,
 )
 
 # Test completion with model that supports JSON
-test_completion_with_json_support: IProxy = a_openrouter_chat_completion(
+test_completion_with_json_support: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan? Answer with the city name and country.",
     model="openai/gpt-4o",  # This model should support JSON
     response_format=SimpleResponse,
