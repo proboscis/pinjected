@@ -14,6 +14,7 @@ from tenacity import (
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
+    wait_random,
 )
 
 
@@ -31,6 +32,12 @@ class ClaudeCodeTimeoutError(ClaudeCodeError):
 
 class ClaudeCodeNotFoundError(ClaudeCodeError):
     """Exception raised when Claude Code command is not found."""
+
+    pass
+
+
+class ClaudeCodeCreditBalanceError(ClaudeCodeError):
+    """Exception raised when Claude Code reports insufficient credit balance."""
 
     pass
 
@@ -161,7 +168,12 @@ async def a_claude_code_subprocess(
             logger.error(
                 f"Claude Code failed with return code {process.returncode}: {error_msg}"
             )
-            raise ClaudeCodeError(f"Claude Code failed: {error_msg}")
+
+            # Check for specific error types
+            if "Credit balance is too low" in error_msg:
+                raise ClaudeCodeCreditBalanceError(f"Claude Code failed: {error_msg}")
+            else:
+                raise ClaudeCodeError(f"Claude Code failed: {error_msg}")
 
         # Decode response
         response_text = stdout.decode()
@@ -299,11 +311,27 @@ IMPORTANT:
                 )
 
 
+def log_claude_code_retry(retry_state):
+    """Log retry attempts for Claude Code calls."""
+    attempt = retry_state.attempt_number
+    if attempt > 1:
+        logger = Logger  # Use the imported logger
+        exception = retry_state.outcome.exception()
+        wait_time = retry_state.next_action.sleep  # type: ignore
+        logger.info(
+            f"Retrying Claude Code (attempt {attempt}/10) after {wait_time:.1f}s wait. "
+            f"Error: {exception}"
+        )
+
+
 @injected(protocol=StructuredLLM)
 @retry(
-    retry=retry_if_exception_type(ClaudeCodeTimeoutError),
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type(
+        (ClaudeCodeTimeoutError, ClaudeCodeCreditBalanceError)
+    ),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=2, max=120) + wait_random(0, 2),
+    before_sleep=log_claude_code_retry,
 )
 async def a_sllm_claude_code(  # noqa: PINJ045
     a_claude_code_subprocess: ClaudeCodeSubprocessProtocol,
@@ -360,6 +388,12 @@ async def a_sllm_claude_code(  # noqa: PINJ045
 
         except ClaudeCodeNotFoundError as e:
             logger.error(f"Claude Code not found: {e}")
+            raise
+        except ClaudeCodeCreditBalanceError as e:
+            logger.warning(f"Credit balance error, will retry: {e}")
+            raise
+        except ClaudeCodeError as e:
+            logger.error(f"Claude Code error: {e}")
             raise
         except Exception as e:
             logger.error(f"Error calling Claude Code: {e}")
