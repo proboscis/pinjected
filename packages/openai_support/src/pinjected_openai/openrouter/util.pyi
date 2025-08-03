@@ -60,21 +60,34 @@ class ALlmOpenrouterProtocol(Protocol):
 
 @overload
 async def a_openrouter_post(payload: dict) -> IProxy[dict]: ...
-
 @overload
 async def a_cached_schema_example_provider(model_schema: dict) -> IProxy[Any]: ...
-
 @overload
-async def a_openrouter_chat_completion__without_fix(prompt: str, model: str, max_tokens: int = ..., temperature: float = ..., images: list[PIL.Image.Image] | None = ..., response_format = ..., provider: dict | None = ..., **kwargs) -> IProxy[Any]: ...
-
+async def a_openrouter_chat_completion__without_fix(
+    prompt: str,
+    model: str,
+    max_tokens: int = ...,
+    temperature: float = ...,
+    images: list[PIL.Image.Image] | None = ...,
+    response_format=...,
+    provider: dict | None = ...,
+    **kwargs,
+) -> IProxy[Any]: ...
 @overload
 async def a_resize_image_below_5mb(img: PIL.Image.Image): ...
-
 @overload
-async def a_openrouter_chat_completion(prompt: str, model: str, max_tokens: int = ..., temperature: float = ..., images: list[PIL.Image.Image] | None = ..., response_format = ..., provider: dict | None = ..., **kwargs): ...
-
+async def a_openrouter_chat_completion(
+    prompt: str,
+    model: str,
+    max_tokens: int = ...,
+    temperature: float = ...,
+    images: list[PIL.Image.Image] | None = ...,
+    response_format=...,
+    provider: dict | None = ...,
+    **kwargs,
+): ...
 @overload
-async def a_llm__openrouter(text: str, model: str, response_format = ..., **kwargs): ...
+async def a_llm__openrouter(text: str, model: str, response_format=..., **kwargs): ...
 
 # Additional symbols:
 
@@ -111,17 +124,13 @@ openrouter_state: IProxy[Any]
 openrouter_timeout_sec: IProxy[float]
 
 def handle_openrouter_error(res: dict, logger) -> None: ...
-
 def extract_json_from_markdown(data: str) -> str: ...
-
-def parse_json_response(data: str, response_format: type[BaseModel], logger = ...) -> Any: ...
-
+def parse_json_response(
+    data: str, response_format: type[BaseModel], logger=...
+) -> Any: ...
 def update_cumulative_cost(state: dict, cost: dict | float) -> None: ...
-
 def build_openrouter_response_format(response_format) -> Any: ...
-
 def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]: ...
-
 def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]: ...
 
 class OpenRouterModelTable:
@@ -136,8 +145,7 @@ class ContactInfoWithUnion:
     type: Literal["email", "phone"]
     value: str
 
-class OpenRouterRateLimitError:
-    ...
+class OpenRouterRateLimitError: ...
 
 class OpenRouterModel:
     id: str
@@ -184,8 +192,7 @@ class OpenRouterCapabilities:
     tools: bool
     model_config: Any
 
-class SchemaCompatibilityError:
-    ...
+class SchemaCompatibilityError: ...
 
 class OpenRouterModelPricing:
     prompt: str
@@ -231,8 +238,7 @@ class OpenRouterArchitecture:
     capabilities: OpenRouterCapabilities | None
     model_config: Any
 
-class OpenRouterTimeOutError:
-    ...
+class OpenRouterTimeOutError: ...
 
 class OpenRouterProviderInfo:
     id: str | None
@@ -247,7 +253,6 @@ class OpenRouterProviderInfo:
 class OptionalText:
     text_lines: list[str] | None
 
-class OpenRouterChatCompletion:
-    ...
+class OpenRouterChatCompletion: ...
 
 # Additional symbols:
