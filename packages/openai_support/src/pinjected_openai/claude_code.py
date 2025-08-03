@@ -55,10 +55,6 @@ class ClaudeCommandPathStrProtocol(Protocol):
     def __call__(self) -> str: ...
 
 
-class ClaudeModelProtocol(Protocol):
-    def __call__(self) -> str: ...
-
-
 @injected(protocol=ClaudeCommandPathStrProtocol)
 def claude_command_path_str() -> str:
     """
@@ -93,10 +89,10 @@ def claude_command_path_str() -> str:
 @injected(protocol=ClaudeCodeSubprocessProtocol)
 async def a_claude_code_subprocess(
     claude_command_path_str: str,
-    claude_model: str,
     logger: Logger,
     /,
     prompt: str,
+    model: str = "opus",
     timeout: float = 120.0,
     **kwargs,
 ) -> str:
@@ -105,9 +101,9 @@ async def a_claude_code_subprocess(
 
     Args:
         claude_command_path_str: Path to claude command (injected)
-        claude_model: Model to use - "sonnet" or "opus" (injected)
-        logger: Logger instance
+        logger: Logger instance (injected)
         prompt: The text prompt to send to Claude
+        model: Model to use - "sonnet" or "opus" (default: "opus")
         timeout: Timeout in seconds for subprocess execution
         **kwargs: Additional arguments (for compatibility)
 
@@ -124,10 +120,10 @@ async def a_claude_code_subprocess(
             f"Claude command not found at specified path: {claude_cmd}"
         )
 
-    cmd = [claude_cmd, "-p", "--model", claude_model]
+    cmd = [claude_cmd, "-p", "--model", model]
 
     logger.info(
-        f"Executing Claude Code with prompt length: {len(prompt)}, model: {claude_model}, using command: {claude_cmd}"
+        f"Executing Claude Code with prompt length: {len(prompt)}, model: {model}, using command: {claude_cmd}"
     )
 
     try:
@@ -300,12 +296,6 @@ async def a_sllm_claude_code(  # noqa: PINJ045
             raise
 
 
-@injected(protocol=ClaudeModelProtocol)
-def claude_model() -> str:
-    """Get the Claude model to use. Default is 'opus'."""
-    return "opus"
-
-
 # Test instances
 class SimpleResponse(BaseModel):
     answer: str
@@ -328,5 +318,4 @@ a_cached_sllm_claude_code: IProxy[StructuredLLM] = async_cached(
 
 __design__ = design(
     claude_command_path_str=str(Path("~/.claude/local/claude").expanduser().absolute()),
-    claude_model="opus",  # Default model
 )

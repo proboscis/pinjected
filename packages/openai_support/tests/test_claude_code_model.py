@@ -25,9 +25,9 @@ async def test_claude_code_subprocess_sonnet_model():
         # Call with sonnet model
         result = await a_claude_code_subprocess.src_function(
             "/usr/local/bin/claude",  # claude_command_path_str
-            "sonnet",  # claude_model
             MagicMock(),  # logger
             prompt="Test prompt",
+            model="sonnet",
         )
 
         # Verify the command includes --model sonnet
@@ -57,9 +57,9 @@ async def test_claude_code_subprocess_opus_model():
         # Call with opus model (default)
         result = await a_claude_code_subprocess.src_function(
             "/usr/local/bin/claude",  # claude_command_path_str
-            "opus",  # claude_model
             MagicMock(),  # logger
             prompt="Test prompt",
+            model="opus",
         )
 
         # Verify the command includes --model opus
@@ -92,25 +92,27 @@ async def test_sllm_claude_code_model_parameter():
 
 
 def test_claude_code_design_example():
-    """Example of how to use different models via design override."""
+    """Example of how to use different models with Claude Code."""
     # To use different models with the Claude Code implementation,
-    # you can override the claude_model dependency:
+    # pass the model parameter when calling the functions:
     #
-    # Example 1: Create a resolver with sonnet model
-    # sonnet_design = design(claude_model="sonnet")
-    # resolver = Injected.resolver(sonnet_design)
-    # sonnet_llm = await resolver.provide(a_sllm_claude_code)
+    # Example 1: Use with sonnet model
+    # result = await a_claude_code_subprocess(
+    #     prompt="Test prompt",
+    #     model="sonnet"
+    # )
     #
-    # Example 2: Create a resolver with opus model (default)
-    # opus_design = design(claude_model="opus")
-    # resolver = Injected.resolver(opus_design)
-    # opus_llm = await resolver.provide(a_sllm_claude_code)
+    # Example 2: Use with opus model (default)
+    # result = await a_claude_code_subprocess(
+    #     prompt="Test prompt",
+    #     model="opus"  # or omit for default
+    # )
     #
-    # Example 3: Use with existing design
-    # my_design = existing_design.merge(design(claude_model="sonnet"))
+    # Example 3: Use with StructuredLLM interface
+    # sllm = await resolver.provide(a_sllm_claude_code)
+    # result = await sllm("Test prompt", model="sonnet")
 
     # For this test, we just verify the imports work
-    from pinjected_openai.claude_code import a_sllm_claude_code, claude_model
+    from pinjected_openai.claude_code import a_sllm_claude_code
 
     assert a_sllm_claude_code is not None
-    assert claude_model is not None

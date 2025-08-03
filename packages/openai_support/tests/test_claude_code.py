@@ -36,9 +36,9 @@ async def test_claude_code_subprocess_plain_text():
         mock_logger = Mock()
         result = await a_claude_code_subprocess.src_function(
             "claude",  # claude_command_path_str
-            "opus",  # claude_model
             mock_logger,
             prompt="What is the capital of Japan?",
+            model="opus",
         )
         assert result == "Tokyo"
 
@@ -73,7 +73,7 @@ async def test_claude_code_subprocess_error():
 
         with pytest.raises(ClaudeCodeError) as exc_info:
             await a_claude_code_subprocess.src_function(
-                "claude", "opus", mock_logger, prompt="Test prompt"
+                "claude", mock_logger, prompt="Test prompt", model="opus"
             )
 
         assert "Claude Code failed" in str(exc_info.value)
@@ -97,7 +97,7 @@ async def test_claude_code_subprocess_timeout():
 
         with pytest.raises(ClaudeCodeTimeoutError) as exc_info:
             await a_claude_code_subprocess.src_function(
-                "claude", "opus", mock_logger, prompt="Test prompt", timeout=1.0
+                "claude", mock_logger, prompt="Test prompt", model="opus", timeout=1.0
             )
 
         assert "timed out" in str(exc_info.value)
@@ -113,7 +113,10 @@ async def test_claude_code_subprocess_not_found():
 
         with pytest.raises(ClaudeCodeNotFoundError) as exc_info:
             await a_claude_code_subprocess.src_function(
-                "/path/to/nonexistent/claude", "opus", mock_logger, prompt="Test prompt"
+                "/path/to/nonexistent/claude",
+                mock_logger,
+                prompt="Test prompt",
+                model="opus",
             )
 
         assert "command not found" in str(exc_info.value)

@@ -3,12 +3,8 @@ from pinjected import IProxy
 from pydantic import BaseModel
 
 claude_command_path_str: IProxy[str]
-claude_model: IProxy[str]
 
 class ClaudeCommandPathStrProtocol(Protocol):
-    def __call__(self) -> str: ...
-
-class ClaudeModelProtocol(Protocol):
     def __call__(self) -> str: ...
 
 class ClaudeCodeError(Exception): ...
@@ -21,7 +17,9 @@ class StructuredLLM(Protocol):
     ) -> Any: ...
 
 class ClaudeCodeSubprocessProtocol(Protocol):
-    async def __call__(self, prompt: str, timeout: float = ..., **kwargs) -> str: ...
+    async def __call__(
+        self, prompt: str, model: str = ..., timeout: float = ..., **kwargs
+    ) -> str: ...
 
 class ClaudeCodeStructuredProtocol(Protocol):
     async def __call__(
@@ -34,7 +32,7 @@ class SimpleResponse(BaseModel):
 
 @overload
 async def a_claude_code_subprocess(
-    prompt: str, timeout: float = ..., **kwargs
+    prompt: str, model: str = ..., timeout: float = ..., **kwargs
 ) -> IProxy[str]: ...
 @overload
 async def a_claude_code_structured(
@@ -56,5 +54,3 @@ a_cached_sllm_claude_code: IProxy[StructuredLLM]
 
 @overload
 def claude_command_path_str() -> IProxy[str]: ...
-@overload
-def claude_model() -> IProxy[str]: ...
