@@ -773,15 +773,22 @@ Extract and format the following response into the required JSON structure.
         if "error" not in res:
             return
 
-        if "Rate limit" in str(res):
+        # Check for 429 rate limit error specifically
+        error_code = res.get("error", {}).get("code")
+        error_message = str(res)
+
+        # Handle 429 rate limit errors (including provider rate limits)
+        if (
+            error_code == 429
+            or "Rate limit" in error_message
+            or "rate-limited" in error_message
+        ):
             self.logger.warning(f"Rate limit error in response: {pformat(res)}")
             raise OpenRouterRateLimitError(res)
-        if "Timed out" in str(res):
+        if "Timed out" in error_message:
             self.logger.warning(f"Timed out error in response: {pformat(res)}")
             raise OpenRouterTimeOutError(res)
-        if "Overloaded" in str(res) or (
-            "error" in res and res["error"].get("code") == 502
-        ):
+        if "Overloaded" in error_message or error_code == 502:
             self.logger.warning(f"Overloaded error in response: {pformat(res)}")
             raise OpenRouterOverloadedError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
