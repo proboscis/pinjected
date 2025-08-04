@@ -5,7 +5,6 @@ from openai.types import CompletionUsage
 from returns.result import ResultE
 import PIL.Image
 
-# Protocol classes
 class SimpleLlmProtocol(Protocol):
     async def __call__(self, prompt: str) -> Any: ...
 
@@ -20,11 +19,11 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
         self,
         prompt: str,
         model: str,
-        max_tokens: int = 8192,
-        temperature: float = 1,
-        images: list[PIL.Image.Image] | None = None,
-        response_format=None,
-        provider: dict | None = None,
+        max_tokens: int = ...,
+        temperature: float = ...,
+        images: list[PIL.Image.Image] | None = ...,
+        response_format=...,
+        provider: dict | None = ...,
         **kwargs,
     ) -> Any: ...
 
@@ -36,27 +35,18 @@ class AOpenrouterChatCompletionProtocol(Protocol):
         self,
         prompt: str,
         model: str,
-        max_tokens: int = 8192,
-        temperature: float = 1,
-        images: list[PIL.Image.Image] | None = None,
-        response_format=None,
-        provider: dict | None = None,
+        max_tokens: int = ...,
+        temperature: float = ...,
+        images: list[PIL.Image.Image] | None = ...,
+        response_format=...,
+        provider: dict | None = ...,
         **kwargs,
     ) -> Any: ...
 
 class ALlmOpenrouterProtocol(Protocol):
     async def __call__(
-        self,
-        text: str,
-        model: str,
-        response_format=None,
-        **kwargs,
+        self, text: str, model: str, response_format=..., **kwargs
     ) -> Any: ...
-
-# IMPORTANT: @injected functions MUST use @overload in .pyi files
-# The @overload decorator is required to properly type-hint the user-facing interface
-# This allows IDEs to show only runtime arguments (after /) to users
-# DO NOT change @overload to @injected - this is intentional for IDE support
 
 @overload
 async def a_openrouter_post(payload: dict) -> IProxy[dict]: ...
@@ -71,6 +61,8 @@ async def a_openrouter_chat_completion__without_fix(
     images: list[PIL.Image.Image] | None = ...,
     response_format=...,
     provider: dict | None = ...,
+    include_reasoning: bool = ...,
+    reasoning: dict | None = ...,
     **kwargs,
 ) -> IProxy[Any]: ...
 @overload
@@ -84,43 +76,75 @@ async def a_openrouter_chat_completion(
     images: list[PIL.Image.Image] | None = ...,
     response_format=...,
     provider: dict | None = ...,
+    include_reasoning: bool = ...,
+    reasoning: dict | None = ...,
     **kwargs,
 ): ...
 @overload
 async def a_llm__openrouter(text: str, model: str, response_format=..., **kwargs): ...
 
-# Additional symbols:
-
 test_call_gpt4o: IProxy[Any]
+
 test_openai_compatible_llm: IProxy[Any]
+
 test_openrouter_text: IProxy[Any]
+
 test_openrouter_structure: IProxy[Text]
+
 test_openrouter_model_table: IProxy[OpenRouterModelTable]
+
 test_openrouter_chat_completion: IProxy[Any]
+
 test_openrouter_chat_completion_with_structure: IProxy[Text]
+
 test_openrouter_chat_completion_with_structure_optional: IProxy[OptionalText]
+
 test_gemini_pro_with_incompatible_schema: IProxy[PersonWithUnion]
+
 test_gemini_flash_with_incompatible_schema: IProxy[PersonWithUnion]
+
 test_gemini_flash_with_compatible_schema: IProxy[SimpleResponse]
-test_is_openapi3_compatible: IProxy[dict[str, list[str]]]
-test_is_openapi3_compatible_optional: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible_optional: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible_union: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible_dict: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible_complex_key_dict: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible_complex_value_dict: IProxy[dict[str, list[str]]]
-test_is_gemini_compatible_complex_list: IProxy[dict[str, list[str]]]
+
+test_is_openapi3_compatible: IProxy[dict[Any]]
+
+test_is_openapi3_compatible_optional: IProxy[dict[Any]]
+
+test_is_gemini_compatible: IProxy[dict[Any]]
+
+test_is_gemini_compatible_optional: IProxy[dict[Any]]
+
+test_is_gemini_compatible_union: IProxy[dict[Any]]
+
+test_is_gemini_compatible_dict: IProxy[dict[Any]]
+
+test_is_gemini_compatible_complex_key_dict: IProxy[dict[Any]]
+
+test_is_gemini_compatible_complex_value_dict: IProxy[dict[Any]]
+
+test_is_gemini_compatible_complex_list: IProxy[dict[Any]]
+
 test_return_empty_item: IProxy[Text]
+
 test_resize_image: IProxy[PIL.Image.Image]
+
 test_model_supports_json: IProxy[bool]
+
 test_model_no_json_support: IProxy[bool]
+
 test_completion_no_json_support: IProxy[SimpleResponse]
+
 test_completion_with_json_support: IProxy[SimpleResponse]
+test_reasoning_simple: IProxy[Any]
+test_reasoning_with_structure: IProxy[Any]
+test_reasoning_advanced: IProxy[Any]
+test_reasoning_exclude: IProxy[Any]
 
 openrouter_model_table: IProxy[OpenRouterModelTable]
+
 openrouter_api: IProxy[Any]
+
 openrouter_state: IProxy[Any]
+
 openrouter_timeout_sec: IProxy[float]
 
 def handle_openrouter_error(res: dict, logger) -> None: ...
@@ -130,8 +154,8 @@ def parse_json_response(
 ) -> Any: ...
 def update_cumulative_cost(state: dict, cost: dict | float) -> None: ...
 def build_openrouter_response_format(response_format) -> Any: ...
-def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]: ...
-def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]: ...
+def is_openapi3_compatible(model: type[BaseModel]) -> dict[Any]: ...
+def is_gemini_compatible(model: type[BaseModel]) -> dict[Any]: ...
 
 class OpenRouterModelTable:
     data: list[OpenRouterModel]
@@ -142,7 +166,7 @@ class OpenRouterModelTable:
     def supports_json_output(self, model_id: str) -> bool: ...
 
 class ContactInfoWithUnion:
-    type: Literal["email", "phone"]
+    type: Literal[Any]
     value: str
 
 class OpenRouterRateLimitError: ...
@@ -157,7 +181,7 @@ class OpenRouterModel:
     pricing: OpenRouterModelPricing
     providers: list[OpenRouterProviderInfo] | None
     top_provider: OpenRouterProviderInfo | None
-    per_request_limits: dict[str, Any] | None
+    per_request_limits: dict[Any] | None
     model_config: Any
     def supports_json_output(self) -> bool: ...
 
@@ -174,7 +198,7 @@ class Text:
     text_lines: list[str]
 
 class GeminiCompatibilityError:
-    def __init__(self, model: type, issues: dict[str, list[str]]) -> Any: ...
+    def __init__(self, model: type, issues: dict[Any]) -> Any: ...
 
 class PersonWithComplexList:
     name: str
@@ -184,7 +208,7 @@ class PersonWithComplexList:
 class PersonWithComplexDict:
     name: str
     age: int
-    scores: dict[int, float]
+    scores: dict[Any]
 
 class OpenRouterCapabilities:
     vision: bool
@@ -205,10 +229,10 @@ class OpenRouterModelPricing:
     input_cache_write: str | None
     model_config: Any
     def calc_cost(self, usage: CompletionUsage | dict) -> Any: ...
-    def calc_cost_dict(self, usage: dict) -> dict[str, float]: ...
+    def calc_cost_dict(self, usage: dict) -> dict[Any]: ...
 
 class OpenAPI3CompatibilityError:
-    def __init__(self, model: type, issues: dict[str, list[str]]) -> Any: ...
+    def __init__(self, model: type, issues: dict[Any]) -> Any: ...
 
 class SimpleResponse:
     answer: str
@@ -217,12 +241,12 @@ class SimpleResponse:
 class PersonWithDict:
     name: str
     age: int
-    attributes: dict[str, str]
+    attributes: dict[Any]
 
 class PersonWithComplexValueDict:
     name: str
     age: int
-    details: dict[str, ComplexValue]
+    details: dict[Any]
 
 class Address:
     street: str
@@ -243,7 +267,7 @@ class OpenRouterTimeOutError: ...
 class OpenRouterProviderInfo:
     id: str | None
     name: str | None
-    parameters: dict[str, Any] | None
+    parameters: dict[Any] | None
     is_moderated: bool
     context_length: int | None
     max_completion_tokens: int | None
@@ -254,5 +278,3 @@ class OptionalText:
     text_lines: list[str] | None
 
 class OpenRouterChatCompletion: ...
-
-# Additional symbols:
