@@ -1,20 +1,23 @@
-from typing import overload, Any, Literal, Protocol
+from typing import overload, Any, Literal, TYPE_CHECKING
 from pinjected import IProxy
 from pydantic import BaseModel
 from openai.types import CompletionUsage
-from returns.result import ResultE
 import PIL.Image
+from returns.result import ResultE
 
-class SimpleLlmProtocol(Protocol):
+if TYPE_CHECKING:
+    from pinjected.llms.structured_llm import StructuredLLM
+
+class SimpleLlmProtocol:
     async def __call__(self, prompt: str) -> Any: ...
 
-class AOpenrouterPostProtocol(Protocol):
+class AOpenrouterPostProtocol:
     async def __call__(self, payload: dict) -> dict: ...
 
-class ACachedSchemaExampleProviderProtocol(Protocol):
+class ACachedSchemaExampleProviderProtocol:
     async def __call__(self, model_schema: dict) -> Any: ...
 
-class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
+class AOpenrouterChatCompletionWithoutFixProtocol:
     async def __call__(
         self,
         prompt: str,
@@ -24,13 +27,15 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
         images: list[PIL.Image.Image] | None = ...,
         response_format=...,
         provider: dict | None = ...,
+        include_reasoning: bool = ...,
+        reasoning: dict | None = ...,
         **kwargs,
     ) -> Any: ...
 
-class AResizeImageBelow5mbProtocol(Protocol):
+class AResizeImageBelow5mbProtocol:
     async def __call__(self, img: PIL.Image.Image) -> PIL.Image.Image: ...
 
-class AOpenrouterChatCompletionProtocol(Protocol):
+class AOpenrouterChatCompletionProtocol:
     async def __call__(
         self,
         prompt: str,
@@ -40,10 +45,12 @@ class AOpenrouterChatCompletionProtocol(Protocol):
         images: list[PIL.Image.Image] | None = ...,
         response_format=...,
         provider: dict | None = ...,
+        include_reasoning: bool = ...,
+        reasoning: dict | None = ...,
         **kwargs,
     ) -> Any: ...
 
-class ALlmOpenrouterProtocol(Protocol):
+class ALlmOpenrouterProtocol:
     async def __call__(
         self, text: str, model: str, response_format=..., **kwargs
     ) -> Any: ...
@@ -83,79 +90,83 @@ async def a_openrouter_chat_completion(
 @overload
 async def a_llm__openrouter(text: str, model: str, response_format=..., **kwargs): ...
 
-test_call_gpt4o: IProxy[Any]
+test_call_gpt4o: Any
 
-test_openai_compatible_llm: IProxy[Any]
+test_openai_compatible_llm: Any
 
-test_openrouter_text: IProxy[Any]
+test_openrouter_text: Any
 
-test_openrouter_structure: IProxy[Text]
+test_openrouter_structure: Any
 
-test_openrouter_model_table: IProxy[OpenRouterModelTable]
+test_openrouter_model_table: Any
 
-test_openrouter_chat_completion: IProxy[Any]
+test_openrouter_chat_completion: Any
 
-test_openrouter_chat_completion_with_structure: IProxy[Text]
+test_openrouter_chat_completion_with_structure: Any
 
-test_openrouter_chat_completion_with_structure_optional: IProxy[OptionalText]
+test_openrouter_chat_completion_with_structure_optional: Any
 
-test_gemini_pro_with_incompatible_schema: IProxy[PersonWithUnion]
+test_gemini_pro_with_incompatible_schema: Any
 
-test_gemini_flash_with_incompatible_schema: IProxy[PersonWithUnion]
+test_gemini_flash_with_incompatible_schema: Any
 
-test_gemini_flash_with_compatible_schema: IProxy[SimpleResponse]
+test_gemini_flash_with_compatible_schema: Any
 
-test_is_openapi3_compatible: IProxy[dict[Any]]
+test_is_openapi3_compatible: Any
 
-test_is_openapi3_compatible_optional: IProxy[dict[Any]]
+test_is_openapi3_compatible_optional: Any
 
-test_is_gemini_compatible: IProxy[dict[Any]]
+test_is_gemini_compatible: Any
 
-test_is_gemini_compatible_optional: IProxy[dict[Any]]
+test_is_gemini_compatible_optional: Any
 
-test_is_gemini_compatible_union: IProxy[dict[Any]]
+test_is_gemini_compatible_union: Any
 
-test_is_gemini_compatible_dict: IProxy[dict[Any]]
+test_is_gemini_compatible_dict: Any
 
-test_is_gemini_compatible_complex_key_dict: IProxy[dict[Any]]
+test_is_gemini_compatible_complex_key_dict: Any
 
-test_is_gemini_compatible_complex_value_dict: IProxy[dict[Any]]
+test_is_gemini_compatible_complex_value_dict: Any
 
-test_is_gemini_compatible_complex_list: IProxy[dict[Any]]
+test_is_gemini_compatible_complex_list: Any
 
-test_return_empty_item: IProxy[Text]
+test_return_empty_item: Any
 
-test_resize_image: IProxy[PIL.Image.Image]
+test_resize_image: Any
 
-test_model_supports_json: IProxy[bool]
+test_model_supports_json: Any
 
-test_model_no_json_support: IProxy[bool]
+test_model_no_json_support: Any
 
-test_completion_no_json_support: IProxy[SimpleResponse]
+test_completion_no_json_support: Any
 
-test_completion_with_json_support: IProxy[SimpleResponse]
-test_reasoning_simple: IProxy[Any]
-test_reasoning_with_structure: IProxy[Any]
-test_reasoning_advanced: IProxy[Any]
-test_reasoning_exclude: IProxy[Any]
+test_completion_with_json_support: Any
 
-openrouter_model_table: IProxy[OpenRouterModelTable]
+test_reasoning_simple: Any
 
-openrouter_api: IProxy[Any]
+test_reasoning_with_structure: Any
 
-openrouter_state: IProxy[Any]
+test_reasoning_advanced: Any
 
-openrouter_timeout_sec: IProxy[float]
+test_reasoning_exclude: Any
+
+openrouter_model_table: Any
+
+openrouter_api: Any
+
+openrouter_state: Any
+
+openrouter_timeout_sec: Any
 
 def handle_openrouter_error(res: dict, logger) -> None: ...
 def extract_json_from_markdown(data: str) -> str: ...
-def parse_json_response(
-    data: str, response_format: type[BaseModel], logger=...
-) -> Any: ...
-def update_cumulative_cost(state: dict, cost: dict | float) -> None: ...
-def build_openrouter_response_format(response_format) -> Any: ...
-def is_openapi3_compatible(model: type[BaseModel]) -> dict[Any]: ...
-def is_gemini_compatible(model: type[BaseModel]) -> dict[Any]: ...
+def parse_json_response(*args, **kwargs) -> Any: ...
+def update_cumulative_cost(
+    openrouter_state: dict, cost_dict: ResultE[dict]
+) -> None: ...
+def build_openrouter_response_format(*args, **kwargs) -> Any: ...
+def is_openapi3_compatible(*args, **kwargs) -> Any: ...
+def is_gemini_compatible(*args, **kwargs) -> Any: ...
 
 class OpenRouterModelTable:
     data: list[OpenRouterModel]
@@ -228,8 +239,8 @@ class OpenRouterModelPricing:
     input_cache_read: str | None
     input_cache_write: str | None
     model_config: Any
-    def calc_cost(self, usage: CompletionUsage | dict) -> Any: ...
-    def calc_cost_dict(self, usage: dict) -> dict[Any]: ...
+    def calc_cost(self, usage: CompletionUsage) -> Any: ...
+    def calc_cost_dict(self, usage: dict) -> Any: ...
 
 class OpenAPI3CompatibilityError:
     def __init__(self, model: type, issues: dict[Any]) -> Any: ...
@@ -277,4 +288,101 @@ class OpenRouterProviderInfo:
 class OptionalText:
     text_lines: list[str] | None
 
-class OpenRouterChatCompletion: ...
+class OpenRouterChatCompletion:
+    async def __call__(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = ...,
+        temperature: float = ...,
+        images: list[PIL.Image.Image] | None = ...,
+        response_format: BaseModel | None = ...,
+        provider: dict[Any] | None = ...,
+        **kwargs,
+    ) -> Any: ...
+
+__openapi3_compatibility_cache: Any
+
+__gemini_compatibility_cache: Any
+
+__design__: Any
+
+__debug_design: Any
+
+async def parse_json_response(*args, **kwargs) -> Any: ...
+async def setup_response_format(
+    response_format: type[BaseModel] | None,
+    model: str,
+    prompt: str,
+    provider_filter: dict[Any],
+    logger: Any,
+    openrouter_model_table: OpenRouterModelTable,
+    a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
+) -> tuple[Any]: ...
+async def handle_structured_response(
+    data: str,
+    response_format: type[BaseModel] | None,
+    prompt: str,
+    use_json_fix_fallback: bool,
+    logger: Any,
+    a_structured_llm_for_json_fix: StructuredLLM,
+) -> Any: ...
+
+openrouter_chat_completion_helper: IProxy[OpenRouterChatCompletionHelper]
+
+# Additional symbols:
+class OpenRouterChatCompletionHelper:
+    def __init__(
+        self,
+        openrouter_model_table: OpenRouterModelTable,
+        a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
+        a_structured_llm_for_json_fix: StructuredLLM,
+        logger: Any,
+        a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
+        openrouter_state: dict,
+        a_openrouter_post: AOpenrouterPostProtocol,
+    ) -> Any: ...
+    async def setup_response_format(
+        self,
+        response_format: type[BaseModel] | None,
+        model: str,
+        prompt: str,
+        provider_filter: dict[str, Any],
+    ) -> tuple[str, dict[str, Any], bool]: ...
+    async def handle_structured_response(
+        self,
+        data: str,
+        response_format: type[BaseModel] | None,
+        prompt: str,
+        use_json_fix_fallback: bool,
+    ) -> Any: ...
+    async def build_chat_payload(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        images: list[PIL.Image.Image] | None,
+        provider_filter: dict,
+        kwargs: dict,
+        include_reasoning: bool,
+        reasoning: dict | None,
+    ) -> dict[str, Any]: ...
+    def handle_openrouter_error(self, res: dict) -> None: ...
+    def update_cumulative_cost(self, cost_dict: ResultE[dict]) -> None: ...
+    def extract_reasoning_content(
+        self, res: dict, include_reasoning: bool, reasoning: dict | None
+    ) -> str | None: ...
+    async def perform_chat_completion(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = ...,
+        temperature: float = ...,
+        images: list[PIL.Image.Image] | None = ...,
+        response_format=...,
+        provider: dict | None = ...,
+        include_reasoning: bool = ...,
+        reasoning: dict | None = ...,
+        **kwargs,
+    ) -> dict[str, Any]: ...
