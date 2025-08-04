@@ -42,6 +42,7 @@ pub mod pinj047_max_mutable_attributes;
 pub mod pinj048_no_default_dependencies_in_injected;
 pub mod pinj049_enforce_protocol_type_annotations;
 pub mod pinj050_no_os_environ;
+pub mod pinj051_no_setter_methods;
 // Future rules would be added here:
 // ... etc
 
@@ -92,6 +93,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj048_no_default_dependencies_in_injected::NoDefaultDependenciesInInjectedRule::new()),
         Box::new(pinj049_enforce_protocol_type_annotations::EnforceProtocolTypeAnnotationsRule::new()),
         Box::new(pinj050_no_os_environ::NoOsEnvironRule::new()),
+        Box::new(pinj051_no_setter_methods::NoSetterMethodsRule::new()),
         // Add more rules here as they're implemented
     ]
 }
@@ -139,5 +141,6 @@ mod tests {
         assert!(rule_ids.contains(&"PINJ048"), "PINJ048 not found!");
         assert!(rule_ids.contains(&"PINJ049"), "PINJ049 not found!");
         assert!(rule_ids.contains(&"PINJ050"), "PINJ050 not found!");
+        assert!(rule_ids.contains(&"PINJ051"), "PINJ051 not found!");
     }
 }
