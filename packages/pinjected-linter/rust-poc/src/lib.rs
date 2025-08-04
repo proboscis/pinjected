@@ -122,7 +122,7 @@ fn analyze_file(
         // Only run rules that don't require decorators
         rules
             .iter()
-            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036" | "PINJ046" | "PINJ047" | "PINJ050")) // Builtin shadowing, pyi enforcement, mutable attribute rules, and os.environ
+            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036" | "PINJ046" | "PINJ047" | "PINJ050" | "PINJ051")) // Builtin shadowing, pyi enforcement, mutable attribute rules, os.environ, and setter methods
             .collect()
     } else {
         rules.iter().collect()
@@ -172,7 +172,7 @@ fn analyze_file(
                 }
 
                 // Also add rules that need to check inside classes
-                if matches!(rule.rule_id(), "PINJ033" | "PINJ041" | "PINJ046" | "PINJ047") {
+                if matches!(rule.rule_id(), "PINJ033" | "PINJ041" | "PINJ046" | "PINJ047" | "PINJ051") {
                     class_rules.push(rule);
                 }
             }
