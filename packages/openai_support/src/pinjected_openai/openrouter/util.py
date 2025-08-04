@@ -310,6 +310,8 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
         images: list[PIL.Image.Image] | None = None,
         response_format=None,
         provider: dict | None = None,
+        include_reasoning: bool = False,
+        reasoning: dict | None = None,
         **kwargs,
     ) -> Any: ...
 
@@ -320,7 +322,7 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion__without_fix(
+async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
     a_openrouter_post: AOpenrouterPostProtocol,
     logger: Any,
     openrouter_model_table: OpenRouterModelTable,
@@ -333,6 +335,8 @@ async def a_openrouter_chat_completion__without_fix(
     images: list[PIL.Image.Image] | None = None,
     response_format=None,
     provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
     **kwargs,
 ) -> Any:
     """
@@ -350,6 +354,12 @@ async def a_openrouter_chat_completion__without_fix(
       ],
       allow_fallbacks=False # if everything in order fails, fails the completion. Default is True so some other provider will be used.
     }
+    :param include_reasoning: Whether to include reasoning tokens in the response
+    :param reasoning: Advanced reasoning configuration dict with keys:
+        - effort: 'high', 'medium', or 'low' (controls reasoning allocation)
+        - max_tokens: specific token limit for reasoning
+        - exclude: whether to exclude reasoning from response
+        - enabled: whether reasoning is enabled
     :param kwargs:
     :return:
     """
@@ -383,6 +393,14 @@ async def a_openrouter_chat_completion__without_fix(
         **provider_filter,
         **kwargs,
     }
+
+    # Add reasoning support
+    if include_reasoning:
+        payload["include_reasoning"] = True
+
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+
     from pprint import pformat
 
     res = await a_openrouter_post(payload)
@@ -406,20 +424,39 @@ async def a_openrouter_chat_completion__without_fix(
     logger.info(
         f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
     )
+
+    # Extract reasoning tokens if present
+    reasoning_content = None
+    if include_reasoning or reasoning is not None:
+        message = res["choices"][0]["message"]
+        if "reasoning" in message:
+            reasoning_content = message["reasoning"]
+
     data = res["choices"][0]["message"]["content"]
 
     if response_format is not None and issubclass(response_format, BaseModel):
         try:
             if "```" in data:
                 data = data.split("```")[1].strip()
-            return response_format.model_validate_json(data)
+            result = response_format.model_validate_json(data)
+            # Return result with reasoning if available
+            if reasoning_content is not None:
+                return {"result": result, "reasoning": reasoning_content}
+            return result
         except Exception as e:
             logger.warning(
                 f"Error in response validation:\n{pformat(payload)}\n{pformat(res)} \n {e} cause:\n{data}"
             )
             data_dict = json_repair.loads(data)
-            return response_format.model_validate(data_dict)
+            result = response_format.model_validate(data_dict)
+            # Return result with reasoning if available
+            if reasoning_content is not None:
+                return {"result": result, "reasoning": reasoning_content}
+            return result
     else:
+        # Return data with reasoning if available
+        if reasoning_content is not None:
+            return {"result": data, "reasoning": reasoning_content}
         return data
 
 
@@ -751,6 +788,8 @@ class AOpenrouterChatCompletionProtocol(Protocol):
         images: list[PIL.Image.Image] | None = None,
         response_format=None,
         provider: dict | None = None,
+        include_reasoning: bool = False,
+        reasoning: dict | None = None,
         **kwargs,
     ) -> Any: ...
 
@@ -761,7 +800,7 @@ class AOpenrouterChatCompletionProtocol(Protocol):
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion(
+async def a_openrouter_chat_completion(  # noqa: PINJ045
     a_openrouter_post: AOpenrouterPostProtocol,
     logger: Any,
     a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
@@ -777,6 +816,8 @@ async def a_openrouter_chat_completion(
     images: list[PIL.Image.Image] | None = None,
     response_format=None,
     provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
     **kwargs,
 ):
     """
@@ -794,6 +835,12 @@ async def a_openrouter_chat_completion(
       ],
       allow_fallbacks=False # if everything in order fails, fails the completion. Default is True so some other provider will be used.
     }
+    :param include_reasoning: Whether to include reasoning tokens in the response
+    :param reasoning: Advanced reasoning configuration dict with keys:
+        - effort: 'high', 'medium', or 'low' (controls reasoning allocation)
+        - max_tokens: specific token limit for reasoning
+        - exclude: whether to exclude reasoning from response
+        - enabled: whether reasoning is enabled
     :param kwargs:
     :return:
     """
@@ -856,6 +903,14 @@ async def a_openrouter_chat_completion(
         **provider_filter,
         **kwargs,
     }
+
+    # Add reasoning support
+    if include_reasoning:
+        payload["include_reasoning"] = True
+
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+
     from pprint import pformat
 
     # logger.debug(f"payload:{pformat(payload)}")
@@ -881,6 +936,14 @@ async def a_openrouter_chat_completion(
     logger.info(
         f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
     )
+
+    # Extract reasoning tokens if present
+    reasoning_content = None
+    if include_reasoning or reasoning is not None:
+        message = res["choices"][0]["message"]
+        if "reasoning" in message:
+            reasoning_content = message["reasoning"]
+
     data = res["choices"][0]["message"]["content"]
 
     if response_format is not None and issubclass(response_format, BaseModel):
@@ -893,22 +956,34 @@ Extract and format the following response into the required JSON structure.
 # Response
 {data}
 """
-            return await a_structured_llm_for_json_fix(
+            result = await a_structured_llm_for_json_fix(
                 fix_prompt, response_format=response_format
             )
+            # Return result with reasoning if available
+            if reasoning_content is not None:
+                return {"result": result, "reasoning": reasoning_content}
+            return result
 
         # Model supports JSON, try to parse normally
         try:
             if "```" in data:
                 data = data.split("```")[1].strip()
-            return response_format.model_validate_json(data)
+            result = response_format.model_validate_json(data)
+            # Return result with reasoning if available
+            if reasoning_content is not None:
+                return {"result": result, "reasoning": reasoning_content}
+            return result
         except Exception as e:
             logger.warning(
                 f"Error in response validation:\n{pformat(payload)}\n{pformat(res)} \n {e} cause:\n{data}"
             )
             try:
                 data_dict = json_repair.loads(data)
-                return response_format.model_validate(data_dict)
+                result = response_format.model_validate(data_dict)
+                # Return result with reasoning if available
+                if reasoning_content is not None:
+                    return {"result": result, "reasoning": reasoning_content}
+                return result
             except Exception:
                 logger.warning(f"json_repair could not repair.{data}")
                 fix_prompt = f"""
@@ -919,10 +994,17 @@ Please fix the following json object (Response) to match the schema:
 # Response
 {data}
 """
-                return await a_structured_llm_for_json_fix(
+                result = await a_structured_llm_for_json_fix(
                     fix_prompt, response_format=response_format
                 )
+                # Return result with reasoning if available
+                if reasoning_content is not None:
+                    return {"result": result, "reasoning": reasoning_content}
+                return result
     else:
+        # Return data with reasoning if available
+        if reasoning_content is not None:
+            return {"result": data, "reasoning": reasoning_content}
         return data
 
 
@@ -937,7 +1019,7 @@ class ALlmOpenrouterProtocol(Protocol):
 
 
 @injected(protocol=ALlmOpenrouterProtocol)
-async def a_llm__openrouter(
+async def a_llm__openrouter(  # noqa: PINJ045
     openrouter_model_table: OpenRouterModelTable,
     openrouter_api: Any,
     a_openai_compatible_llm: AOpenaiCompatibleLlmProtocol,
@@ -1185,6 +1267,41 @@ test_completion_with_json_support: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan? Answer with the city name and country.",
     model="openai/gpt-4o",  # This model should support JSON
     response_format=SimpleResponse,
+)
+
+# Test reasoning tokens with simple prompt
+test_reasoning_simple: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is 2+2? Think step by step.",
+    model="deepseek/deepseek-r1",
+    include_reasoning=True,
+)
+
+# Test reasoning tokens with structured output
+test_reasoning_with_structure: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Think through this step by step.",
+    model="deepseek/deepseek-r1",
+    response_format=SimpleResponse,
+    include_reasoning=True,
+)
+
+# Test reasoning with advanced configuration
+test_reasoning_advanced: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="Explain why the sky is blue. Use detailed reasoning.",
+    model="deepseek/deepseek-r1",
+    reasoning={
+        "effort": "high",
+        "max_tokens": 2000,
+    },
+)
+
+# Test reasoning with exclude option
+test_reasoning_exclude: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the meaning of life?",
+    model="deepseek/deepseek-r1",
+    reasoning={
+        "effort": "medium",
+        "exclude": True,  # Use reasoning internally but don't include in response
+    },
 )
 
 
