@@ -71,6 +71,10 @@ class OpenRouterTimeOutError(Exception):
     pass
 
 
+class OpenRouterOverloadedError(Exception):
+    pass
+
+
 # from vision_llm import a_vision_llm__gpt4o
 
 
@@ -319,7 +323,9 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
 
 @injected(protocol=AOpenrouterChatCompletionWithoutFixProtocol)
 @retry(
-    retry=retry_if_exception_type((httpx.ReadTimeout, OpenRouterRateLimitError)),
+    retry=retry_if_exception_type(
+        (httpx.ReadTimeout, OpenRouterRateLimitError, OpenRouterOverloadedError)
+    ),
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
@@ -449,6 +455,9 @@ def handle_openrouter_error(res: dict, logger):
     if "Timed out" in str(res):
         logger.warning(f"Timed out error in response: {pformat(res)}")
         raise OpenRouterTimeOutError(res)
+    if "Overloaded" in str(res) or ("error" in res and res["error"].get("code") == 502):
+        logger.warning(f"Overloaded error in response: {pformat(res)}")
+        raise OpenRouterOverloadedError(res)
     raise RuntimeError(f"Error in response: {pformat(res)}")
 
 
@@ -770,6 +779,11 @@ Extract and format the following response into the required JSON structure.
         if "Timed out" in str(res):
             self.logger.warning(f"Timed out error in response: {pformat(res)}")
             raise OpenRouterTimeOutError(res)
+        if "Overloaded" in str(res) or (
+            "error" in res and res["error"].get("code") == 502
+        ):
+            self.logger.warning(f"Overloaded error in response: {pformat(res)}")
+            raise OpenRouterOverloadedError(res)
         raise RuntimeError(f"Error in response: {pformat(res)}")
 
     def update_cumulative_cost(self, cost_dict: ResultE[dict]):
@@ -1143,6 +1157,13 @@ class AOpenrouterChatCompletionProtocol(Protocol):
 
 
 @injected(protocol=AOpenrouterChatCompletionProtocol)
+@retry(
+    retry=retry_if_exception_type(
+        (httpx.ReadTimeout, OpenRouterRateLimitError, OpenRouterOverloadedError)
+    ),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=5, max=120),
+)
 async def a_openrouter_chat_completion(  # noqa: PINJ045
     openrouter_chat_completion_helper: OpenRouterChatCompletionHelper,
     /,
