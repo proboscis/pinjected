@@ -386,3 +386,6 @@ class OpenRouterChatCompletionHelper:
         reasoning: dict | None = ...,
         **kwargs,
     ) -> dict[str, Any]: ...
+
+# Additional symbols:
+class OpenRouterOverloadedError: ...
