@@ -91,6 +91,10 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         include_str!("../../docs/rules/pinj028_no_design_in_injected.md"),
     );
     docs.insert(
+        "PINJ029",
+        include_str!("../../docs/rules/pinj029_no_injected_pure_instantiation.md"),
+    );
+    docs.insert(
         "PINJ031",
         include_str!("../../docs/rules/pinj031_no_injected_calls_in_decorators.md"),
     );
@@ -137,6 +141,30 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
     docs.insert(
         "PINJ045",
         include_str!("../../docs/rules/pinj045_no_mode_parameters.md"),
+    );
+    docs.insert(
+        "PINJ046",
+        include_str!("../../docs/rules/pinj046_mutable_attribute_naming.md"),
+    );
+    docs.insert(
+        "PINJ047",
+        include_str!("../../docs/rules/pinj047_max_mutable_attributes.md"),
+    );
+    docs.insert(
+        "PINJ048",
+        include_str!("../../docs/rules/pinj048_no_default_dependencies_in_injected.md"),
+    );
+    docs.insert(
+        "PINJ049",
+        include_str!("../../docs/rules/pinj049_enforce_protocol_type_annotations.md"),
+    );
+    docs.insert(
+        "PINJ050",
+        include_str!("../../docs/rules/pinj050_no_os_environ.md"),
+    );
+    docs.insert(
+        "PINJ051",
+        include_str!("../../docs/rules/pinj051_no_setter_methods.md"),
     );
 
     docs
