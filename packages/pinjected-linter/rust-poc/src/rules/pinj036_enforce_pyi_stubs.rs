@@ -6,7 +6,7 @@
 
 use crate::models::{Fix, RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_injected_decorator, has_injected_decorator_async};
+use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_injected_decorator, has_injected_decorator_async, has_pinjected_import};
 use rustpython_ast::{Arg, ArgWithDefault, Constant, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 use rustpython_parser::{parse, Mode};
 use std::collections::{HashMap, HashSet};
@@ -1373,6 +1373,11 @@ impl LintRule for EnforcePyiStubsRule {
 
         // Check if file should be excluded
         if self.should_exclude(context.file_path) {
+            return violations;
+        }
+
+        // Only run this rule if pinjected is imported
+        if !has_pinjected_import(context.ast) {
             return violations;
         }
 

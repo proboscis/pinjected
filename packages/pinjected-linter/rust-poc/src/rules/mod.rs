@@ -31,7 +31,7 @@ pub mod pinj033_no_iproxy_argument_type;
 pub mod pinj034_no_lambda_in_design;
 pub mod pinj035_deprecated_design_functions;
 pub mod pinj036_enforce_pyi_stubs;
-pub mod pinj040_injected_pytest_deprecated;
+pub mod pinj040_enforce_injected_pytest;
 pub mod pinj041_no_underscore_defaults_in_injected_dataclass;
 pub mod pinj042_no_unmarked_injected_calls;
 pub mod pinj043_no_design_in_test_functions;
@@ -43,6 +43,10 @@ pub mod pinj048_no_default_dependencies_in_injected;
 pub mod pinj049_enforce_protocol_type_annotations;
 pub mod pinj050_no_os_environ;
 pub mod pinj051_no_setter_methods;
+pub mod pinj052_deprecated_register_fixtures;
+pub mod pinj053_no_test_classes;
+pub mod pinj054_no_tuple_returns;
+pub mod pinj055_no_lambda_in_design_call;
 // Future rules would be added here:
 // ... etc
 
@@ -82,7 +86,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj034_no_lambda_in_design::NoLambdaInDesignRule::new()),
         Box::new(pinj035_deprecated_design_functions::DeprecatedDesignFunctionsRule::new()),
         Box::new(pinj036_enforce_pyi_stubs::EnforcePyiStubsRule::new()),
-        Box::new(pinj040_injected_pytest_deprecated::InjectedPytestDeprecatedRule::new()),
+        Box::new(pinj040_enforce_injected_pytest::EnforceInjectedPytestRule::new()),
         Box::new(pinj041_no_underscore_defaults_in_injected_dataclass::NoUnderscoreDefaultsInInjectedDataclassRule::new()),
         Box::new(pinj042_no_unmarked_injected_calls::NoUnmarkedInjectedCallsRule::new()),
         Box::new(pinj043_no_design_in_test_functions::NoDesignInTestFunctionsRule::new()),
@@ -94,6 +98,10 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj049_enforce_protocol_type_annotations::EnforceProtocolTypeAnnotationsRule::new()),
         Box::new(pinj050_no_os_environ::NoOsEnvironRule::new()),
         Box::new(pinj051_no_setter_methods::NoSetterMethodsRule::new()),
+        Box::new(pinj052_deprecated_register_fixtures::DeprecatedRegisterFixturesRule::new()),
+        Box::new(pinj053_no_test_classes::NoTestClassesRule::new()),
+        Box::new(pinj054_no_tuple_returns::NoTupleReturnsRule::new()),
+        Box::new(pinj055_no_lambda_in_design_call::NoLambdaInDesignCallRule::new()),
         // Add more rules here as they're implemented
     ]
 }
