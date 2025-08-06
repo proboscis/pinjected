@@ -5,7 +5,7 @@
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use rustpython_ast::{Expr, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
+use rustpython_ast::{Expr, ExprCall, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 
 pub struct EnforceInjectedPytestRule;
 
@@ -18,6 +18,11 @@ impl EnforceInjectedPytestRule {
     fn is_injected_pytest_decorator(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Name(name) => name.id.as_str() == "injected_pytest",
+            Expr::Call(call) => {
+                // Check if the function being called is injected_pytest
+                // This handles @injected_pytest() and @injected_pytest(__design__)
+                self.is_injected_pytest_decorator(&call.func)
+            }
             Expr::Attribute(attr) => {
                 // Check for pinjected.test_helpers.injected_pytest
                 if let Expr::Attribute(inner_attr) = &*attr.value {
