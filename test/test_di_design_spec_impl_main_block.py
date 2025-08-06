@@ -163,10 +163,18 @@ class TestMainBlockExecution:
             with patch("loguru.logger"):
                 # Import and execute the main block
                 import importlib
+                from pathlib import Path
+
+                # Find the project root dynamically
+                test_dir = Path(__file__).parent
+                project_root = test_dir.parent
+                impl_path = (
+                    project_root / "pinjected" / "di" / "design_spec" / "impl.py"
+                )
 
                 spec = importlib.util.spec_from_file_location(
                     "impl_main",
-                    "/Users/s22625/repos/pinjected/pinjected/di/design_spec/impl.py",
+                    str(impl_path),
                 )
                 module = importlib.util.module_from_spec(spec)
 

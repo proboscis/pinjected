@@ -191,14 +191,21 @@ class TestMainBlockCoverage:
     def test_main_block_execution(self):
         """Test executing the main block to improve coverage."""
         # Run the module as __main__
+        from pathlib import Path
+
+        # Find the project root dynamically
+        test_dir = Path(__file__).parent
+        project_root = test_dir.parent
+        impl_path = project_root / "pinjected" / "di" / "design_spec" / "impl.py"
+
         result = subprocess.run(
             [
                 sys.executable,
-                "/Users/s22625/repos/pinjected/pinjected/di/design_spec/impl.py",
+                str(impl_path),
             ],
             capture_output=True,
             text=True,
-            cwd="/Users/s22625/repos/pinjected",
+            cwd=str(project_root),
         )
 
         # The main block logs various things, so we should see output

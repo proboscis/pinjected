@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from pathlib import Path
 
 
 class TestMetaMain:
@@ -10,11 +11,15 @@ class TestMetaMain:
     def test_meta_main_execution(self):
         """Test that meta_main can be executed as a script."""
         # Test running meta_main as a module
+        # Find the project root dynamically
+        test_dir = Path(__file__).parent
+        project_root = test_dir.parent
+
         result = subprocess.run(
             [sys.executable, "-m", "pinjected.meta_main", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/s22625/repos/pinjected",
+            cwd=str(project_root),
         )
 
         # The module runs but may have errors due to dependencies
@@ -25,11 +30,15 @@ class TestMetaMain:
 
     def test_meta_main_deprecation_warning(self):
         """Test that deprecation warning is shown."""
+        # Find the project root dynamically
+        test_dir = Path(__file__).parent
+        project_root = test_dir.parent
+
         result = subprocess.run(
             [sys.executable, "-m", "pinjected.meta_main", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/s22625/repos/pinjected",
+            cwd=str(project_root),
             env={**subprocess.os.environ, "PYTHONWARNINGS": "default"},
         )
 
@@ -38,10 +47,14 @@ class TestMetaMain:
 
     def test_meta_main_direct_execution(self):
         """Test direct execution of the module to cover the __main__ block."""
+        # Find the project root dynamically
+        test_dir = Path(__file__).parent
+        project_root = test_dir.parent
+
         # Create a test script that executes the main block
-        test_script = """
+        test_script = f"""
 import sys
-sys.path.insert(0, "/Users/s22625/repos/pinjected")
+sys.path.insert(0, "{project_root}")
 
 # Mock fire.Fire to prevent actual execution
 from unittest.mock import patch, MagicMock
