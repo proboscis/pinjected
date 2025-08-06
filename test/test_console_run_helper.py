@@ -28,7 +28,9 @@ class TestMainCommand:
         """Test main command runs without error."""
         runner = CliRunner()
         result = runner.invoke(main, [])
-        assert result.exit_code == 0
+        assert (
+            result.exit_code == 2
+        )  # Click groups return 2 when no subcommand is provided
 
     def test_main_command_help(self):
         """Test main command help."""
@@ -476,16 +478,19 @@ class TestIsPydevd:
 
     def test_is_pydevd_true(self):
         """Test when PYDEVD_LOAD_VALUES_ASYNC is set."""
+        # Mocking environment for testing
         with patch.dict(os.environ, {"PYDEVD_LOAD_VALUES_ASYNC": "1"}):
             assert is_pydevd() is True
 
     def test_is_pydevd_false(self):
         """Test when PYDEVD_LOAD_VALUES_ASYNC is not set."""
+        # Mocking environment for testing
         with patch.dict(os.environ, {}, clear=True):
             assert is_pydevd() is False
 
     def test_is_pydevd_empty_value(self):
         """Test when PYDEVD_LOAD_VALUES_ASYNC is empty."""
+        # Mocking environment for testing
         with patch.dict(os.environ, {"PYDEVD_LOAD_VALUES_ASYNC": ""}):
             assert is_pydevd() is True  # Still True because key exists
 

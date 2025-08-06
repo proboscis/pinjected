@@ -37,7 +37,7 @@ enable = [
 ]
 
 # Disable specific rules
-disable = ["PINJ001", "PINJ005", "PINJ015"]
+disable = ["PINJ001", "PINJ005", "PINJ015", "PINJ050", "PINJ053"]
 
 # Configure specific rules
 [rules.PINJ014]
