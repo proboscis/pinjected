@@ -1,6 +1,6 @@
 //! Common patterns for detecting pinjected decorators and constructs
 
-use rustpython_ast::{Expr, Keyword, StmtAsyncFunctionDef, StmtClassDef, StmtFunctionDef};
+use rustpython_ast::{Expr, Keyword, Mod, Stmt, StmtAsyncFunctionDef, StmtClassDef, StmtFunctionDef};
 
 /// Check if an expression is an @instance decorator
 pub fn is_instance_decorator(expr: &Expr) -> bool {
@@ -401,4 +401,46 @@ pub fn has_injected_decorator_class(cls: &StmtClassDef) -> bool {
 /// Check if a class has both @injected and @dataclass decorators
 pub fn has_injected_dataclass_decorators(cls: &StmtClassDef) -> bool {
     has_dataclass_decorator(cls) && has_injected_decorator_class(cls)
+}
+
+/// Check if a module imports pinjected
+pub fn has_pinjected_import(ast: &Mod) -> bool {
+    match ast {
+        Mod::Module(module) => {
+            for stmt in &module.body {
+                if has_pinjected_import_in_stmt(stmt) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
+/// Check if a statement contains pinjected import
+fn has_pinjected_import_in_stmt(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Import(import) => {
+            for alias in &import.names {
+                if alias.name.as_str() == "pinjected" {
+                    return true;
+                }
+            }
+        }
+        Stmt::ImportFrom(import_from) => {
+            if let Some(module) = &import_from.module {
+                // Check for "from pinjected import ..."
+                if module.as_str() == "pinjected" {
+                    return true;
+                }
+                // Check for "from pinjected.x.y import ..."
+                if module.as_str().starts_with("pinjected.") {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+    false
 }
