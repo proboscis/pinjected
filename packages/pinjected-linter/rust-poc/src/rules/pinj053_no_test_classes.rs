@@ -35,7 +35,9 @@ impl NoTestClassesRule {
              2. Add @injected_pytest decorator to each test function. \
              3. Remove the test class wrapper. \
              Example: Instead of 'class TestService: def test_method(self, service): ...' \
-             use '@injected_pytest def test_service_method(service): ...'",
+             use '@injected_pytest(my_design) def test_service_method(service): ...' \
+             IMPORTANT: If using a design, do NOT prefix the design name with 'test_' as pytest will try to run it as a test. \
+             Use names like 'my_design', 'service_design', etc. instead of 'test_design'.",
             class_name
         )
     }

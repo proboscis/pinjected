@@ -15,7 +15,7 @@ class TestDevTools:
 
         assert isinstance(generate_merged_doc, DelegatedVar)
 
-    @patch("pinjected._dev_tools.Path")
+    @patch("pinjected._dev_tools.doc_merger.Path")
     def test_generate_merged_doc_function(self, mock_path_class):
         """Test the generate_merged_doc function logic through DI."""
         from pinjected import design
@@ -91,7 +91,7 @@ class TestDevTools:
         assert callable(instance)
         assert callable(design)
 
-    @patch("pinjected._dev_tools.Path")
+    @patch("pinjected._dev_tools.doc_merger.Path")
     def test_generate_merged_doc_empty_docs(self, mock_path_class):
         """Test generate_merged_doc with no markdown files."""
         from pinjected import design
