@@ -1,5 +1,17 @@
 # PINJ040: Deprecated @injected_pytest Decorator
 
+## Import Instructions
+
+To use `@injected_pytest` (though deprecated), import it from one of these locations:
+
+```python
+# Recommended import path:
+from pinjected.test import injected_pytest
+
+# Alternative import path:
+from pinjected.test.injected_pytest import injected_pytest
+```
+
 ## Overview
 
 The `@injected_pytest` decorator is deprecated. Use the modern pytest fixture integration with `register_fixtures_from_design` instead.
@@ -28,7 +40,11 @@ The new `register_fixtures_from_design` approach provides:
 ### ❌ Incorrect (Deprecated)
 
 ```python
-from pinjected.test_helpers import injected_pytest
+# Correct import paths (choose one):
+from pinjected.test import injected_pytest
+# OR
+from pinjected.test.injected_pytest import injected_pytest
+
 from pinjected import injected
 
 @injected
