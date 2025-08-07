@@ -122,7 +122,7 @@ fn analyze_file(
         // Only run rules that don't require decorators
         rules
             .iter()
-            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036" | "PINJ046" | "PINJ047" | "PINJ050" | "PINJ051" | "PINJ053" | "PINJ054")) // Builtin shadowing, pyi enforcement, mutable attribute rules, os.environ, setter methods, test classes, and tuple returns
+            .filter(|r| matches!(r.rule_id(), "PINJ013" | "PINJ036" | "PINJ046" | "PINJ047" | "PINJ050" | "PINJ051" | "PINJ053" | "PINJ054" | "PINJ056")) // Builtin shadowing, pyi enforcement, mutable attribute rules, os.environ, setter methods, test classes, tuple returns, and mutable argument mutations
             .collect()
     } else {
         rules.iter().collect()
@@ -163,7 +163,7 @@ fn analyze_file(
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
                     "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
                     | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032"
-                    | "PINJ033" | "PINJ040" | "PINJ043" | "PINJ045" | "PINJ054" => func_rules.push(rule),
+                    | "PINJ033" | "PINJ040" | "PINJ043" | "PINJ045" | "PINJ054" | "PINJ056" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
                     "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" | "PINJ042" | "PINJ044" 
                     | "PINJ052" | "PINJ055" => {
