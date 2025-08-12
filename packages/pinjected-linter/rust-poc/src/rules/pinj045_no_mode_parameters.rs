@@ -9,7 +9,7 @@ use crate::rules::base::LintRule;
 use crate::utils::pinjected_patterns::{
     has_injected_decorator, has_injected_decorator_async,
 };
-use rustpython_ast::{Arguments, Expr, StmtAsyncFunctionDef, StmtFunctionDef};
+use rustpython_ast::{Arguments, Expr, Stmt, StmtAsyncFunctionDef, StmtClassDef, StmtFunctionDef};
 
 pub struct NoModeParametersRule;
 
@@ -247,24 +247,51 @@ impl NoModeParametersRule {
         mode_parameters
     }
 
-    /// Check a function definition
-    fn check_function(&self, func: &StmtFunctionDef) -> Vec<Violation> {
+    /// Check a function definition (standalone or method)
+    fn check_function(&self, func: &StmtFunctionDef, is_method: bool, class_name: Option<&str>) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        // Only check @injected functions
-        if !has_injected_decorator(func) {
+        // For standalone functions, only check if @injected
+        // For methods, always check (especially __init__ and __post_init__)
+        if !is_method && !has_injected_decorator(func) {
             return violations;
         }
 
         let mode_params = Self::check_args_for_mode_parameters(&func.args, func.name.as_str());
 
         for (param_name, reason) in mode_params {
-            let message = format!(
-                "@injected function '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters that change behavior paths.",
-                func.name.as_str(),
-                param_name,
-                reason
-            );
+            let message = if let Some(class) = class_name {
+                if func.name.as_str() == "__init__" {
+                    format!(
+                        "Class '{}' constructor has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Use the strategy pattern instead of mode parameters.",
+                        class,
+                        param_name,
+                        reason
+                    )
+                } else if func.name.as_str() == "__post_init__" {
+                    format!(
+                        "Dataclass '{}' __post_init__ has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Use the strategy pattern instead of mode parameters.",
+                        class,
+                        param_name,
+                        reason
+                    )
+                } else {
+                    format!(
+                        "Method '{}' in class '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters.",
+                        func.name.as_str(),
+                        class,
+                        param_name,
+                        reason
+                    )
+                }
+            } else {
+                format!(
+                    "@injected function '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters that change behavior paths.",
+                    func.name.as_str(),
+                    param_name,
+                    reason
+                )
+            };
 
             violations.push(Violation {
                 rule_id: self.rule_id().to_string(),
@@ -279,24 +306,35 @@ impl NoModeParametersRule {
         violations
     }
 
-    /// Check an async function definition
-    fn check_async_function(&self, func: &StmtAsyncFunctionDef) -> Vec<Violation> {
+    /// Check an async function definition (standalone or method)
+    fn check_async_function(&self, func: &StmtAsyncFunctionDef, is_method: bool, class_name: Option<&str>) -> Vec<Violation> {
         let mut violations = Vec::new();
 
-        // Only check @injected functions
-        if !has_injected_decorator_async(func) {
+        // For standalone functions, only check if @injected
+        // For methods, always check
+        if !is_method && !has_injected_decorator_async(func) {
             return violations;
         }
 
         let mode_params = Self::check_args_for_mode_parameters(&func.args, func.name.as_str());
 
         for (param_name, reason) in mode_params {
-            let message = format!(
-                "@injected async function '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters that change behavior paths.",
-                func.name.as_str(),
-                param_name,
-                reason
-            );
+            let message = if let Some(class) = class_name {
+                format!(
+                    "Async method '{}' in class '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters.",
+                    func.name.as_str(),
+                    class,
+                    param_name,
+                    reason
+                )
+            } else {
+                format!(
+                    "@injected async function '{}' has parameter '{}' which is a {}. This violates the Single Responsibility Principle (SRP). Consider refactoring to avoid mode parameters that change behavior paths.",
+                    func.name.as_str(),
+                    param_name,
+                    reason
+                )
+            };
 
             violations.push(Violation {
                 rule_id: self.rule_id().to_string(),
@@ -306,6 +344,34 @@ impl NoModeParametersRule {
                 severity: Severity::Error,
                 fix: None,
             });
+        }
+
+        violations
+    }
+
+    /// Check a class definition for mode parameters in methods
+    fn check_class(&self, class: &StmtClassDef) -> Vec<Violation> {
+        let mut violations = Vec::new();
+
+        // Iterate through class body to find methods
+        for stmt in &class.body {
+            match stmt {
+                Stmt::FunctionDef(func) => {
+                    // Skip 'self' parameter check by excluding it from mode parameter detection
+                    // The check_args_for_mode_parameters already handles this
+                    for mut violation in self.check_function(func, true, Some(class.name.as_str())) {
+                        violation.file_path = String::new(); // Will be filled by caller
+                        violations.push(violation);
+                    }
+                }
+                Stmt::AsyncFunctionDef(func) => {
+                    for mut violation in self.check_async_function(func, true, Some(class.name.as_str())) {
+                        violation.file_path = String::new(); // Will be filled by caller
+                        violations.push(violation);
+                    }
+                }
+                _ => {}
+            }
         }
 
         violations
@@ -318,7 +384,7 @@ impl LintRule for NoModeParametersRule {
     }
 
     fn description(&self) -> &str {
-        "Functions should not accept mode/flag parameters that control behavior"
+        "Functions and class methods should not accept mode/flag parameters that control behavior"
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
@@ -326,13 +392,22 @@ impl LintRule for NoModeParametersRule {
 
         match context.stmt {
             rustpython_ast::Stmt::FunctionDef(func) => {
-                for mut violation in self.check_function(func) {
+                // Check standalone functions
+                for mut violation in self.check_function(func, false, None) {
                     violation.file_path = context.file_path.to_string();
                     violations.push(violation);
                 }
             }
             rustpython_ast::Stmt::AsyncFunctionDef(func) => {
-                for mut violation in self.check_async_function(func) {
+                // Check standalone async functions
+                for mut violation in self.check_async_function(func, false, None) {
+                    violation.file_path = context.file_path.to_string();
+                    violations.push(violation);
+                }
+            }
+            rustpython_ast::Stmt::ClassDef(class) => {
+                // Check all methods in the class
+                for mut violation in self.check_class(class) {
                     violation.file_path = context.file_path.to_string();
                     violations.push(violation);
                 }
@@ -589,5 +664,138 @@ def process_data(
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("include_debug_mode"));
+    }
+
+    #[test]
+    fn test_class_init_with_mode_parameter() {
+        let code = r#"
+class DataProcessor:
+    def __init__(self, data: list, mode: str):
+        self.data = data
+        self.mode = mode
+        
+    def process(self):
+        if self.mode == "fast":
+            return self.quick_process()
+        else:
+            return self.slow_process()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Class 'DataProcessor' constructor"));
+        assert!(violations[0].message.contains("'mode'"));
+    }
+
+    #[test]
+    fn test_dataclass_post_init_with_flag() {
+        let code = r#"
+from dataclasses import dataclass
+
+@dataclass
+class Config:
+    api_url: str
+    timeout: int
+    
+    def __post_init__(self, use_cache: bool):
+        if use_cache:
+            self.cache = Cache()
+        else:
+            self.cache = None
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Dataclass 'Config' __post_init__"));
+        assert!(violations[0].message.contains("'use_cache'"));
+    }
+
+    #[test]
+    fn test_class_method_with_mode() {
+        let code = r#"
+class Service:
+    def __init__(self, client):
+        self.client = client
+    
+    def fetch_data(self, endpoint: str, format: str):
+        data = self.client.get(endpoint)
+        if format == "json":
+            return data.to_json()
+        elif format == "xml":
+            return data.to_xml()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Method 'fetch_data' in class 'Service'"));
+        assert!(violations[0].message.contains("'format'"));
+    }
+
+    #[test]
+    fn test_class_async_method_with_flag() {
+        let code = r#"
+class AsyncService:
+    async def process_request(self, request: Request, enable_retry: bool):
+        if enable_retry:
+            return await self.process_with_retry(request)
+        return await self.process_once(request)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Async method 'process_request' in class 'AsyncService'"));
+        assert!(violations[0].message.contains("'enable_retry'"));
+    }
+
+    #[test]
+    fn test_class_without_mode_parameters() {
+        let code = r#"
+from typing import Protocol
+
+class DataProcessor(Protocol):
+    def process(self, data: list) -> list: ...
+
+class Service:
+    def __init__(self, processor: DataProcessor):
+        self.processor = processor
+    
+    def process_data(self, data: list) -> list:
+        return self.processor.process(data)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_multiple_violations_in_class() {
+        let code = r#"
+class MultiIssueClass:
+    def __init__(self, mode: str, use_cache: bool):
+        self.mode = mode
+        self.use_cache = use_cache
+    
+    def process(self, data: list, format: str):
+        pass
+    
+    def __post_init__(self, enable_logging: bool):
+        pass
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 4); // mode, use_cache in __init__, format in process, enable_logging in __post_init__
+    }
+
+    #[test]
+    fn test_class_with_strategy_object_not_flagged() {
+        let code = r#"
+from typing import Protocol
+
+class ProcessingStrategy(Protocol):
+    def process(self, data: list) -> list: ...
+
+class DataHandler:
+    def __init__(self, strategy: ProcessingStrategy):
+        self.strategy = strategy
+    
+    def handle(self, data: list) -> list:
+        return self.strategy.process(data)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0, "Strategy objects should not be flagged");
     }
 }

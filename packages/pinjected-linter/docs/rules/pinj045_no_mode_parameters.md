@@ -7,7 +7,13 @@
 **Severity:** Error  
 **Auto-fixable:** No
 
-Functions should not accept mode or flag parameters (str, bool, enum) that control behavior paths. This violates the Single Responsibility Principle (SRP). Note that strategy objects passed as runtime parameters are acceptable - this rule focuses on primitive mode flags that cause branching logic.
+Functions, class constructors, and methods should not accept mode or flag parameters (str, bool, enum) that control behavior paths. This violates the Single Responsibility Principle (SRP). Note that strategy objects passed as runtime parameters are acceptable - this rule focuses on primitive mode flags that cause branching logic.
+
+**Scope:** This rule checks:
+- `@injected` functions
+- Class constructors (`__init__`)
+- Dataclass post-initialization (`__post_init__`)
+- All class methods (both regular and async)
 
 ## Rationale
 
@@ -23,7 +29,7 @@ Instead, use the strategy pattern to separate different behaviors into distinct,
 
 ## Rule Details
 
-This rule checks `@injected` functions for parameters that indicate mode/flag behavior:
+This rule checks functions and class methods for parameters that indicate mode/flag behavior:
 
 ### What is detected:
 
@@ -151,6 +157,119 @@ class CachedFetcher:
 @injected
 def fetch_data(fetcher: DataFetcher, /, endpoint: str) -> dict:
     return fetcher.fetch(endpoint)
+```
+
+❌ **Bad:** Class constructor with mode parameter
+```python
+class DataProcessor:
+    def __init__(self, data: list, mode: str):  # PINJ045 violation
+        self.data = data
+        self.mode = mode
+        
+    def process(self):
+        if self.mode == "fast":
+            return self.quick_process()
+        else:
+            return self.slow_process()
+```
+
+❌ **Bad:** Dataclass __post_init__ with flag parameter
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Config:
+    api_url: str
+    timeout: int
+    
+    def __post_init__(self, use_cache: bool):  # PINJ045 violation
+        if use_cache:
+            self.cache = Cache()
+        else:
+            self.cache = None
+```
+
+❌ **Bad:** Class method with format parameter
+```python
+class Service:
+    def __init__(self, client):
+        self.client = client
+    
+    def fetch_data(self, endpoint: str, format: str):  # PINJ045 violation
+        data = self.client.get(endpoint)
+        if format == "json":
+            return data.to_json()
+        elif format == "xml":
+            return data.to_xml()
+```
+
+✅ **Good:** Class with strategy pattern
+```python
+from typing import Protocol
+
+class ProcessingStrategy(Protocol):
+    def process(self, data: list) -> list: ...
+
+class DataProcessor:
+    def __init__(self, strategy: ProcessingStrategy):  # OK: Strategy object, not mode
+        self.strategy = strategy
+        
+    def process(self, data: list) -> list:
+        return self.strategy.process(data)
+
+# Different strategy implementations
+class FastProcessingStrategy:
+    def process(self, data: list) -> list:
+        return quick_process(data)
+
+class AccurateProcessingStrategy:
+    def process(self, data: list) -> list:
+        return thorough_process(data)
+```
+
+✅ **Good:** Dataclass with injected dependencies instead of flags
+```python
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class Config:
+    api_url: str
+    timeout: int
+    cache: Optional[Cache]  # Inject the cache if needed, don't use a flag
+    
+    @classmethod
+    def with_cache(cls, api_url: str, timeout: int, cache_impl: Cache):
+        return cls(api_url, timeout, cache_impl)
+    
+    @classmethod
+    def without_cache(cls, api_url: str, timeout: int):
+        return cls(api_url, timeout, None)
+```
+
+✅ **Good:** Service class with formatter injection
+```python
+from typing import Protocol
+
+class DataFormatter(Protocol):
+    def format(self, data: Any) -> str: ...
+
+class JsonFormatter:
+    def format(self, data: Any) -> str:
+        return json.dumps(data)
+
+class XmlFormatter:
+    def format(self, data: Any) -> str:
+        return dict_to_xml(data)
+
+class Service:
+    def __init__(self, client, formatter: DataFormatter):
+        self.client = client
+        self.formatter = formatter
+    
+    def fetch_data(self, endpoint: str) -> str:
+        data = self.client.get(endpoint)
+        return self.formatter.format(data)
 ```
 
 ✅ **Good:** Strategy objects as runtime parameters
