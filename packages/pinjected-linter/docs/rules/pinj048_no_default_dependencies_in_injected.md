@@ -1,4 +1,4 @@
-# PINJ048: No Default Values for Dependencies in @injected Functions
+# PINJ048: No Default Values for Dependencies in @injected and @instance Functions
 
 ## Overview
 
@@ -7,11 +7,11 @@
 **Severity:** Error  
 **Auto-fixable:** No
 
-Dependencies in `@injected` functions (parameters before the `/` separator) should not have default values. Configuration should be provided through the `design()` function instead.
+Dependencies in `@injected` and `@instance` functions (parameters before the `/` separator) should not have default values. Configuration should be provided through the `design()` function instead.
 
 ## Rationale
 
-Default values for dependencies in `@injected` functions are misleading and should be avoided:
+Default values for dependencies in `@injected` and `@instance` functions are misleading and should be avoided:
 
 1. **No Effect:** Default values in the dependency part (before `/`) are completely ignored by pinjected - they have no runtime effect
 2. **Misleading Code:** Developers might think dependencies are optional when they're actually always injected
@@ -23,7 +23,7 @@ Default values for dependencies in `@injected` functions are misleading and shou
 
 ## Rule Details
 
-This rule flags any `@injected` function where dependency parameters (those before the `/` separator) have default values.
+This rule flags any `@injected` or `@instance` function where dependency parameters (those before the `/` separator) have default values.
 
 ### Examples of Violations
 
@@ -61,6 +61,18 @@ def analyze_data(processor=None, validator=None, config=None, /, data: dict):
     if validator and not validator.validate(data):
         return None
     return processor.process(data) if processor else data
+
+@instance
+def get_database(connection_pool=None, config=None, /):
+    # ERROR: Defaults for @instance dependencies are also ignored!
+    # connection_pool and config will always be injected
+    return Database(connection_pool, config)
+
+@instance
+def create_logger(formatter=LogFormatter(), handler=None, /, name: str = "default"):
+    # ERROR: The default LogFormatter() is NEVER used, and handler=None is ignored
+    # Only the name="default" after the slash works as expected
+    return Logger(formatter, handler, name)
 ```
 
 ✅ **Good:** Dependencies without defaults
@@ -90,6 +102,16 @@ def analyze_data(processor, validator, config, /, data: dict):
     if not validator.validate(data):
         raise ValueError("Invalid data")
     return processor.process(data)
+
+@instance
+def get_database(connection_pool, config, /):
+    # CORRECT: Both dependencies will be injected
+    return Database(connection_pool, config)
+
+@instance
+def create_logger(formatter, handler, /, name: str = "default"):
+    # CORRECT: Dependencies have no defaults, only runtime arg has default
+    return Logger(formatter, handler, name)
 ```
 
 ## Common Patterns and Solutions

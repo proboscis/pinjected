@@ -121,10 +121,47 @@ fn test_pinj048_ignores_non_injected() {
 def regular_function(param=None):
     pass
 
+class MyClass:
+    def method(self, param=None):
+        pass
+"#;
+
+    let ast = parse(python_code, Mode::Module, "<test>").unwrap();
+    let rule = NoDefaultDependenciesInInjectedRule::new();
+    
+    let mut total_violations = 0;
+    
+    match &ast {
+        rustpython_ast::Mod::Module(module) => {
+            for stmt in &module.body {
+                let context = RuleContext {
+                    stmt,
+                    file_path: "test.py",
+                    source: python_code,
+                    ast: &ast,
+                };
+                let violations = rule.check(&context);
+                total_violations += violations.len();
+            }
+        },
+        _ => panic!("Expected Module"),
+    }
+    
+    // Should detect no violations - not @injected or @instance functions
+    assert_eq!(total_violations, 0);
+}
+
+#[test]
+fn test_pinj048_detects_instance_defaults() {
+    let python_code = r#"
 from pinjected import instance
 
 @instance
-def database_instance(host="localhost"):
+def database_instance(host="localhost", port=5432):
+    pass
+
+@instance
+def logger_instance(formatter, /, level="INFO"):
     pass
 "#;
 
@@ -149,8 +186,9 @@ def database_instance(host="localhost"):
         _ => panic!("Expected Module"),
     }
     
-    // Should detect no violations - not @injected functions
-    assert_eq!(total_violations, 0);
+    // Should detect 2 violations for host and port having defaults in first function
+    // Second function has no violations since formatter is before slash with no default
+    assert_eq!(total_violations, 2);
 }
 
 #[test]
