@@ -104,7 +104,7 @@ impl NoOsEnvironRule {
             Expr::Attribute(attr) if Self::is_os_environ_access(expr) => {
                 violations.push(Violation {
                     rule_id: "PINJ050".to_string(),
-                    message: "Use of os.environ is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.".to_string(),
+                    message: "Use of os.environ is forbidden. Environment variables are a bad pattern and must NEVER be used. Use @instance or @injected instead.\n\nExamples:\n\n# Option 1: @instance for singleton dependencies\n@instance\ndef api_key(key: str) -> str:\n    return key  # key from --key argument\n\n# Option 2: @injected for functions\n@injected\ndef func(api_key: str, /, args):\n    # api_key from pinjected configuration\n\nUsers provide values via: pinjected run --api-key YOUR_KEY\n\nNote: Feature flags are anti-patterns. Use the strategy pattern to inject different implementations.".to_string(),
                     offset: expr.range().start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Error,
@@ -119,7 +119,7 @@ impl NoOsEnvironRule {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
                         message: format!(
-                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            "Use of {} is forbidden. Environment variables must NEVER be used. Use @instance or @injected instead.\n\nExamples:\n\n@instance\ndef database_url(url: str) -> str:\n    return url  # from --url\n\n@injected\ndef connect(database_url: str, /, args):\n    # Use injected database_url\n\nUsers provide values via: pinjected run --database-url URL",
                             func_name
                         ),
                         offset: call.func.range().start().to_usize(),
@@ -134,7 +134,7 @@ impl NoOsEnvironRule {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
                         message: format!(
-                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            "Use of {} is forbidden. Never load environment variables. Use @instance or @injected instead.\n\nBoth decorators get values from pinjected configuration:\n\n@instance\ndef config(api_key: str, db_url: str) -> Config:\n    return Config(api_key, db_url)\n\nConfiguration comes from pinjected CLI/config, NOT environment variables.",
                             func_name
                         ),
                         offset: call.func.range().start().to_usize(),
@@ -149,7 +149,7 @@ impl NoOsEnvironRule {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
                         message: format!(
-                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            "Use of {} is forbidden. Environment variables are bad practice. Use @instance or @injected instead.\n\nDeclare dependencies with either decorator:\n\n@instance\ndef api_key(key: str) -> str:\n    return key  # from --key\n\nUsers configure via: pinjected run --api-key KEY",
                             func_name
                         ),
                         offset: call.func.range().start().to_usize(),
@@ -166,7 +166,7 @@ impl NoOsEnvironRule {
                             violations.push(Violation {
                                 rule_id: "PINJ050".to_string(),
                                 message: format!(
-                                    "Use of os.environ.{} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                                    "Use of os.environ.{} is forbidden. Environment variables are forbidden. Use @instance or @injected instead.\n\nDeclare what you need:\n\n@instance\ndef config_value(value: str) -> str:\n    return value  # from --value",
                                     attr.attr
                                 ),
                                 offset: call.func.range().start().to_usize(),
@@ -190,9 +190,22 @@ impl NoOsEnvironRule {
             // Check os.environ[key] access
             Expr::Subscript(sub) => {
                 if Self::is_os_environ_access(&sub.value) {
+                    // Try to extract the environment variable name if it's a simple string subscript
+                    let env_var_hint = if let Expr::Constant(c) = &*sub.slice {
+                        if let rustpython_ast::Constant::Str(s) = &c.value {
+                            // Convert XXX_API_KEY to xxx_api_key
+                            let param_name = s.as_str().to_lowercase();
+                            format!("\n\nExample: Instead of os.environ['{}'], use @instance or @injected:\n\n@instance\ndef {}(value: str) -> str:\n    return value  # from --{}\n\nOR:\n\n@injected\ndef func({}: str, /, args):\n    # Use {}\n\nUsers provide via: pinjected run --{} YOUR_VALUE", s.as_str(), param_name, param_name.replace("_", "-"), param_name, param_name, param_name.replace("_", "-"))
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        String::new()
+                    };
+                    
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
-                        message: "Use of os.environ[...] is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.".to_string(),
+                        message: format!("Use of os.environ[...] is forbidden. Environment variables must NEVER be used. Use @instance or @injected to request dependencies instead.{}", env_var_hint),
                         offset: sub.value.range().start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
@@ -487,7 +500,7 @@ impl LintRule for NoOsEnvironRule {
     }
 
     fn description(&self) -> &str {
-        "Environment variables should never be accessed directly. Use @injected to request dependencies instead."
+        "Environment variables should never be accessed directly. Use @instance or @injected to request dependencies instead."
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
