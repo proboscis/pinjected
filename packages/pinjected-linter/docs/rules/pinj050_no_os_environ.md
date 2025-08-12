@@ -126,56 +126,96 @@ def any_env_access():
     os.environ.update({'KEY': 'value'})  # PINJ050 violation
 ```
 
-### ✅ Correct - Use @injected to request dependencies
+### ✅ Correct - Use @instance and @injected with pinjected configuration
 
 ```python
-from pinjected import injected
+from pinjected import instance, injected
+from typing import Protocol
 
 # NEVER ACCESS os.environ - Values come from pinjected configuration!
 
-# Example 1: Declare what you need
-@injected
-def get_api_client(xxx_api_key: str, /, base_url: str) -> APIClient:
-    # xxx_api_key is provided via:
-    #   pinjected run --xxx-api-key YOUR_KEY
-    # or from default design in ~/.pinjected.py
-    return APIClient(base_url, xxx_api_key)
+# Example 1: Use @instance to provide configuration values
+@instance
+def xxx_api_key(api_key: str) -> str:
+    # api_key parameter is provided via:
+    #   pinjected run --api-key YOUR_KEY
+    # or from design() in ~/.pinjected.py
+    return api_key  # Just pass through the injected value
 
-# Example 2: Multiple configuration values
-@injected  
-def connect_to_database(
-    database_url: str,      # Provided via --database-url
-    database_password: str, # Provided via --database-password
-    /, 
-    timeout: int = 30
+@instance
+def api_client(xxx_api_key: str, api_base_url: str) -> APIClient:
+    # Both parameters come from pinjected configuration
+    # NO environment variable access!
+    return APIClient(api_base_url, xxx_api_key)
+
+# Example 2: @instance for database configuration
+@instance
+def database_connection(
+    database_url: str,      # From --database-url
+    database_password: str, # From --database-password
+    max_connections: int    # From --max-connections
 ) -> Database:
-    # Values are injected from pinjected configuration
-    return Database(database_url, database_password, timeout)
+    # All values injected from pinjected configuration
+    return Database(database_url, database_password, max_connections)
 
-# Example 3: Using specific API keys
+# Example 3: Use @injected when you need runtime arguments
 @injected
-def setup_services(
-    stripe_api_key: str,   # Provided via --stripe-api-key
-    openai_api_key: str,   # Provided via --openai-api-key  
-    sendgrid_api_key: str, # Provided via --sendgrid-api-key
-    /,
+def query_database(
+    database_connection: Database,  # Injected dependency
+    /, 
+    query: str  # Runtime argument
+) -> list:
+    # database_connection is provided by the @instance above
+    # query is provided at runtime when calling the function
+    return database_connection.execute(query)
+
+# Example 4: @instance for multiple service configurations
+@instance
+def stripe_client(stripe_api_key: str) -> StripeClient:
+    # stripe_api_key from --stripe-api-key
+    return StripeClient(stripe_api_key)
+
+@instance
+def openai_client(openai_api_key: str) -> OpenAIClient:
+    # openai_api_key from --openai-api-key
+    return OpenAIClient(openai_api_key)
+
+@instance
+def sendgrid_client(sendgrid_api_key: str) -> SendGridClient:
+    # sendgrid_api_key from --sendgrid-api-key
+    return SendGridClient(sendgrid_api_key)
+
+@instance
+def services(
+    stripe_client: StripeClient,
+    openai_client: OpenAIClient,
+    sendgrid_client: SendGridClient
 ) -> Services:
-    # All values come from pinjected configuration, NOT environment!
+    # All clients are injected dependencies
     return Services(
-        stripe=StripeClient(stripe_api_key),
-        openai=OpenAIClient(openai_api_key),
-        email=SendGridClient(sendgrid_api_key)
+        stripe=stripe_client,
+        openai=openai_client,
+        email=sendgrid_client
     )
 
+# Example 5: Using @injected for configuration-dependent functions
 @injected
-def get_database(config: ConfigProtocol, /, host: str) -> Database:
-    return Database(host, config.db_password)
+def get_api_client(xxx_api_key: str, /, base_url: str) -> APIClient:
+    # xxx_api_key is injected from pinjected configuration
+    # base_url is a runtime argument
+    return APIClient(base_url, xxx_api_key)
 
-@injected
-def get_service(config: ConfigProtocol, /, name: str) -> Service:
-    return Service(name, config.service_endpoint)
+@injected  
+def connect_to_database(
+    database_url: str,      # Injected from --database-url
+    database_password: str, # Injected from --database-password
+    /, 
+    timeout: int = 30  # Runtime argument with default
+) -> Database:
+    # Configuration values are injected, NOT from environment!
+    return Database(database_url, database_password, timeout)
 
-# Example 4: Users provide values when running the application
+# Example 6: Users provide values when running the application
 # Run with: pinjected run --stripe-secret-key sk_live_xxx --payment-webhook-url https://...
 @injected
 def process_payment(
@@ -194,10 +234,26 @@ def process_payment(
 ## How to Fix
 
 1. **NEVER access environment variables**: Environment variables are forbidden - use pinjected configuration
-2. **Just declare dependencies**: Use meaningful parameter names for what you need
-3. **Users provide values**: Via command line (`--param-name value`) or configuration files
-4. **No os.environ ever**: Environment variables are a bad pattern - don't use them
+2. **Use @instance for singleton dependencies**: Define providers that get configuration from pinjected
+3. **Use @injected for functions with runtime args**: Inject configuration while keeping runtime flexibility
+4. **Users provide values**: Via command line (`--param-name value`) or configuration files
 5. **Pure dependency injection**: Your code just declares needs, pinjected provides values
+
+### Understanding @instance vs @injected for Configuration
+
+Both `@instance` and `@injected` are proper alternatives to environment variables:
+
+- **@instance**: Creates singleton-like providers for configuration values
+  - All parameters are injected from pinjected configuration
+  - Returns a value that can be injected into other functions
+  - Perfect for API clients, database connections, configuration objects
+
+- **@injected**: Creates partially-applied functions
+  - Parameters before `/` are injected from configuration
+  - Parameters after `/` are provided at runtime
+  - Perfect for functions that need both configuration and runtime arguments
+
+**Both get values from pinjected's configuration system, NEVER from environment variables!**
 
 ### Step-by-step Example
 
@@ -209,31 +265,48 @@ def get_service():
     load_dotenv()  # FORBIDDEN!
     return Service(api_key, timeout)
 
-# Step 2: Replace with dependency injection
-from pinjected import injected
+# Step 2: Replace with dependency injection using @instance or @injected
+from pinjected import instance, injected
 
+# Option A: Using @instance (for singleton services)
+@instance
+def xxx_api_key(api_key: str) -> str:
+    # api_key from --api-key CLI argument
+    return api_key
+
+@instance
+def service_timeout(timeout: int = 30) -> int:
+    # timeout from --timeout CLI argument (with default)
+    return timeout
+
+@instance
+def service(xxx_api_key: str, service_timeout: int) -> Service:
+    # Both values injected from pinjected configuration
+    return Service(xxx_api_key, service_timeout)
+
+# Option B: Using @injected (when you need runtime arguments)
 @injected
 def get_service(
-    xxx_api_key: str,      # User provides via --xxx-api-key
-    service_timeout: int,  # User provides via --service-timeout
+    xxx_api_key: str,      # Injected from --xxx-api-key
+    service_timeout: int,  # Injected from --service-timeout
     /
-):
+) -> Service:
     # Values come from pinjected configuration, NOT environment!
     return Service(xxx_api_key, service_timeout)
 
 # Step 3: Users run your application with configuration
-# pinjected run --xxx-api-key "sk_live_..." --service-timeout 60
+# pinjected run module.service --xxx-api-key "sk_live_..." --service-timeout 60
+# OR
+# pinjected run module.get_service --xxx-api-key "sk_live_..." --service-timeout 60
 
 # Step 4: All functions declare their dependencies
 @injected
 def process_data(
-    service_timeout: int,  # Injected from pinjected configuration
+    service: Service,  # Injected dependency (from @instance above)
     /, 
-    data: str
+    data: str  # Runtime argument
 ):
-    if service_timeout > 60:
-        return slow_process(data)
-    return fast_process(data)
+    return service.process(data)
 
 # Step 5: For production applications
 @injected
