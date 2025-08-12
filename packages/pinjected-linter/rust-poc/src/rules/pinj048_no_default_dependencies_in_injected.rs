@@ -16,7 +16,7 @@ impl LintRule for NoDefaultDependenciesInInjectedRule {
     }
 
     fn description(&self) -> &str {
-        "@injected function dependencies (parameters before '/') should not have default values. Configuration should be provided through the design() function instead."
+        "@injected and @instance function dependencies (parameters before '/') should not have default values. Configuration should be provided through the design() function instead."
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
@@ -24,12 +24,12 @@ impl LintRule for NoDefaultDependenciesInInjectedRule {
 
         match context.stmt {
             Stmt::FunctionDef(func_def) => {
-                if is_injected_decorated(func_def) {
+                if is_injected_or_instance_decorated(func_def) {
                     violations.extend(check_function_defaults(func_def, context));
                 }
             }
             Stmt::AsyncFunctionDef(async_func_def) => {
-                if is_async_injected_decorated(async_func_def) {
+                if is_async_injected_or_instance_decorated(async_func_def) {
                     violations.extend(check_async_function_defaults(async_func_def, context));
                 }
             }
@@ -40,24 +40,24 @@ impl LintRule for NoDefaultDependenciesInInjectedRule {
     }
 }
 
-fn is_injected_decorated(func_def: &StmtFunctionDef) -> bool {
+fn is_injected_or_instance_decorated(func_def: &StmtFunctionDef) -> bool {
     func_def.decorator_list.iter().any(|decorator| {
         match decorator {
-            rustpython_ast::Expr::Name(ExprName { id, .. }) => id == "injected",
+            rustpython_ast::Expr::Name(ExprName { id, .. }) => id == "injected" || id == "instance",
             rustpython_ast::Expr::Attribute(ExprAttribute { attr, value, .. }) => {
-                attr == "injected" && matches!(value.as_ref(), rustpython_ast::Expr::Name(ExprName { id, .. }) if id == "pinjected")
+                (attr == "injected" || attr == "instance") && matches!(value.as_ref(), rustpython_ast::Expr::Name(ExprName { id, .. }) if id == "pinjected")
             },
             _ => false,
         }
     })
 }
 
-fn is_async_injected_decorated(async_func_def: &StmtAsyncFunctionDef) -> bool {
+fn is_async_injected_or_instance_decorated(async_func_def: &StmtAsyncFunctionDef) -> bool {
     async_func_def.decorator_list.iter().any(|decorator| {
         match decorator {
-            rustpython_ast::Expr::Name(ExprName { id, .. }) => id == "injected",
+            rustpython_ast::Expr::Name(ExprName { id, .. }) => id == "injected" || id == "instance",
             rustpython_ast::Expr::Attribute(ExprAttribute { attr, value, .. }) => {
-                attr == "injected" && matches!(value.as_ref(), rustpython_ast::Expr::Name(ExprName { id, .. }) if id == "pinjected")
+                (attr == "injected" || attr == "instance") && matches!(value.as_ref(), rustpython_ast::Expr::Name(ExprName { id, .. }) if id == "pinjected")
             },
             _ => false,
         }
@@ -78,7 +78,7 @@ fn check_function_defaults(func_def: &StmtFunctionDef, context: &RuleContext) ->
             violations.push(Violation {
                 rule_id: "PINJ048".to_string(),
                 message: format!(
-                    "Dependency '{}' in @injected function '{}' has a default value. Dependencies should not have defaults.",
+                    "Dependency '{}' in @injected/@instance function '{}' has a default value. Dependencies should not have defaults.",
                     &arg.def.arg,
                     &func_def.name
                 ),
@@ -128,7 +128,7 @@ fn check_async_function_defaults(async_func_def: &StmtAsyncFunctionDef, context:
             violations.push(Violation {
                 rule_id: "PINJ048".to_string(),
                 message: format!(
-                    "Dependency '{}' in @injected async function '{}' has a default value. Dependencies should not have defaults.",
+                    "Dependency '{}' in @injected/@instance async function '{}' has a default value. Dependencies should not have defaults.",
                     &arg.def.arg,
                     &async_func_def.name
                 ),
@@ -327,5 +327,96 @@ def process_data(logger, database=None, config=None):
         assert_eq!(violations.len(), 2);
         assert!(violations.iter().any(|v| v.message.contains("database")));
         assert!(violations.iter().any(|v| v.message.contains("config")));
+    }
+
+    #[test]
+    fn test_instance_with_defaults() {
+        let code = r#"
+@instance
+def get_logger(config=None, /, name="default"):
+    pass
+"#;
+        let ast = parse(code, Mode::Module, "<test>").unwrap();
+        let rule = NoDefaultDependenciesInInjectedRule::new();
+        
+        let func_stmt = match &ast {
+            rustpython_ast::Mod::Module(module) => module.body.iter().find(|stmt| {
+                matches!(stmt, rustpython_ast::Stmt::FunctionDef(_))
+            }).unwrap(),
+            _ => panic!("Expected Module"),
+        };
+        
+        let context = RuleContext {
+            stmt: func_stmt,
+            file_path: "test.py",
+            source: code,
+            ast: &ast,
+        };
+        
+        let violations = rule.check(&context);
+        
+        // Should have 1 violation for config having a default
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("config"));
+        assert!(violations[0].message.contains("@injected/@instance"));
+    }
+
+    #[test]
+    fn test_instance_without_defaults() {
+        let code = r#"
+@instance
+def get_service(database, logger, /):
+    pass
+"#;
+        let ast = parse(code, Mode::Module, "<test>").unwrap();
+        let rule = NoDefaultDependenciesInInjectedRule::new();
+        
+        let func_stmt = match &ast {
+            rustpython_ast::Mod::Module(module) => module.body.iter().find(|stmt| {
+                matches!(stmt, rustpython_ast::Stmt::FunctionDef(_))
+            }).unwrap(),
+            _ => panic!("Expected Module"),
+        };
+        
+        let context = RuleContext {
+            stmt: func_stmt,
+            file_path: "test.py",
+            source: code,
+            ast: &ast,
+        };
+        
+        let violations = rule.check(&context);
+        
+        // Should have 0 violations - dependencies before slash have no defaults
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_non_instance_function() {
+        let code = r#"
+def regular_function(param=None):
+    pass
+"#;
+        let ast = parse(code, Mode::Module, "<test>").unwrap();
+        let rule = NoDefaultDependenciesInInjectedRule::new();
+        
+        let func_stmt = match &ast {
+            rustpython_ast::Mod::Module(module) => module.body.iter().find(|stmt| {
+                matches!(stmt, rustpython_ast::Stmt::FunctionDef(_))
+            }).unwrap(),
+            _ => panic!("Expected Module"),
+        };
+        
+        let context = RuleContext {
+            stmt: func_stmt,
+            file_path: "test.py",
+            source: code,
+            ast: &ast,
+        };
+        
+        let violations = rule.check(&context);
+        
+        // Should have 0 violations - not an @instance or @injected function
+        assert_eq!(violations.len(), 0);
     }
 }
