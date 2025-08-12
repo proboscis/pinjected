@@ -87,7 +87,7 @@ impl NoCallableTypeAnnotationRule {
     ) -> Vec<(String, String, usize)> {
         let mut violations = Vec::new();
 
-        // For @injected, only check positional-only args (before /)
+        // Check positional-only args first (these are definitely dependencies)
         for arg in args.posonlyargs.iter() {
             let arg_name = arg.def.arg.as_str();
             
@@ -96,6 +96,30 @@ impl NoCallableTypeAnnotationRule {
                 if !Self::is_protocol_type(annotation) && !Self::is_allowed_non_protocol_type(annotation) {
                     let type_name = Self::get_type_name(annotation);
                     violations.push((arg_name.to_string(), type_name, arg.def.range.start().to_usize()));
+                }
+            }
+        }
+
+        // If there are no positional-only args, we need to check regular args
+        // In @injected functions without '/', all args are considered dependencies
+        // In @injected functions with '/', only args before '/' are dependencies
+        // Since we can't easily detect '/' position here, we check all regular args
+        // when posonlyargs is empty (which means either no '/' or parser doesn't recognize it)
+        if args.posonlyargs.is_empty() {
+            for arg in args.args.iter() {
+                let arg_name = arg.def.arg.as_str();
+                
+                // Skip 'self' in methods
+                if arg_name == "self" {
+                    continue;
+                }
+                
+                if let Some(annotation) = &arg.def.annotation {
+                    // Skip if it's a Protocol type or an allowed basic type
+                    if !Self::is_protocol_type(annotation) && !Self::is_allowed_non_protocol_type(annotation) {
+                        let type_name = Self::get_type_name(annotation);
+                        violations.push((arg_name.to_string(), type_name, arg.def.range.start().to_usize()));
+                    }
                 }
             }
         }
@@ -150,7 +174,7 @@ impl NoCallableTypeAnnotationRule {
                 message,
                 offset,
                 file_path: String::new(),
-                severity: Severity::Error,
+                severity: Severity::Warning,
                 fix: None,
             });
         }
@@ -205,7 +229,7 @@ impl NoCallableTypeAnnotationRule {
                 message,
                 offset,
                 file_path: String::new(),
-                severity: Severity::Error,
+                severity: Severity::Warning,
                 fix: None,
             });
         }
