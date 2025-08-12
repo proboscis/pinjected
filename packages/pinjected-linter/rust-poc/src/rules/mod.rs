@@ -48,6 +48,7 @@ pub mod pinj053_no_test_classes;
 pub mod pinj054_no_tuple_returns;
 pub mod pinj055_no_lambda_in_design_call;
 pub mod pinj056_no_mutable_argument_mutations;
+pub mod pinj057_no_callable_type_annotation;
 // Future rules would be added here:
 // ... etc
 
@@ -104,6 +105,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj054_no_tuple_returns::NoTupleReturnsRule::new()),
         Box::new(pinj055_no_lambda_in_design_call::NoLambdaInDesignCallRule::new()),
         Box::new(pinj056_no_mutable_argument_mutations::NoMutableArgumentMutationsRule::new()),
+        Box::new(pinj057_no_callable_type_annotation::NoCallableTypeAnnotationRule::new()),
         // Add more rules here as they're implemented
     ]
 }

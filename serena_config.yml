@@ -1,0 +1,12 @@
+# Serena MCP Server Configuration
+# This file configures the Serena MCP server behavior
+
+# Disable the web dashboard UI that normally runs on localhost:24282
+dashboard:
+  enabled: false
+
+# Alternative syntax (if the above doesn't work)
+# web_dashboard: false
+
+# You can also configure other settings here if needed
+# record_tool_usage_stats: false
