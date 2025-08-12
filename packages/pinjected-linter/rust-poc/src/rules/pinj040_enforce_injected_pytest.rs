@@ -2,6 +2,8 @@
 //!
 //! The @injected_pytest decorator should be used in pytest test files
 //! instead of register_fixtures_from_design().
+//! 
+//! Import from: `from pinjected.test import injected_pytest`
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
@@ -65,7 +67,7 @@ impl EnforceInjectedPytestRule {
     /// Create suggestion message
     fn create_suggestion_message(&self, func_name: &str) -> String {
         format!(
-            "Test function '{}' should use @injected_pytest decorator to properly handle dependency injection in pytest. Add @injected_pytest decorator before the function definition. Example: from pinjected.test_helpers import injected_pytest; @injected_pytest def {}(...): ...",
+            "Test function '{}' should use @injected_pytest decorator to properly handle dependency injection in pytest. Add @injected_pytest decorator before the function definition. Import it with: 'from pinjected.test import injected_pytest' or 'from pinjected.test.injected_pytest import injected_pytest'. Example: @injected_pytest def {}(...): ...",
             func_name, func_name
         )
     }
