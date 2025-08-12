@@ -1,6 +1,6 @@
-//! PINJ050: Forbid use of os.environ
+//! PINJ050: Forbid use of os.environ and os.getenv
 //!
-//! os.environ should not be used directly in pinjected code.
+//! os.environ and os.getenv should not be used directly in pinjected code.
 //! Instead, use dependency injection to inject configuration values.
 
 use crate::models::{RuleContext, Severity, Violation};
@@ -16,11 +16,11 @@ impl NoOsEnvironRule {
         Self
     }
     
-    /// Check if an expression is accessing os.environ
+    /// Check if an expression is accessing os.environ or os.environb
     fn is_os_environ_access(expr: &Expr) -> bool {
         match expr {
             Expr::Attribute(attr) => {
-                if attr.attr.as_str() == "environ" {
+                if matches!(attr.attr.as_str(), "environ" | "environb") {
                     match &*attr.value {
                         Expr::Name(name) => name.id.as_str() == "os",
                         _ => false,
@@ -33,14 +33,78 @@ impl NoOsEnvironRule {
         }
     }
     
+    /// Check if a call is to os.getenv, os.getenvb, os.putenv, os.unsetenv
+    fn is_os_env_function_call(call: &rustpython_ast::ExprCall) -> Option<String> {
+        if let Expr::Attribute(attr) = &*call.func {
+            if matches!(attr.attr.as_str(), "getenv" | "getenvb" | "putenv" | "unsetenv") {
+                if let Expr::Name(name) = &*attr.value {
+                    if name.id.as_str() == "os" {
+                        return Some(format!("os.{}", attr.attr));
+                    }
+                }
+            }
+        }
+        None
+    }
+    
+    /// Check if a call is to dotenv functions
+    fn is_dotenv_call(call: &rustpython_ast::ExprCall) -> Option<String> {
+        if let Expr::Attribute(attr) = &*call.func {
+            if matches!(attr.attr.as_str(), "load_dotenv" | "dotenv_values" | "find_dotenv" | "get_key" | "set_key" | "unset_key") {
+                if let Expr::Name(name) = &*attr.value {
+                    if name.id.as_str() == "dotenv" {
+                        return Some(format!("dotenv.{}", attr.attr));
+                    }
+                }
+            }
+        }
+        // Also check for direct function calls from dotenv imports
+        if let Expr::Name(name) = &*call.func {
+            if matches!(name.id.as_str(), "load_dotenv" | "dotenv_values" | "find_dotenv" | "get_key" | "set_key" | "unset_key") {
+                return Some(name.id.to_string());
+            }
+        }
+        None
+    }
+    
+    /// Check if a call is to decouple.config or environs
+    fn is_env_library_call(call: &rustpython_ast::ExprCall) -> Option<String> {
+        // Check for decouple.config
+        if let Expr::Name(name) = &*call.func {
+            if name.id.as_str() == "config" {
+                return Some("config (likely from python-decouple)".to_string());
+            }
+        }
+        
+        // Check for environs.Env()
+        if let Expr::Attribute(attr) = &*call.func {
+            if attr.attr.as_str() == "Env" {
+                if let Expr::Name(name) = &*attr.value {
+                    if name.id.as_str() == "environs" {
+                        return Some("environs.Env".to_string());
+                    }
+                }
+            }
+        }
+        
+        // Check for Env() if imported directly
+        if let Expr::Name(name) = &*call.func {
+            if name.id.as_str() == "Env" {
+                return Some("Env (likely from environs)".to_string());
+            }
+        }
+        
+        None
+    }
+    
     /// Check expressions recursively for os.environ usage
     fn check_expr(&self, expr: &Expr, violations: &mut Vec<Violation>, file_path: &str, source: &str) {
         match expr {
-            // Direct os.environ access
+            // Direct os.environ or os.environb access
             Expr::Attribute(attr) if Self::is_os_environ_access(expr) => {
                 violations.push(Violation {
                     rule_id: "PINJ050".to_string(),
-                    message: "Use of os.environ is forbidden. Use pinjected dependency injection for configuration values instead.".to_string(),
+                    message: "Use of os.environ is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.".to_string(),
                     offset: expr.range().start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Error,
@@ -48,15 +112,61 @@ impl NoOsEnvironRule {
                 });
             }
             
-            // Check os.environ.get() calls
+            // Check various environment access calls
             Expr::Call(call) => {
+                // Check os.getenv, os.putenv, etc.
+                if let Some(func_name) = Self::is_os_env_function_call(call) {
+                    violations.push(Violation {
+                        rule_id: "PINJ050".to_string(),
+                        message: format!(
+                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            func_name
+                        ),
+                        offset: call.func.range().start().to_usize(),
+                        file_path: file_path.to_string(),
+                        severity: Severity::Error,
+                        fix: None,
+                    });
+                }
+                
+                // Check dotenv library calls
+                if let Some(func_name) = Self::is_dotenv_call(call) {
+                    violations.push(Violation {
+                        rule_id: "PINJ050".to_string(),
+                        message: format!(
+                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            func_name
+                        ),
+                        offset: call.func.range().start().to_usize(),
+                        file_path: file_path.to_string(),
+                        severity: Severity::Error,
+                        fix: None,
+                    });
+                }
+                
+                // Check other env library calls (decouple, environs)
+                if let Some(func_name) = Self::is_env_library_call(call) {
+                    violations.push(Violation {
+                        rule_id: "PINJ050".to_string(),
+                        message: format!(
+                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            func_name
+                        ),
+                        offset: call.func.range().start().to_usize(),
+                        file_path: file_path.to_string(),
+                        severity: Severity::Error,
+                        fix: None,
+                    });
+                }
+                
+                // Check os.environ.get() and similar method calls
                 if let Expr::Attribute(attr) = &*call.func {
-                    if matches!(attr.attr.as_str(), "get" | "setdefault" | "pop") {
+                    if matches!(attr.attr.as_str(), "get" | "setdefault" | "pop" | "clear" | "copy" | "update") {
                         if Self::is_os_environ_access(&attr.value) {
                             violations.push(Violation {
                                 rule_id: "PINJ050".to_string(),
                                 message: format!(
-                                    "Use of os.environ.{} is forbidden. Use pinjected dependency injection for configuration values instead.",
+                                    "Use of os.environ.{} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
                                     attr.attr
                                 ),
                                 offset: call.func.range().start().to_usize(),
@@ -82,7 +192,7 @@ impl NoOsEnvironRule {
                 if Self::is_os_environ_access(&sub.value) {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
-                        message: "Use of os.environ[...] is forbidden. Use pinjected dependency injection for configuration values instead.".to_string(),
+                        message: "Use of os.environ[...] is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.".to_string(),
                         offset: sub.value.range().start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,
@@ -377,7 +487,7 @@ impl LintRule for NoOsEnvironRule {
     }
 
     fn description(&self) -> &str {
-        "os.environ should not be used directly. Use dependency injection for configuration values."
+        "Environment variables should never be accessed directly. Use @injected to request dependencies instead."
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
@@ -525,5 +635,168 @@ configs = list(map(lambda key: os.environ.get(key), ['API_KEY', 'DB_URL']))
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
+    }
+    
+    #[test]
+    fn test_os_getenv() {
+        let code = r#"
+import os
+
+def get_config():
+    api_key = os.getenv('API_KEY')
+    db_url = os.getenv('DATABASE_URL', 'sqlite:///db.sqlite')
+    return api_key, db_url
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 2);
+        assert!(violations[0].message.contains("os.getenv is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_getenvb() {
+        let code = r#"
+import os
+
+def get_config():
+    api_key = os.getenvb(b'API_KEY')
+    return api_key
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.getenvb is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_putenv() {
+        let code = r#"
+import os
+
+def set_config():
+    os.putenv('API_KEY', 'secret')
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.putenv is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_unsetenv() {
+        let code = r#"
+import os
+
+def clear_config():
+    os.unsetenv('API_KEY')
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.unsetenv is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_environb() {
+        let code = r#"
+import os
+
+def get_config():
+    return os.environb[b'API_KEY']
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.environ[...] is forbidden"));
+    }
+    
+    #[test]
+    fn test_dotenv_load() {
+        let code = r#"
+from dotenv import load_dotenv
+
+def setup():
+    load_dotenv()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("load_dotenv is forbidden"));
+    }
+    
+    #[test]
+    fn test_dotenv_values() {
+        let code = r#"
+import dotenv
+
+def get_all_config():
+    return dotenv.dotenv_values('.env')
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("dotenv.dotenv_values is forbidden"));
+    }
+    
+    #[test]
+    fn test_decouple_config() {
+        let code = r#"
+from decouple import config
+
+def get_config():
+    api_key = config('API_KEY')
+    debug = config('DEBUG', default=False, cast=bool)
+    return api_key, debug
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 2);
+        assert!(violations[0].message.contains("config (likely from python-decouple) is forbidden"));
+    }
+    
+    #[test]
+    fn test_environs_env() {
+        let code = r#"
+from environs import Env
+
+def get_config():
+    env = Env()
+    env.read_env()
+    return env.str('API_KEY')
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Env (likely from environs) is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_environ_clear() {
+        let code = r#"
+import os
+
+def clear_all():
+    os.environ.clear()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.environ.clear is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_environ_copy() {
+        let code = r#"
+import os
+
+def backup_env():
+    return os.environ.copy()
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.environ.copy is forbidden"));
+    }
+    
+    #[test]
+    fn test_os_environ_update() {
+        let code = r#"
+import os
+
+def update_env(new_vars):
+    os.environ.update(new_vars)
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("os.environ.update is forbidden"));
     }
 }
