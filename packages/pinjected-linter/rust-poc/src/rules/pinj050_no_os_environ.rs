@@ -104,7 +104,7 @@ impl NoOsEnvironRule {
             Expr::Attribute(attr) if Self::is_os_environ_access(expr) => {
                 violations.push(Violation {
                     rule_id: "PINJ050".to_string(),
-                    message: "Use of os.environ is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.".to_string(),
+                    message: "Use of os.environ is forbidden. Environment variables are a bad pattern and must NEVER be used. Use @injected to request dependencies instead.\n\nExample: If you need an API key, inject it as a dependency:\n\n@injected\ndef func_that_needs_api_key(xxx_api_key: str, /, args):\n    # Use xxx_api_key here\n\nUsers provide values via: pinjected run --xxx-api-key YOUR_KEY\n\nNote: Feature flags are anti-patterns. Use the strategy pattern to inject different implementations.".to_string(),
                     offset: expr.range().start().to_usize(),
                     file_path: file_path.to_string(),
                     severity: Severity::Error,
@@ -119,7 +119,7 @@ impl NoOsEnvironRule {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
                         message: format!(
-                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            "Use of {} is forbidden. Environment variables must NEVER be used. Use @injected to request dependencies instead.\n\nExample: Inject configuration as dependencies:\n\n@injected\ndef your_function(api_key: str, database_url: str, /, args):\n    # Use injected values\n\nUsers provide values via: pinjected run --api-key KEY --database-url URL",
                             func_name
                         ),
                         offset: call.func.range().start().to_usize(),
@@ -134,7 +134,7 @@ impl NoOsEnvironRule {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
                         message: format!(
-                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            "Use of {} is forbidden. Never load environment variables. Use @injected to request dependencies instead.\n\nExample: Declare what you need:\n\n@injected\ndef your_function(api_key: str, database_url: str, /, args):\n    # Use injected values\n\nConfiguration comes from pinjected, NOT environment variables.",
                             func_name
                         ),
                         offset: call.func.range().start().to_usize(),
@@ -149,7 +149,7 @@ impl NoOsEnvironRule {
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
                         message: format!(
-                            "Use of {} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                            "Use of {} is forbidden. Environment variables are bad practice. Use @injected instead.\n\nExample: Declare dependencies:\n\n@injected\ndef your_function(api_key: str, debug_mode: bool, /, args):\n    # Use injected values\n\nUsers configure via: pinjected run --api-key KEY --debug-mode",
                             func_name
                         ),
                         offset: call.func.range().start().to_usize(),
@@ -166,7 +166,7 @@ impl NoOsEnvironRule {
                             violations.push(Violation {
                                 rule_id: "PINJ050".to_string(),
                                 message: format!(
-                                    "Use of os.environ.{} is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.",
+                                    "Use of os.environ.{} is forbidden. Environment variables are forbidden. Use @injected instead.\n\nExample: Declare what you need:\n\n@injected\ndef your_function(config_value: str, /, args):\n    # Use config_value (provided via --config-value)",
                                     attr.attr
                                 ),
                                 offset: call.func.range().start().to_usize(),
@@ -190,9 +190,22 @@ impl NoOsEnvironRule {
             // Check os.environ[key] access
             Expr::Subscript(sub) => {
                 if Self::is_os_environ_access(&sub.value) {
+                    // Try to extract the environment variable name if it's a simple string subscript
+                    let env_var_hint = if let Expr::Constant(c) = &*sub.slice {
+                        if let rustpython_ast::Constant::Str(s) = &c.value {
+                            // Convert XXX_API_KEY to xxx_api_key
+                            let param_name = s.as_str().to_lowercase();
+                            format!("\n\nExample: Instead of os.environ['{}'], inject it:\n\n@injected\ndef your_function({}: str, /, args):\n    # Use {}\n\nUsers provide via: pinjected run --{} YOUR_VALUE\n\nNote: Feature flags are anti-patterns. Use strategy pattern instead.", s.as_str(), param_name, param_name, param_name.replace("_", "-"))
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        String::new()
+                    };
+                    
                     violations.push(Violation {
                         rule_id: "PINJ050".to_string(),
-                        message: "Use of os.environ[...] is forbidden. Never access environment variables directly. Use @injected to request dependencies instead.".to_string(),
+                        message: format!("Use of os.environ[...] is forbidden. Environment variables must NEVER be used. Use @injected to request dependencies instead.{}", env_var_hint),
                         offset: sub.value.range().start().to_usize(),
                         file_path: file_path.to_string(),
                         severity: Severity::Error,

@@ -1,18 +1,64 @@
-# PINJ050: No Direct Environment Variable Access
+# PINJ050: No Environment Variable Access
 
 ## Overview
 
-This rule forbids **all** direct access to environment variables through any method or library. You must **NEVER** access environment variables directly. Instead, all configuration values must be injected using pinjected's dependency injection system with `@injected`.
+This rule forbids **ALL** access to environment variables. Environment variables are a bad pattern and must NEVER be used. Instead, configuration values are provided through pinjected's proper configuration mechanisms.
+
+## How Configuration Works in Pinjected
+
+Configuration values are provided by users through:
+- Command line arguments: `pinjected run --xxx-api-key YOUR_KEY --database-url postgres://...`
+- Default design in `~/.pinjected.py` or project configuration
+- NEVER through environment variables
+
+Your code simply declares what it needs as dependencies, and pinjected provides them
 
 ## Rationale
 
-Direct access to environment variables in pinjected code violates several dependency injection principles:
+Direct access to environment variables violates dependency injection principles:
 
 1. **Hidden Dependencies**: Environment variables are implicit dependencies not visible in function signatures
 2. **Testing Difficulties**: Hard to mock or override environment variables in tests
 3. **Configuration Coupling**: Code becomes tightly coupled to the runtime environment
 4. **No Type Safety**: Environment variables are always strings, requiring manual parsing
 5. **Initialization Order Issues**: Environment variables might not be set when code runs
+6. **Breaks Inversion of Control**: Your code shouldn't know where values come from
+
+## Important: Feature Flags are an Anti-Pattern
+
+**WARNING**: Using environment variables for feature flags (e.g., `ENABLE_FEATURE_X`, `USE_NEW_ALGORITHM`) is an anti-pattern in dependency injection. Instead, use the **Strategy Pattern** to inject different implementations based on configuration.
+
+### ❌ Bad: Feature Flag Anti-Pattern
+```python
+# DON'T DO THIS - Feature flags are anti-patterns
+@injected
+def process_data(enable_feature_x: bool, /, data: str):
+    if enable_feature_x:  # Anti-pattern: switching behavior with a flag
+        return new_algorithm(data)
+    else:
+        return old_algorithm(data)
+```
+
+### ✅ Good: Strategy Pattern
+```python
+from typing import Protocol
+
+class DataProcessorProtocol(Protocol):
+    def process(self, data: str) -> str: ...
+
+class NewAlgorithmProcessor:
+    def process(self, data: str) -> str:
+        return new_algorithm(data)
+
+class OldAlgorithmProcessor:
+    def process(self, data: str) -> str:
+        return old_algorithm(data)
+
+# Inject the strategy, not a flag
+@injected
+def process_data(data_processor: DataProcessorProtocol, /, data: str):
+    return data_processor.process(data)  # No conditional logic needed!
+```
 
 ## Examples
 
@@ -25,10 +71,10 @@ from dotenv import load_dotenv, dotenv_values
 from decouple import config
 from environs import Env
 
-# Direct os.environ access
+# Direct os.environ access for API keys
 @injected
 def get_api_client(/, base_url: str) -> APIClient:
-    api_key = os.environ['API_KEY']  # PINJ050 violation
+    api_key = os.environ['XXX_API_KEY']  # PINJ050 violation
     return APIClient(base_url, api_key)
 
 # Using os.getenv() - FORBIDDEN
@@ -83,35 +129,43 @@ def any_env_access():
 ### ✅ Correct - Use @injected to request dependencies
 
 ```python
-from pinjected import injected, instance
-from typing import Protocol
+from pinjected import injected
 
-# Define configuration protocol
-class ConfigProtocol(Protocol):
-    api_key: str
-    db_password: str
-    debug: bool
-    environment: str
-    service_endpoint: str
+# NEVER ACCESS os.environ - Values come from pinjected configuration!
 
-# IMPORTANT: Environment variables should ONLY be accessed in a single @instance function
-# marked with noqa comments. This is the ONLY acceptable place.
-@instance
-def config() -> ConfigProtocol:
-    # This is the ONLY place where env vars should be accessed
-    import os
-    return Config(
-        api_key=os.environ['API_KEY'],  # noqa: PINJ050
-        db_password=os.environ.get('DB_PASSWORD', 'default'),  # noqa: PINJ050
-        debug=os.environ.get('DEBUG', 'false') == 'true',  # noqa: PINJ050
-        environment=os.environ.get('ENVIRONMENT', 'development'),  # noqa: PINJ050
-        service_endpoint=os.environ['SERVICE_ENDPOINT']  # noqa: PINJ050
-    )
-
-# Use injected configuration
+# Example 1: Declare what you need
 @injected
-def get_api_client(config: ConfigProtocol, /, base_url: str) -> APIClient:
-    return APIClient(base_url, config.api_key)
+def get_api_client(xxx_api_key: str, /, base_url: str) -> APIClient:
+    # xxx_api_key is provided via:
+    #   pinjected run --xxx-api-key YOUR_KEY
+    # or from default design in ~/.pinjected.py
+    return APIClient(base_url, xxx_api_key)
+
+# Example 2: Multiple configuration values
+@injected  
+def connect_to_database(
+    database_url: str,      # Provided via --database-url
+    database_password: str, # Provided via --database-password
+    /, 
+    timeout: int = 30
+) -> Database:
+    # Values are injected from pinjected configuration
+    return Database(database_url, database_password, timeout)
+
+# Example 3: Using specific API keys
+@injected
+def setup_services(
+    stripe_api_key: str,   # Provided via --stripe-api-key
+    openai_api_key: str,   # Provided via --openai-api-key  
+    sendgrid_api_key: str, # Provided via --sendgrid-api-key
+    /,
+) -> Services:
+    # All values come from pinjected configuration, NOT environment!
+    return Services(
+        stripe=StripeClient(stripe_api_key),
+        openai=OpenAIClient(openai_api_key),
+        email=SendGridClient(sendgrid_api_key)
+    )
 
 @injected
 def get_database(config: ConfigProtocol, /, host: str) -> Database:
@@ -121,87 +175,118 @@ def get_database(config: ConfigProtocol, /, host: str) -> Database:
 def get_service(config: ConfigProtocol, /, name: str) -> Service:
     return Service(name, config.service_endpoint)
 
-# Alternative: Individual configuration values
-@instance
-def api_key() -> str:
-    import os
-    return os.environ['API_KEY']  # noqa: PINJ050
-
+# Example 4: Users provide values when running the application
+# Run with: pinjected run --stripe-secret-key sk_live_xxx --payment-webhook-url https://...
 @injected
-def get_api_client_v2(api_key: str, /, base_url: str) -> APIClient:
-    return APIClient(base_url, api_key)
+def process_payment(
+    stripe_secret_key: str,     # From --stripe-secret-key
+    payment_webhook_url: str,    # From --payment-webhook-url
+    enable_test_mode: bool,      # From --enable-test-mode
+    /,
+    amount: float,
+    customer_id: str
+) -> PaymentResult:
+    # All configuration is injected - your code is pure business logic
+    client = StripeClient(stripe_secret_key, test_mode=enable_test_mode)
+    return client.charge(amount, customer_id, webhook=payment_webhook_url)
 ```
 
 ## How to Fix
 
-1. **NEVER access environment variables directly**: No `os.getenv`, `os.environ`, `dotenv`, `decouple`, or any other method
-2. **Create a Configuration Protocol**: Define a protocol with all configuration values your application needs
-3. **Create ONE Instance Function**: Use `@instance` to load environment variables in exactly ONE place in your entire codebase
-4. **Use @injected everywhere else**: Replace ALL environment variable access with `@injected` functions that request the configuration as a dependency
-5. **Use noqa ONLY in the instance function**: The ONLY legitimate use of `# noqa: PINJ050` is in your single configuration instance function
+1. **NEVER access environment variables**: Environment variables are forbidden - use pinjected configuration
+2. **Just declare dependencies**: Use meaningful parameter names for what you need
+3. **Users provide values**: Via command line (`--param-name value`) or configuration files
+4. **No os.environ ever**: Environment variables are a bad pattern - don't use them
+5. **Pure dependency injection**: Your code just declares needs, pinjected provides values
 
 ### Step-by-step Example
 
 ```python
-# Step 1: Identify ALL environment variable usage
+# Step 1: Identify ALL environment variable usage  
 def get_service():
-    api_key = os.getenv('API_KEY')  # FORBIDDEN!
-    timeout = int(os.environ.get('TIMEOUT', '30'))  # FORBIDDEN!
+    api_key = os.getenv('XXX_API_KEY')  # FORBIDDEN!
+    timeout = int(os.environ.get('SERVICE_TIMEOUT', '30'))  # FORBIDDEN!
     load_dotenv()  # FORBIDDEN!
     return Service(api_key, timeout)
 
-# Step 2: Create configuration protocol and instance
-from typing import Protocol
-from pinjected import injected, instance
+# Step 2: Replace with dependency injection
+from pinjected import injected
 
-class ServiceConfig(Protocol):
-    api_key: str
-    timeout: int
-
-# This is the ONLY place in your entire codebase where env vars are accessed
-@instance
-def service_config() -> ServiceConfig:
-    import os
-    return SimpleConfig(
-        api_key=os.environ['API_KEY'],  # noqa: PINJ050
-        timeout=int(os.environ.get('TIMEOUT', '30'))  # noqa: PINJ050
-    )
-
-# Step 3: ALWAYS use @injected to request dependencies
 @injected
-def get_service(service_config: ServiceConfig, /):
-    # NEVER access env vars here - use the injected config
-    return Service(service_config.api_key, service_config.timeout)
+def get_service(
+    xxx_api_key: str,      # User provides via --xxx-api-key
+    service_timeout: int,  # User provides via --service-timeout
+    /
+):
+    # Values come from pinjected configuration, NOT environment!
+    return Service(xxx_api_key, service_timeout)
 
-# Step 4: All other functions must also use @injected
+# Step 3: Users run your application with configuration
+# pinjected run --xxx-api-key "sk_live_..." --service-timeout 60
+
+# Step 4: All functions declare their dependencies
 @injected
-def process_data(service_config: ServiceConfig, /, data: str):
-    # Request the config through dependency injection
-    if service_config.timeout > 60:
-        # Use the injected values
+def process_data(
+    service_timeout: int,  # Injected from pinjected configuration
+    /, 
+    data: str
+):
+    if service_timeout > 60:
         return slow_process(data)
     return fast_process(data)
+
+# Step 5: For production applications
+@injected
+def create_application(
+    database_url: str,         # --database-url "postgres://..."
+    redis_url: str,            # --redis-url "redis://..."
+    secret_key: str,           # --secret-key "your-secret"
+    debug_mode: bool,          # --debug-mode
+    max_connections: int,      # --max-connections 100
+    /
+) -> Application:
+    # Pure business logic - configuration is injected!
+    return Application(
+        db=Database(database_url, max_connections),
+        cache=Redis(redis_url),
+        config=AppConfig(secret_key, debug_mode)
+    )
+
+# Users can also set defaults in ~/.pinjected.py:
+# default_design = design(
+#     xxx_api_key="default_key",
+#     database_url="postgres://localhost/mydb",
+#     ...
+# )
 ```
 
 ## Suppressing the Rule
 
-**WARNING**: You should ONLY suppress this rule in exactly ONE place - your configuration instance function.
+**NEVER suppress this rule.** Environment variables are forbidden in pinjected.
 
 ```python
-# The ONLY legitimate use case for suppressing PINJ050:
-@instance
-def load_config() -> ConfigProtocol:
-    # This is the SINGLE place in your entire codebase where env vars are loaded
-    import os
-    return Config(
-        api_key=os.environ['API_KEY'],  # noqa: PINJ050
-        db_url=os.environ['DATABASE_URL'],  # noqa: PINJ050
-    )
-
-# NEVER suppress this rule anywhere else!
-# If you think you need to suppress it elsewhere, you're doing it wrong.
-# Use @injected to request the configuration instead.
+# ❌ NEVER DO THIS - Environment variables are bad!
+def some_function():
+    value = os.environ['SOME_VAR']  # noqa: PINJ050  # WRONG!
+    
+# ✅ ALWAYS DO THIS - Use dependency injection
+@injected
+def some_function(some_var: str, /):
+    # some_var is provided via pinjected configuration:
+    # pinjected run --some-var "value"
+    pass
 ```
+
+## Why Environment Variables Are Bad
+
+1. **Global mutable state**: Environment variables are global and can be changed by any part of the system
+2. **No type safety**: Always strings, requiring error-prone parsing
+3. **Hidden dependencies**: Not visible in function signatures
+4. **Testing nightmare**: Hard to mock or control in tests
+5. **Security risks**: Can be exposed through process inspection
+6. **No validation**: Values can be missing or invalid
+
+Pinjected's configuration system solves all these problems through proper dependency injection.
 
 ## Configuration
 
