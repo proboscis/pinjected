@@ -3,6 +3,9 @@
 //! @injected functions represent actions or operations that can be performed
 //! with injected dependencies. Using verb forms makes it clear that these
 //! are functions to be called, not values to be provided.
+//!
+//! Note: If you're confident your function name is already in verb form,
+//! you can suppress this warning with `# noqa: PINJ005`
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
@@ -90,7 +93,8 @@ impl LintRule for InjectedFunctionNamingRule {
                         violations.push(Violation {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
-                                "@injected function '{}' uses noun form. Use verb form instead. Consider renaming to '{}'.",
+                                "@injected function '{}' uses noun form. Use verb form instead. Consider renaming to '{}'. \
+                                If you're confident this is already a verb, use `# noqa: PINJ005` to suppress this warning.",
                                 function_name, suggestion
                             ),
                             offset: func.range.start().to_usize(),
@@ -124,7 +128,8 @@ impl LintRule for InjectedFunctionNamingRule {
                             rule_id: self.rule_id().to_string(),
                             message: format!(
                                 "@injected function '{}' uses noun form. Use verb form instead. \
-                                Consider renaming to '{}'",
+                                Consider renaming to '{}'. \
+                                If you're confident this is already a verb, use `# noqa: PINJ005` to suppress this warning.",
                                 function_name, final_suggestion
                             ),
                             offset: func.range.start().to_usize(),
