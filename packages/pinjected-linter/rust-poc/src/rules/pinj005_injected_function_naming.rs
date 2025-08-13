@@ -76,7 +76,7 @@ impl LintRule for InjectedFunctionNamingRule {
     }
 
     fn description(&self) -> &str {
-        "@injected functions should use verb forms"
+        "@injected functions should use verb forms (use `# noqa: PINJ005` if confident the name is already a verb)"
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
