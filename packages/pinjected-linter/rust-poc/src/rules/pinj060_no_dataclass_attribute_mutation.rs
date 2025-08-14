@@ -62,6 +62,25 @@ impl NoDataclassAttributeMutationRule {
         dataclass_names
     }
 
+    /// Check if a class name looks like it could be a dataclass
+    fn looks_like_dataclass_name(name: &str) -> bool {
+        // Common patterns for dataclass names
+        name.ends_with("State") ||
+        name.ends_with("Data") ||
+        name.ends_with("Config") ||
+        name.ends_with("Model") ||
+        name.ends_with("Params") ||
+        name.ends_with("Settings") ||
+        name.ends_with("Info") ||
+        name.ends_with("Record") ||
+        name.ends_with("Entry") ||
+        name.ends_with("Item") ||
+        name.ends_with("Details") ||
+        name.ends_with("Metadata") ||
+        name.contains("Dataclass") ||
+        name.contains("DataClass")
+    }
+
     /// Track variables that are instances of dataclasses
     fn track_dataclass_instances(
         stmts: &[Stmt],
@@ -78,7 +97,10 @@ impl NoDataclassAttributeMutationRule {
                             // Check if the value is a dataclass instantiation
                             if let Expr::Call(call) = &*assign.value {
                                 if let Expr::Name(class_name) = &*call.func {
-                                    if dataclass_names.contains(class_name.id.as_str()) {
+                                    let class_name_str = class_name.id.as_str();
+                                    // Check if it's a known dataclass OR looks like one
+                                    if dataclass_names.contains(class_name_str) || 
+                                       Self::looks_like_dataclass_name(class_name_str) {
                                         instances.insert(
                                             target_name.id.to_string(),
                                             class_name.id.to_string(),
@@ -95,7 +117,10 @@ impl NoDataclassAttributeMutationRule {
                         if let Some(value) = &ann_assign.value {
                             if let Expr::Call(call) = &**value {
                                 if let Expr::Name(class_name) = &*call.func {
-                                    if dataclass_names.contains(class_name.id.as_str()) {
+                                    let class_name_str = class_name.id.as_str();
+                                    // Check if it's a known dataclass OR looks like one
+                                    if dataclass_names.contains(class_name_str) || 
+                                       Self::looks_like_dataclass_name(class_name_str) {
                                         instances.insert(
                                             target_name.id.to_string(),
                                             class_name.id.to_string(),
@@ -106,7 +131,10 @@ impl NoDataclassAttributeMutationRule {
                         }
                         // Also check the annotation
                         if let Expr::Name(ann_name) = &*ann_assign.annotation {
-                            if dataclass_names.contains(ann_name.id.as_str()) {
+                            let ann_name_str = ann_name.id.as_str();
+                            // Check if it's a known dataclass OR looks like one
+                            if dataclass_names.contains(ann_name_str) || 
+                               Self::looks_like_dataclass_name(ann_name_str) {
                                 instances.insert(
                                     target_name.id.to_string(),
                                     ann_name.id.to_string(),
@@ -552,5 +580,41 @@ def update_state():
 "#;
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_imported_dataclass_by_naming_heuristic() {
+        let code = r#"
+from some_module import ServiceState, ConfigData
+
+def process():
+    state = ServiceState(instance_id="test", count=0)
+    config = ConfigData(key="value")
+    
+    # These should be flagged based on naming heuristic
+    state.count += 1
+    config.key = "new_value"
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 2, "Should detect mutations on classes that look like dataclasses");
+        assert!(violations[0].message.contains("ServiceState"));
+        assert!(violations[1].message.contains("ConfigData"));
+    }
+    
+    #[test]
+    fn test_imported_class_not_looking_like_dataclass() {
+        let code = r#"
+from some_module import HttpClient, DatabaseConnection
+
+def process():
+    client = HttpClient()
+    db = DatabaseConnection()
+    
+    # These should NOT be flagged as they don't look like dataclasses
+    client.timeout = 30
+    db.retries = 3
+"#;
+        let violations = check_code(code);
+        assert_eq!(violations.len(), 0, "Should not flag mutations on regular-looking classes");
     }
 }
