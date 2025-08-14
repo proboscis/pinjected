@@ -64,17 +64,28 @@ impl NoCallableTypeAnnotationRule {
         }
     }
 
-    /// Check if this is a special type that should be allowed
-    fn is_allowed_non_protocol_type(annotation: &Expr) -> bool {
+    /// Check if this is a forbidden type
+    fn is_forbidden_type(annotation: &Expr) -> bool {
         match annotation {
             Expr::Name(name) => {
                 let name_str = name.id.as_str();
-                // Allow basic types that are not typically wrapped in Protocols
-                matches!(name_str, "str" | "int" | "float" | "bool" | "bytes" | "None" | "dict" | "list" | "tuple" | "set")
+                // Forbid these generic types
+                matches!(name_str, "Any" | "object" | "callable" | "Callable")
             }
-            Expr::Constant(c) => {
-                // Allow None as a type annotation
-                c.value.is_none()
+            Expr::Attribute(attr) => {
+                // Check for typing.Any, typing.Callable, etc.
+                let attr_name = attr.attr.as_str();
+                matches!(attr_name, "Any" | "object" | "callable" | "Callable")
+            }
+            Expr::Subscript(sub) => {
+                // Check if the base is Callable[...]
+                if let Expr::Name(name) = &*sub.value {
+                    matches!(name.id.as_str(), "Callable")
+                } else if let Expr::Attribute(attr) = &*sub.value {
+                    matches!(attr.attr.as_str(), "Callable")
+                } else {
+                    false
+                }
             }
             _ => false,
         }
@@ -92,8 +103,9 @@ impl NoCallableTypeAnnotationRule {
             let arg_name = arg.def.arg.as_str();
             
             if let Some(annotation) = &arg.def.annotation {
-                // Skip if it's a Protocol type or an allowed basic type
-                if !Self::is_protocol_type(annotation) && !Self::is_allowed_non_protocol_type(annotation) {
+                // Only flag if it's a forbidden type (Any, object, Callable)
+                // Protocol types and regular classes are allowed
+                if Self::is_forbidden_type(annotation) {
                     let type_name = Self::get_type_name(annotation);
                     violations.push((arg_name.to_string(), type_name, arg.def.range.start().to_usize()));
                 }
@@ -115,8 +127,9 @@ impl NoCallableTypeAnnotationRule {
                 }
                 
                 if let Some(annotation) = &arg.def.annotation {
-                    // Skip if it's a Protocol type or an allowed basic type
-                    if !Self::is_protocol_type(annotation) && !Self::is_allowed_non_protocol_type(annotation) {
+                    // Only flag if it's a forbidden type (Any, object, Callable)
+                    // Protocol types and regular classes are allowed
+                    if Self::is_forbidden_type(annotation) {
                         let type_name = Self::get_type_name(annotation);
                         violations.push((arg_name.to_string(), type_name, arg.def.range.start().to_usize()));
                     }
@@ -147,9 +160,14 @@ impl NoCallableTypeAnnotationRule {
                 format!(
                     "Dependency '{}' in @injected function '{}' uses '{}' type annotation. \
                     This is forbidden. Instead, define and use a specific Protocol type that describes \
-                    the expected interface. For example:\n\n\
-                    class {}Protocol(Protocol):\n    \
-                    def __call__(self, ...) -> ...: ...\n\n\
+                    the expected interface. For example:
+
+\
+                    class {}Protocol(Protocol):
+    \
+                    def __call__(self, ...) -> ...: ...
+
+\
                     Then use '{}Protocol' as the type annotation.",
                     param_name, func.name, type_name, capitalized_name, capitalized_name
                 )
@@ -160,11 +178,18 @@ impl NoCallableTypeAnnotationRule {
                     the expected interface of this dependency.",
                     param_name, func.name, type_name
                 )
-            } else {
+            } else if type_name == "object" || type_name.contains(".object") {
                 format!(
-                    "Dependency '{}' in @injected function '{}' uses non-Protocol type '{}'. \
-                    Dependencies should use Protocol types to define their interface. \
-                    Consider creating a Protocol type that describes the expected interface.",
+                    "Dependency '{}' in @injected function '{}' uses '{}' type annotation. \
+                    This is too generic and provides no type safety. Define and use a specific Protocol type \
+                    that describes the expected interface of this dependency.",
+                    param_name, func.name, type_name
+                )
+            } else {
+                // This branch should not be reached since we only flag forbidden types
+                format!(
+                    "Dependency '{}' in @injected function '{}' uses forbidden type '{}'. \
+                    This type is not allowed for dependencies.",
                     param_name, func.name, type_name
                 )
             };
@@ -202,9 +227,14 @@ impl NoCallableTypeAnnotationRule {
                 format!(
                     "Dependency '{}' in @injected async function '{}' uses '{}' type annotation. \
                     This is forbidden. Instead, define and use a specific Protocol type that describes \
-                    the expected interface. For example:\n\n\
-                    class {}Protocol(Protocol):\n    \
-                    async def __call__(self, ...) -> ...: ...\n\n\
+                    the expected interface. For example:
+
+\
+                    class {}Protocol(Protocol):
+    \
+                    async def __call__(self, ...) -> ...: ...
+
+\
                     Then use '{}Protocol' as the type annotation.",
                     param_name, func.name, type_name, capitalized_name, capitalized_name
                 )
@@ -215,11 +245,18 @@ impl NoCallableTypeAnnotationRule {
                     the expected interface of this dependency.",
                     param_name, func.name, type_name
                 )
-            } else {
+            } else if type_name == "object" || type_name.contains(".object") {
                 format!(
-                    "Dependency '{}' in @injected async function '{}' uses non-Protocol type '{}'. \
-                    Dependencies should use Protocol types to define their interface. \
-                    Consider creating a Protocol type that describes the expected interface.",
+                    "Dependency '{}' in @injected async function '{}' uses '{}' type annotation. \
+                    This is too generic and provides no type safety. Define and use a specific Protocol type \
+                    that describes the expected interface of this dependency.",
+                    param_name, func.name, type_name
+                )
+            } else {
+                // This branch should not be reached since we only flag forbidden types
+                format!(
+                    "Dependency '{}' in @injected async function '{}' uses forbidden type '{}'. \
+                    This type is not allowed for dependencies.",
                     param_name, func.name, type_name
                 )
             };
@@ -244,7 +281,7 @@ impl LintRule for NoCallableTypeAnnotationRule {
     }
 
     fn description(&self) -> &str {
-        "Dependencies in @injected functions must use Protocol types as type annotations, not generic types like 'callable', 'Any', or other non-Protocol types."
+        "Dependencies in @injected functions must not use overly generic types like 'callable', 'Callable', 'Any', or 'object' as type annotations. Regular classes and Protocol types are allowed."
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
@@ -459,12 +496,16 @@ from typing import Callable, Protocol, Any
 class ServiceProtocol(Protocol):
     def serve(self) -> None: ...
 
+class RegularService:
+    def serve(self) -> None: ...
+
 @injected
 def orchestrate(
-    service: ServiceProtocol,  # Good
-    helper: Callable,  # Bad
-    logger: Any,  # Bad - too generic
-    processor: callable,  # Bad
+    service: ServiceProtocol,  # Good - Protocol
+    regular: RegularService,   # Good - regular class
+    helper: Callable,          # Bad - forbidden type
+    logger: Any,               # Bad - forbidden type
+    processor: callable,       # Bad - forbidden type
     /,
 ) -> None:
     pass
@@ -530,16 +571,14 @@ class MyService:
 
 @injected
 def process_data(
-    service: MyService,  # Bad - not a Protocol
+    service: MyService,  # OK - regular class types are allowed
     /,
     data: str
 ) -> str:
     pass
 "#;
         let violations = check_code(code);
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("'service'"));
-        assert!(violations[0].message.contains("uses non-Protocol type 'MyService'"));
+        assert_eq!(violations.len(), 0, "Regular class types should be allowed");
     }
 
     #[test]
@@ -549,16 +588,22 @@ from pinjected import injected
 
 @injected
 def process_data(
-    config: dict,  # OK - basic type
-    count: int,    # OK - basic type
-    names: list,   # OK - basic type
+    config: dict,      # OK - basic type
+    count: int,        # OK - basic type
+    names: list,       # OK - basic type
+    text: str,         # OK - basic type
+    ratio: float,      # OK - basic type
+    flags: bool,       # OK - basic type
+    raw_data: bytes,   # OK - basic type
+    items: tuple,      # OK - basic type
+    unique: set,       # OK - basic type
     /,
     data: str
 ) -> str:
     pass
 "#;
         let violations = check_code(code);
-        assert_eq!(violations.len(), 0, "Basic types should be allowed");
+        assert_eq!(violations.len(), 0, "Basic types (dict, int, list, str, float, bool, bytes, tuple, set) should be allowed");
     }
 
     #[test]
@@ -577,7 +622,8 @@ def process_data(
         let violations = check_code(code);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("'service'"));
-        assert!(violations[0].message.contains("uses non-Protocol type 'object'"));
+        assert!(violations[0].message.contains("uses 'object' type annotation"));
+        assert!(violations[0].message.contains("too generic and provides no type safety"));
     }
 
     #[test]
