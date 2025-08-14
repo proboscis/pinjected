@@ -51,6 +51,7 @@ pub mod pinj056_no_mutable_argument_mutations;
 pub mod pinj057_no_callable_type_annotation;
 pub mod pinj058_missing_return_type_annotation;
 pub mod pinj059_test_file_placement;
+pub mod pinj060_no_dataclass_attribute_mutation;
 // Future rules would be added here:
 // ... etc
 
@@ -110,6 +111,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj057_no_callable_type_annotation::NoCallableTypeAnnotationRule::new()),
         Box::new(pinj058_missing_return_type_annotation::MissingReturnTypeAnnotationRule::new()),
         Box::new(pinj059_test_file_placement::TestFilePlacementRule::new()),
+        Box::new(pinj060_no_dataclass_attribute_mutation::NoDataclassAttributeMutationRule::new()),
         // Add more rules here as they're implemented
     ]
 }
@@ -159,5 +161,6 @@ mod tests {
         assert!(rule_ids.contains(&"PINJ050"), "PINJ050 not found!");
         assert!(rule_ids.contains(&"PINJ051"), "PINJ051 not found!");
         assert!(rule_ids.contains(&"PINJ058"), "PINJ058 not found!");
+        assert!(rule_ids.contains(&"PINJ060"), "PINJ060 not found!");
     }
 }
