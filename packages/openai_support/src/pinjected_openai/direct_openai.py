@@ -249,7 +249,7 @@ def _log_usage_and_cost(
     openai_model_table,
     openai_state: dict,
     logger: LoggerProtocol,
-) -> None:
+) -> dict:
     """
     Log token usage information and calculate costs.
 
@@ -259,9 +259,12 @@ def _log_usage_and_cost(
         openai_model_table: Model pricing table
         openai_state: Current state dictionary for tracking
         logger: Logger instance for output
+
+    Returns:
+        Updated state dictionary with cumulative costs
     """
     if not response.usage:
-        return
+        return openai_state
 
     logger.info(f"Token usage: {response.usage.model_dump()}")
 
@@ -277,7 +280,9 @@ def _log_usage_and_cost(
         **openai_state,
         "request_count": openai_state.get("request_count", 0) + 1,
     }
-    log_completion_cost(usage_dict, model, openai_model_table, current_state, logger)
+    return log_completion_cost(
+        usage_dict, model, openai_model_table, current_state, logger
+    )
 
 
 def _process_structured_response(
@@ -515,7 +520,11 @@ async def a_sllm_openai(  # noqa: PINJ045
         # Phase 3: Make API call
         response = await async_openai_client.chat.completions.create(**api_params)
 
-        _log_usage_and_cost(response, model, openai_model_table, openai_state, logger)
+        # Update state with cumulative costs
+        updated_state = _log_usage_and_cost(
+            response, model, openai_model_table, openai_state, logger
+        )
+        openai_state.update(updated_state)
 
         if response_format is not None and issubclass(response_format, BaseModel):
             return _process_structured_response(response, response_format, logger)
