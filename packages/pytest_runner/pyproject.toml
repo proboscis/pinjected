@@ -39,3 +39,6 @@ pinjected = { workspace = true }
 dev = [
     "pytest>=8.1.1,<9"
 ]
+
+[project.entry-points.pytest11]
+pinjected_pytest_runner = "pinjected_pytest_runner.plugin"
