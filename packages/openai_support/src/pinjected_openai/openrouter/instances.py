@@ -5,7 +5,7 @@ from httpx import ReadTimeout
 from injected_utils import async_cached, lzma_sqlite, sqlite_dict
 from pinjected_openai.openrouter.util import (
     Text,
-    a_openrouter_chat_completion__without_fix,
+    a_openrouter_base_chat_completion,
     AOpenrouterChatCompletionProtocol,
 )
 from pydantic import BaseModel
@@ -100,15 +100,11 @@ a_cached_structured_llm__claude_sonnet_3_5: IProxy[StructuredLLM] = async_cached
 )(Injected.partial(a_sllm_openrouter, model="anthropic/claude-3.5-sonnet"))
 a_cached_sllm_gpt4o__openrouter: IProxy = async_cached(
     sqlite_dict(injected("cache_root_path") / "gpt4o.sqlite")
-)(Injected.partial(a_openrouter_chat_completion__without_fix, model="openai/gpt-4o"))
+)(Injected.partial(a_openrouter_base_chat_completion, model="openai/gpt-4o"))
 
 a_cached_sllm_gpt4o_mini__openrouter: IProxy = async_cached(
     sqlite_dict(injected("cache_root_path") / "gpt4o_mini.sqlite")
-)(
-    Injected.partial(
-        a_openrouter_chat_completion__without_fix, model="openai/gpt-4o-mini"
-    )
-)
+)(Injected.partial(a_openrouter_base_chat_completion, model="openai/gpt-4o-mini"))
 
 test_cached_sllm_gpt4o_mini: IProxy = a_cached_sllm_gpt4o_mini__openrouter(
     prompt="What is the capital of Japan?", model="openai/gpt-4o-mini"
