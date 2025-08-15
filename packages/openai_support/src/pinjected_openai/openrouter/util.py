@@ -75,6 +75,12 @@ class OpenRouterOverloadedError(Exception):
     pass
 
 
+class OpenRouterTransientError(Exception):
+    """Transient error from OpenRouter that should be retried."""
+
+    pass
+
+
 # from vision_llm import a_vision_llm__gpt4o
 
 
@@ -247,13 +253,26 @@ def openrouter_timeout_sec() -> float:
     return 120
 
 
+class LoggerProtocol(Protocol):
+    """Protocol for logger interface."""
+
+    def info(self, message: str) -> None: ...
+    def warning(self, message: str) -> None: ...
+    def error(self, message: str) -> None: ...
+    def success(self, message: str) -> None: ...
+
+
 class AOpenrouterPostProtocol(Protocol):
     async def __call__(self, payload: dict) -> dict: ...
 
 
 @injected(protocol=AOpenrouterPostProtocol)
 async def a_openrouter_post(
-    openrouter_api_key: str, openrouter_timeout_sec: float, /, payload: dict
+    openrouter_api_key: str,
+    openrouter_timeout_sec: float,
+    logger: LoggerProtocol,
+    /,
+    payload: dict,
 ) -> dict:
     async with httpx.AsyncClient() as client:
         headers = {
@@ -266,7 +285,82 @@ async def a_openrouter_post(
             json=payload,
             timeout=openrouter_timeout_sec,
         )
-        return response.json()
+
+        # Check if response is JSON before parsing
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type.lower():
+            # Log the actual response for debugging
+            logger.error(
+                f"Non-JSON response from OpenRouter. Status: {response.status_code}, Content-Type: {content_type}"
+            )
+            logger.error(f"Response body: {response.text[:500]}...")  # First 500 chars
+
+            # Check for common error status codes
+            if response.status_code == 502:
+                raise OpenRouterOverloadedError(
+                    {
+                        "error": {
+                            "code": 502,
+                            "message": "Bad Gateway - Server overloaded",
+                        }
+                    }
+                )
+            elif response.status_code == 503:
+                raise OpenRouterTransientError(
+                    {
+                        "error": {
+                            "code": 503,
+                            "message": "Service temporarily unavailable",
+                        }
+                    }
+                )
+            elif response.status_code == 504:
+                raise OpenRouterTimeOutError(
+                    {"error": {"code": 504, "message": "Gateway timeout"}}
+                )
+            elif response.status_code >= 500:
+                raise OpenRouterTransientError(
+                    {
+                        "error": {
+                            "code": response.status_code,
+                            "message": f"Server error: {response.text[:200]}",
+                        }
+                    }
+                )
+            else:
+                raise RuntimeError(
+                    f"Non-JSON response from OpenRouter (status {response.status_code}): {response.text[:500]}"
+                )
+
+        # Try to parse JSON, handle errors gracefully
+        try:
+            return response.json()
+        except Exception as e:
+            logger.error(
+                f"Failed to parse JSON response. Status: {response.status_code}"
+            )
+            logger.error(f"Response body: {response.text[:500]}...")
+
+            # If it's a 5xx error, treat as transient
+            if response.status_code >= 500:
+                raise OpenRouterTransientError(
+                    {
+                        "error": {
+                            "code": response.status_code,
+                            "message": f"Server error with invalid JSON: {e!s}",
+                        }
+                    }
+                )
+            else:
+                raise RuntimeError(
+                    f"Invalid JSON response from OpenRouter: {e!s}. Response: {response.text[:500]}"
+                )
+
+
+class OpenRouterAPIProtocol(Protocol):
+    """Protocol for OpenRouter API client."""
+
+    def __init__(self, base_url: str, api_key: str) -> None: ...
 
 
 class SimpleLlmProtocol(Protocol):
@@ -324,14 +418,19 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
 @injected(protocol=AOpenrouterChatCompletionWithoutFixProtocol)
 @retry(
     retry=retry_if_exception_type(
-        (httpx.ReadTimeout, OpenRouterRateLimitError, OpenRouterOverloadedError)
+        (
+            httpx.ReadTimeout,
+            OpenRouterRateLimitError,
+            OpenRouterOverloadedError,
+            OpenRouterTransientError,
+        )
     ),
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
 async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
     a_openrouter_post: AOpenrouterPostProtocol,
-    logger: Any,
+    logger: LoggerProtocol,
     openrouter_model_table: OpenRouterModelTable,
     openrouter_state: dict,
     /,
@@ -418,10 +517,12 @@ async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
     cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
         safe(lambda x: x.calc_cost_dict(res["usage"]))
     )
-    update_cumulative_cost(openrouter_state, cost_dict)
+    # Don't mutate state, just log the cost
+    current_cost = openrouter_state.get("cumulative_cost", 0)
+    new_cost = current_cost + sum(cost_dict.value_or(dict()).values())
 
     logger.info(
-        f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
+        f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {new_cost} from {res['provider']}"
     )
 
     # Extract response content
@@ -443,21 +544,42 @@ async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
         return data
 
 
-def handle_openrouter_error(res: dict, logger):
+def handle_openrouter_error(res: dict, logger: LoggerProtocol):
     """Handle error responses from OpenRouter API."""
 
     if "error" not in res:
         return
 
-    if "Rate limit" in str(res):
+    error = res.get("error", {})
+    error_code = error.get("code")
+    error_msg = str(res)
+
+    # Rate limit errors
+    if error_code == 429 or "Rate limit" in error_msg or "rate-limited" in error_msg:
         logger.warning(f"Rate limit error in response: {pformat(res)}")
         raise OpenRouterRateLimitError(res)
-    if "Timed out" in str(res):
+
+    # Timeout errors
+    if "Timed out" in error_msg:
         logger.warning(f"Timed out error in response: {pformat(res)}")
         raise OpenRouterTimeOutError(res)
-    if "Overloaded" in str(res) or ("error" in res and res["error"].get("code") == 502):
+
+    # Overloaded errors
+    if "Overloaded" in error_msg or error_code == 502:
         logger.warning(f"Overloaded error in response: {pformat(res)}")
         raise OpenRouterOverloadedError(res)
+
+    # Transient errors that should be retried
+    transient_codes = {520, 503, 522, 524}
+    if error_code in transient_codes:
+        logger.warning(f"Transient error (code {error_code}): {pformat(res)}")
+        raise OpenRouterTransientError(res)
+
+    # Provider errors that might be transient
+    if error_code == 520 and "Provider returned error" in error_msg:
+        logger.warning(f"Provider transient error: {pformat(res)}")
+        raise OpenRouterTransientError(res)
+
     raise RuntimeError(f"Error in response: {pformat(res)}")
 
 
@@ -507,11 +629,12 @@ Please fix the following json object (Response) to match the schema:
             raise
 
 
-def update_cumulative_cost(openrouter_state: dict, cost_dict: ResultE[dict]):
-    """Update cumulative cost in state."""
-    openrouter_state["cumulative_cost"] = openrouter_state.get(
-        "cumulative_cost", 0
-    ) + sum(cost_dict.value_or(dict()).values())
+def calculate_cumulative_cost(openrouter_state: dict, cost_dict: ResultE[dict]) -> dict:
+    """Calculate new state with updated cumulative cost."""
+    new_cost = openrouter_state.get("cumulative_cost", 0) + sum(
+        cost_dict.value_or(dict()).values()
+    )
+    return {**openrouter_state, "cumulative_cost": new_cost}
 
 
 class AResizeImageBelow5mbProtocol(Protocol):
@@ -854,7 +977,7 @@ def build_openrouter_response_format(response_format):
 
 
 @injected(protocol=AResizeImageBelow5mbProtocol)
-async def a_resize_image_below_5mb(logger: Any, /, img: PIL.Image.Image):
+async def a_resize_image_below_5mb(logger: LoggerProtocol, /, img: PIL.Image.Image):
     """
     画像を5MB以下にリサイズします。
     元の画像のアスペクト比を保持しながら、必要に応じて徐々に縮小します。
@@ -1224,9 +1347,9 @@ class ALlmOpenrouterProtocol(Protocol):
 @injected(protocol=ALlmOpenrouterProtocol)
 async def a_llm__openrouter(  # noqa: PINJ045
     openrouter_model_table: OpenRouterModelTable,
-    openrouter_api: Any,
+    openrouter_api: OpenRouterAPIProtocol,
     a_openai_compatible_llm: AOpenaiCompatibleLlmProtocol,
-    logger: Any,
+    logger: LoggerProtocol,
     openrouter_state: dict,
     /,
     text: str,
@@ -1256,11 +1379,11 @@ async def a_llm__openrouter(  # noqa: PINJ045
 
     cost = openrouter_model_table.pricing(model).calc_cost(res.usage)
     total_cost = sum(cost.values())
-    openrouter_state["cumulative_cost"] = (
-        openrouter_state.get("cumulative_cost", 0) + total_cost
-    )
+    # Don't mutate state, just log the cost
+    current_cumulative = openrouter_state.get("cumulative_cost", 0)
+    new_cumulative = current_cumulative + total_cost
     logger.info(
-        f"Cost of completion: {cost}, total cost: {total_cost}, cumulative cost: {openrouter_state['cumulative_cost']}"
+        f"Cost of completion: {cost}, total cost: {total_cost}, cumulative cost: {new_cumulative}"
     )
 
     data = res.choices[0].message.content
