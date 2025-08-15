@@ -710,10 +710,20 @@ def build_chat_payload(
     **kwargs,
 ) -> dict:
     """Build complete chat payload for OpenRouter API."""
+    # Handle GPT-5 parameter transformation
+    # GPT-5 models require max_completion_tokens instead of max_tokens
+    if "gpt-5" in model.lower():
+        # For GPT-5, use max_completion_tokens with a minimum of 50 to avoid empty responses
+        token_param = "max_completion_tokens"
+        token_value = max(max_tokens, 50)  # Ensure minimum tokens for GPT-5 reasoning
+    else:
+        token_param = "max_tokens"
+        token_value = max_tokens
+
     payload = {
         "model": model,
         "messages": [build_user_message(prompt, images)],
-        "max_tokens": max_tokens,
+        token_param: token_value,
         "temperature": temperature,
         **build_provider_filter(provider),
         **kwargs,

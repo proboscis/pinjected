@@ -388,3 +388,8 @@ class JsonProviderConfig:
 # Additional symbols:
 
 # Additional symbols:
+
+# Additional symbols:
+_models_with_false_json_claims: set[str]
+
+def clear_false_json_claims_cache() -> Any: ...
