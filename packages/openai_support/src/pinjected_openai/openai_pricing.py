@@ -120,57 +120,71 @@ def get_openai_model_table() -> OpenAIModelTable:
     Based on: https://platform.openai.com/docs/pricing
     """
     models = [
-        # o1 reasoning models
+        # GPT-5 models
         OpenAIModel(
-            id="o1",
-            name="o1",
+            id="gpt-5",
+            name="GPT-5",
             pricing=OpenAIModelPricing(
-                prompt=Decimal("15.00"),  # $15 per 1M input tokens
-                completion=Decimal("60.00"),  # $60 per 1M output tokens
-                cached_prompt=Decimal("7.50"),  # 50% discount for cached
+                prompt=Decimal("1.25"),
+                completion=Decimal("10.00"),
+                cached_prompt=Decimal("0.125"),
             ),
-            context_length=200000,  # 200K context
-            max_output_tokens=100000,  # 100K max output
+            context_length=400000,
+            max_output_tokens=128000,
             supports_vision=True,
-            supports_json_mode=False,  # o1 doesn't support JSON mode yet
-            supports_structured_output=False,
+            supports_json_mode=True,
+            supports_structured_output=True,
         ),
         OpenAIModel(
-            id="o1-preview",
-            name="o1 Preview",
+            id="gpt-5-mini",
+            name="GPT-5 Mini",
             pricing=OpenAIModelPricing(
-                prompt=Decimal("15.00"),  # $15 per 1M input tokens
-                completion=Decimal("60.00"),  # $60 per 1M output tokens
-                cached_prompt=Decimal("7.50"),
+                prompt=Decimal("0.25"),
+                completion=Decimal("2.00"),
+                cached_prompt=Decimal("0.025"),
             ),
-            context_length=128000,
-            max_output_tokens=32768,
-            supports_vision=False,
-            supports_json_mode=False,
-            supports_structured_output=False,
+            context_length=400000,
+            max_output_tokens=128000,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
         ),
         OpenAIModel(
-            id="o1-mini",
-            name="o1 Mini",
+            id="gpt-5-nano",
+            name="GPT-5 Nano",
             pricing=OpenAIModelPricing(
-                prompt=Decimal("3.00"),  # $3 per 1M input tokens
-                completion=Decimal("12.00"),  # $12 per 1M output tokens
-                cached_prompt=Decimal("1.50"),
+                prompt=Decimal("0.05"),
+                completion=Decimal("0.40"),
+                cached_prompt=Decimal("0.005"),
             ),
-            context_length=128000,
-            max_output_tokens=65536,
-            supports_vision=False,
-            supports_json_mode=False,
-            supports_structured_output=False,
+            context_length=400000,
+            max_output_tokens=128000,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
         ),
-        # GPT-4o models
         OpenAIModel(
-            id="gpt-4o",
-            name="GPT-4o",
+            id="gpt-5-chat-latest",
+            name="GPT-5 Chat Latest",
             pricing=OpenAIModelPricing(
-                prompt=Decimal("2.50"),  # $2.50 per 1M input tokens
-                completion=Decimal("10.00"),  # $10 per 1M output tokens
-                cached_prompt=Decimal("1.25"),  # 50% discount for cached
+                prompt=Decimal("1.25"),
+                completion=Decimal("10.00"),
+                cached_prompt=Decimal("0.125"),
+            ),
+            context_length=400000,
+            max_output_tokens=128000,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        # GPT-4.1 models
+        OpenAIModel(
+            id="gpt-4.1",
+            name="GPT-4.1",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("2.00"),
+                completion=Decimal("8.00"),
+                cached_prompt=Decimal("0.50"),
             ),
             context_length=128000,
             max_output_tokens=16384,
@@ -179,8 +193,196 @@ def get_openai_model_table() -> OpenAIModelTable:
             supports_structured_output=True,
         ),
         OpenAIModel(
-            id="gpt-4o-2024-11-20",
-            name="GPT-4o (2024-11-20)",
+            id="gpt-4.1-mini",
+            name="GPT-4.1 Mini",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("0.40"),
+                completion=Decimal("1.60"),
+                cached_prompt=Decimal("0.10"),
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4.1-nano",
+            name="GPT-4.1 Nano",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("0.10"),
+                completion=Decimal("0.40"),
+                cached_prompt=Decimal("0.025"),
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        # o1 reasoning models
+        OpenAIModel(
+            id="o1",
+            name="o1",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("15.00"),
+                completion=Decimal("60.00"),
+                cached_prompt=Decimal("7.50"),
+            ),
+            context_length=200000,
+            max_output_tokens=100000,
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        OpenAIModel(
+            id="o1-pro",
+            name="o1 Pro",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("150.00"),
+                completion=Decimal("600.00"),
+                cached_prompt=None,  # No cached pricing listed
+            ),
+            context_length=200000,
+            max_output_tokens=100000,
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        OpenAIModel(
+            id="o1-mini",
+            name="o1 Mini",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("1.10"),
+                completion=Decimal("4.40"),
+                cached_prompt=Decimal("0.55"),
+            ),
+            context_length=128000,
+            max_output_tokens=65536,
+            supports_vision=False,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        # o3 models
+        OpenAIModel(
+            id="o3-pro",
+            name="o3 Pro",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("20.00"),
+                completion=Decimal("80.00"),
+                cached_prompt=None,
+            ),
+            context_length=200000,
+            max_output_tokens=100000,
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        OpenAIModel(
+            id="o3",
+            name="o3",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("2.00"),
+                completion=Decimal("8.00"),
+                cached_prompt=Decimal("0.50"),
+            ),
+            context_length=200000,
+            max_output_tokens=100000,
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        OpenAIModel(
+            id="o3-deep-research",
+            name="o3 Deep Research",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("10.00"),
+                completion=Decimal("40.00"),
+                cached_prompt=Decimal("2.50"),
+            ),
+            context_length=200000,
+            max_output_tokens=100000,
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        OpenAIModel(
+            id="o3-mini",
+            name="o3 Mini",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("1.10"),
+                completion=Decimal("4.40"),
+                cached_prompt=Decimal("0.55"),
+            ),
+            context_length=128000,
+            max_output_tokens=65536,
+            supports_vision=False,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        # o4 models
+        OpenAIModel(
+            id="o4-mini",
+            name="o4 Mini",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("1.10"),
+                completion=Decimal("4.40"),
+                cached_prompt=Decimal("0.275"),
+            ),
+            context_length=128000,
+            max_output_tokens=65536,
+            supports_vision=False,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        OpenAIModel(
+            id="o4-mini-deep-research",
+            name="o4 Mini Deep Research",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("2.00"),
+                completion=Decimal("8.00"),
+                cached_prompt=Decimal("0.50"),
+            ),
+            context_length=128000,
+            max_output_tokens=65536,
+            supports_vision=False,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        # Codex models
+        OpenAIModel(
+            id="codex-mini-latest",
+            name="Codex Mini Latest",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("1.50"),
+                completion=Decimal("6.00"),
+                cached_prompt=Decimal("0.375"),
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=False,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        # Computer use models
+        OpenAIModel(
+            id="computer-use-preview",
+            name="Computer Use Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("3.00"),
+                completion=Decimal("12.00"),
+                cached_prompt=None,
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
+        ),
+        # GPT-4o models
+        OpenAIModel(
+            id="gpt-4o",
+            name="GPT-4o",
             pricing=OpenAIModelPricing(
                 prompt=Decimal("2.50"),
                 completion=Decimal("10.00"),
@@ -193,11 +395,53 @@ def get_openai_model_table() -> OpenAIModelTable:
             supports_structured_output=True,
         ),
         OpenAIModel(
-            id="gpt-4o-mini",
-            name="GPT-4o mini",
+            id="gpt-4o-2024-05-13",
+            name="GPT-4o (2024-05-13)",
             pricing=OpenAIModelPricing(
-                prompt=Decimal("0.15"),  # $0.15 per 1M input tokens
-                completion=Decimal("0.60"),  # $0.60 per 1M output tokens
+                prompt=Decimal("5.00"),
+                completion=Decimal("15.00"),
+                cached_prompt=None,  # No cached pricing listed
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-audio-preview",
+            name="GPT-4o Audio Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("2.50"),
+                completion=Decimal("10.00"),
+                cached_prompt=None,
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-realtime-preview",
+            name="GPT-4o Realtime Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("5.00"),
+                completion=Decimal("20.00"),
+                cached_prompt=Decimal("2.50"),
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-mini",
+            name="GPT-4o Mini",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("0.15"),
+                completion=Decimal("0.60"),
                 cached_prompt=Decimal("0.075"),
             ),
             context_length=128000,
@@ -205,6 +449,77 @@ def get_openai_model_table() -> OpenAIModelTable:
             supports_vision=True,
             supports_json_mode=True,
             supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-mini-audio-preview",
+            name="GPT-4o Mini Audio Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("0.15"),
+                completion=Decimal("0.60"),
+                cached_prompt=None,
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-mini-realtime-preview",
+            name="GPT-4o Mini Realtime Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("0.60"),
+                completion=Decimal("2.40"),
+                cached_prompt=Decimal("0.30"),
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-mini-search-preview",
+            name="GPT-4o Mini Search Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("0.15"),
+                completion=Decimal("0.60"),
+                cached_prompt=None,
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        OpenAIModel(
+            id="gpt-4o-search-preview",
+            name="GPT-4o Search Preview",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("2.50"),
+                completion=Decimal("10.00"),
+                cached_prompt=None,
+            ),
+            context_length=128000,
+            max_output_tokens=16384,
+            supports_vision=True,
+            supports_json_mode=True,
+            supports_structured_output=True,
+        ),
+        # GPT-Image models
+        OpenAIModel(
+            id="gpt-image-1",
+            name="GPT Image 1",
+            pricing=OpenAIModelPricing(
+                prompt=Decimal("5.00"),
+                completion=Decimal("0.00"),  # No output pricing for image models
+                cached_prompt=Decimal("1.25"),
+            ),
+            context_length=128000,
+            max_output_tokens=0,  # Image generation doesn't have text output
+            supports_vision=True,
+            supports_json_mode=False,
+            supports_structured_output=False,
         ),
         # GPT-4 Turbo
         OpenAIModel(
