@@ -1,4 +1,5 @@
 import inspect
+from dataclasses import dataclass
 from pprint import pformat
 from typing import (
     Any,
@@ -371,6 +372,10 @@ class ACachedSchemaExampleProviderProtocol(Protocol):
     async def __call__(self, model_schema: dict) -> Any: ...
 
 
+class AResizeImageBelow5mbProtocol(Protocol):
+    async def __call__(self, img: PIL.Image.Image) -> PIL.Image.Image: ...
+
+
 @async_cached(sqlite_dict(injected("cache_root_path") / "schema_examples.sqlite"))
 @injected(protocol=ACachedSchemaExampleProviderProtocol)
 async def a_cached_schema_example_provider(
@@ -399,7 +404,9 @@ class OpenRouterChatCompletion(Protocol):
     ) -> Any: ...
 
 
-class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
+class AOpenrouterBaseChatCompletionProtocol(Protocol):
+    """Base chat completion without JSON fixing to avoid dependency cycles."""
+
     async def __call__(
         self,
         prompt: str,
@@ -415,7 +422,7 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
     ) -> Any: ...
 
 
-@injected(protocol=AOpenrouterChatCompletionWithoutFixProtocol)
+@injected(protocol=AOpenrouterBaseChatCompletionProtocol)
 @retry(
     retry=retry_if_exception_type(
         (
@@ -428,11 +435,12 @@ class AOpenrouterChatCompletionWithoutFixProtocol(Protocol):
     stop=stop_after_attempt(10),
     wait=wait_exponential(multiplier=1, min=5, max=120),
 )
-async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
+async def a_openrouter_base_chat_completion(  # noqa: PINJ045
     a_openrouter_post: AOpenrouterPostProtocol,
     logger: LoggerProtocol,
     openrouter_model_table: OpenRouterModelTable,
     openrouter_state: dict,
+    a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
     /,
     prompt: str,
     model: str,
@@ -444,104 +452,33 @@ async def a_openrouter_chat_completion__without_fix(  # noqa: PINJ045
     include_reasoning: bool = False,
     reasoning: dict | None = None,
     **kwargs,
-) -> Any:
+):
     """
-    :param prompt:
-    :param model:
-    :param max_tokens:
-    :param temperature:
-    :param images:
-    :param response_format:
-    :param provider:  see:https://openrouter.ai/docs/features/provider-routing
-    Example:
-    provider={'order': [
-        'openai',
-        'together'
-      ],
-      allow_fallbacks=False # if everything in order fails, fails the completion. Default is True so some other provider will be used.
-    }
-    :param include_reasoning: Whether to include reasoning tokens in the response
-    :param reasoning: Advanced reasoning configuration dict with keys:
-        - effort: 'high', 'medium', or 'low' (controls reasoning allocation)
-        - max_tokens: specific token limit for reasoning
-        - exclude: whether to exclude reasoning from response
-        - enabled: whether reasoning is enabled
-    :param kwargs:
-    :return:
+    Base OpenRouter chat completion without JSON fixing.
+    This exists to break dependency cycles - JSON fixing depends on LLM functions.
     """
-
-    provider_filter = dict()
-    if response_format is not None and issubclass(response_format, BaseModel):
-        provider_filter["provider"] = {"require_parameters": True}
-        openai_response_format = build_openrouter_response_format(response_format)
-        provider_filter["response_format"] = openai_response_format
-    elif response_format is not None:
-        provider_filter["response_format"] = response_format
-
-    if provider is not None:
-        p = provider_filter.get("provider", dict())
-        p.update(provider)
-        provider_filter["provider"] = p
-
-    # Build payload (simple version without resizing)
-    images = images or []
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    *[to_content(img) for img in images],
-                ],
-            }
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        **provider_filter,
+    # Build payload using helper
+    payload = build_chat_payload(
+        model=model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        provider=provider,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
         **kwargs,
-    }
-
-    # Add reasoning support
-    if include_reasoning:
-        payload["include_reasoning"] = True
-
-    if reasoning is not None:
-        payload["reasoning"] = reasoning
+    )
 
     # Make API call
     res = await a_openrouter_post(payload)
     handle_openrouter_error(res, logger)
 
-    # Track costs
-    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
-        safe(lambda x: x.calc_cost_dict(res["usage"]))
-    )
-    # Don't mutate state, just log the cost
-    current_cost = openrouter_state.get("cumulative_cost", 0)
-    new_cost = current_cost + sum(cost_dict.value_or(dict()).values())
+    # Log costs using helper
+    log_completion_cost(res, model, openrouter_model_table, openrouter_state, logger)
 
-    logger.info(
-        f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {new_cost} from {res['provider']}"
-    )
-
-    # Extract response content
-    data = res["choices"][0]["message"]["content"]
-
-    # Handle structured response format
-    if response_format is not None and issubclass(response_format, BaseModel):
-        # Simple parsing without LLM fix
-        try:
-            json_data = extract_json_from_markdown(data)
-            return response_format.model_validate_json(json_data)
-        except Exception as e:
-            logger.warning(
-                f"Error in response validation:\n{pformat(payload)}\n{pformat(res)} \n {e} cause:\n{data}"
-            )
-            data_dict = json_repair.loads(data)
-            return response_format.model_validate(data_dict)
-    else:
-        return data
+    # Return raw response content (no JSON parsing)
+    return res["choices"][0]["message"]["content"]
 
 
 def handle_openrouter_error(res: dict, logger: LoggerProtocol):
@@ -637,322 +574,124 @@ def calculate_cumulative_cost(openrouter_state: dict, cost_dict: ResultE[dict]) 
     return {**openrouter_state, "cumulative_cost": new_cost}
 
 
-class AResizeImageBelow5mbProtocol(Protocol):
-    async def __call__(self, img: PIL.Image.Image) -> PIL.Image.Image: ...
+# Helper functions to eliminate duplication (DRY principle)
 
 
-class OpenRouterChatCompletionHelper:
-    """Helper class for OpenRouter chat completion operations."""
+@dataclass
+class JsonProviderConfig:
+    """Configuration for JSON provider and kwargs."""
 
-    def __init__(
-        self,
-        openrouter_model_table: OpenRouterModelTable,
-        a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
-        a_structured_llm_for_json_fix: "StructuredLLM",
-        logger: Any,
-        a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
-        openrouter_state: dict,
-        a_openrouter_post: AOpenrouterPostProtocol,
-    ):
-        self.openrouter_model_table = openrouter_model_table
-        self.a_cached_schema_example_provider = a_cached_schema_example_provider
-        self.a_structured_llm_for_json_fix = a_structured_llm_for_json_fix
-        self.logger = logger
-        self.a_resize_image_below_5mb = a_resize_image_below_5mb
-        self.openrouter_state = openrouter_state
-        self.a_openrouter_post = a_openrouter_post
+    provider: dict | None
+    kwargs: dict
 
-    async def setup_response_format(
-        self,
-        response_format: type[BaseModel] | None,
-        model: str,
-        prompt: str,
-        provider_filter: dict[str, Any],
-    ) -> tuple[str, dict[str, Any], bool]:
-        """Setup response format configuration and validate compatibility.
 
-        Args:
-            response_format: The BaseModel class for structured output
-            model: Model name
-            prompt: Current prompt to be modified
-            provider_filter: Provider filter dict to be modified
-
-        Returns:
-            Tuple of (modified_prompt, modified_provider_filter, use_json_fix_fallback)
-        """
-        use_json_fix_fallback = False
-
-        if response_format is not None and issubclass(response_format, BaseModel):
-            # Check OpenAPI 3.0 compatibility for all models
-            if issues := is_openapi3_compatible(response_format):
-                raise OpenAPI3CompatibilityError(response_format, issues)
-
-            # Additional Gemini-specific compatibility check when model contains 'gemini'
-            if "gemini" in model.lower() and (
-                gemini_issues := is_gemini_compatible(response_format)
-            ):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
-
-            # Check if model supports JSON
-            supports_json = self.openrouter_model_table.supports_json_output(model)
-
-            # Only add response_format to payload if model supports JSON
-            if supports_json:
-                provider_filter["provider"] = {"require_parameters": True}
-                openai_response_format = build_openrouter_response_format(
-                    response_format
-                )
-                provider_filter["response_format"] = openai_response_format
-            else:
-                # Model doesn't support JSON, we'll use JSON fix fallback
-                use_json_fix_fallback = True
-                self.logger.warning(
-                    f"Model {model} does not support JSON output. "
-                    f"Will use fallback JSON fix mechanism."
-                )
-
-            # Always add schema example to prompt for better results
-            schema_prompt = await self.a_cached_schema_example_provider(
-                response_format.model_json_schema()
-            )
-            prompt += f"""\n\nThe response must follow the following json format example:{schema_prompt}"""
-
-        return prompt, provider_filter, use_json_fix_fallback
-
-    async def handle_structured_response(
-        self,
-        data: str,
-        response_format: type[BaseModel] | None,
-        prompt: str,
-        use_json_fix_fallback: bool,
-    ) -> Any:
-        """Handle structured response format parsing with fallback mechanisms.
-
-        Args:
-            data: The raw response content
-            response_format: The BaseModel class to parse into
-            prompt: Original prompt (for context in fixes)
-            use_json_fix_fallback: Whether to use JSON fix fallback
-
-        Returns:
-            Parsed BaseModel instance or original data if not structured
-        """
-        if response_format is not None and issubclass(response_format, BaseModel):
-            # If model doesn't support JSON, always use JSON fix
-            if use_json_fix_fallback:
-                fix_prompt = f"""
-Extract and format the following response into the required JSON structure.
-# Original Prompt:
-{prompt}
-# Response
-{data}
-"""
-                return await self.a_structured_llm_for_json_fix(
-                    fix_prompt, response_format=response_format
-                )
-
-            # Model supports JSON, try to parse normally
-            return await parse_json_response(
-                data=data,
-                response_format=response_format,
-                logger=self.logger,
-                a_structured_llm_for_json_fix=self.a_structured_llm_for_json_fix,
-                prompt=prompt,
-            )
-        else:
-            return data
-
-    async def build_chat_payload(
-        self,
-        prompt: str,
-        model: str,
-        max_tokens: int,
-        temperature: float,
-        images: list[PIL.Image.Image] | None,
-        provider_filter: dict,
-        kwargs: dict,
-        include_reasoning: bool,
-        reasoning: dict | None,
-    ) -> dict[str, Any]:
-        """Build the chat completion payload."""
-        images = images or []
-        images = [await self.a_resize_image_below_5mb(img) for img in images]
-
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        *[to_content(img) for img in images],
-                    ],
-                }
-            ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            **provider_filter,
-            **kwargs,
+def prepare_json_provider_and_kwargs(
+    provider: dict | None,
+    kwargs: dict,
+    response_format: type[BaseModel],
+    supports_json: bool,
+    logger: LoggerProtocol,
+    model: str,
+) -> JsonProviderConfig:
+    """Prepare provider and kwargs for JSON response format."""
+    if supports_json:
+        enhanced_provider = {
+            **(provider or {}),
+            "require_parameters": True,
         }
+        enhanced_kwargs = {
+            **kwargs,
+            "response_format": build_openrouter_response_format(response_format),
+        }
+    else:
+        logger.warning(
+            f"Model {model} does not support JSON output. "
+            f"Will use fallback JSON fix mechanism."
+        )
+        enhanced_provider = provider
+        enhanced_kwargs = kwargs
 
-        # Add reasoning support
-        if include_reasoning:
-            payload["include_reasoning"] = True
+    return JsonProviderConfig(provider=enhanced_provider, kwargs=enhanced_kwargs)
 
-        if reasoning is not None:
-            payload["reasoning"] = reasoning
 
-        return payload
+def validate_response_format(response_format: type[BaseModel], model: str) -> None:
+    """Validate response format compatibility with OpenAPI3 and Gemini models."""
+    # Check OpenAPI3 compatibility
+    if issues := is_openapi3_compatible(response_format):
+        raise OpenAPI3CompatibilityError(response_format, issues)
 
-    async def perform_chat_completion(
-        self,
-        prompt: str,
-        model: str,
-        max_tokens: int = 8192,
-        temperature: float = 1,
-        images: list[PIL.Image.Image] | None = None,
-        response_format=None,
-        provider: dict | None = None,
-        include_reasoning: bool = False,
-        reasoning: dict | None = None,
+    # Check Gemini compatibility if using Gemini model
+    if "gemini" in model.lower() and (
+        gemini_issues := is_gemini_compatible(response_format)
+    ):
+        raise GeminiCompatibilityError(response_format, gemini_issues)
+
+
+def build_provider_filter(provider: dict | None = None) -> dict:
+    """Build provider filter for OpenRouter API."""
+    if provider is None:
+        return {}
+    return {"provider": provider}
+
+
+def build_user_message(
+    prompt: str, images: list[PIL.Image.Image] | None = None
+) -> dict:
+    """Build user message with optional images."""
+    return {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            *[to_content(img) for img in (images or [])],
+        ],
+    }
+
+
+def build_chat_payload(
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    images: list[PIL.Image.Image] | None = None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
+    **kwargs,
+) -> dict:
+    """Build complete chat payload for OpenRouter API."""
+    payload = {
+        "model": model,
+        "messages": [build_user_message(prompt, images)],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        **build_provider_filter(provider),
         **kwargs,
-    ) -> dict[str, Any]:
-        """
-        Perform chat completion and return a dict with result and reasoning.
+    }
 
-        Returns:
-            dict with keys:
-            - "result": The actual response (string or BaseModel)
-            - "reasoning": The reasoning content (if available)
-        """
-        provider_filter = dict()
+    if include_reasoning:
+        payload["include_reasoning"] = True
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
 
-        # Setup response format configuration
-        (
-            prompt,
-            provider_filter,
-            use_json_fix_fallback,
-        ) = await self.setup_response_format(
-            response_format=response_format,
-            model=model,
-            prompt=prompt,
-            provider_filter=provider_filter,
-        )
-
-        if provider is not None:
-            p = provider_filter.get("provider", dict())
-            p.update(provider)
-            provider_filter["provider"] = p
-
-        # Build payload
-        payload = await self.build_chat_payload(
-            prompt=prompt,
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            images=images,
-            provider_filter=provider_filter,
-            kwargs=kwargs,
-            include_reasoning=include_reasoning,
-            reasoning=reasoning,
-        )
-
-        # Make API call
-        res = await self.a_openrouter_post(payload)
-        self.handle_openrouter_error(res)
-
-        # Track costs
-        cost_dict: ResultE[dict] = self.openrouter_model_table.safe_pricing(model).bind(
-            safe(lambda x: x.calc_cost_dict(res["usage"]))
-        )
-        self.update_cumulative_cost(cost_dict)
-
-        self.logger.info(
-            f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {self.openrouter_state['cumulative_cost']} from {res['provider']}"
-        )
-
-        # Extract reasoning content
-        reasoning_content = self.extract_reasoning_content(
-            res, include_reasoning, reasoning
-        )
-
-        # Extract response content
-        data = res["choices"][0]["message"]["content"]
-
-        # Handle structured response format
-        result = await self.handle_structured_response(
-            data=data,
-            response_format=response_format,
-            prompt=prompt,
-            use_json_fix_fallback=use_json_fix_fallback,
-        )
-
-        # Return dict with result and reasoning
-        return {"result": result, "reasoning": reasoning_content}
-
-    def handle_openrouter_error(self, res: dict):
-        """Handle error responses from OpenRouter API."""
-
-        if "error" not in res:
-            return
-
-        # Check for 429 rate limit error specifically
-        error_code = res.get("error", {}).get("code")
-        error_message = str(res)
-
-        # Handle 429 rate limit errors (including provider rate limits)
-        if (
-            error_code == 429
-            or "Rate limit" in error_message
-            or "rate-limited" in error_message
-        ):
-            self.logger.warning(f"Rate limit error in response: {pformat(res)}")
-            raise OpenRouterRateLimitError(res)
-        if "Timed out" in error_message:
-            self.logger.warning(f"Timed out error in response: {pformat(res)}")
-            raise OpenRouterTimeOutError(res)
-        if "Overloaded" in error_message or error_code == 502:
-            self.logger.warning(f"Overloaded error in response: {pformat(res)}")
-            raise OpenRouterOverloadedError(res)
-        raise RuntimeError(f"Error in response: {pformat(res)}")
-
-    def update_cumulative_cost(self, cost_dict: ResultE[dict]):
-        """Update cumulative cost in state."""
-        self.openrouter_state["cumulative_cost"] = self.openrouter_state.get(
-            "cumulative_cost", 0
-        ) + sum(cost_dict.value_or(dict()).values())
-
-    def extract_reasoning_content(
-        self, res: dict, include_reasoning: bool, reasoning: dict | None
-    ) -> str | None:
-        """Extract reasoning content from response if requested."""
-        if not (include_reasoning or reasoning is not None):
-            return None
-
-        message = res["choices"][0]["message"]
-        return message.get("reasoning")
+    return payload
 
 
-@instance
-def openrouter_chat_completion_helper(
+def log_completion_cost(
+    res: dict,
+    model: str,
     openrouter_model_table: OpenRouterModelTable,
-    a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
-    a_structured_llm_for_json_fix: "StructuredLLM",
-    logger: Any,
-    a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
     openrouter_state: dict,
-    a_openrouter_post: AOpenrouterPostProtocol,
-    /,
-) -> OpenRouterChatCompletionHelper:
-    """Create an OpenRouterChatCompletionHelper instance."""
-    return OpenRouterChatCompletionHelper(
-        openrouter_model_table=openrouter_model_table,
-        a_cached_schema_example_provider=a_cached_schema_example_provider,
-        a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
-        logger=logger,
-        a_resize_image_below_5mb=a_resize_image_below_5mb,
-        openrouter_state=openrouter_state,
-        a_openrouter_post=a_openrouter_post,
+    logger: LoggerProtocol,
+) -> None:
+    """Calculate and log completion costs."""
+    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
+        safe(lambda x: x.calc_cost_dict(res["usage"]))
+    )
+    current_cost = openrouter_state.get("cumulative_cost", 0)
+    new_cost = current_cost + sum(cost_dict.value_or(dict()).values())
+    logger.info(
+        f"Cost of completion: {cost_dict.value_or('unknown')}, "
+        f"cumulative cost: {new_cost} from {res['provider']}"
     )
 
 
@@ -1287,15 +1026,12 @@ class AOpenrouterChatCompletionProtocol(Protocol):
 
 
 @injected(protocol=AOpenrouterChatCompletionProtocol)
-@retry(
-    retry=retry_if_exception_type(
-        (httpx.ReadTimeout, OpenRouterRateLimitError, OpenRouterOverloadedError)
-    ),
-    stop=stop_after_attempt(10),
-    wait=wait_exponential(multiplier=1, min=5, max=120),
-)
 async def a_openrouter_chat_completion(  # noqa: PINJ045
-    openrouter_chat_completion_helper: OpenRouterChatCompletionHelper,
+    a_openrouter_base_chat_completion: AOpenrouterBaseChatCompletionProtocol,
+    openrouter_model_table: OpenRouterModelTable,
+    a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
+    a_structured_llm_for_json_fix: "StructuredLLM",
+    logger: LoggerProtocol,
     /,
     prompt: str,
     model: str,
@@ -1309,26 +1045,86 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
     **kwargs,
 ):
     """
-    Chat completion returning only the result (string or BaseModel).
+    Chat completion with JSON fixing capability for models that don't support structured output.
 
-    The reasoning parameters are still processed internally but not returned.
+    This wraps a_openrouter_base_chat_completion and adds JSON handling on top.
     """
-    # Call helper's perform_chat_completion method
-    response_dict = await openrouter_chat_completion_helper.perform_chat_completion(
-        prompt=prompt,
+    # No structured format requested - just pass through to base
+    if response_format is None or not issubclass(response_format, BaseModel):
+        return await a_openrouter_base_chat_completion(
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            images=images,
+            response_format=response_format,
+            provider=provider,
+            include_reasoning=include_reasoning,
+            reasoning=reasoning,
+            **kwargs,
+        )
+
+    # Validate compatibility using helper
+    validate_response_format(response_format, model)
+
+    # Check if model supports JSON
+    supports_json = openrouter_model_table.supports_json_output(model)
+
+    # Prepare provider and kwargs for JSON
+    json_config = prepare_json_provider_and_kwargs(
+        provider=provider,
+        kwargs=kwargs,
+        response_format=response_format,
+        supports_json=supports_json,
+        logger=logger,
+        model=model,
+    )
+
+    # Add schema example to prompt
+    schema_prompt = await a_cached_schema_example_provider(
+        response_format.model_json_schema()
+    )
+    enhanced_prompt = (
+        prompt
+        + f"\n\nThe response must follow the following json format example:{schema_prompt}"
+    )
+
+    # Call base completion with enhanced settings
+    response_text = await a_openrouter_base_chat_completion(
+        prompt=enhanced_prompt,
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
         images=images,
-        response_format=response_format,
-        provider=provider,
+        response_format=None,  # Don't pass response_format to base
+        provider=json_config.provider,
         include_reasoning=include_reasoning,
         reasoning=reasoning,
-        **kwargs,
+        **json_config.kwargs,
     )
 
-    # Return just the result
-    return response_dict["result"]
+    # Parse response with JSON fixing if needed
+    if not supports_json:
+        # Model doesn't support JSON, use LLM fix
+        fix_prompt = f"""
+Extract and format the following response into the required JSON structure.
+# Original Prompt:
+{prompt}
+# Response
+{response_text}
+"""
+        return await a_structured_llm_for_json_fix(
+            fix_prompt, response_format=response_format
+        )
+
+    # Try normal parsing with fallback
+    return await parse_json_response(
+        data=response_text,
+        response_format=response_format,
+        logger=logger,
+        a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+        prompt=prompt,
+    )
 
 
 # Removed - functionality merged into a_openrouter_chat_completion
@@ -1402,7 +1198,7 @@ class OptionalText(BaseModel):
     text_lines: list[str] | None
 
 
-test_call_gpt4o: IProxy[Any] = a_openrouter_chat_completion__without_fix(
+test_call_gpt4o: IProxy[Any] = a_openrouter_base_chat_completion(
     prompt="What is the capital of Japan?", model="openai/gpt-4o"
 )
 

@@ -6,7 +6,7 @@ import PIL.Image
 from returns.result import ResultE
 
 if TYPE_CHECKING:
-    from pinjected.llms.structured_llm import StructuredLLM
+    from pinjected_openai.openrouter.instances import StructuredLLM
 
 class SimpleLlmProtocol:
     async def __call__(self, prompt: str) -> Any: ...
@@ -17,7 +17,7 @@ class AOpenrouterPostProtocol:
 class ACachedSchemaExampleProviderProtocol:
     async def __call__(self, model_schema: dict) -> Any: ...
 
-class AOpenrouterChatCompletionWithoutFixProtocol:
+class AOpenrouterBaseChatCompletionProtocol:
     async def __call__(
         self,
         prompt: str,
@@ -60,7 +60,7 @@ async def a_openrouter_post(payload: dict) -> IProxy[dict]: ...
 @overload
 async def a_cached_schema_example_provider(model_schema: dict) -> IProxy[Any]: ...
 @overload
-async def a_openrouter_chat_completion__without_fix(
+async def a_openrouter_base_chat_completion(
     prompt: str,
     model: str,
     max_tokens: int = ...,
@@ -71,7 +71,7 @@ async def a_openrouter_chat_completion__without_fix(
     include_reasoning: bool = ...,
     reasoning: dict | None = ...,
     **kwargs,
-) -> IProxy[Any]: ...
+): ...
 @overload
 async def a_resize_image_below_5mb(img: PIL.Image.Image): ...
 @overload
@@ -328,72 +328,9 @@ async def handle_structured_response(
     a_structured_llm_for_json_fix: StructuredLLM,
 ) -> Any: ...
 
-openrouter_chat_completion_helper: IProxy[OpenRouterChatCompletionHelper]
-
-# Additional symbols:
-class OpenRouterChatCompletionHelper:
-    def __init__(
-        self,
-        openrouter_model_table: OpenRouterModelTable,
-        a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
-        a_structured_llm_for_json_fix: StructuredLLM,
-        logger: Any,
-        a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
-        openrouter_state: dict,
-        a_openrouter_post: AOpenrouterPostProtocol,
-    ) -> Any: ...
-    async def setup_response_format(
-        self,
-        response_format: type[BaseModel] | None,
-        model: str,
-        prompt: str,
-        provider_filter: dict[str, Any],
-    ) -> tuple[str, dict[str, Any], bool]: ...
-    async def handle_structured_response(
-        self,
-        data: str,
-        response_format: type[BaseModel] | None,
-        prompt: str,
-        use_json_fix_fallback: bool,
-    ) -> Any: ...
-    async def build_chat_payload(
-        self,
-        prompt: str,
-        model: str,
-        max_tokens: int,
-        temperature: float,
-        images: list[PIL.Image.Image] | None,
-        provider_filter: dict,
-        kwargs: dict,
-        include_reasoning: bool,
-        reasoning: dict | None,
-    ) -> dict[str, Any]: ...
-    def handle_openrouter_error(self, res: dict) -> None: ...
-    def update_cumulative_cost(self, cost_dict: ResultE[dict]) -> None: ...
-    def extract_reasoning_content(
-        self, res: dict, include_reasoning: bool, reasoning: dict | None
-    ) -> str | None: ...
-    async def perform_chat_completion(
-        self,
-        prompt: str,
-        model: str,
-        max_tokens: int = ...,
-        temperature: float = ...,
-        images: list[PIL.Image.Image] | None = ...,
-        response_format=...,
-        provider: dict | None = ...,
-        include_reasoning: bool = ...,
-        reasoning: dict | None = ...,
-        **kwargs,
-    ) -> dict[str, Any]: ...
-
-# Additional symbols:
 class OpenRouterOverloadedError: ...
-
-# Additional symbols:
 class OpenRouterTransientError: ...
 
-# Additional symbols:
 def calculate_cumulative_cost(
     openrouter_state: dict, cost_dict: ResultE[dict]
 ) -> dict: ...
@@ -406,3 +343,42 @@ class LoggerProtocol:
 
 class OpenRouterAPIProtocol:
     def __init__(self, base_url: str, api_key: str) -> None: ...
+
+# Additional symbols:
+def validate_response_format(response_format: type[BaseModel], model: str) -> None: ...
+def build_provider_filter(provider: dict | None = ...) -> dict: ...
+def build_user_message(
+    prompt: str, images: list[PIL.Image.Image] | None = ...
+) -> dict: ...
+def build_chat_payload(
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    images: list[PIL.Image.Image] | None = ...,
+    provider: dict | None = ...,
+    include_reasoning: bool = ...,
+    reasoning: dict | None = ...,
+    **kwargs,
+) -> dict: ...
+def log_completion_cost(
+    res: dict,
+    model: str,
+    openrouter_model_table: OpenRouterModelTable,
+    openrouter_state: dict,
+    logger: LoggerProtocol,
+) -> None: ...
+
+# Additional symbols:
+def prepare_json_provider_and_kwargs(
+    provider: dict | None,
+    kwargs: dict,
+    response_format: type[BaseModel],
+    supports_json: bool,
+    logger: LoggerProtocol,
+    model: str,
+) -> JsonProviderConfig: ...
+
+class JsonProviderConfig:
+    provider: dict | None
+    kwargs: dict
