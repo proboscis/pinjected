@@ -1144,13 +1144,13 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
     )
 
     # Call base completion with enhanced settings
+    # Note: response_format is already in json_config.kwargs when supports_json is True
     response_text = await a_openrouter_base_chat_completion(
         prompt=enhanced_prompt,
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
         images=images,
-        response_format=None,  # Don't pass response_format to base
         provider=json_config.provider,
         include_reasoning=include_reasoning,
         reasoning=reasoning,
