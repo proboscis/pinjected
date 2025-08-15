@@ -54,13 +54,13 @@ async def test_models_with_supported_parameters(
 
     # Find a model with supported_parameters containing response_format
     test_model = None
-    for model_id, model in openrouter_model_table._models.items():
+    for model in openrouter_model_table.data:
         if (
             model.supported_parameters
             and "response_format" in model.supported_parameters
         ):
-            test_model = model_id
-            logger.info(f"Testing with model: {model_id}")
+            test_model = model.id
+            logger.info(f"Testing with model: {model.id}")
             break
 
     if not test_model:

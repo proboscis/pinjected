@@ -37,6 +37,19 @@ from tenacity import (
 )
 
 
+# Cache for models that falsely claim JSON support but fail when used
+# This set tracks models that report supporting response_format in their
+# supported_parameters but actually fail with 404 or other errors when used with structured outputs
+# This is a runtime cache that helps avoid repeated failures for the same models
+_models_with_false_json_claims: set[str] = set()
+
+
+def clear_false_json_claims_cache():
+    """Clear the cache of models with false JSON support claims. Useful for testing."""
+    global _models_with_false_json_claims
+    _models_with_false_json_claims.clear()
+
+
 # Custom exceptions for schema compatibility issues
 class SchemaCompatibilityError(Exception):
     """Base exception for schema compatibility issues."""
@@ -581,9 +594,26 @@ Please fix the following json object (Response) to match the schema:
 # Response
 {data}
 """
-                return await a_structured_llm_for_json_fix(
-                    fix_prompt, response_format=response_format
-                )
+                # a_structured_llm_for_json_fix is actually just a regular LLM that returns a string
+                # So we need to parse its response recursively
+                fixed_response = await a_structured_llm_for_json_fix(fix_prompt)
+                logger.debug(f"LLM fix response: {fixed_response[:200]}...")
+
+                # Extract JSON from the fixed response and parse it
+                try:
+                    json_data = extract_json_from_markdown(fixed_response)
+                    return response_format.model_validate_json(json_data)
+                except Exception as parse_err:
+                    logger.warning(f"Failed to parse LLM fix response: {parse_err}")
+                    # Last resort: try json_repair on the LLM's response
+                    try:
+                        data_dict = json_repair.loads(fixed_response)
+                        return response_format.model_validate(data_dict)
+                    except Exception:
+                        logger.error(
+                            f"Could not parse LLM fix response: {fixed_response[:500]}"
+                        )
+                        raise
             raise
 
 
@@ -1124,6 +1154,14 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
     supports_json = openrouter_model_table.supports_json_output(model)
     logger.debug(f"Model {model} supports JSON: {supports_json}")
 
+    # Check if this model is known to falsely claim JSON support
+    if model in _models_with_false_json_claims:
+        logger.warning(
+            f"Model {model} is known to falsely claim JSON support. "
+            f"Using fallback mechanism."
+        )
+        supports_json = False
+
     # Prepare provider and kwargs for JSON
     json_config = prepare_json_provider_and_kwargs(
         provider=provider,
@@ -1159,33 +1197,61 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
         )
     except RuntimeError as e:
         error_msg = str(e)
-        # Check if this is a 404 error for models requiring BYOK with response_format
+        # Check if this is a 404 error for models that claim to support JSON
         if "404" in error_msg and "No endpoints found" in error_msg and supports_json:
-            # This model claims to support JSON but requires BYOK setup
-            raise RuntimeError(
-                f"Model {model} supports response_format but requires BYOK (Bring Your Own Key) setup. "
-                f"The model reported it supports JSON output, but OpenRouter cannot route this request "
-                f"without proper API key configuration. "
-                f"To use response_format with {model}, you need to configure your own API key. "
-                f"See: https://openrouter.ai/docs/provider-routing\n"
-                f"Original error: {error_msg}"
-            ) from e
+            # Add this model to our cache of false claims for future requests
+            _models_with_false_json_claims.add(model)
+            logger.warning(
+                f"Model {model} claims JSON support but returns 404. Added to fallback cache. "
+                f"Retrying without structured output and using JSON extraction."
+            )
+
+            # Retry without response_format using fallback mechanism
+            response_text = await a_openrouter_base_chat_completion(
+                prompt=enhanced_prompt,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                images=images,
+                provider=provider,  # Use original provider without JSON enhancement
+                include_reasoning=include_reasoning,
+                reasoning=reasoning,
+                **kwargs,  # Use original kwargs without response_format
+            )
+
+            # Use parse_json_response to handle the JSON extraction and parsing
+            logger.debug(
+                f"Using fallback JSON parsing for response: {response_text[:100]}..."
+            )
+            result = await parse_json_response(
+                data=response_text,
+                response_format=response_format,
+                logger=logger,
+                a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+                prompt=prompt,
+            )
+            logger.debug(
+                f"Fallback parsed result type: {type(result)}, value: {result}"
+            )
+            return result
         # Re-raise other errors as-is
         raise
 
     # Parse response with JSON fixing if needed
     if not supports_json:
-        # Model doesn't support JSON, use LLM fix
-        fix_prompt = f"""
-Extract and format the following response into the required JSON structure.
-# Original Prompt:
-{prompt}
-# Response
-{response_text}
-"""
-        return await a_structured_llm_for_json_fix(
-            fix_prompt, response_format=response_format
+        # Model doesn't support JSON, use parse_json_response for proper parsing
+        logger.debug(
+            f"Model doesn't support JSON, using fallback parsing for: {response_text[:100]}..."
         )
+        result = await parse_json_response(
+            data=response_text,
+            response_format=response_format,
+            logger=logger,
+            a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+            prompt=prompt,
+        )
+        logger.debug(f"Fallback parsed result type: {type(result)}, value: {result}")
+        return result
 
     # Try normal parsing with fallback
     logger.debug(
