@@ -1145,17 +1145,33 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
 
     # Call base completion with enhanced settings
     # Note: response_format is already in json_config.kwargs when supports_json is True
-    response_text = await a_openrouter_base_chat_completion(
-        prompt=enhanced_prompt,
-        model=model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        images=images,
-        provider=json_config.provider,
-        include_reasoning=include_reasoning,
-        reasoning=reasoning,
-        **json_config.kwargs,
-    )
+    try:
+        response_text = await a_openrouter_base_chat_completion(
+            prompt=enhanced_prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            images=images,
+            provider=json_config.provider,
+            include_reasoning=include_reasoning,
+            reasoning=reasoning,
+            **json_config.kwargs,
+        )
+    except RuntimeError as e:
+        error_msg = str(e)
+        # Check if this is a 404 error for models requiring BYOK with response_format
+        if "404" in error_msg and "No endpoints found" in error_msg and supports_json:
+            # This model claims to support JSON but requires BYOK setup
+            raise RuntimeError(
+                f"Model {model} supports response_format but requires BYOK (Bring Your Own Key) setup. "
+                f"The model reported it supports JSON output, but OpenRouter cannot route this request "
+                f"without proper API key configuration. "
+                f"To use response_format with {model}, you need to configure your own API key. "
+                f"See: https://openrouter.ai/docs/provider-routing\n"
+                f"Original error: {error_msg}"
+            ) from e
+        # Re-raise other errors as-is
+        raise
 
     # Parse response with JSON fixing if needed
     if not supports_json:
