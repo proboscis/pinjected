@@ -61,7 +61,7 @@ async def test_cost_tracking_gpt4o(
         text="The capital of France is Paris",
         model="gpt-4o",
         response_format=SimpleAnswer,
-        max_tokens=100,
+        max_tokens=200,  # Increased to avoid truncation
     )
     assert isinstance(result, SimpleAnswer), (
         f"Expected SimpleAnswer, got {type(result)}"

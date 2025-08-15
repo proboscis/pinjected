@@ -64,6 +64,19 @@ def is_gpt5_model(model: str) -> bool:
     return "gpt-5" in model.lower() or "gpt5" in model.lower()
 
 
+def requires_max_completion_tokens(model: str) -> bool:
+    """Check if model requires max_completion_tokens instead of max_tokens."""
+    model_lower = model.lower()
+    # GPT-5 and o1/o3/o4 models require max_completion_tokens
+    return (
+        "gpt-5" in model_lower
+        or "gpt5" in model_lower
+        or model_lower.startswith("o1")
+        or model_lower.startswith("o3")
+        or model_lower.startswith("o4")
+    )
+
+
 def convert_pil_to_base64(image: PIL.Image.Image) -> str:
     """Convert PIL image to base64 string for OpenAI API."""
     import base64
@@ -77,6 +90,48 @@ def convert_pil_to_base64(image: PIL.Image.Image) -> str:
     # Encode to base64
     img_base64 = base64.b64encode(img_bytes).decode("utf-8")
     return f"data:image/png;base64,{img_base64}"
+
+
+def ensure_strict_schema(schema: dict) -> dict:
+    """
+    Recursively ensure all objects in schema have additionalProperties: false.
+    This is required for OpenAI's strict mode.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    # Create a copy to avoid mutation
+    result = dict(schema)
+
+    # Set additionalProperties: false for this object
+    if "type" in result and result["type"] == "object":
+        result["additionalProperties"] = False
+
+    # Process nested schemas in properties
+    if "properties" in result:
+        new_properties = {}
+        for prop_name, prop_schema in result["properties"].items():
+            new_properties[prop_name] = ensure_strict_schema(prop_schema)
+        result["properties"] = new_properties
+
+    # Process items in arrays
+    if "items" in result:
+        result["items"] = ensure_strict_schema(result["items"])
+
+    # Process nested definitions/defs
+    if "definitions" in result:
+        new_definitions = {}
+        for def_name, def_schema in result["definitions"].items():
+            new_definitions[def_name] = ensure_strict_schema(def_schema)
+        result["definitions"] = new_definitions
+
+    if "$defs" in result:
+        new_defs = {}
+        for def_name, def_schema in result["$defs"].items():
+            new_defs[def_name] = ensure_strict_schema(def_schema)
+        result["$defs"] = new_defs
+
+    return result
 
 
 @injected(protocol=ASllmOpenaiProtocol)
@@ -174,24 +229,30 @@ async def a_sllm_openai(  # noqa: PINJ045
         **kwargs,  # Pass through any additional parameters
     }
 
-    # GPT-5 models only support temperature=1.0
-    if not is_gpt5_model(model):
+    # GPT-5 and o1/o3/o4 models only support temperature=1.0
+    model_lower = model.lower()
+    if (
+        is_gpt5_model(model)
+        or model_lower.startswith("o1")
+        or model_lower.startswith("o3")
+        or model_lower.startswith("o4")
+    ):
+        # These models only support default temperature (1.0)
+        if temperature != 1.0:
+            logger.debug(
+                f"{model} only supports temperature=1.0, ignoring temperature={temperature}"
+            )
+    else:
+        # Other models support custom temperature
         api_params["temperature"] = temperature
-    # GPT-5 only supports default temperature (1.0)
-    elif temperature != 1.0:
-        logger.debug(
-            f"GPT-5 models only support temperature=1.0, ignoring temperature={temperature}"
-        )
 
     # Handle token parameter based on model
-    if is_gpt5_model(model):
-        # GPT-5 models require max_completion_tokens
+    if requires_max_completion_tokens(model):
+        # GPT-5, o1, o3, o4 models require max_completion_tokens
         # Ensure sufficient tokens for reasoning + output
-        token_value = max(max_tokens, 500)  # Minimum 500 for GPT-5
+        token_value = max(max_tokens, 500)  # Minimum 500 for these models
         api_params["max_completion_tokens"] = token_value
-        logger.debug(
-            f"Using max_completion_tokens={token_value} for GPT-5 model {model}"
-        )
+        logger.debug(f"Using max_completion_tokens={token_value} for model {model}")
 
         # Add GPT-5 thinking mode parameters
         if reasoning_effort:
@@ -243,8 +304,8 @@ async def a_sllm_openai(  # noqa: PINJ045
 
         # Get the JSON schema and ensure it's properly formatted for OpenAI
         schema = response_format.model_json_schema()
-        # OpenAI requires additionalProperties: false for strict mode
-        schema["additionalProperties"] = False
+        # Recursively ensure all objects have additionalProperties: false for strict mode
+        schema = ensure_strict_schema(schema)
         # OpenAI requires 'required' field to list ALL properties (even with defaults)
         if "properties" in schema:
             # OpenAI strict mode requires ALL properties to be in required array
