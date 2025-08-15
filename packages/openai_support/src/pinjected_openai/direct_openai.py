@@ -12,6 +12,11 @@ from openai import AsyncOpenAI
 from pinjected import design, injected, instance
 from pydantic import BaseModel, ValidationError
 
+from pinjected_openai.openai_pricing import (
+    OpenAIModelTable,
+    log_completion_cost,
+)
+
 if TYPE_CHECKING:
     from pinjected_openai.openrouter.instances import StructuredLLM
 
@@ -78,6 +83,8 @@ def convert_pil_to_base64(image: PIL.Image.Image) -> str:
 async def a_sllm_openai(  # noqa: PINJ045
     async_openai_client: AsyncOpenAI,
     logger: LoggerProtocol,
+    openai_model_table: OpenAIModelTable,
+    openai_state: dict,
     /,
     text: str,
     model: str = "gpt-4o",
@@ -260,7 +267,7 @@ async def a_sllm_openai(  # noqa: PINJ045
             # Extract the content
             content = response.choices[0].message.content
 
-            # Log usage information
+            # Log usage information and calculate costs
             if response.usage:
                 logger.info(f"Token usage: {response.usage.model_dump()}")
                 if hasattr(response.usage, "completion_tokens_details"):
@@ -272,6 +279,17 @@ async def a_sllm_openai(  # noqa: PINJ045
                         logger.info(
                             f"GPT-5 reasoning tokens: {details.reasoning_tokens}"
                         )
+
+                # Calculate and log cost
+                usage_dict = response.usage.model_dump()
+                # Create new state with incremented request count
+                current_state = {
+                    **openai_state,
+                    "request_count": openai_state.get("request_count", 0) + 1,
+                }
+                log_completion_cost(
+                    usage_dict, model, openai_model_table, current_state, logger
+                )
 
             # Parse the JSON response
             try:
@@ -297,7 +315,7 @@ async def a_sllm_openai(  # noqa: PINJ045
         try:
             response = await async_openai_client.chat.completions.create(**api_params)
 
-            # Log usage information
+            # Log usage information and calculate costs
             if response.usage:
                 logger.info(f"Token usage: {response.usage.model_dump()}")
                 if hasattr(response.usage, "completion_tokens_details"):
@@ -309,6 +327,17 @@ async def a_sllm_openai(  # noqa: PINJ045
                         logger.info(
                             f"GPT-5 reasoning tokens: {details.reasoning_tokens}"
                         )
+
+                # Calculate and log cost
+                usage_dict = response.usage.model_dump()
+                # Create new state with incremented request count
+                current_state = {
+                    **openai_state,
+                    "request_count": openai_state.get("request_count", 0) + 1,
+                }
+                log_completion_cost(
+                    usage_dict, model, openai_model_table, current_state, logger
+                )
 
             # Return the raw text content
             content = response.choices[0].message.content
