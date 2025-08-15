@@ -193,6 +193,7 @@ class OpenRouterModel:
     providers: list[OpenRouterProviderInfo] | None
     top_provider: OpenRouterProviderInfo | None
     per_request_limits: dict[Any] | None
+    supported_parameters: list[str] | None
     model_config: Any
     def supports_json_output(self) -> bool: ...
 
@@ -223,7 +224,8 @@ class PersonWithComplexDict:
 
 class OpenRouterCapabilities:
     vision: bool
-    json: bool
+    json: bool  # Kept for backward compatibility (alias)
+    json_output: bool  # New field name
     tools: bool
     model_config: Any
 
@@ -382,3 +384,7 @@ def prepare_json_provider_and_kwargs(
 class JsonProviderConfig:
     provider: dict | None
     kwargs: dict
+
+# Additional symbols:
+
+# Additional symbols:

@@ -27,7 +27,7 @@ from pinjected_openai.compatibles import (
     AOpenaiCompatibleLlmProtocol,
 )
 from pinjected_openai.vision_llm import to_content
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, Field
 from returns.result import ResultE, safe
 from tenacity import (
     retry,
@@ -89,11 +89,14 @@ class OpenRouterCapabilities(BaseModel):
     """Capabilities of a model in OpenRouter API."""
 
     vision: bool = False
-    json: bool = False
+    json_output: bool = Field(
+        default=False, alias="json"
+    )  # Use alias to match API field name
     tools: bool = False
 
     model_config = {
-        "extra": "allow"  # Allow extra fields for compatibility with changing API
+        "extra": "allow",  # Allow extra fields for compatibility with changing API
+        "populate_by_name": True,  # Allow both field name and alias
     }
 
 
@@ -174,6 +177,7 @@ class OpenRouterModel(BaseModel):
     providers: list[OpenRouterProviderInfo] | None = None
     top_provider: OpenRouterProviderInfo | None = None
     per_request_limits: dict[str, Any] | None = None
+    supported_parameters: list[str] | None = None
 
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
@@ -181,8 +185,18 @@ class OpenRouterModel(BaseModel):
 
     def supports_json_output(self) -> bool:
         """Check if the model supports JSON structured output."""
+        # First check the capabilities field if available
         if self.architecture.capabilities:
-            return self.architecture.capabilities.json
+            return self.architecture.capabilities.json_output
+
+        # Check the supported_parameters field from the API
+        if self.supported_parameters:
+            # Model supports JSON if it has either response_format or structured_outputs
+            return (
+                "response_format" in self.supported_parameters
+                or "structured_outputs" in self.supported_parameters
+            )
+
         return False
 
 
@@ -523,7 +537,14 @@ def handle_openrouter_error(res: dict, logger: LoggerProtocol):
 def extract_json_from_markdown(data: str) -> str:
     """Extract JSON from markdown code blocks."""
     if "```" in data:
-        return data.split("```")[1].strip()
+        # Extract content between triple backticks
+        parts = data.split("```")
+        if len(parts) >= 2:
+            json_block = parts[1].strip()
+            # Remove language marker if present (e.g., "json")
+            if json_block.startswith("json\n") or json_block.startswith("json "):
+                json_block = json_block[5:]
+            return json_block.strip()
     return data
 
 
@@ -1049,8 +1070,15 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
 
     This wraps a_openrouter_base_chat_completion and adds JSON handling on top.
     """
+    # Debug logging
+    logger.debug(
+        f"a_openrouter_chat_completion called with response_format: {response_format}"
+    )
+    logger.debug(f"response_format type: {type(response_format)}")
+
     # No structured format requested - just pass through to base
-    if response_format is None or not issubclass(response_format, BaseModel):
+    if response_format is None:
+        logger.debug("response_format is None, using base completion")
         return await a_openrouter_base_chat_completion(
             prompt=prompt,
             model=model,
@@ -1064,11 +1092,37 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
             **kwargs,
         )
 
+    # Check if it's a BaseModel subclass
+    is_base_model = inspect.isclass(response_format) and issubclass(
+        response_format, BaseModel
+    )
+
+    if not is_base_model:
+        logger.debug(
+            f"response_format is not a BaseModel subclass, using base completion"
+        )
+        return await a_openrouter_base_chat_completion(
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            images=images,
+            response_format=response_format,
+            provider=provider,
+            include_reasoning=include_reasoning,
+            reasoning=reasoning,
+            **kwargs,
+        )
+
+    # We have a BaseModel response_format, proceed with JSON handling
+    logger.debug(f"response_format is a BaseModel subclass: {response_format.__name__}")
+
     # Validate compatibility using helper
     validate_response_format(response_format, model)
 
     # Check if model supports JSON
     supports_json = openrouter_model_table.supports_json_output(model)
+    logger.debug(f"Model {model} supports JSON: {supports_json}")
 
     # Prepare provider and kwargs for JSON
     json_config = prepare_json_provider_and_kwargs(
@@ -1118,13 +1172,18 @@ Extract and format the following response into the required JSON structure.
         )
 
     # Try normal parsing with fallback
-    return await parse_json_response(
+    logger.debug(
+        f"Parsing response_text with parse_json_response: {response_text[:100]}..."
+    )
+    result = await parse_json_response(
         data=response_text,
         response_format=response_format,
         logger=logger,
         a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
         prompt=prompt,
     )
+    logger.debug(f"Parsed result type: {type(result)}, value: {result}")
+    return result
 
 
 # Removed - functionality merged into a_openrouter_chat_completion
