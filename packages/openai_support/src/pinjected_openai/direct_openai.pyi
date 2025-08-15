@@ -22,6 +22,8 @@ class ASllmOpenaiProtocol(Protocol):
         response_format: type[BaseModel] | None = ...,
         max_tokens: int = ...,
         temperature: float = ...,
+        reasoning_effort: str | None = ...,
+        verbosity: str | None = ...,
         **kwargs,
     ) -> Any: ...
 
@@ -47,6 +49,8 @@ async def a_sllm_openai(
     response_format: type[BaseModel] | None = ...,
     max_tokens: int = ...,
     temperature: float = ...,
+    reasoning_effort: str | None = ...,
+    verbosity: str | None = ...,
     **kwargs,
 ) -> IProxy[Any]: ...
 @overload
