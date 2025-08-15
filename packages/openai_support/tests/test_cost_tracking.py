@@ -78,48 +78,38 @@ async def test_cost_tracking_gpt4o(
         openai_organization=None,
     )
 )
-async def test_cost_tracking_gpt5(
+async def test_cost_tracking_o1_mini(
     a_sllm_openai,
     openai_model_table,
     openai_state,
     logger,
     /,
 ):
-    """Test that cost tracking works for GPT-5 models with reasoning tokens."""
+    """Test that cost tracking works for o1-mini reasoning model."""
 
     logger.info("\n" + "=" * 80)
-    logger.info("TESTING COST TRACKING FOR GPT-5 WITH REASONING")
+    logger.info("TESTING COST TRACKING FOR O1-MINI REASONING MODEL")
     logger.info("=" * 80)
 
-    # Test GPT-5-nano with reasoning
-    logger.info("\n1. Testing GPT-5-nano with reasoning effort...")
+    # Test o1-mini
+    logger.info("\n1. Testing o1-mini reasoning model...")
     result = await a_sllm_openai(
         text="Calculate: (10 * 5) + 8 - 3",
-        model="gpt-5-nano",
-        max_tokens=10000,
-        reasoning_effort="low",
+        model="o1-mini",
+        max_tokens=1000,
     )
-    assert result and result.strip(), "GPT-5-nano returned empty response"
+    assert result and result.strip(), "o1-mini returned empty response"
     logger.success(f"✅ Response: {result}")
 
     # Verify pricing
-    pricing = openai_model_table.get_pricing("gpt-5-nano")
-    assert pricing is not None, "No pricing info for gpt-5-nano"
+    pricing = openai_model_table.get_pricing("o1-mini")
+    assert pricing is not None, "No pricing info for o1-mini"
+    assert pricing.prompt == Decimal("3.00"), "o1-mini input price should be $3"
+    assert pricing.completion == Decimal("12.00"), "o1-mini output price should be $12"
     logger.info(
-        f"GPT-5-nano pricing: ${pricing.prompt}/1M input, ${pricing.completion}/1M output"
+        f"o1-mini pricing: ${pricing.prompt}/1M input, ${pricing.completion}/1M output"
     )
-    logger.info("   (Check logs above for reasoning token costs)")
-
-    # Test with high reasoning for more tokens
-    logger.info("\n2. Testing with high reasoning effort (more reasoning tokens)...")
-    result = await a_sllm_openai(
-        text="Solve step by step: If x^2 - 5x + 6 = 0, what are the values of x?",
-        model="gpt-5-nano",
-        max_tokens=10000,
-        reasoning_effort="high",
-    )
-    assert result and result.strip(), "GPT-5-nano returned empty response"
-    logger.success(f"✅ Response received (should show higher reasoning cost)")
+    logger.info("   (Check logs above for cost tracking)")
 
 
 @pytest.mark.asyncio
@@ -155,28 +145,24 @@ async def test_model_pricing_table(
         f"✅ GPT-4o pricing verified: ${gpt4o.pricing.prompt}/${gpt4o.pricing.completion}"
     )
 
-    # Test GPT-5-nano pricing
-    gpt5_nano = openai_model_table.get_model("gpt-5-nano")
-    assert gpt5_nano is not None, "GPT-5-nano not in pricing table"
-    assert gpt5_nano.pricing.prompt == Decimal("0.60"), (
-        "GPT-5-nano prompt price incorrect"
-    )
-    assert gpt5_nano.pricing.completion == Decimal("2.40"), (
-        "GPT-5-nano completion price incorrect"
+    # Test o1-mini pricing
+    o1_mini = openai_model_table.get_model("o1-mini")
+    assert o1_mini is not None, "o1-mini not in pricing table"
+    assert o1_mini.pricing.prompt == Decimal("3.00"), "o1-mini prompt price incorrect"
+    assert o1_mini.pricing.completion == Decimal("12.00"), (
+        "o1-mini completion price incorrect"
     )
     logger.success(
-        f"✅ GPT-5-nano pricing verified: ${gpt5_nano.pricing.prompt}/${gpt5_nano.pricing.completion}"
+        f"✅ o1-mini pricing verified: ${o1_mini.pricing.prompt}/${o1_mini.pricing.completion}"
     )
 
-    # Test GPT-5 pricing
-    gpt5 = openai_model_table.get_model("gpt-5")
-    assert gpt5 is not None, "GPT-5 not in pricing table"
-    assert gpt5.pricing.prompt == Decimal("15.00"), "GPT-5 prompt price incorrect"
-    assert gpt5.pricing.completion == Decimal("60.00"), (
-        "GPT-5 completion price incorrect"
-    )
+    # Test o1 pricing
+    o1 = openai_model_table.get_model("o1")
+    assert o1 is not None, "o1 not in pricing table"
+    assert o1.pricing.prompt == Decimal("15.00"), "o1 prompt price incorrect"
+    assert o1.pricing.completion == Decimal("60.00"), "o1 completion price incorrect"
     logger.success(
-        f"✅ GPT-5 pricing verified: ${gpt5.pricing.prompt}/${gpt5.pricing.completion}"
+        f"✅ o1 pricing verified: ${o1.pricing.prompt}/${o1.pricing.completion}"
     )
 
     # Test cost calculation
@@ -197,7 +183,7 @@ async def test_model_pricing_table(
     )
     logger.success(f"✅ Cost calculation correct: ${cost_dict['total']:.8f}")
 
-    # Test with reasoning tokens
+    # Test with reasoning tokens (using o1-mini pricing)
     logger.info("\n4. Testing cost calculation with reasoning tokens...")
     usage_with_reasoning = {
         "prompt_tokens": 100,
@@ -206,12 +192,12 @@ async def test_model_pricing_table(
             "reasoning_tokens": 100,
         },
     }
-    cost_dict = gpt5_nano.pricing.calc_cost(usage_with_reasoning)
+    cost_dict = o1_mini.pricing.calc_cost(usage_with_reasoning)
 
     # Reasoning tokens are billed as completion tokens
-    expected_prompt_cost = 100 * 0.60 / 1_000_000
-    expected_completion_cost = 150 * 2.40 / 1_000_000
-    expected_reasoning_cost = 100 * 2.40 / 1_000_000
+    expected_prompt_cost = 100 * 3.00 / 1_000_000
+    expected_completion_cost = 150 * 12.00 / 1_000_000
+    expected_reasoning_cost = 100 * 12.00 / 1_000_000
 
     assert abs(cost_dict["prompt"] - expected_prompt_cost) < 0.000001
     assert abs(cost_dict["completion"] - expected_completion_cost) < 0.000001
