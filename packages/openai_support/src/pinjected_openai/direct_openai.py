@@ -25,7 +25,7 @@ class LoggerProtocol(Protocol):
 
 
 class ASllmOpenaiProtocol(Protocol):
-    """Protocol for direct OpenAI structured LLM."""
+    """Protocol for direct OpenAI structured LLM with GPT-5 thinking mode support."""
 
     async def __call__(
         self,
@@ -35,6 +35,8 @@ class ASllmOpenaiProtocol(Protocol):
         response_format: type[BaseModel] | None = None,
         max_tokens: int = 8192,
         temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        verbosity: str | None = None,
         **kwargs,
     ) -> Any: ...
 
@@ -83,13 +85,15 @@ async def a_sllm_openai(  # noqa: PINJ045
     response_format: type[BaseModel] | None = None,
     max_tokens: int = 8192,
     temperature: float = 0.7,
+    reasoning_effort: str | None = None,
+    verbosity: str | None = None,
     **kwargs,
 ) -> Any:
     """
-    Direct OpenAI API structured LLM implementation.
+    Direct OpenAI API structured LLM implementation with GPT-5 thinking mode support.
 
     This function bypasses OpenRouter and calls OpenAI directly, avoiding the 5% fee.
-    It properly handles GPT-5 models by using max_completion_tokens instead of max_tokens.
+    It properly handles GPT-5 models including their advanced thinking mode capabilities.
 
     Args:
         text: The prompt text
@@ -97,8 +101,29 @@ async def a_sllm_openai(  # noqa: PINJ045
         images: Optional list of PIL images to include
         response_format: Optional Pydantic BaseModel for structured output
         max_tokens: Maximum tokens for completion (transformed to max_completion_tokens for GPT-5)
-        temperature: Temperature for sampling
+        temperature: Temperature for sampling (GPT-5 only supports 1.0)
+        reasoning_effort: GPT-5 thinking mode control. Options:
+            - "minimal": Few/no reasoning tokens, fastest response for simple tasks
+            - "low": Light reasoning for moderately complex tasks
+            - "medium": Balanced reasoning for most use cases (default for complex prompts)
+            - "high": Deep reasoning for complex problems requiring extensive thinking
+            Note: Higher effort = more reasoning tokens = higher cost but better quality
+        verbosity: GPT-5 output detail control. Options:
+            - "low": Concise responses
+            - "medium": Balanced detail (default)
+            - "high": Detailed, comprehensive responses
         **kwargs: Additional OpenAI API parameters
+
+    GPT-5 Thinking Mode Usage:
+        For simple tasks (extraction, formatting, classification):
+            reasoning_effort="minimal"  # Fastest, lowest cost
+
+        For complex reasoning (math, analysis, planning):
+            reasoning_effort="high"  # Best quality, shows thinking process
+
+        The model automatically uses "reasoning tokens" (invisible tokens that count
+        toward billing) to think through problems before generating the response.
+        You can see reasoning token usage in the response.usage.completion_tokens_details.
 
     Returns:
         Parsed response according to response_format, or raw text if no format specified
@@ -160,10 +185,50 @@ async def a_sllm_openai(  # noqa: PINJ045
         logger.debug(
             f"Using max_completion_tokens={token_value} for GPT-5 model {model}"
         )
+
+        # Add GPT-5 thinking mode parameters
+        if reasoning_effort:
+            valid_efforts = ["minimal", "low", "medium", "high"]
+            if reasoning_effort not in valid_efforts:
+                logger.warning(
+                    f"Invalid reasoning_effort '{reasoning_effort}'. "
+                    f"Valid options: {valid_efforts}"
+                )
+            else:
+                api_params["reasoning_effort"] = reasoning_effort
+                logger.info(
+                    f"Using reasoning_effort='{reasoning_effort}' for thinking mode. "
+                    f"{'Minimal reasoning for fast response.' if reasoning_effort == 'minimal' else ''}"
+                    f"{'Light reasoning for moderate complexity.' if reasoning_effort == 'low' else ''}"
+                    f"{'Balanced reasoning for most cases.' if reasoning_effort == 'medium' else ''}"
+                    f"{'Deep reasoning for complex problems.' if reasoning_effort == 'high' else ''}"
+                )
+
+        if verbosity:
+            valid_verbosity = ["low", "medium", "high"]
+            if verbosity not in valid_verbosity:
+                logger.warning(
+                    f"Invalid verbosity '{verbosity}'. Valid options: {valid_verbosity}"
+                )
+            else:
+                api_params["verbosity"] = verbosity
+                logger.debug(f"Using verbosity='{verbosity}' for output detail control")
     else:
         # Other models use max_tokens
         api_params["max_tokens"] = max_tokens
         logger.debug(f"Using max_tokens={max_tokens} for model {model}")
+
+        # Warn if GPT-5 specific parameters are used with non-GPT-5 models
+        if reasoning_effort:
+            logger.warning(
+                f"reasoning_effort parameter is only supported for GPT-5 models, "
+                f"ignoring for {model}"
+            )
+        if verbosity:
+            logger.warning(
+                f"verbosity parameter is only supported for GPT-5 models, "
+                f"ignoring for {model}"
+            )
 
     # Handle structured output if requested
     if response_format is not None and issubclass(response_format, BaseModel):
