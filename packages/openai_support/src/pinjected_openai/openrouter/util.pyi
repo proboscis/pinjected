@@ -343,3 +343,42 @@ class LoggerProtocol:
 
 class OpenRouterAPIProtocol:
     def __init__(self, base_url: str, api_key: str) -> None: ...
+
+# Additional symbols:
+def validate_response_format(response_format: type[BaseModel], model: str) -> None: ...
+def build_provider_filter(provider: dict | None = ...) -> dict: ...
+def build_user_message(
+    prompt: str, images: list[PIL.Image.Image] | None = ...
+) -> dict: ...
+def build_chat_payload(
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    images: list[PIL.Image.Image] | None = ...,
+    provider: dict | None = ...,
+    include_reasoning: bool = ...,
+    reasoning: dict | None = ...,
+    **kwargs,
+) -> dict: ...
+def log_completion_cost(
+    res: dict,
+    model: str,
+    openrouter_model_table: OpenRouterModelTable,
+    openrouter_state: dict,
+    logger: LoggerProtocol,
+) -> None: ...
+
+# Additional symbols:
+def prepare_json_provider_and_kwargs(
+    provider: dict | None,
+    kwargs: dict,
+    response_format: type[BaseModel],
+    supports_json: bool,
+    logger: LoggerProtocol,
+    model: str,
+) -> JsonProviderConfig: ...
+
+class JsonProviderConfig:
+    provider: dict | None
+    kwargs: dict

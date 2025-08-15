@@ -1,4 +1,5 @@
 import inspect
+from dataclasses import dataclass
 from pprint import pformat
 from typing import (
     Any,
@@ -456,50 +457,25 @@ async def a_openrouter_base_chat_completion(  # noqa: PINJ045
     Base OpenRouter chat completion without JSON fixing.
     This exists to break dependency cycles - JSON fixing depends on LLM functions.
     """
-    # Build provider filter
-    provider_filter = dict()
-    if provider is not None:
-        p = provider_filter.get("provider", dict())
-        p.update(provider)
-        provider_filter["provider"] = p
-
-    # Build payload
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    *[to_content(img) for img in (images or [])],
-                ],
-            }
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        **provider_filter,
+    # Build payload using helper
+    payload = build_chat_payload(
+        model=model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        provider=provider,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
         **kwargs,
-    }
-
-    # Add reasoning support if requested
-    if include_reasoning:
-        payload["include_reasoning"] = True
-    if reasoning is not None:
-        payload["reasoning"] = reasoning
+    )
 
     # Make API call
     res = await a_openrouter_post(payload)
     handle_openrouter_error(res, logger)
 
-    # Log costs (without mutating state to avoid PINJ056)
-    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
-        safe(lambda x: x.calc_cost_dict(res["usage"]))
-    )
-    current_cost = openrouter_state.get("cumulative_cost", 0)
-    new_cost = current_cost + sum(cost_dict.value_or(dict()).values())
-    logger.info(
-        f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {new_cost} from {res['provider']}"
-    )
+    # Log costs using helper
+    log_completion_cost(res, model, openrouter_model_table, openrouter_state, logger)
 
     # Return raw response content (no JSON parsing)
     return res["choices"][0]["message"]["content"]
@@ -598,10 +574,125 @@ def calculate_cumulative_cost(openrouter_state: dict, cost_dict: ResultE[dict]) 
     return {**openrouter_state, "cumulative_cost": new_cost}
 
 
-# Helper class removed - replaced with composed @injected functions below
+# Helper functions to eliminate duplication (DRY principle)
 
 
-# Factory function removed - functionality moved to a_openrouter_chat_completion
+@dataclass
+class JsonProviderConfig:
+    """Configuration for JSON provider and kwargs."""
+
+    provider: dict | None
+    kwargs: dict
+
+
+def prepare_json_provider_and_kwargs(
+    provider: dict | None,
+    kwargs: dict,
+    response_format: type[BaseModel],
+    supports_json: bool,
+    logger: LoggerProtocol,
+    model: str,
+) -> JsonProviderConfig:
+    """Prepare provider and kwargs for JSON response format."""
+    if supports_json:
+        enhanced_provider = {
+            **(provider or {}),
+            "require_parameters": True,
+        }
+        enhanced_kwargs = {
+            **kwargs,
+            "response_format": build_openrouter_response_format(response_format),
+        }
+    else:
+        logger.warning(
+            f"Model {model} does not support JSON output. "
+            f"Will use fallback JSON fix mechanism."
+        )
+        enhanced_provider = provider
+        enhanced_kwargs = kwargs
+
+    return JsonProviderConfig(provider=enhanced_provider, kwargs=enhanced_kwargs)
+
+
+def validate_response_format(response_format: type[BaseModel], model: str) -> None:
+    """Validate response format compatibility with OpenAPI3 and Gemini models."""
+    # Check OpenAPI3 compatibility
+    if issues := is_openapi3_compatible(response_format):
+        raise OpenAPI3CompatibilityError(response_format, issues)
+
+    # Check Gemini compatibility if using Gemini model
+    if "gemini" in model.lower() and (
+        gemini_issues := is_gemini_compatible(response_format)
+    ):
+        raise GeminiCompatibilityError(response_format, gemini_issues)
+
+
+def build_provider_filter(provider: dict | None = None) -> dict:
+    """Build provider filter for OpenRouter API."""
+    if provider is None:
+        return {}
+    return {"provider": provider}
+
+
+def build_user_message(
+    prompt: str, images: list[PIL.Image.Image] | None = None
+) -> dict:
+    """Build user message with optional images."""
+    return {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            *[to_content(img) for img in (images or [])],
+        ],
+    }
+
+
+def build_chat_payload(
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    images: list[PIL.Image.Image] | None = None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
+    **kwargs,
+) -> dict:
+    """Build complete chat payload for OpenRouter API."""
+    payload = {
+        "model": model,
+        "messages": [build_user_message(prompt, images)],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        **build_provider_filter(provider),
+        **kwargs,
+    }
+
+    if include_reasoning:
+        payload["include_reasoning"] = True
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+
+    return payload
+
+
+def log_completion_cost(
+    res: dict,
+    model: str,
+    openrouter_model_table: OpenRouterModelTable,
+    openrouter_state: dict,
+    logger: LoggerProtocol,
+) -> None:
+    """Calculate and log completion costs."""
+    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
+        safe(lambda x: x.calc_cost_dict(res["usage"]))
+    )
+    current_cost = openrouter_state.get("cumulative_cost", 0)
+    new_cost = current_cost + sum(cost_dict.value_or(dict()).values())
+    logger.info(
+        f"Cost of completion: {cost_dict.value_or('unknown')}, "
+        f"cumulative cost: {new_cost} from {res['provider']}"
+    )
 
 
 def build_openrouter_response_format(response_format):
@@ -973,35 +1064,21 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
             **kwargs,
         )
 
-    # Validate compatibility
-    if issues := is_openapi3_compatible(response_format):
-        raise OpenAPI3CompatibilityError(response_format, issues)
-
-    if "gemini" in model.lower() and (
-        gemini_issues := is_gemini_compatible(response_format)
-    ):
-        raise GeminiCompatibilityError(response_format, gemini_issues)
+    # Validate compatibility using helper
+    validate_response_format(response_format, model)
 
     # Check if model supports JSON
     supports_json = openrouter_model_table.supports_json_output(model)
 
-    # Prepare provider with response format if supported
-    enhanced_provider = provider or {}
-    if supports_json:
-        enhanced_provider = {
-            **enhanced_provider,
-            "require_parameters": True,
-        }
-        enhanced_kwargs = {
-            **kwargs,
-            "response_format": build_openrouter_response_format(response_format),
-        }
-    else:
-        logger.warning(
-            f"Model {model} does not support JSON output. "
-            f"Will use fallback JSON fix mechanism."
-        )
-        enhanced_kwargs = kwargs
+    # Prepare provider and kwargs for JSON
+    json_config = prepare_json_provider_and_kwargs(
+        provider=provider,
+        kwargs=kwargs,
+        response_format=response_format,
+        supports_json=supports_json,
+        logger=logger,
+        model=model,
+    )
 
     # Add schema example to prompt
     schema_prompt = await a_cached_schema_example_provider(
@@ -1012,18 +1089,18 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
         + f"\n\nThe response must follow the following json format example:{schema_prompt}"
     )
 
-    # Call base completion with enhanced prompt
+    # Call base completion with enhanced settings
     response_text = await a_openrouter_base_chat_completion(
         prompt=enhanced_prompt,
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
-        images=images,  # Base function handles resizing
+        images=images,
         response_format=None,  # Don't pass response_format to base
-        provider=enhanced_provider,
+        provider=json_config.provider,
         include_reasoning=include_reasoning,
         reasoning=reasoning,
-        **enhanced_kwargs,
+        **json_config.kwargs,
     )
 
     # Parse response with JSON fixing if needed
