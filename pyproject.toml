@@ -58,7 +58,18 @@ pythonpath = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = [
+    "packages/openai_support",
+    "packages/anthropic",
+    "packages/wandb_util",
+    "packages/error_reports",
+    "packages/reviewer",
+    "packages/rate_limit",
+    "packages/niji_voice",
+    "packages/injected_utils",
+    "packages/gcp",
+    "packages/pytest_runner"
+]
 
 [dependency-groups]
 dev = [
