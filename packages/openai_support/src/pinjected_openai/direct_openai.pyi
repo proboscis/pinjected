@@ -24,6 +24,7 @@ class ASllmOpenaiProtocol(Protocol):
         temperature: float = ...,
         reasoning_effort: str | None = ...,
         verbosity: str | None = ...,
+        service_tier: str | None = ...,
         **kwargs,
     ) -> Any: ...
 
@@ -53,6 +54,7 @@ async def a_sllm_openai(
     temperature: float = ...,
     reasoning_effort: str | None = ...,
     verbosity: str | None = ...,
+    service_tier: str | None = ...,
     **kwargs,
 ) -> IProxy[Any]: ...
 @overload
