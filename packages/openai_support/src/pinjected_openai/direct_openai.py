@@ -134,6 +134,313 @@ def ensure_strict_schema(schema: dict) -> dict:
     return result
 
 
+def _build_messages(
+    text: str, images: list[PIL.Image.Image] | None = None, **kwargs
+) -> list[dict]:
+    """
+    Build the messages array for OpenAI API call.
+
+    Args:
+        text: The prompt text
+        images: Optional list of PIL images to include
+        **kwargs: Additional parameters (detail level for images)
+
+    Returns:
+        List of message dictionaries for the API call
+    """
+    messages = []
+
+    # Build content for the user message
+    content = [{"type": "text", "text": text}]
+
+    # Add images if provided
+    if images:
+        for img in images:
+            img_base64 = convert_pil_to_base64(img)
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": img_base64,
+                        "detail": kwargs.pop("detail", "auto"),
+                    },
+                }
+            )
+
+    messages.append(
+        {
+            "role": "user",
+            "content": content if images else text,  # Use simple text if no images
+        }
+    )
+
+    return messages
+
+
+def _build_api_parameters(
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+    reasoning_effort: str | None,
+    verbosity: str | None,
+    response_format: type[BaseModel] | None,
+    logger: LoggerProtocol,
+    **kwargs,
+) -> dict:
+    """
+    Build API parameters for OpenAI API call with model-specific handling.
+
+    Args:
+        model: OpenAI model name
+        messages: List of message dictionaries
+        temperature: Temperature for sampling
+        max_tokens: Maximum tokens for completion
+        reasoning_effort: GPT-5 thinking mode control
+        verbosity: GPT-5 output detail control
+        response_format: Optional Pydantic BaseModel for structured output
+        logger: Logger instance for output
+        **kwargs: Additional API parameters
+
+    Returns:
+        Dictionary of API parameters ready for OpenAI API call
+    """
+    # Build the API call parameters
+    api_params = {
+        "model": model,
+        "messages": messages,
+        **kwargs,  # Pass through any additional parameters
+    }
+
+    # Apply model-specific parameters using the handler class
+    ModelParameterHandler.apply_model_specific_params(
+        api_params, model, temperature, max_tokens, reasoning_effort, verbosity, logger
+    )
+
+    # Handle structured output if requested
+    if response_format is not None and issubclass(response_format, BaseModel):
+        logger.debug(f"Using structured output with {response_format.__name__}")
+
+        # Get the JSON schema and ensure it's properly formatted for OpenAI
+        schema = response_format.model_json_schema()
+        # Recursively ensure all objects have additionalProperties: false for strict mode
+        schema = ensure_strict_schema(schema)
+        # OpenAI requires 'required' field to list ALL properties (even with defaults)
+        if "properties" in schema:
+            # OpenAI strict mode requires ALL properties to be in required array
+            schema["required"] = list(schema["properties"].keys())
+
+        # Use OpenAI's structured output feature
+        api_params["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_format.__name__,
+                "schema": schema,
+                "strict": True,
+            },
+        }
+
+    return api_params
+
+
+def _log_usage_and_cost(
+    response,
+    model: str,
+    openai_model_table,
+    openai_state: dict,
+    logger: LoggerProtocol,
+) -> dict:
+    """
+    Log token usage information and calculate costs.
+
+    Args:
+        response: OpenAI API response object
+        model: Model name used for the request
+        openai_model_table: Model pricing table
+        openai_state: Current state dictionary for tracking
+        logger: Logger instance for output
+
+    Returns:
+        Updated state dictionary with cumulative costs
+    """
+    if not response.usage:
+        return openai_state
+
+    logger.info(f"Token usage: {response.usage.model_dump()}")
+
+    if hasattr(response.usage, "completion_tokens_details"):
+        details = response.usage.completion_tokens_details
+        if hasattr(details, "reasoning_tokens") and details.reasoning_tokens:
+            logger.info(f"GPT-5 reasoning tokens: {details.reasoning_tokens}")
+
+    # Calculate and log cost
+    usage_dict = response.usage.model_dump()
+    # Create new state with incremented request count
+    current_state = {
+        **openai_state,
+        "request_count": openai_state.get("request_count", 0) + 1,
+    }
+    return log_completion_cost(
+        usage_dict, model, openai_model_table, current_state, logger
+    )
+
+
+def _process_structured_response(
+    response, response_format: type[BaseModel], logger: LoggerProtocol
+) -> Any:
+    """
+    Process structured response from OpenAI API.
+
+    Args:
+        response: OpenAI API response object
+        response_format: Pydantic BaseModel for structured output
+        logger: Logger instance for output
+
+    Returns:
+        Parsed response according to response_format
+
+    Raises:
+        json.JSONDecodeError: If response content is not valid JSON
+        ValidationError: If response doesn't match the expected format
+    """
+    # Extract the content
+    content = response.choices[0].message.content
+
+    # Parse the JSON response
+    try:
+        parsed_json = json.loads(content)
+        result = response_format(**parsed_json)
+        logger.success(f"Successfully parsed response as {response_format.__name__}")
+        return result
+    except (json.JSONDecodeError, ValidationError) as e:
+        logger.error(f"Failed to parse structured response: {e}")
+        logger.debug(f"Raw content: {content}")
+        raise
+
+
+def _process_unstructured_response(response, logger: LoggerProtocol) -> str:
+    """
+    Process unstructured text response from OpenAI API.
+
+    Args:
+        response: OpenAI API response object
+        logger: Logger instance for output
+
+    Returns:
+        Raw text content from the response
+    """
+    # Return the raw text content
+    content = response.choices[0].message.content
+    logger.success(
+        f"Received response: {content[:100]}..."
+        if len(content) > 100
+        else f"Received response: {content}"
+    )
+    return content
+
+
+class ModelParameterHandler:
+    """
+    Handles model-specific parameter configuration for OpenAI API calls.
+
+    Encapsulates the logic for different model types (GPT-5, o1/o3/o4 vs others)
+    and their specific parameter requirements.
+    """
+
+    @staticmethod
+    def apply_model_specific_params(
+        api_params: dict,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        reasoning_effort: str | None,
+        verbosity: str | None,
+        logger: LoggerProtocol,
+    ) -> None:
+        """
+        Apply model-specific parameters to the API parameters dictionary.
+
+        Args:
+            api_params: Dictionary of API parameters to modify
+            model: OpenAI model name
+            temperature: Temperature for sampling
+            max_tokens: Maximum tokens for completion
+            reasoning_effort: GPT-5 thinking mode control
+            verbosity: GPT-5 output detail control
+            logger: Logger instance for output
+        """
+        # GPT-5 and o1/o3/o4 models only support temperature=1.0
+        model_lower = model.lower()
+        if (
+            is_gpt5_model(model)
+            or model_lower.startswith("o1")
+            or model_lower.startswith("o3")
+            or model_lower.startswith("o4")
+        ):
+            # These models only support default temperature (1.0)
+            if temperature != 1.0:
+                logger.debug(
+                    f"{model} only supports temperature=1.0, ignoring temperature={temperature}"
+                )
+        else:
+            # Other models support custom temperature
+            api_params["temperature"] = temperature
+
+        # Handle token parameter based on model
+        if requires_max_completion_tokens(model):
+            # GPT-5, o1, o3, o4 models require max_completion_tokens
+            # Ensure sufficient tokens for reasoning + output
+            token_value = max(max_tokens, 500)  # Minimum 500 for these models
+            api_params["max_completion_tokens"] = token_value
+            logger.debug(f"Using max_completion_tokens={token_value} for model {model}")
+
+            # Add GPT-5 thinking mode parameters
+            if reasoning_effort:
+                valid_efforts = ["minimal", "low", "medium", "high"]
+                if reasoning_effort not in valid_efforts:
+                    logger.warning(
+                        f"Invalid reasoning_effort '{reasoning_effort}'. "
+                        f"Valid options: {valid_efforts}"
+                    )
+                else:
+                    api_params["reasoning_effort"] = reasoning_effort
+                    logger.info(
+                        f"Using reasoning_effort='{reasoning_effort}' for thinking mode. "
+                        f"{'Minimal reasoning for fast response.' if reasoning_effort == 'minimal' else ''}"
+                        f"{'Light reasoning for moderate complexity.' if reasoning_effort == 'low' else ''}"
+                        f"{'Balanced reasoning for most cases.' if reasoning_effort == 'medium' else ''}"
+                        f"{'Deep reasoning for complex problems.' if reasoning_effort == 'high' else ''}"
+                    )
+
+            if verbosity:
+                valid_verbosity = ["low", "medium", "high"]
+                if verbosity not in valid_verbosity:
+                    logger.warning(
+                        f"Invalid verbosity '{verbosity}'. Valid options: {valid_verbosity}"
+                    )
+                else:
+                    api_params["verbosity"] = verbosity
+                    logger.debug(
+                        f"Using verbosity='{verbosity}' for output detail control"
+                    )
+        else:
+            # Other models use max_tokens
+            api_params["max_tokens"] = max_tokens
+            logger.debug(f"Using max_tokens={max_tokens} for model {model}")
+
+            # Warn if GPT-5 specific parameters are used with non-GPT-5 models
+            if reasoning_effort:
+                logger.warning(
+                    f"reasoning_effort parameter is only supported for GPT-5 models, "
+                    f"ignoring for {model}"
+                )
+            if verbosity:
+                logger.warning(
+                    f"verbosity parameter is only supported for GPT-5 models, "
+                    f"ignoring for {model}"
+                )
+
+
 @injected(protocol=ASllmOpenaiProtocol)
 async def a_sllm_openai(  # noqa: PINJ045
     async_openai_client: AsyncOpenAI,
@@ -190,228 +497,43 @@ async def a_sllm_openai(  # noqa: PINJ045
     Returns:
         Parsed response according to response_format, or raw text if no format specified
     """
-
     logger.debug(
         f"a_sllm_openai called with model={model}, response_format={response_format}"
     )
 
-    # Build the messages
-    messages = []
+    try:
+        messages = _build_messages(text, images, **kwargs)
 
-    # Build content for the user message
-    content = [{"type": "text", "text": text}]
+        # Phase 2: Build API parameters
+        api_params = _build_api_parameters(
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            reasoning_effort,
+            verbosity,
+            response_format,
+            logger,
+            **kwargs,
+        )
 
-    # Add images if provided
-    if images:
-        for img in images:
-            img_base64 = convert_pil_to_base64(img)
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": img_base64,
-                        "detail": kwargs.pop("detail", "auto"),
-                    },
-                }
-            )
+        # Phase 3: Make API call
+        response = await async_openai_client.chat.completions.create(**api_params)
 
-    messages.append(
-        {
-            "role": "user",
-            "content": content if images else text,  # Use simple text if no images
-        }
-    )
+        # Update state with cumulative costs
+        updated_state = _log_usage_and_cost(
+            response, model, openai_model_table, openai_state, logger
+        )
+        openai_state.update(updated_state)
 
-    # Build the API call parameters
-    api_params = {
-        "model": model,
-        "messages": messages,
-        **kwargs,  # Pass through any additional parameters
-    }
+        if response_format is not None and issubclass(response_format, BaseModel):
+            return _process_structured_response(response, response_format, logger)
+        else:
+            return _process_unstructured_response(response, logger)
 
-    # GPT-5 and o1/o3/o4 models only support temperature=1.0
-    model_lower = model.lower()
-    if (
-        is_gpt5_model(model)
-        or model_lower.startswith("o1")
-        or model_lower.startswith("o3")
-        or model_lower.startswith("o4")
-    ):
-        # These models only support default temperature (1.0)
-        if temperature != 1.0:
-            logger.debug(
-                f"{model} only supports temperature=1.0, ignoring temperature={temperature}"
-            )
-    else:
-        # Other models support custom temperature
-        api_params["temperature"] = temperature
-
-    # Handle token parameter based on model
-    if requires_max_completion_tokens(model):
-        # GPT-5, o1, o3, o4 models require max_completion_tokens
-        # Ensure sufficient tokens for reasoning + output
-        token_value = max(max_tokens, 500)  # Minimum 500 for these models
-        api_params["max_completion_tokens"] = token_value
-        logger.debug(f"Using max_completion_tokens={token_value} for model {model}")
-
-        # Add GPT-5 thinking mode parameters
-        if reasoning_effort:
-            valid_efforts = ["minimal", "low", "medium", "high"]
-            if reasoning_effort not in valid_efforts:
-                logger.warning(
-                    f"Invalid reasoning_effort '{reasoning_effort}'. "
-                    f"Valid options: {valid_efforts}"
-                )
-            else:
-                api_params["reasoning_effort"] = reasoning_effort
-                logger.info(
-                    f"Using reasoning_effort='{reasoning_effort}' for thinking mode. "
-                    f"{'Minimal reasoning for fast response.' if reasoning_effort == 'minimal' else ''}"
-                    f"{'Light reasoning for moderate complexity.' if reasoning_effort == 'low' else ''}"
-                    f"{'Balanced reasoning for most cases.' if reasoning_effort == 'medium' else ''}"
-                    f"{'Deep reasoning for complex problems.' if reasoning_effort == 'high' else ''}"
-                )
-
-        if verbosity:
-            valid_verbosity = ["low", "medium", "high"]
-            if verbosity not in valid_verbosity:
-                logger.warning(
-                    f"Invalid verbosity '{verbosity}'. Valid options: {valid_verbosity}"
-                )
-            else:
-                api_params["verbosity"] = verbosity
-                logger.debug(f"Using verbosity='{verbosity}' for output detail control")
-    else:
-        # Other models use max_tokens
-        api_params["max_tokens"] = max_tokens
-        logger.debug(f"Using max_tokens={max_tokens} for model {model}")
-
-        # Warn if GPT-5 specific parameters are used with non-GPT-5 models
-        if reasoning_effort:
-            logger.warning(
-                f"reasoning_effort parameter is only supported for GPT-5 models, "
-                f"ignoring for {model}"
-            )
-        if verbosity:
-            logger.warning(
-                f"verbosity parameter is only supported for GPT-5 models, "
-                f"ignoring for {model}"
-            )
-
-    # Handle structured output if requested
-    if response_format is not None and issubclass(response_format, BaseModel):
-        logger.debug(f"Using structured output with {response_format.__name__}")
-
-        # Get the JSON schema and ensure it's properly formatted for OpenAI
-        schema = response_format.model_json_schema()
-        # Recursively ensure all objects have additionalProperties: false for strict mode
-        schema = ensure_strict_schema(schema)
-        # OpenAI requires 'required' field to list ALL properties (even with defaults)
-        if "properties" in schema:
-            # OpenAI strict mode requires ALL properties to be in required array
-            schema["required"] = list(schema["properties"].keys())
-
-        # Use OpenAI's structured output feature
-        api_params["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": response_format.__name__,
-                "schema": schema,
-                "strict": True,
-            },
-        }
-
-        try:
-            # Make the API call
-            response = await async_openai_client.chat.completions.create(**api_params)
-
-            # Extract the content
-            content = response.choices[0].message.content
-
-            # Log usage information and calculate costs
-            if response.usage:
-                logger.info(f"Token usage: {response.usage.model_dump()}")
-                if hasattr(response.usage, "completion_tokens_details"):
-                    details = response.usage.completion_tokens_details
-                    if (
-                        hasattr(details, "reasoning_tokens")
-                        and details.reasoning_tokens
-                    ):
-                        logger.info(
-                            f"GPT-5 reasoning tokens: {details.reasoning_tokens}"
-                        )
-
-                # Calculate and log cost
-                usage_dict = response.usage.model_dump()
-                # Create new state with incremented request count
-                current_state = {
-                    **openai_state,
-                    "request_count": openai_state.get("request_count", 0) + 1,
-                }
-                log_completion_cost(
-                    usage_dict, model, openai_model_table, current_state, logger
-                )
-
-            # Parse the JSON response
-            try:
-                parsed_json = json.loads(content)
-                result = response_format(**parsed_json)
-                logger.success(
-                    f"Successfully parsed response as {response_format.__name__}"
-                )
-                return result
-            except (json.JSONDecodeError, ValidationError) as e:
-                logger.error(f"Failed to parse structured response: {e}")
-                logger.debug(f"Raw content: {content}")
-                raise
-
-        except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
-            raise
-
-    else:
-        # No structured output requested
-        logger.debug("Using unstructured text output")
-
-        try:
-            response = await async_openai_client.chat.completions.create(**api_params)
-
-            # Log usage information and calculate costs
-            if response.usage:
-                logger.info(f"Token usage: {response.usage.model_dump()}")
-                if hasattr(response.usage, "completion_tokens_details"):
-                    details = response.usage.completion_tokens_details
-                    if (
-                        hasattr(details, "reasoning_tokens")
-                        and details.reasoning_tokens
-                    ):
-                        logger.info(
-                            f"GPT-5 reasoning tokens: {details.reasoning_tokens}"
-                        )
-
-                # Calculate and log cost
-                usage_dict = response.usage.model_dump()
-                # Create new state with incremented request count
-                current_state = {
-                    **openai_state,
-                    "request_count": openai_state.get("request_count", 0) + 1,
-                }
-                log_completion_cost(
-                    usage_dict, model, openai_model_table, current_state, logger
-                )
-
-            # Return the raw text content
-            content = response.choices[0].message.content
-            logger.success(
-                f"Received response: {content[:100]}..."
-                if len(content) > 100
-                else f"Received response: {content}"
-            )
-            return content
-
-        except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
-            raise
+    except Exception as e:
+        logger.error(f"OpenAI API error: {e}")
+        raise
 
 
 # Create a StructuredLLM-compatible wrapper
