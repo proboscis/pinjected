@@ -52,8 +52,9 @@ pub mod pinj057_no_callable_type_annotation;
 pub mod pinj058_missing_return_type_annotation;
 pub mod pinj059_test_file_placement;
 pub mod pinj060_no_dataclass_attribute_mutation;
-pub mod pinj061_enforce_module_design_in_pytests;
 // Future rules would be added here:
+pub mod pinj061_enforce_module_design_in_pytests;
+
 // ... etc
 
 use base::LintRule;
@@ -113,8 +114,9 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj058_missing_return_type_annotation::MissingReturnTypeAnnotationRule::new()),
         Box::new(pinj059_test_file_placement::TestFilePlacementRule::new()),
         Box::new(pinj060_no_dataclass_attribute_mutation::NoDataclassAttributeMutationRule::new()),
-        Box::new(pinj061_enforce_module_design_in_pytests::EnforceModuleDesignInPytestsRule::new()),
         // Add more rules here as they're implemented
+        Box::new(pinj061_enforce_module_design_in_pytests::EnforceModuleDesignInPytestsRule::new()),
+
     ]
 }
 
