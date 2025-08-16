@@ -29,7 +29,6 @@ setup-all:
 	cd packages/niji_voice && uv sync --group dev
 	cd packages/injected_utils && uv sync --group dev
 	cd packages/gcp && uv sync --group dev
-	cd packages/pytest_runner && uv sync --group dev
 
 test:
 	uv sync --all-packages
@@ -43,7 +42,6 @@ test:
 	cd packages/niji_voice && uv sync --group dev && uv run -m pytest tests
 	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
 	cd packages/gcp && uv sync --group dev && uv run -m pytest tests
-	cd packages/pytest_runner && uv sync --group dev && uv run -m pytest tests
 	uv sync --group dev --all-packages
 
 test-cov:
