@@ -42,6 +42,7 @@ class ASllmOpenaiProtocol(Protocol):
         temperature: float = 0.7,
         reasoning_effort: str | None = None,
         verbosity: str | None = None,
+        service_tier: str | None = None,
         **kwargs,
     ) -> Any: ...
 
@@ -184,6 +185,7 @@ def _build_api_parameters(
     max_tokens: int,
     reasoning_effort: str | None,
     verbosity: str | None,
+    service_tier: str | None,
     response_format: type[BaseModel] | None,
     logger: LoggerProtocol,
     **kwargs,
@@ -198,6 +200,7 @@ def _build_api_parameters(
         max_tokens: Maximum tokens for completion
         reasoning_effort: GPT-5 thinking mode control
         verbosity: GPT-5 output detail control
+        service_tier: Service tier for request prioritization
         response_format: Optional Pydantic BaseModel for structured output
         logger: Logger instance for output
         **kwargs: Additional API parameters
@@ -216,6 +219,20 @@ def _build_api_parameters(
     ModelParameterHandler.apply_model_specific_params(
         api_params, model, temperature, max_tokens, reasoning_effort, verbosity, logger
     )
+
+    # Add service_tier if provided
+    if service_tier is not None:
+        valid_service_tiers = ["auto", "default", "flex", "priority"]
+        if service_tier not in valid_service_tiers:
+            logger.warning(
+                f"Invalid service_tier '{service_tier}'. "
+                f"Valid options: {valid_service_tiers}"
+            )
+        else:
+            api_params["service_tier"] = service_tier
+            logger.debug(
+                f"Using service_tier='{service_tier}' for request prioritization"
+            )
 
     # Handle structured output if requested
     if response_format is not None and issubclass(response_format, BaseModel):
@@ -456,6 +473,7 @@ async def a_sllm_openai(  # noqa: PINJ045
     temperature: float = 0.7,
     reasoning_effort: str | None = None,
     verbosity: str | None = None,
+    service_tier: str | None = None,
     **kwargs,
 ) -> Any:
     """
@@ -481,6 +499,11 @@ async def a_sllm_openai(  # noqa: PINJ045
             - "low": Concise responses
             - "medium": Balanced detail (default)
             - "high": Detailed, comprehensive responses
+        service_tier: Service tier for request prioritization. Options:
+            - "auto": Automatically choose the best tier (default)
+            - "default": Standard processing tier
+            - "flex": Flexible processing with potentially lower cost
+            - "priority": High-priority processing for faster response
         **kwargs: Additional OpenAI API parameters
 
     GPT-5 Thinking Mode Usage:
@@ -512,6 +535,7 @@ async def a_sllm_openai(  # noqa: PINJ045
             max_tokens,
             reasoning_effort,
             verbosity,
+            service_tier,
             response_format,
             logger,
             **kwargs,
