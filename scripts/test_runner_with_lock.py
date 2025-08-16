@@ -96,8 +96,6 @@ class PytestLockRunner:
             "uv",
             "run",
             "pytest",
-            "-p",
-            "pinjected_pytest_runner.plugin",
             "test",
             "pinjected/test",
             "pinjected/tests",
@@ -124,7 +122,7 @@ class PytestLockRunner:
 
     def _test_subpackage(self, pkg_name, pkg_path):
         logger.info(f"Testing {pkg_name}...")
-        cmd = ["uv", "run", "pytest", "-p", "pinjected_pytest_runner.plugin"]
+        cmd = ["uv", "run", "pytest"]
         rc = self._run_with_lock(cmd, pkg_path)
         if rc not in [0, 5]:
             return rc
@@ -167,8 +165,6 @@ class PytestLockRunner:
             "uv",
             "run",
             "pytest",
-            "-p",
-            "pinjected_pytest_runner.plugin",
             "test",
             "pinjected/test",
             "pinjected/tests",
@@ -195,7 +191,7 @@ class PytestLockRunner:
 
     def _test_subpackage(self, pkg_name, pkg_path):
         logger.info(f"Testing {pkg_name}...")
-        cmd = ["uv", "run", "pytest", "-p", "pinjected_pytest_runner.plugin"]
+        cmd = ["uv", "run", "pytest"]
         rc = self._run_with_lock(cmd, pkg_path)
         if rc not in [0, 5]:
             return rc
