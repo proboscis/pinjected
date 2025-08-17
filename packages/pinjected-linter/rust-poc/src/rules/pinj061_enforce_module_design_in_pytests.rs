@@ -53,18 +53,22 @@ impl EnforceModuleDesignInPytestsRule {
             .and_then(|s| s.to_str())
             .unwrap_or(file_path);
         format!(
-"Pytest module '{}' is missing a module-level __design__ variable.
+r#"Pytest module '{}' is missing a module-level __design__ variable.
 Define a top-level __design__ so @injected_pytest can resolve dependencies.
+Dependencies referenced in test function parameters must be bound in __design__.
 
 Example:
-from pinjected import design
+from pinjected import design, instance
 from pinjected.test import injected_pytest
 
-__design__ = design()
+__design__ = design(
+    logger=instance("test-logger")
+)
 
 @injected_pytest
 def test_example(logger):
-    assert logger is not None",
+    assert logger == "test-logger"
+"#,
             file
         )
     }
