@@ -24,6 +24,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+
 use crate::location::LineIndex;
 use models::{RuleContext, Violation};
 
@@ -227,9 +228,91 @@ fn analyze_file(
         });
     }
 
+/// Analyze a single markdown file
+fn analyze_markdown_file(
+    path: &Path,
+    rules: &[Box<dyn rules::base::LintRule>],
+) -> Result<Vec<Violation>> {
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        if ext != "md" {
+            return Ok(Vec::new());
+        }
+    } else {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(path)?;
+
+    // Only run the markdown-specific rules for .md files. Currently PINJ062.
+    let active_rules: Vec<_> = rules
+        .iter()
+        .filter(|r| r.rule_id() == "PINJ063")
+        .collect();
+
+    if active_rules.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Create a minimal context; AST is irrelevant for markdown rules, but provide an empty module AST to satisfy type.
+    let ast = Arc::new(parse("", Mode::Module, path.to_str().unwrap())?);
+    let module_context = RuleContext {
+        stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass {
+            range: TextRange::default(),
+        }),
+        file_path: path.to_str().unwrap(),
+        source: &content,
+        ast: &ast,
+    };
+
+    let mut violations = Vec::new();
+    for rule in &active_rules {
+        violations.extend(rule.check(&module_context));
+    }
+
     Ok(violations)
 }
 
+/// Find all Markdown files in a directory
+pub fn find_markdown_files(path: &Path, skip_patterns: &[String]) -> Vec<PathBuf> {
+    use walkdir::{DirEntry, WalkDir};
+
+    let mut files = Vec::new();
+
+    // Create a filter function to skip directories
+    let is_excluded = |entry: &DirEntry| -> bool {
+        let path_str = entry.path().to_str().unwrap_or("");
+
+        // Check each component of the path
+        for component in entry.path().components() {
+            if let Some(name) = component.as_os_str().to_str() {
+                if skip_patterns
+                    .iter()
+                    .any(|pattern| name == pattern || path_str.contains(pattern))
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+
+    let walker = WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !is_excluded(e));
+
+    for entry in walker.filter_map(|e| e.ok()) {
+        let path = entry.path();
+
+        // Check if Markdown file
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
+            files.push(path.to_path_buf());
+        }
+    }
+
+    files
+}
+ 
 /// Find all Python files in a directory
 pub fn find_python_files(path: &Path, skip_patterns: &[String]) -> Vec<PathBuf> {
     use walkdir::{DirEntry, WalkDir};
@@ -282,9 +365,16 @@ pub fn lint_path(path: &Path, options: LinterOptions) -> Result<LintResult> {
 
     // Get list of files to analyze
     let files = if path.is_file() {
-        vec![path.to_path_buf()]
+        let ext = path.extension().and_then(|s| s.to_str());
+        match ext {
+            Some("py") | Some("md") => vec![path.to_path_buf()],
+            _ => Vec::new(),
+        }
     } else {
-        find_python_files(path, &options.skip_patterns)
+        let mut all = find_python_files(path, &options.skip_patterns);
+        let mut mds = find_markdown_files(path, &options.skip_patterns);
+        all.append(&mut mds);
+        all
     };
 
     let files_analyzed = files.len();
@@ -316,11 +406,24 @@ pub fn lint_path(path: &Path, options: LinterOptions) -> Result<LintResult> {
 
     let results: Vec<_> = files
         .par_iter()
-        .map(|file| match analyze_file(file, &rules, cache.as_ref()) {
-            Ok(violations) => (file.clone(), Ok(violations)),
-            Err(e) => {
-                eprintln!("Error analyzing {}: {}", file.display(), e);
-                (file.clone(), Err(e))
+        .map(|file| {
+            let ext = file.extension().and_then(|s| s.to_str());
+            match ext {
+                Some("py") => match analyze_file(file, &rules, cache.as_ref()) {
+                    Ok(violations) => (file.clone(), Ok(violations)),
+                    Err(e) => {
+                        eprintln!("Error analyzing {}: {}", file.display(), e);
+                        (file.clone(), Err(e))
+                    }
+                },
+                Some("md") => match analyze_markdown_file(file, &rules) {
+                    Ok(violations) => (file.clone(), Ok(violations)),
+                    Err(e) => {
+                        eprintln!("Error analyzing {}: {}", file.display(), e);
+                        (file.clone(), Err(e))
+                    }
+                },
+                _ => (file.clone(), Ok(Vec::new())),
             }
         })
         .collect();
