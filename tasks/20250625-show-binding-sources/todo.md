@@ -40,4 +40,4 @@
 
 - [ ] **Create PR**
   - [ ] Commit changes with descriptive message
-  - [ ] Create pull request to dev branch
+  - [ ] Create pull request to main branch
