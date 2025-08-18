@@ -67,8 +67,7 @@ members = [
     "packages/rate_limit",
     "packages/niji_voice",
     "packages/injected_utils",
-    "packages/gcp",
-    "packages/pytest_runner"
+    "packages/gcp"
 ]
 
 [dependency-groups]
