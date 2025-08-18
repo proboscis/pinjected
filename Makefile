@@ -50,9 +50,11 @@ test-all:
 	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/pytest_runner && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	uv sync --group dev --all-packages
+
+test-linter-full:
 	$(MAKE) test-linter
 	$(MAKE) lint-with-pinjected-linter
-	uv sync --group dev --all-packages
 
 test-linter:
 	cd packages/pinjected-linter/rust-poc && cargo test
