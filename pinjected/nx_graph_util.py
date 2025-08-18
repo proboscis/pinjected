@@ -48,7 +48,7 @@ class NxGraphUtil:
         if "darwin" in platform.system().lower():
             from pinjected.pinjected_logging import logger
 
-            logger.info(f"showing visualization html")
+            logger.info("showing visualization html")
             self.save_as_html("di_visualiztion.html")
             os.system("open di_visualiztion.html")
         else:

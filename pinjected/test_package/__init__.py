@@ -1,29 +1,10 @@
-from pinjected import *
-from pinjected.helper_structure import IdeaRunConfiguration
-from pinjected.module_inspector import ModuleVarSpec
+"""Test package with custom configuration."""
+
+from pinjected import IProxy, Injected, design
 from pinjected.test_helper.test_runner import test_tree
+from pinjected.test_package.config import dummy_config_creator_for_test
 
-
-@injected
-def dummy_config_creator_for_test(
-    runner_script_path,
-    interpreter_path,
-    default_working_dir,
-    logger,
-    /,
-    tgt: ModuleVarSpec,
-):
-    logger.info(f"custom config creator called")
-    return [
-        IdeaRunConfiguration(
-            name="dummy for test_package.child.__init__",
-            script_path=runner_script_path,
-            interpreter_path=interpreter_path,
-            arguments=[],
-            working_dir=default_working_dir.value_or("."),
-        )
-    ]
-
+__all__ = ["dummy_config_creator_for_test", "run_test_module"]
 
 # 非同期関数を直接呼び出すのではなく、最初から非同期を処理できる形に変更
 run_test_module: IProxy = Injected.bind(lambda: test_tree())

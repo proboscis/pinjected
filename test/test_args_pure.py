@@ -18,7 +18,7 @@ def test_args_pure():
 
 
 def test_something():
-    assert int == int, "0 must be int"
+    assert isinstance(0, int), "0 must be int"
 
 
 @instance

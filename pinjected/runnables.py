@@ -1,8 +1,7 @@
-from dataclasses import dataclass
 from pathlib import Path
 
 from beartype import beartype
-from pydantic import validator as field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from pinjected import Designed, Injected
 from pinjected.di.app_injected import InjectedEvalContext
@@ -20,9 +19,9 @@ def get_runnables(module_path: Path) -> list[ModuleVarSpec]:
                 return True
             case (_, Designed()):
                 return True
-            case (_, DelegatedVar(value, cxt)) if cxt == InjectedEvalContext:
+            case (_, DelegatedVar(_, cxt)) if cxt == InjectedEvalContext:
                 return True
-            case (_, DelegatedVar(value, cxt)):
+            case (_, DelegatedVar(_, _)):
                 return False
             case (_, item) if hasattr(item, "__runnable_metadata__") and isinstance(
                 item.__runnable_metadata__, dict
@@ -35,8 +34,7 @@ def get_runnables(module_path: Path) -> list[ModuleVarSpec]:
     return runnables
 
 
-@dataclass
-class RunnableValue:
+class RunnableValue(BaseModel):
     """
     I think it is easier to make as much configuration as possible on this side.
     """
@@ -56,5 +54,4 @@ class RunnableValue:
                     f"src must be an instance of Injected of ModuleVarSpec, but got {value}"
                 )
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)

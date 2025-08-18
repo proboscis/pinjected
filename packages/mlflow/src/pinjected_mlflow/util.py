@@ -38,7 +38,7 @@ def authorize_mlflow(logger, mlflow_client_id, /) -> None:
     source_credentials, project_id = google_auth_default(
         default_scopes=scopes
     )  # gcloud auth application-default login
-    service_account = f"ailab-mlflow@cyberagent-050.iam.gserviceaccount.com"
+    service_account = "ailab-mlflow@cyberagent-050.iam.gserviceaccount.com"
     credentials = impersonated_credentials.Credentials(
         source_credentials=source_credentials,
         target_principal=service_account,

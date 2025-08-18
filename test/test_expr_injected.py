@@ -6,7 +6,7 @@ from pinjected.pinjected_logging import logger
 async def test_x():
     # this, calls x three times. how can I avoid that?
 
-    logger.info(f"calling x")
+    logger.info("calling x")
     return "x"
 
 

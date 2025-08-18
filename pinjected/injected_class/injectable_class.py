@@ -84,13 +84,11 @@ def convert_method_into_dynamic_injected_method_old(key: str, method):
     assert inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(method), (
         f"method:{method} must be async to be converted."
     )
-    assert "self" in signature.parameters.keys()
-    logger.info(f"method parameters:{signature.parameters.keys()}")
+    assert "self" in signature.parameters
+    logger.info(f"method parameters:{signature.parameters}")
     logger.info(f"converting method:{method}")
     targets = [
-        p
-        for p in signature.parameters.keys()
-        if p.startswith("__self_") and p != "self"
+        p for p in signature.parameters if p.startswith("__self_") and p != "self"
     ]
     logger.info(f"positionals:{targets}")
 
@@ -150,13 +148,11 @@ def convert_method_into_dynamic_injected_method(
             f"method:{method} is not async method. double check if it's asynccontextmanager"
         )
 
-    assert "self" in signature.parameters.keys()
+    assert "self" in signature.parameters
     logger.info(f"method parameters:{signature.parameters.keys()}")
     logger.info(f"converting method:{method}")
     targets = [
-        p
-        for p in signature.parameters.keys()
-        if p.startswith("__self_") and p != "self"
+        p for p in signature.parameters if p.startswith("__self_") and p != "self"
     ]
     logger.info(f"positionals:{targets}")
 

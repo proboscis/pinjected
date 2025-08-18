@@ -8,7 +8,7 @@ def test_async_resolver():
     async def y(x, /):
         from pinjected.pinjected_logging import logger
 
-        logger.info(f"running y")
+        logger.info("running y")
         return x + 1
 
     @instance

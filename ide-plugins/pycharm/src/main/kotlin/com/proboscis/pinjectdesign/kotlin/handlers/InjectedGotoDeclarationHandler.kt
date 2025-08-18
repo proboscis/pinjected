@@ -3,96 +3,143 @@ package com.proboscis.pinjectdesign.kotlin.handlers
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationHandler
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiFile
-import com.intellij.psi.PsiManager
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.PsiTreeUtil
-import com.jetbrains.python.psi.PyReferenceExpression
-import com.proboscis.pinjectdesign.kotlin.InjectedFunctionActionHelper
-import com.proboscis.pinjectdesign.kotlin.data.BindingLocation
-import com.proboscis.pinjectdesign.kotlin.data.DesignMetadata
-import java.io.File
+import com.jetbrains.python.psi.*
+import com.jetbrains.python.psi.stubs.PyFunctionNameIndex
 
+/**
+ * Handler for navigating from dependency parameters in @injected/@instance functions
+ * to the corresponding function definitions.
+ * 
+ * When clicking on a parameter name in an @injected or @instance function,
+ * this handler searches for functions with the same name that are also decorated
+ * with @injected or @instance, and allows navigation to them.
+ */
 class InjectedGotoDeclarationHandler : GotoDeclarationHandler {
     
-    override fun getGotoDeclarationTargets(sourceElement: PsiElement?, offset: Int, editor: Editor?): Array<PsiElement>? {
-        if (sourceElement == null || editor == null) return null
+    override fun getGotoDeclarationTargets(
+        sourceElement: PsiElement?, 
+        offset: Int, 
+        editor: Editor?
+    ): Array<PsiElement>? {
+        if (sourceElement == null) return null
         
         val project = sourceElement.project
-        val referenceExpression = PsiTreeUtil.getParentOfType(sourceElement, PyReferenceExpression::class.java) ?: return null
         
-        // Check if this is an injected reference
-        val referenceName = referenceExpression.name ?: return null
+        // Check if we're clicking on a parameter name in an @injected/@instance function
+        val parameterName = getParameterName(sourceElement) ?: return null
+        val containingFunction = getContainingFunction(sourceElement) ?: return null
         
-        // Get the current file path
-        val file = sourceElement.containingFile
-        val filePath = file.virtualFile?.path ?: return null
+        // Verify the containing function has @injected or @instance decorator
+        if (!hasInjectedOrInstanceDecorator(containingFunction)) {
+            return null
+        }
         
-        // Get design metadata for the file
-        val helper = InjectedFunctionActionHelper(project)
-        try {
-            val metadata = helper.designMetadata(filePath)
+        // Search for matching functions
+        val matchingFunctions = findMatchingInjectedFunctions(project, parameterName)
+        
+        return if (matchingFunctions.isNotEmpty()) {
+            matchingFunctions.toTypedArray()
+        } else {
+            null
+        }
+    }
+    
+    /**
+     * Gets the parameter name if the element is part of a function parameter.
+     */
+    private fun getParameterName(element: PsiElement): String? {
+        // Handle different cases where user might click
+        
+        // Case 1: Clicking directly on the parameter name identifier
+        val parentParameter = element.parent as? PyNamedParameter
+        if (parentParameter != null) {
+            return parentParameter.name
+        }
+        
+        // Case 2: Clicking on parameter usage within function body
+        if (element is PyTargetExpression || element.parent is PyTargetExpression) {
+            val targetExpr = element as? PyTargetExpression ?: element.parent as PyTargetExpression
             
-            // Find matching binding
-            val matchingBinding = metadata.find { it.key == referenceName }
-            if (matchingBinding != null) {
-                return resolveBindingLocation(project, matchingBinding.location)
+            // Check if this is a parameter of the containing function
+            val function = PsiTreeUtil.getParentOfType(targetExpr, PyFunction::class.java)
+            if (function != null) {
+                val parameterNames = function.parameterList.parameters.mapNotNull { it.name }.toSet()
+                val targetName = targetExpr.name
+                if (targetName in parameterNames) {
+                    return targetName
+                }
             }
-        } catch (e: Exception) {
-            helper.showNotification("Error", "Failed to resolve declaration: ${e.message}")
+        }
+        
+        // Case 3: Clicking on reference to parameter in function body
+        if (element is PyReferenceExpression || element.parent is PyReferenceExpression) {
+            val refExpr = element as? PyReferenceExpression ?: element.parent as PyReferenceExpression
+            
+            // Check if this references a parameter
+            val function = PsiTreeUtil.getParentOfType(refExpr, PyFunction::class.java)
+            if (function != null) {
+                val parameterNames = function.parameterList.parameters.mapNotNull { it.name }.toSet()
+                val refName = refExpr.name
+                if (refName in parameterNames) {
+                    return refName
+                }
+            }
         }
         
         return null
     }
     
-    private fun resolveBindingLocation(project: Project, location: BindingLocation): Array<PsiElement>? {
-        return when (location.type) {
-            "path" -> {
-                val element = resolveStringToPsiElement(project, location.value)
-                if (element != null) arrayOf(element) else null
-            }
-            "coordinates" -> {
-                val parts = location.value.split(":")
-                if (parts.size >= 3) {
-                    val filePath = parts[0]
-                    val lineNo = parts[1].toIntOrNull() ?: return null
-                    val colNo = parts[2].toIntOrNull() ?: return null
-                    
-                    val element = navigateToFileOffset(project, filePath, lineNo, colNo)
-                    if (element != null) arrayOf(element) else null
+    /**
+     * Gets the containing function of the element.
+     */
+    private fun getContainingFunction(element: PsiElement): PyFunction? {
+        return PsiTreeUtil.getParentOfType(element, PyFunction::class.java)
+    }
+    
+    /**
+     * Checks if a function has @injected or @instance decorator.
+     */
+    private fun hasInjectedOrInstanceDecorator(function: PyFunction): Boolean {
+        val decoratorList = function.decoratorList ?: return false
+        
+        return decoratorList.decorators.any { decorator ->
+            when (val callee = decorator.callee) {
+                is PyReferenceExpression -> {
+                    val name = callee.name
+                    name == "injected" || name == "instance"
                 }
-                else null
+                is PyCallExpression -> {
+                    // Handle cases like @injected() or @injected(protocol=...)
+                    val calleeRef = callee.callee as? PyReferenceExpression
+                    val name = calleeRef?.name
+                    name == "injected" || name == "instance"
+                }
+                else -> false
             }
-            else -> null
         }
     }
     
-    companion object {
-        fun resolveStringToPsiElement(project: Project, path: String): PsiElement? {
-            val file = File(path)
-            if (!file.exists()) return null
-            
-            val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file) ?: return null
-            return PsiManager.getInstance(project).findFile(virtualFile)
+    /**
+     * Finds all functions with the given name that have @injected or @instance decorator.
+     */
+    private fun findMatchingInjectedFunctions(project: Project, functionName: String): List<PsiElement> {
+        val result = mutableListOf<PsiElement>()
+        val scope = GlobalSearchScope.allScope(project)
+        
+        // Search for all functions with the given name using the index
+        val functions = PyFunctionNameIndex.find(functionName, project, scope)
+        
+        // Filter to only include functions with @injected or @instance decorators
+        for (function in functions) {
+            if (hasInjectedOrInstanceDecorator(function)) {
+                // Return the function name identifier for precise navigation
+                function.nameIdentifier?.let { result.add(it) }
+            }
         }
         
-        fun navigateToFileOffset(project: Project, filePath: String, lineNo: Int, colNo: Int): PsiElement? {
-            val file = File(filePath)
-            if (!file.exists()) return null
-            
-            val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file) ?: return null
-            val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return null
-            
-            // Convert line and column to offset
-            val document = psiFile.viewProvider.document ?: return null
-            val offset = try {
-                document.getLineStartOffset(lineNo - 1) + colNo - 1
-            } catch (e: Exception) {
-                return null
-            }
-            
-            return psiFile.findElementAt(offset)
-        }
+        return result
     }
 }

@@ -6,7 +6,7 @@ def notify(text, sound="Glass") -> str:
     """
     import platform
 
-    if not platform.system() == "Darwin":
+    if platform.system() != "Darwin":
         return "Not supported on this platform (only macOS)"
     import os
 

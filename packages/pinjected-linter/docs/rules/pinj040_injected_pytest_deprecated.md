@@ -11,6 +11,7 @@ from pinjected.test import injected_pytest
 # Alternative import path:
 from pinjected.test.injected_pytest import injected_pytest
 ```
+
 ## Quick usage with a test design
 
 Although @injected_pytest is deprecated, if you are using it, this is the recommended way to inject dependencies using a design:
@@ -29,8 +30,6 @@ def test_x(x):
 Imports:
 - from pinjected import design
 - from pinjected.test import injected_pytest
-
-
 
 ## Overview
 

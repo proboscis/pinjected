@@ -56,17 +56,17 @@ class CompressedPklSqliteDict:
         return [self.loads(self.decompress(v)) for v in self.src.values()]
 
     def keys(self):
-        return [jsonpickle.loads(k) for k in self.src.keys()]
+        return [jsonpickle.loads(k) for k in self.src]
 
 
 @injected
 def compress__lzma(logger, /, data: bytes):
     import lzma
 
-    src_mb = len(data) / 1024 / 1024
+    len(data) / 1024 / 1024
     # logger.info(f"Compressing {src_mb} MB")
     res = lzma.compress(data)
-    res_mb = len(res) / 1024 / 1024
+    len(res) / 1024 / 1024
     # logger.info(f"Compressed: {src_mb} MB -> {res_mb} MB")
     return res
 

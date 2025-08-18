@@ -14,9 +14,12 @@ class AsyncMethodVisitor(ast.NodeVisitor):
         self.current_method = None
 
     def visit_Attribute(self, node):
-        if isinstance(node.value, ast.Name) and node.value.id == "self":
-            if self.current_method:
-                self.async_methods[self.current_method].add(node.attr)
+        if (
+            isinstance(node.value, ast.Name)
+            and node.value.id == "self"
+            and self.current_method
+        ):
+            self.async_methods[self.current_method].add(node.attr)
         self.generic_visit(node)
 
 

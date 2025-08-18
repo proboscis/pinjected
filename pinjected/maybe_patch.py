@@ -6,7 +6,7 @@ from returns.maybe import Maybe, Some
 def patch_maybe():
     def maybe__or__(self, other):
         match self:
-            case Some(x):
+            case Some(_):
                 return self
             case raybe.Nothing:
                 return other

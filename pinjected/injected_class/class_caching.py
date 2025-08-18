@@ -52,7 +52,7 @@ def get_class_from_unbound_method(method):
     return getattr(sys.modules[method.__module__], class_name)
 
 
-def pcached(cache_attr_name, keys: set[str] = None):
+def pcached(cache_attr_name, keys: set[str] | None = None):
     """
     This is a user interface function.
     First we need to determine what to use for caching.

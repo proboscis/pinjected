@@ -97,6 +97,7 @@ class IBind(Generic[T], ABC):
 class JustBind(IBind[T]):
     impl: Callable[[ProvideContext, dict[IBindKey, Any]], Awaitable[T]]
     deps: set[IBindKey]
+    _metadata: Maybe[BindMetadata] = field(default=Nothing)
 
     async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
         return await self.impl(cxt, deps)
@@ -104,6 +105,17 @@ class JustBind(IBind[T]):
     @property
     def dependencies(self) -> set[IBindKey]:
         return self.deps
+
+    @property
+    def dynamic_dependencies(self) -> set[IBindKey]:
+        return set()
+
+    @property
+    def metadata(self) -> Maybe[BindMetadata]:
+        return self._metadata
+
+    def update_metadata(self, metadata: BindMetadata) -> "IBind":
+        return replace(self, _metadata=Some(metadata))
 
 
 @dataclass
@@ -114,6 +126,7 @@ class StrBind(IBind[T]):
 
     impl: Callable[[...], Awaitable[T]]
     deps: set[str]
+    _metadata: Maybe[BindMetadata] = field(default=Nothing)
 
     def __post_init__(self):
         self.keys = {StrBindKey(d) for d in self.deps}
@@ -125,6 +138,17 @@ class StrBind(IBind[T]):
     @property
     def dependencies(self) -> set[IBindKey]:
         return {StrBindKey(d) for d in self.deps}
+
+    @property
+    def dynamic_dependencies(self) -> set[IBindKey]:
+        return set()
+
+    @property
+    def metadata(self) -> Maybe[BindMetadata]:
+        return self._metadata
+
+    def update_metadata(self, metadata: BindMetadata) -> "IBind":
+        return replace(self, _metadata=Some(metadata))
 
     @classmethod
     def pure(cls, value: T) -> "StrBind[T]":
@@ -231,11 +255,23 @@ class ExprBind(IBind):
 class MappedBind(IBind[U]):
     src: IBind[T]
     async_f: Callable[[T], Awaitable[U]]
+    _metadata: Maybe[BindMetadata] = field(default=Nothing)
 
-    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> T:
-        data = self.src.provide(cxt, deps)
+    async def provide(self, cxt: ProvideContext, deps: dict[IBindKey, Any]) -> U:
+        data = await self.src.provide(cxt, deps)
         return await self.async_f(data)
 
     @property
     def dependencies(self) -> set[IBindKey]:
         return self.src.dependencies
+
+    @property
+    def dynamic_dependencies(self) -> set[IBindKey]:
+        return self.src.dynamic_dependencies
+
+    @property
+    def metadata(self) -> Maybe[BindMetadata]:
+        return self._metadata
+
+    def update_metadata(self, metadata: BindMetadata) -> "IBind":
+        return replace(self, _metadata=Some(metadata))
