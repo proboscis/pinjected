@@ -170,7 +170,10 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ061",
         include_str!("../../docs/rules/pinj061_enforce_module_design_in_pytests.md"),
     );
-
+    docs.insert(
+        "PINJ062",
+        include_str!("../../docs/rules/pinj062_no_duplicate_injected_instance_names.md"),
+    );
 
     docs
 }
