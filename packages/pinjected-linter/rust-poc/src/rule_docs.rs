@@ -172,7 +172,11 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
     );
     docs.insert(
         "PINJ062",
-        include_str!("../../docs/rules/pinj062_markdown_frontmatter_tags.md"),
+        include_str!("../../docs/rules/pinj062_no_duplicate_injected_instance_names.md"),
+    );
+    docs.insert(
+        "PINJ063",
+        include_str!("../../docs/rules/pinj063_markdown_frontmatter_tags.md"),
     );
 
     docs

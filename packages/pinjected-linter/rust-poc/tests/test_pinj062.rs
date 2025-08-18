@@ -1,116 +1,104 @@
-use pinjected_linter::rules::pinj062_markdown_frontmatter_tags::MarkdownFrontmatterTagsRule;
-use pinjected_linter::rules::base::LintRule;
-use pinjected_linter::models::RuleContext;
-use rustpython_parser::{parse, Mode};
-use rustpython_ast::text_size::TextRange;
-use rustpython_ast::Stmt;
+use std::fs;
 
-fn ctx_for(source: &str, file_path: &str) -> RuleContext<'_> {
-    let ast = parse("", Mode::Module, file_path).unwrap();
-    let dummy_stmt = Box::leak(Box::new(Stmt::Pass(rustpython_ast::StmtPass { range: TextRange::default() })));
-    RuleContext {
-        stmt: dummy_stmt,
-        file_path,
-        source,
-        ast: &ast,
+use pinjected_linter::{lint_path, LinterOptions};
+
+fn write_file(dir: &std::path::Path, rel: &str, content: &str) {
+    let p = dir.join(rel);
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).unwrap();
     }
+    fs::write(p, content).unwrap();
 }
 
 #[test]
-fn test_pinj062_missing_frontmatter() {
-    let code = "# Title\n\nSome content.";
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 1);
-    assert_eq!(v[0].rule_id, "PINJ062");
+fn test_duplicate_names_across_files_flagged() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "a.py",
+        r#"
+from pinjected import injected
+
+@injected
+def store_data():
+    return 1
+"#,
+    );
+
+    write_file(
+        root,
+        "b.py",
+        r#"
+from pinjected import instance, injected
+
+@instance
+def store_data():
+    return 2
+"#,
+    );
+
+    let result = lint_path(root, LinterOptions::default()).unwrap();
+
+    let mut found = false;
+    for (_path, violations) in result.violations {
+        for v in violations {
+            if v.rule_id == "PINJ062" {
+                found = true;
+            }
+        }
+    }
+
+    assert!(found, "Expected PINJ062 violation for duplicate provider names");
 }
 
 #[test]
-fn test_pinj062_missing_tags_key() {
-    let code = r#"---
-title: My note
----
+fn test_unique_names_ok_including_async_with_a_prefix() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
 
-Content
-"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 1);
-}
+    write_file(
+        root,
+        "a.py",
+        r#"
+from pinjected import injected
 
-#[test]
-fn test_pinj062_tags_not_list() {
-    let code = r#"---
-tags: "influxdb"
----"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 1);
-}
+@injected
+def store_data_y():
+    return 1
+"#,
+    );
 
-#[test]
-fn test_pinj062_empty_list() {
-    let code = r#"---
-tags: []
----"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 1);
-}
+    write_file(
+        root,
+        "b.py",
+        r#"
+from pinjected import instance
 
-#[test]
-fn test_pinj062_non_string_entries() {
-    let code = r#"---
-tags: [influxdb, 123, true]
----"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 1);
-}
+@instance
+def store_data_y__influxdb():
+    return 2
+"#,
+    );
 
-#[test]
-fn test_pinj062_ok_block_sequence_with_comments() {
-    let code = r#"---
-tags:
-  - influxdb
-  - database
-  - network # comment here
----
-Body"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 0);
-}
+    write_file(
+        root,
+        "c.py",
+        r#"
+from pinjected import injected
 
-#[test]
-fn test_pinj062_ok_flow_sequence() {
-    let code = r#"---
-tags: [influxdb, database, network]
----
-Body"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 0);
-}
+@injected
+async def a_store_data_y__influxdb():
+    return 3
+"#,
+    );
 
-#[test]
-fn test_pinj062_leading_hash_in_values_block() {
-    let code = r#"---
-tags:
-  - #influxdb
-  - #database
-  - #network
----
-Body"#;
-    let rule = MarkdownFrontmatterTagsRule::new();
-    let ctx = ctx_for(code, "note.md");
-    let v = rule.check(&ctx);
-    assert_eq!(v.len(), 0);
+    let result = lint_path(root, LinterOptions::default()).unwrap();
+
+    for (_path, violations) in result.violations {
+        for v in violations {
+            assert_ne!(v.rule_id, "PINJ062", "Did not expect PINJ062 for unique names");
+        }
+    }
 }

@@ -164,7 +164,7 @@ fn analyze_file(
                     "PINJ001" | "PINJ002" | "PINJ003" | "PINJ004" => func_rules.push(rule),
                     "PINJ005" | "PINJ006" | "PINJ007" | "PINJ009" | "PINJ015" | "PINJ016"
                     | "PINJ017" | "PINJ026" | "PINJ027" | "PINJ028" | "PINJ031" | "PINJ032"
-                    | "PINJ033" | "PINJ040" | "PINJ043" | "PINJ045" | "PINJ048" | "PINJ054" | "PINJ056" | "PINJ057" => func_rules.push(rule),
+                    | "PINJ033" | "PINJ040" | "PINJ043" | "PINJ045" | "PINJ048" | "PINJ054" | "PINJ056" | "PINJ057" | "PINJ062" => func_rules.push(rule),
                     "PINJ010" | "PINJ011" => stmt_rules.push(rule),
                     "PINJ013" | "PINJ018" | "PINJ029" | "PINJ034" | "PINJ035" | "PINJ042" | "PINJ044" 
                     | "PINJ052" | "PINJ055" => {
@@ -246,7 +246,7 @@ fn analyze_markdown_file(
     // Only run the markdown-specific rules for .md files. Currently PINJ062.
     let active_rules: Vec<_> = rules
         .iter()
-        .filter(|r| r.rule_id() == "PINJ062")
+        .filter(|r| r.rule_id() == "PINJ063")
         .collect();
 
     if active_rules.is_empty() {
@@ -312,10 +312,7 @@ pub fn find_markdown_files(path: &Path, skip_patterns: &[String]) -> Vec<PathBuf
 
     files
 }
-
-    Ok(violations)
-}
-
+ 
 /// Find all Python files in a directory
 pub fn find_python_files(path: &Path, skip_patterns: &[String]) -> Vec<PathBuf> {
     use walkdir::{DirEntry, WalkDir};
