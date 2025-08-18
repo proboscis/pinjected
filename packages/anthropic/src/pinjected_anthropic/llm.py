@@ -5,7 +5,7 @@ from asyncio import Lock
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Literal, TypeVar
+from typing import ClassVar, Literal, TypeVar
 
 import pandas as pd
 import PIL
@@ -18,6 +18,7 @@ from anthropic.types import (
     Usage,
 )
 from PIL import Image
+from pydantic import BaseModel
 
 from pinjected import *
 
@@ -109,7 +110,7 @@ class RateLimitManager:
     max_tokens: int
     max_calls: int
     duration: pd.Timedelta
-    lock: Lock = asyncio.Lock()
+    lock: Lock = field(default_factory=asyncio.Lock)
     call_history: list[UsageEntry] = field(default_factory=list)
 
     async def acquire(self, approx_tokens):
@@ -148,7 +149,7 @@ class RateLimitManager:
 class AnthropicRateLimitController:
     manager_factory: Callable[[str], Awaitable[RateLimitManager]]
     managers: dict[str, RateLimitManager] = field(default_factory=dict)
-    lock: Lock = asyncio.Lock()
+    lock: Lock = field(default_factory=asyncio.Lock)
 
     async def get_manager(self, key):
         async with self.lock:
@@ -237,7 +238,7 @@ class AnthropicModelPrices:
         usd_per_million_cache_write=3.75,  # should be NaN
         usd_per_million_cache_read=0.30,  # should be NaN
     )
-    model_prices = {
+    model_prices: ClassVar[dict[str, ModelPriceTable]] = {
         "claude-3-5-sonnet-20241022": claude__3_5_20241022,
         "claude-3-5-haiku": claude__3_5_haiku,
         "claude-3-opus": claude__3_opus,
@@ -307,8 +308,6 @@ async def anthropic_client_callback(
 
 
 BaseModelType = TypeVar("T")
-
-from pydantic import BaseModel
 
 
 class TestClass(BaseModel):
@@ -424,7 +423,7 @@ async def a_vision_llm__anthropic(
     anthropic_client_callback: AnthropicClientCallback,
     /,
     text: str,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     model="claude-3-5-sonnet-20241022",
     max_tokens: int = 2048,
     img_format: IMAGE_FORMAT = "jpeg",

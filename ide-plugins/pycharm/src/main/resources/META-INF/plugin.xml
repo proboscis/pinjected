@@ -19,6 +19,10 @@
             language="Python" 
             implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
             
+        <!-- Goto Declaration Handler for navigating from dependency parameters to function definitions -->
+        <gotoDeclarationHandler
+            implementation="com.proboscis.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
+            
         <!-- Notification Group -->
         <notificationGroup id="Pinjected Plugin" 
                          displayType="BALLOON" 

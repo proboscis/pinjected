@@ -10,6 +10,6 @@ def test_naming_convention_for_injected_function():
 
     d = design(x=0)
     func = d.provide(target_function)
-    assert type(func) == PartiallyInjectedFunction, (
+    assert isinstance(func, PartiallyInjectedFunction), (
         f"@injected function must return PartiallyInjectedFunction after resolution, got {type(func)}"
     )

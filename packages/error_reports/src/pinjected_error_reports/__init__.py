@@ -9,6 +9,7 @@ from injected_utils import async_cached, lzma_sqlite, sqlite_dict
 # Try to import voice support, but make it optional for Python 3.13 compatibility
 try:
     from pinjected_niji_voice.api import NijiVoiceParam, a_niji_voice_play
+
     _VOICE_AVAILABLE = True
 except ImportError:
     # Voice features not available (e.g., on Python 3.13 due to audioop removal)
@@ -19,7 +20,7 @@ except ImportError:
 from pinjected_openai.openrouter.instances import StructuredLLM
 from pinjected_openai.openrouter.util import (
     a_openrouter_chat_completion,
-    a_openrouter_chat_completion__without_fix,
+    a_openrouter_base_chat_completion,
 )
 from pydantic import BaseModel
 
@@ -44,7 +45,7 @@ class ShortText(BaseModel):
 def _log_run_context(context, result=None, error=None):
     """Log the run context and result/error to .pinjected_last_run.log"""
     log_path = Path(".pinjected_last_run.log")
-    
+
     log_data = {
         "timestamp": datetime.now().isoformat(),
         "context": {
@@ -54,18 +55,19 @@ def _log_run_context(context, result=None, error=None):
             "overrides_bindings": list(context.overrides.bindings.keys()),
         },
     }
-    
+
     if result is not None:
         log_data["result"] = str(result)
         log_data["status"] = "success"
-    
+
     if error is not None:
         import traceback
+
         log_data["error"] = str(error)
         log_data["error_type"] = type(error).__name__
         log_data["traceback"] = traceback.format_exception(error)
         log_data["status"] = "error"
-    
+
     with open(log_path, "w") as f:
         json.dump(log_data, f, indent=2, default=str)
 
@@ -157,7 +159,7 @@ async def a_handle_result_with_llm_voice(
 ):
     # Log the run context and result
     _log_run_context(context, result=result)
-    
+
     import rich
     from rich.errors import MarkupError
     from rich.panel import Panel
@@ -219,7 +221,7 @@ gemini_flash_2_0 = Injected.partial(
 
 a_cached_sllm_gpt4o__openrouter: IProxy = async_cached(
     sqlite_dict(injected("error_reports_cache_path") / "gpt4o.sqlite")
-)(Injected.partial(a_openrouter_chat_completion__without_fix, model="openai/gpt-4o"))
+)(Injected.partial(a_openrouter_base_chat_completion, model="openai/gpt-4o"))
 
 # Create design with optional voice support
 design_bindings = {
@@ -240,6 +242,7 @@ else:
     @instance
     async def dummy_a_niji_voice(param):
         return None
+
     design_bindings["a_niji_voice"] = dummy_a_niji_voice
 
 design_for_error_reports = design(**design_bindings)

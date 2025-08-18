@@ -9,6 +9,7 @@ from pinjected_openai.openrouter.instances import StructuredLLM
 from tqdm import tqdm
 
 from pinjected import *
+import pinjected_reviewer
 from pinjected_reviewer.pytest_reviewer.inspect_code import (
     DetectMisuseOfPinjectedProxies,
 )
@@ -158,7 +159,11 @@ class FileDiagnosisProvider(Protocol):
 
 @injected
 async def a_map_progress(
-    async_f, items, total: int = None, desc: str = None, n_concurrent: int = None
+    async_f,
+    items,
+    total: int | None = None,
+    desc: str | None = None,
+    n_concurrent: int | None = None,
 ):
     if n_concurrent is None:
         n_concurrent = 10
@@ -189,7 +194,7 @@ async def a_pytest_plugin_impl(
 ):
     # remove __main__.py from the list
     python_files_in_project = [
-        f for f in python_files_in_project if not f.name == "__main__.py"
+        f for f in python_files_in_project if f.name != "__main__.py"
     ]
 
     async def task(item):
@@ -253,7 +258,6 @@ async def a_detect_injected_function_call_without_requesting(
         return []
 
     misuses = await a_detect_misuse_of_pinjected_proxies(src_path)
-    results = []
     guide = pinjected_guide_md
     # now we need to build a context to ask llm for fix:
     # lets filter misuses with same file and numbers
@@ -311,8 +315,6 @@ Finally, please provide the final approval status as `approved` or `rejected`.
         )
     ]
 
-
-import pinjected_reviewer
 
 test_a_detect_injected_function_call_without_requesting: IProxy = (
     a_detect_injected_function_call_without_requesting(

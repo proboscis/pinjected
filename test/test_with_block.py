@@ -13,6 +13,7 @@ from pinjected.v2.async_resolver import AsyncResolver
 
 
 def test_ovr_context():
+    """Test DesignOverrideContext functionality."""
     global x, y
     cxt1 = DesignOverrideContext(design(), inspect.currentframe())
     x = injected("hello")
@@ -25,6 +26,7 @@ def test_ovr_context():
 
 
 def test_ovr_store():
+    """Test DesignOverridesStore functionality with isolated store."""
     global x, y
     store = DesignOverridesStore()
     store.add(inspect.currentframe(), design())
@@ -38,11 +40,11 @@ def test_ovr_store():
     assert len(store.bindings) == 2
 
 
-def test_with_design(override_store_isolation):
+def test_with_design(full_isolation):
     """
     Test nested design contexts with store isolation.
 
-    Uses override_store_isolation fixture to ensure test has a clean store state.
+    Uses full_isolation fixture to ensure test has clean global state.
     """
     global x, y, DESIGN_OVERRIDES_STORE
     with design(bind="level1", group="l1"):
@@ -61,7 +63,12 @@ def test_with_design(override_store_isolation):
     assert resolve(ModuleVarPath("test.test_with_block.x"), "group") == "l1"
 
 
-def test_run_injected():
+def test_run_injected(full_isolation):
+    """
+    Test run_injected with store isolation.
+
+    Uses full_isolation fixture to ensure test has clean global state.
+    """
     y = run_injected(
         cmd="get",
         var_path="pinjected.test_package.child.module_with.y",

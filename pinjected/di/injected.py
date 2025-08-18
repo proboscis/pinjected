@@ -30,11 +30,100 @@ from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.args_modifier import ArgsModifier, KeepArgsPure
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
+import contextlib
+import threading
+import os
 
 T, U = TypeVar("T"), TypeVar("U")
 
 A = TypeVar("A")
 B = TypeVar("B")
+
+# Thread-local storage for IProxy creation context
+_thread_local = threading.local()
+
+# Check if IProxy AST assertion is enabled
+IPROXY_AST_ASSERTION_ENABLED = os.environ.get(
+    "PINJECTED_ENABLE_IPROXY_AST_ASSERTION", ""
+).lower() in ("true", "1", "yes", "on")
+
+
+@contextlib.contextmanager
+def allow_iproxy_creation():
+    """Explicitly allow IProxy/Partial creation within this context.
+
+    Use this when you intentionally want to create IProxy objects
+    inside a function. This is an advanced feature and should be
+    used sparingly.
+
+    Example:
+        def advanced_function():
+            with allow_iproxy_creation():
+                # OK - explicitly allowed
+                user_proxy = fetch_user("123")
+            return user_proxy
+    """
+    old_value = getattr(_thread_local, "allow_iproxy", False)
+    _thread_local.allow_iproxy = True
+    try:
+        yield
+    finally:
+        _thread_local.allow_iproxy = old_value
+
+
+def _is_at_module_level():
+    """Check if the current execution is at module level (not inside any function).
+
+    Returns True if we're at module/global scope, False if inside a function.
+    """
+    frame = inspect.currentframe()
+    try:
+        # Skip our own frame
+        frame = frame.f_back
+
+        # First, check if any frame in the stack is a decorator function
+        temp_frame = frame
+        while temp_frame:
+            code_name = temp_frame.f_code.co_name
+            # Allow decorator functions
+            if code_name in (
+                "injected_instance",
+                "injected_function",
+                "_injected_with_protocol",
+            ):
+                return True
+            temp_frame = temp_frame.f_back
+
+        # Skip frames until we find a non-internal frame
+        while frame and frame.f_code.co_name in ("__call__", "_is_at_module_level"):
+            frame = frame.f_back
+
+        # Check if the immediate calling frame is at module level
+        if frame and frame.f_code.co_name == "<module>":
+            return True
+
+        # Otherwise, check if we're inside any function
+        while frame:
+            code = frame.f_code
+            # If we find a real function (not module, comprehensions, etc)
+            # and it's not a class definition or locals
+            if code.co_name not in (
+                "<module>",
+                "<listcomp>",
+                "<dictcomp>",
+                "<setcomp>",
+                "<genexpr>",
+            ) and not (
+                code.co_name == "<locals>"
+                and frame.f_back
+                and frame.f_back.f_code.co_name.startswith("<")
+            ):
+                return False
+            frame = frame.f_back
+        return True
+    finally:
+        del frame  # Avoid reference cycles
+
 
 INJECTED_CONTEXT = frozendict()
 """
@@ -95,10 +184,8 @@ def partialclass(name, cls, *args, **kwds):
     # sys._getframe is not defined (Jython for example) or sys._getframe is not
     # defined for arguments greater than 0 (IronPython).
     """
-    try:
+    with contextlib.suppress(AttributeError, ValueError):
         new_cls.__module__ = sys._getframe(1).f_globals.get("__name__", "__main__")
-    except (AttributeError, ValueError):
-        pass
 
     return new_cls
 
@@ -248,18 +335,17 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         from pinjected.di.partially_injected import Partial
 
         modifier = Injected._get_args_keeper(
-            injection_targets, inspect.signature(original_function)
+            injection_targets, inspect.signature(original_function), original_function
         )
         # TODO move this modifier to @injected decorator.
         return Partial(original_function, injection_targets, modifier)
 
     @staticmethod
-    def _get_args_keeper(injection_targets, original_sig):
+    def _get_args_keeper(injection_targets, original_sig, original_function=None):
         original_args_with_Injected = []
         for k, v in original_sig.parameters.items():
-            if k not in injection_targets:
-                if v.annotation == Injected:
-                    original_args_with_Injected.append(k)
+            if k not in injection_targets and v.annotation == Injected:
+                original_args_with_Injected.append(k)
         remaining_params = [
             p
             for name, p in original_sig.parameters.items()
@@ -268,8 +354,27 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         remaining_signature: inspect.Signature = original_sig.replace(
             parameters=remaining_params
         )
+        function_name = (
+            getattr(original_function, "__name__", None) if original_function else None
+        )
+
+        # Try to get source file and line number
+        source_file = None
+        line_number = None
+        if original_function:
+            try:
+                source_file = inspect.getsourcefile(original_function)
+                line_number = inspect.getsourcelines(original_function)[1]
+            except (TypeError, OSError):
+                # Can't get source info for built-in functions or other special cases
+                pass
+
         modifier = KeepArgsPure(
-            signature=remaining_signature, targets=set(original_args_with_Injected)
+            signature=remaining_signature,
+            targets=set(original_args_with_Injected),
+            function_name=function_name,
+            source_file=source_file,
+            line_number=line_number,
         )
         return modifier
 
@@ -292,11 +397,11 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     @staticmethod
     def bind(
         _target_function_,
-        _dynamic_dependencies_: set[str] = None,
+        _dynamic_dependencies_: set[str] | None = None,
         **kwargs_mapping: Union[str, type, Callable, "Injected"],
     ) -> "InjectedFromFunction":
         assert not isinstance(_target_function_, Injected), (
-            f"target_function should not be an instance of Injected"
+            "target_function should not be an instance of Injected"
         )
         # if isinstance(_target_function_, Injected):
         #     _target_function_ = _target_function_.get_provider()
@@ -354,7 +459,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         except Exception:
             # from pinjected.logging import logger
             # logger.warning(f"failed to get name of the injected location.")
-            return f"__unknown_module__maybe_due_to_pickling__"
+            return "__unknown_module__maybe_due_to_pickling__"
 
     def __init__(self):
         self.fname = self._faster_get_fname()
@@ -446,7 +551,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             from pinjected.pinjected_logging import logger
 
             logger.warning(f"failed to get name of the injected location, due to {e}")
-            return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
+            return "__unknown_module__maybe_due_to_pickling__", "unknown_location"
 
     @staticmethod
     def pure(value):
@@ -982,6 +1087,9 @@ class GeneratedInjected(Injected):
     def get_provider(self):
         return create_function(self.get_signature(), func_impl=self.impl)
 
+    def dynamic_dependencies(self) -> set[str]:
+        return set()
+
     def __repr_expr__(self):
         return f"GeneratedInjected({self.impl}, {self.dependencies()})"
 
@@ -1260,7 +1368,7 @@ class InjectedFromFunction(Injected[T]):
                     kwargs_repr.append(f"{k}=${v.__name__}")
                 case Injected():
                     kwargs_repr.append(f"{k}={v.__repr_expr__()}")
-                case c if callable(v):
+                case _ if callable(v):
                     kwargs_repr.append(f"{k}={v.__name__}")
                 case unknown:
                     kwargs_repr.append(f"{k}={unknown}")
@@ -1407,7 +1515,7 @@ class DictInjected(Injected):
         assert all(isinstance(s, Injected) for s in self.srcs.values()), self.srcs
         from pinjected.pinjected_logging import logger
 
-        logger.warning(f"use of DictInjected is deprecated. use Injected.dict instead.")
+        logger.warning("use of DictInjected is deprecated. use Injected.dict instead.")
 
     def dependencies(self) -> set[str]:
         res = set()
@@ -1465,6 +1573,12 @@ class InjectedWithDefaultDesign(Injected):
     def get_provider(self):
         return self.src.get_provider()
 
+    def dynamic_dependencies(self) -> set[str]:
+        return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"InjectedWithDefaultDesign({self.src.__repr_expr__()}, {self.default_design_path!r})"
+
 
 def with_default(design_path: str):
     def _impl(f):
@@ -1484,6 +1598,12 @@ class RunnableInjected(Injected):
 
     def get_provider(self):
         return self.src.get_provider()
+
+    def dynamic_dependencies(self) -> set[str]:
+        return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"RunnableInjected({self.src.__repr_expr__()}, {self.design_path!r}, {self.working_dir!r})"
 
 
 @dataclass

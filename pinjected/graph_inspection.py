@@ -1,11 +1,15 @@
 import inspect
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pinjected.di.injected import Injected
 from pinjected.pinjected_logging import logger
 from pinjected.v2.binds import BindInjected, ExprBind, IBind
 from pinjected.v2.keys import DestructorKey, IBindKey, StrBindKey
+
+if TYPE_CHECKING:
+    from pinjected.di.design_interface import Design
 
 
 def default_get_arg_names_from_class_name(class_name):
@@ -56,7 +60,7 @@ def _get_explicit_or_default_modules(modules):
 def _find_classes_in_module(module):
     classes = set()
     for member_name, member in inspect.getmembers(module):
-        if inspect.isclass(member) and not member_name == "__class__":
+        if inspect.isclass(member) and member_name != "__class__":
             classes.add(member)
     return classes
 
@@ -76,7 +80,7 @@ class DIGraphHelper:
             match k, v:
                 case (StrBindKey(name), BindInjected(Injected() as injected)):
                     mappings[name] = injected
-                case (StrBindKey(name), ExprBind(src, meta)):
+                case (StrBindKey(name), ExprBind(src, _)):
                     mappings[name] = src
                 case (DestructorKey(name), _):
                     pass

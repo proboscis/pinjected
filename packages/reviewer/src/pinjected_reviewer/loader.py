@@ -35,7 +35,7 @@ async def a_llm_factory_for_reviewer(
     a_cached_openrouter_chat_completion, /, model_name
 ) -> StructuredLLM:
     async def impl(
-        text: str, response_format: type[BaseModel] = None
+        text: str, response_format: type[BaseModel] | None = None
     ) -> str | BaseModel:
         return await a_cached_openrouter_chat_completion(
             prompt=text, model=model_name, response_format=response_format
@@ -98,7 +98,8 @@ async def a_markdown_reviewer_def_to_reviewer(
         A Reviewer instance
     """
 
-    no_skip = lambda _: Future.from_value(Nothing)
+    def no_skip(_):
+        return Future.from_value(Nothing)
 
     def get_skipper(ext) -> SkipReasonProvider:
         if ext == "*":
@@ -482,7 +483,7 @@ async def file_diff_reviewers(
 
 @injected
 async def a_await_all(
-    a_map_progress, /, tasks: list[FutureResultE], desc: str = None
+    a_map_progress, /, tasks: list[FutureResultE], desc: str | None = None
 ) -> list[IOResultE]:
     """
     Await all tasks and return the results, using a_map_progress for progress tracking.

@@ -47,7 +47,7 @@ class DataFactory:
 # new_data:type[Data] = Data
 @injected
 def data_user(new_data: DataFactory, /, msg) -> Data:
-    d = new_data(x=0)
+    new_data(x=0)
 
 
 class IDataUser:

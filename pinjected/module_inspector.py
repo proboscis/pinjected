@@ -64,12 +64,14 @@ def get_module_path(root_path, module_path):
     relative_path = os.path.relpath(module_path, root_path)
     without_extension = os.path.splitext(relative_path)[0]
     path = without_extension.replace(os.path.sep, ".")
-    if str(path).split(".")[0] == "src":
-        if not (Path(root_path) / "src" / "__init__.py").exists():
-            # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
-            # Although 'src' should not be in the module path at all, i handle this specific case.
-            # Probably we should make this part adjustable from __meta_design__ or something.
-            path = path[4:]
+    if (
+        str(path).split(".")[0] == "src"
+        and not (Path(root_path) / "src" / "__init__.py").exists()
+    ):
+        # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
+        # Although 'src' should not be in the module path at all, i handle this specific case.
+        # Probably we should make this part adjustable from __meta_design__ or something.
+        path = path[4:]
     return path
 
 

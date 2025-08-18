@@ -1,5 +1,6 @@
 import inspect
-from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from pprint import pformat
 from typing import (
     Any,
     Literal,
@@ -7,9 +8,46 @@ from typing import (
     Union,
     get_args,
     get_origin,
+    TYPE_CHECKING,
 )
 
+if TYPE_CHECKING:
+    from pinjected_openai.openrouter.instances import StructuredLLM
+
+import httpx
+import json_repair
+import PIL
+from injected_utils.injected_cache_utils import async_cached, sqlite_dict
+from openai import AsyncOpenAI
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from pinjected import Injected, IProxy, design, injected, instance
+from pinjected_openai.compatibles import (
+    a_openai_compatible_llm,
+    AOpenaiCompatibleLlmProtocol,
+)
+from pinjected_openai.vision_llm import to_content
+from pydantic import BaseModel, ValidationError, Field
 from returns.result import ResultE, safe
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+
+# Cache for models that falsely claim JSON support but fail when used
+# This set tracks models that report supporting response_format in their
+# supported_parameters but actually fail with 404 or other errors when used with structured outputs
+# This is a runtime cache that helps avoid repeated failures for the same models
+_models_with_false_json_claims: set[str] = set()
+
+
+def clear_false_json_claims_cache():
+    """Clear the cache of models with false JSON support claims. Useful for testing."""
+    global _models_with_false_json_claims
+    _models_with_false_json_claims.clear()
 
 
 # Custom exceptions for schema compatibility issues
@@ -39,24 +77,23 @@ class GeminiCompatibilityError(SchemaCompatibilityError):
         super().__init__(message)
 
 
-import httpx
-import json_repair
-import PIL
-from injected_utils.injected_cache_utils import async_cached, sqlite_dict
-from openai import AsyncOpenAI
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from pinjected_openai.compatibles import a_openai_compatible_llm
-from pinjected_openai.vision_llm import to_content
-from pydantic import BaseModel, ValidationError
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+class OpenRouterRateLimitError(Exception):
+    pass
 
-from pinjected import Injected, IProxy, design, injected, instance
+
+class OpenRouterTimeOutError(Exception):
+    pass
+
+
+class OpenRouterOverloadedError(Exception):
+    pass
+
+
+class OpenRouterTransientError(Exception):
+    """Transient error from OpenRouter that should be retried."""
+
+    pass
+
 
 # from vision_llm import a_vision_llm__gpt4o
 
@@ -65,11 +102,14 @@ class OpenRouterCapabilities(BaseModel):
     """Capabilities of a model in OpenRouter API."""
 
     vision: bool = False
-    json: bool = False
+    json_output: bool = Field(
+        default=False, alias="json"
+    )  # Use alias to match API field name
     tools: bool = False
 
     model_config = {
-        "extra": "allow"  # Allow extra fields for compatibility with changing API
+        "extra": "allow",  # Allow extra fields for compatibility with changing API
+        "populate_by_name": True,  # Allow both field name and alias
     }
 
 
@@ -150,10 +190,27 @@ class OpenRouterModel(BaseModel):
     providers: list[OpenRouterProviderInfo] | None = None
     top_provider: OpenRouterProviderInfo | None = None
     per_request_limits: dict[str, Any] | None = None
+    supported_parameters: list[str] | None = None
 
     model_config = {
         "extra": "allow"  # Allow extra fields for compatibility with changing API
     }
+
+    def supports_json_output(self) -> bool:
+        """Check if the model supports JSON structured output."""
+        # First check the capabilities field if available
+        if self.architecture.capabilities:
+            return self.architecture.capabilities.json_output
+
+        # Check the supported_parameters field from the API
+        if self.supported_parameters:
+            # Model supports JSON if it has either response_format or structured_outputs
+            return (
+                "response_format" in self.supported_parameters
+                or "structured_outputs" in self.supported_parameters
+            )
+
+        return False
 
 
 class OpenRouterModelTable(BaseModel):
@@ -166,19 +223,33 @@ class OpenRouterModelTable(BaseModel):
     }
 
     def pricing(self, model_id: str) -> OpenRouterModelPricing:
-        if not hasattr(self, "_pricing"):
-            self._pricing = {model.id: model.pricing for model in self.data}
-        return self._pricing[model_id]
+        if not hasattr(self, "_mut_pricing"):
+            self._mut_pricing = {model.id: model.pricing for model in self.data}
+        return self._mut_pricing[model_id]
 
     def safe_pricing(self, model_id: str) -> ResultE[OpenRouterModelPricing]:
         return safe(self.pricing)(model_id)
+
+    def get_model(self, model_id: str) -> OpenRouterModel | None:
+        """Get a model by its ID."""
+        for model in self.data:
+            if model.id == model_id:
+                return model
+        return None
+
+    def supports_json_output(self, model_id: str) -> bool:
+        """Check if a model supports JSON structured output by its ID."""
+        model = self.get_model(model_id)
+        if model:
+            return model.supports_json_output()
+        return False
 
 
 @instance
 @retry(
     stop=stop_after_attempt(5),
 )
-async def openrouter_model_table(logger) -> OpenRouterModelTable:
+async def openrouter_model_table(logger: Any) -> OpenRouterModelTable:
     async with httpx.AsyncClient() as client:
         response = await client.get("https://openrouter.ai/api/v1/models")
         response.raise_for_status()
@@ -210,9 +281,26 @@ def openrouter_timeout_sec() -> float:
     return 120
 
 
-@injected
+class LoggerProtocol(Protocol):
+    """Protocol for logger interface."""
+
+    def info(self, message: str) -> None: ...
+    def warning(self, message: str) -> None: ...
+    def error(self, message: str) -> None: ...
+    def success(self, message: str) -> None: ...
+
+
+class AOpenrouterPostProtocol(Protocol):
+    async def __call__(self, payload: dict) -> dict: ...
+
+
+@injected(protocol=AOpenrouterPostProtocol)
 async def a_openrouter_post(
-    openrouter_api_key: str, openrouter_timeout_sec: float, /, payload: dict
+    openrouter_api_key: str,
+    openrouter_timeout_sec: float,
+    logger: LoggerProtocol,
+    /,
+    payload: dict,
 ) -> dict:
     async with httpx.AsyncClient() as client:
         headers = {
@@ -225,14 +313,101 @@ async def a_openrouter_post(
             json=payload,
             timeout=openrouter_timeout_sec,
         )
-        return response.json()
+
+        # Check if response is JSON before parsing
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type.lower():
+            # Log the actual response for debugging
+            logger.error(
+                f"Non-JSON response from OpenRouter. Status: {response.status_code}, Content-Type: {content_type}"
+            )
+            logger.error(f"Response body: {response.text[:500]}...")  # First 500 chars
+
+            # Check for common error status codes
+            if response.status_code == 502:
+                raise OpenRouterOverloadedError(
+                    {
+                        "error": {
+                            "code": 502,
+                            "message": "Bad Gateway - Server overloaded",
+                        }
+                    }
+                )
+            elif response.status_code == 503:
+                raise OpenRouterTransientError(
+                    {
+                        "error": {
+                            "code": 503,
+                            "message": "Service temporarily unavailable",
+                        }
+                    }
+                )
+            elif response.status_code == 504:
+                raise OpenRouterTimeOutError(
+                    {"error": {"code": 504, "message": "Gateway timeout"}}
+                )
+            elif response.status_code >= 500:
+                raise OpenRouterTransientError(
+                    {
+                        "error": {
+                            "code": response.status_code,
+                            "message": f"Server error: {response.text[:200]}",
+                        }
+                    }
+                )
+            else:
+                raise RuntimeError(
+                    f"Non-JSON response from OpenRouter (status {response.status_code}): {response.text[:500]}"
+                )
+
+        # Try to parse JSON, handle errors gracefully
+        try:
+            return response.json()
+        except Exception as e:
+            logger.error(
+                f"Failed to parse JSON response. Status: {response.status_code}"
+            )
+            logger.error(f"Response body: {response.text[:500]}...")
+
+            # If it's a 5xx error, treat as transient
+            if response.status_code >= 500:
+                raise OpenRouterTransientError(
+                    {
+                        "error": {
+                            "code": response.status_code,
+                            "message": f"Server error with invalid JSON: {e!s}",
+                        }
+                    }
+                )
+            else:
+                raise RuntimeError(
+                    f"Invalid JSON response from OpenRouter: {e!s}. Response: {response.text[:500]}"
+                )
+
+
+class OpenRouterAPIProtocol(Protocol):
+    """Protocol for OpenRouter API client."""
+
+    def __init__(self, base_url: str, api_key: str) -> None: ...
+
+
+class SimpleLlmProtocol(Protocol):
+    async def __call__(self, prompt: str) -> Any: ...
+
+
+class ACachedSchemaExampleProviderProtocol(Protocol):
+    async def __call__(self, model_schema: dict) -> Any: ...
+
+
+class AResizeImageBelow5mbProtocol(Protocol):
+    async def __call__(self, img: PIL.Image.Image) -> PIL.Image.Image: ...
 
 
 @async_cached(sqlite_dict(injected("cache_root_path") / "schema_examples.sqlite"))
-@injected
+@injected(protocol=ACachedSchemaExampleProviderProtocol)
 async def a_cached_schema_example_provider(
-    a_llm_for_json_schema_example, /, model_schema: dict
-):
+    a_llm_for_json_schema_example: SimpleLlmProtocol, /, model_schema: dict
+) -> Any:
     prompt = f"""
     Provide example json objects that follows the schema of the model:{model_schema}
     Beware the example must not be in yaml format.
@@ -249,107 +424,336 @@ class OpenRouterChatCompletion(Protocol):
         model: str,
         max_tokens: int = 8192,
         temperature: float = 1,
-        images: list[PIL.Image.Image] = None,
+        images: list[PIL.Image.Image] | None = None,
         response_format: BaseModel | None = None,
         provider: dict[str, Any] | None = None,
         **kwargs,
     ) -> Any: ...
 
 
-@injected
-async def a_openrouter_chat_completion__without_fix(
-    a_openrouter_post,
-    logger,
+class AOpenrouterBaseChatCompletionProtocol(Protocol):
+    """Base chat completion without JSON fixing to avoid dependency cycles."""
+
+    async def __call__(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 8192,
+        temperature: float = 1,
+        images: list[PIL.Image.Image] | None = None,
+        response_format=None,
+        provider: dict | None = None,
+        include_reasoning: bool = False,
+        reasoning: dict | None = None,
+        **kwargs,
+    ) -> Any: ...
+
+
+@injected(protocol=AOpenrouterBaseChatCompletionProtocol)
+@retry(
+    retry=retry_if_exception_type(
+        (
+            httpx.ReadTimeout,
+            OpenRouterRateLimitError,
+            OpenRouterOverloadedError,
+            OpenRouterTransientError,
+        )
+    ),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=5, max=120),
+)
+async def a_openrouter_base_chat_completion(  # noqa: PINJ045
+    a_openrouter_post: AOpenrouterPostProtocol,
+    logger: LoggerProtocol,
     openrouter_model_table: OpenRouterModelTable,
     openrouter_state: dict,
+    a_resize_image_below_5mb: AResizeImageBelow5mbProtocol,
     /,
     prompt: str,
     model: str,
     max_tokens: int = 8192,
     temperature: float = 1,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     response_format=None,
-    provider: dict = None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
     **kwargs,
 ):
     """
-    :param prompt:
-    :param model:
-    :param max_tokens:
-    :param temperature:
-    :param images:
-    :param response_format:
-    :param provider:  see:https://openrouter.ai/docs/features/provider-routing
-    Example:
-    provider={'order': [
-        'openai',
-        'together'
-      ],
-      allow_fallbacks=False # if everything in order fails, fails the completion. Default is True so some other provider will be used.
-    }
-    :param kwargs:
-    :return:
+    Base OpenRouter chat completion without JSON fixing.
+    This exists to break dependency cycles - JSON fixing depends on LLM functions.
     """
-    provider_filter = dict()
-    if response_format is not None and issubclass(response_format, BaseModel):
-        provider_filter["provider"] = {"require_parameters": True}
-        openai_response_format = build_openrouter_response_format(response_format)
-        provider_filter["response_format"] = openai_response_format
-    elif response_format is not None:
-        provider_filter["response_format"] = response_format
-
-    if provider is not None:
-        p = provider_filter.get("provider", dict())
-        p.update(provider)
-        provider_filter["provider"] = p
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    # *[{"type": "image", "data": img} for img in images or []]
-                    *[to_content(img) for img in images or []],
-                ],
-            }
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        **provider_filter,
+    # Build payload using helper
+    payload = build_chat_payload(
+        model=model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        provider=provider,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
         **kwargs,
-    }
-    from pprint import pformat
-
-    res = await a_openrouter_post(payload)
-    if "error" in res:
-        raise RuntimeError(
-            f"Error in response. \nPayload:{payload}\nResponse:{pformat(res)}"
-        )
-    cost_dict = openrouter_model_table.pricing(model).calc_cost_dict(res["usage"])
-    openrouter_state["cumulative_cost"] = openrouter_state.get(
-        "cumulative_cost", 0
-    ) + sum(cost_dict.values())
-
-    logger.info(
-        f"Cost of completion: {cost_dict}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
     )
-    data = res["choices"][0]["message"]["content"]
 
-    if response_format is not None and issubclass(response_format, BaseModel):
+    # Make API call
+    res = await a_openrouter_post(payload)
+    handle_openrouter_error(res, logger)
+
+    # Log costs using helper
+    log_completion_cost(res, model, openrouter_model_table, openrouter_state, logger)
+
+    # Return raw response content (no JSON parsing)
+    return res["choices"][0]["message"]["content"]
+
+
+def handle_openrouter_error(res: dict, logger: LoggerProtocol):
+    """Handle error responses from OpenRouter API."""
+
+    if "error" not in res:
+        return
+
+    error = res.get("error", {})
+    error_code = error.get("code")
+    error_msg = str(res)
+
+    # Rate limit errors
+    if error_code == 429 or "Rate limit" in error_msg or "rate-limited" in error_msg:
+        logger.warning(f"Rate limit error in response: {pformat(res)}")
+        raise OpenRouterRateLimitError(res)
+
+    # Timeout errors
+    if "Timed out" in error_msg:
+        logger.warning(f"Timed out error in response: {pformat(res)}")
+        raise OpenRouterTimeOutError(res)
+
+    # Overloaded errors
+    if "Overloaded" in error_msg or error_code == 502:
+        logger.warning(f"Overloaded error in response: {pformat(res)}")
+        raise OpenRouterOverloadedError(res)
+
+    # Transient errors that should be retried
+    transient_codes = {520, 503, 522, 524}
+    if error_code in transient_codes:
+        logger.warning(f"Transient error (code {error_code}): {pformat(res)}")
+        raise OpenRouterTransientError(res)
+
+    # Provider errors that might be transient
+    if error_code == 520 and "Provider returned error" in error_msg:
+        logger.warning(f"Provider transient error: {pformat(res)}")
+        raise OpenRouterTransientError(res)
+
+    raise RuntimeError(f"Error in response: {pformat(res)}")
+
+
+def extract_json_from_markdown(data: str) -> str:
+    """Extract JSON from markdown code blocks."""
+    if "```" in data:
+        # Extract content between triple backticks
+        parts = data.split("```")
+        if len(parts) >= 2:
+            json_block = parts[1].strip()
+            # Remove language marker if present (e.g., "json")
+            if json_block.startswith("json\n") or json_block.startswith("json "):
+                json_block = json_block[5:]
+            return json_block.strip()
+    return data
+
+
+async def parse_json_response(
+    data: str,
+    response_format: type[BaseModel],
+    logger,
+    a_structured_llm_for_json_fix=None,
+    prompt: str | None = None,
+) -> Any:
+    """Parse and validate JSON response with fallback repair mechanisms."""
+
+    # Try direct parsing
+    try:
+        json_data = extract_json_from_markdown(data)
+        return response_format.model_validate_json(json_data)
+    except Exception as e:
+        logger.warning(f"Error in response validation: {e}")
+
+        # Try json_repair
         try:
-            if "```" in data:
-                data = data.split("```")[1].strip()
-            return response_format.model_validate_json(data)
-        except Exception as e:
-            logger.warning(
-                f"Error in response validation:\n{pformat(payload)}\n{pformat(res)} \n {e} cause:\n{data}"
-            )
             data_dict = json_repair.loads(data)
             return response_format.model_validate(data_dict)
+        except Exception:
+            logger.warning(f"json_repair could not repair: {data}")
+
+            # Use LLM fix if available
+            if a_structured_llm_for_json_fix and prompt:
+                fix_prompt = f"""
+An LLM failed to answer the following input with a correct json format.
+Please fix the following json object (Response) to match the schema:
+# Original Input:
+{prompt}
+# Response
+{data}
+"""
+                # a_structured_llm_for_json_fix is actually just a regular LLM that returns a string
+                # So we need to parse its response recursively
+                fixed_response = await a_structured_llm_for_json_fix(fix_prompt)
+                logger.debug(f"LLM fix response: {fixed_response[:200]}...")
+
+                # Extract JSON from the fixed response and parse it
+                try:
+                    json_data = extract_json_from_markdown(fixed_response)
+                    return response_format.model_validate_json(json_data)
+                except Exception as parse_err:
+                    logger.warning(f"Failed to parse LLM fix response: {parse_err}")
+                    # Last resort: try json_repair on the LLM's response
+                    try:
+                        data_dict = json_repair.loads(fixed_response)
+                        return response_format.model_validate(data_dict)
+                    except Exception:
+                        logger.error(
+                            f"Could not parse LLM fix response: {fixed_response[:500]}"
+                        )
+                        raise
+            raise
+
+
+def calculate_cumulative_cost(openrouter_state: dict, cost_dict: ResultE[dict]) -> dict:
+    """Calculate new state with updated cumulative cost."""
+    new_cost = openrouter_state.get("cumulative_cost", 0) + sum(
+        cost_dict.value_or(dict()).values()
+    )
+    return {**openrouter_state, "cumulative_cost": new_cost}
+
+
+# Helper functions to eliminate duplication (DRY principle)
+
+
+@dataclass
+class JsonProviderConfig:
+    """Configuration for JSON provider and kwargs."""
+
+    provider: dict | None
+    kwargs: dict
+
+
+def prepare_json_provider_and_kwargs(
+    provider: dict | None,
+    kwargs: dict,
+    response_format: type[BaseModel],
+    supports_json: bool,
+    logger: LoggerProtocol,
+    model: str,
+) -> JsonProviderConfig:
+    """Prepare provider and kwargs for JSON response format."""
+    if supports_json:
+        enhanced_provider = {
+            **(provider or {}),
+            "require_parameters": True,
+        }
+        enhanced_kwargs = {
+            **kwargs,
+            "response_format": build_openrouter_response_format(response_format),
+        }
     else:
-        return data
+        logger.warning(
+            f"Model {model} does not support JSON output. "
+            f"Will use fallback JSON fix mechanism."
+        )
+        enhanced_provider = provider
+        enhanced_kwargs = kwargs
+
+    return JsonProviderConfig(provider=enhanced_provider, kwargs=enhanced_kwargs)
+
+
+def validate_response_format(response_format: type[BaseModel], model: str) -> None:
+    """Validate response format compatibility with OpenAPI3 and Gemini models."""
+    # Check OpenAPI3 compatibility
+    if issues := is_openapi3_compatible(response_format):
+        raise OpenAPI3CompatibilityError(response_format, issues)
+
+    # Check Gemini compatibility if using Gemini model
+    if "gemini" in model.lower() and (
+        gemini_issues := is_gemini_compatible(response_format)
+    ):
+        raise GeminiCompatibilityError(response_format, gemini_issues)
+
+
+def build_provider_filter(provider: dict | None = None) -> dict:
+    """Build provider filter for OpenRouter API."""
+    if provider is None:
+        return {}
+    return {"provider": provider}
+
+
+def build_user_message(
+    prompt: str, images: list[PIL.Image.Image] | None = None
+) -> dict:
+    """Build user message with optional images."""
+    return {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            *[to_content(img) for img in (images or [])],
+        ],
+    }
+
+
+def build_chat_payload(
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    images: list[PIL.Image.Image] | None = None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
+    **kwargs,
+) -> dict:
+    """Build complete chat payload for OpenRouter API."""
+    # Handle GPT-5 parameter transformation
+    # GPT-5 models require max_completion_tokens instead of max_tokens
+    if "gpt-5" in model.lower():
+        # For GPT-5, use max_completion_tokens with a minimum of 50 to avoid empty responses
+        token_param = "max_completion_tokens"
+        token_value = max(max_tokens, 50)  # Ensure minimum tokens for GPT-5 reasoning
+    else:
+        token_param = "max_tokens"
+        token_value = max_tokens
+
+    payload = {
+        "model": model,
+        "messages": [build_user_message(prompt, images)],
+        token_param: token_value,
+        "temperature": temperature,
+        **build_provider_filter(provider),
+        **kwargs,
+    }
+
+    if include_reasoning:
+        payload["include_reasoning"] = True
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+
+    return payload
+
+
+def log_completion_cost(
+    res: dict,
+    model: str,
+    openrouter_model_table: OpenRouterModelTable,
+    openrouter_state: dict,
+    logger: LoggerProtocol,
+) -> None:
+    """Calculate and log completion costs."""
+    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).bind(
+        safe(lambda x: x.calc_cost_dict(res["usage"]))
+    )
+    current_cost = openrouter_state.get("cumulative_cost", 0)
+    new_cost = current_cost + sum(cost_dict.value_or(dict()).values())
+    logger.info(
+        f"Cost of completion: {cost_dict.value_or('unknown')}, "
+        f"cumulative cost: {new_cost} from {res['provider']}"
+    )
 
 
 def build_openrouter_response_format(response_format):
@@ -372,8 +776,8 @@ def build_openrouter_response_format(response_format):
     return openai_response_format
 
 
-@injected
-async def a_resize_image_below_5mb(logger, /, img: PIL.Image.Image):
+@injected(protocol=AResizeImageBelow5mbProtocol)
+async def a_resize_image_below_5mb(logger: LoggerProtocol, /, img: PIL.Image.Image):
     """
     画像を5MB以下にリサイズします。
     元の画像のアスペクト比を保持しながら、必要に応じて徐々に縮小します。
@@ -472,7 +876,7 @@ def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
             # 自己参照型をチェック（簡易版）
             if field_type == model:
                 issues.append(
-                    f"自己参照モデルはOpenAPI 3.0で問題を引き起こす可能性があります"
+                    "自己参照モデルはOpenAPI 3.0で問題を引き起こす可能性があります"
                 )
 
             # 入れ子になったモデルを再帰的にチェック
@@ -509,7 +913,7 @@ def is_openapi3_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
             extra = model.model_config.json_schema_extra
             if isinstance(extra, dict) and "discriminator" in extra:
                 issues.append(
-                    f"discriminatorはOpenAPI 3.0の実装によっては完全にサポートされていない場合があります"
+                    "discriminatorはOpenAPI 3.0の実装によっては完全にサポートされていない場合があります"
                 )
 
         if issues:
@@ -621,7 +1025,7 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
         elif inspect.isclass(field_type) and issubclass(field_type, BaseModel):
             # 自己参照型をチェック
             if field_type == model:
-                issues.append(f"自己参照モデルはGemini APIではサポートされていません")
+                issues.append("自己参照モデルはGemini APIではサポートされていません")
 
             # 入れ子になったモデルを再帰的にチェック
             nested_issues = is_gemini_compatible(field_type)
@@ -666,146 +1070,233 @@ def is_gemini_compatible(model: type[BaseModel]) -> dict[str, list[str]]:
     return incompatibilities
 
 
-@injected
-@retry(
-    retry=retry_if_exception_type(httpx.ReadTimeout),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-)
-async def a_openrouter_chat_completion(
-    a_openrouter_post,
-    logger,
-    a_cached_schema_example_provider: Callable[[type], Awaitable[str]],
-    a_resize_image_below_5mb,
-    a_structured_llm_for_json_fix,
+class AOpenrouterChatCompletionProtocol(Protocol):
+    async def __call__(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 8192,
+        temperature: float = 1,
+        images: list[PIL.Image.Image] | None = None,
+        response_format=None,
+        provider: dict | None = None,
+        include_reasoning: bool = False,
+        reasoning: dict | None = None,
+        **kwargs,
+    ) -> Any: ...
+
+
+@injected(protocol=AOpenrouterChatCompletionProtocol)
+async def a_openrouter_chat_completion(  # noqa: PINJ045
+    a_openrouter_base_chat_completion: AOpenrouterBaseChatCompletionProtocol,
     openrouter_model_table: OpenRouterModelTable,
-    openrouter_state: dict,
+    a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
+    a_structured_llm_for_json_fix: "StructuredLLM",
+    logger: LoggerProtocol,
     /,
     prompt: str,
     model: str,
     max_tokens: int = 8192,
     temperature: float = 1,
-    images: list[PIL.Image.Image] = None,
+    images: list[PIL.Image.Image] | None = None,
     response_format=None,
-    provider: dict = None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
     **kwargs,
 ):
     """
-    :param prompt:
-    :param model:
-    :param max_tokens:
-    :param temperature:
-    :param images:
-    :param response_format:
-    :param provider:  see:https://openrouter.ai/docs/features/provider-routing
-    Example:
-    provider={'order': [
-        'openai',
-        'together'
-      ],
-      allow_fallbacks=False # if everything in order fails, fails the completion. Default is True so some other provider will be used.
-    }
-    :param kwargs:
-    :return:
+    Chat completion with JSON fixing capability for models that don't support structured output.
+
+    This wraps a_openrouter_base_chat_completion and adds JSON handling on top.
     """
-    provider_filter = dict()
-    if response_format is not None and issubclass(response_format, BaseModel):
-        # Check OpenAPI 3.0 compatibility for all models
-        if issues := is_openapi3_compatible(response_format):
-            raise OpenAPI3CompatibilityError(response_format, issues)
+    # Debug logging
+    logger.debug(
+        f"a_openrouter_chat_completion called with response_format: {response_format}"
+    )
+    logger.debug(f"response_format type: {type(response_format)}")
 
-        # Additional Gemini-specific compatibility check when model contains 'gemini'
-        if "gemini" in model.lower():
-            if gemini_issues := is_gemini_compatible(response_format):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
-
-        provider_filter["provider"] = {"require_parameters": True}
-        openai_response_format = build_openrouter_response_format(response_format)
-        provider_filter["response_format"] = openai_response_format
-        schema_prompt = await a_cached_schema_example_provider(
-            response_format.model_json_schema()
+    # No structured format requested - just pass through to base
+    if response_format is None:
+        logger.debug("response_format is None, using base completion")
+        return await a_openrouter_base_chat_completion(
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            images=images,
+            response_format=response_format,
+            provider=provider,
+            include_reasoning=include_reasoning,
+            reasoning=reasoning,
+            **kwargs,
         )
-        prompt += f"""The response must follow the following json format example:{schema_prompt}"""
-    if provider is not None:
-        p = provider_filter.get("provider", dict())
-        p.update(provider)
-        provider_filter["provider"] = p
-    images = images or []
 
-    images = [await a_resize_image_below_5mb(img) for img in images]
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    # *[{"type": "image", "data": img} for img in images or []]
-                    *[to_content(img) for img in images or []],
-                ],
-            }
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        **provider_filter,
-        **kwargs,
-    }
-    from pprint import pformat
-
-    # logger.debug(f"payload:{pformat(payload)}")
-    res = await a_openrouter_post(payload)
-    if "error" in res:
-        raise RuntimeError(f"Error in response: {pformat(res)}")
-
-    cost_dict: ResultE[dict] = openrouter_model_table.safe_pricing(model).map(
-        lambda x: x.calc_cost_dict(res["usage"])
+    # Check if it's a BaseModel subclass
+    is_base_model = inspect.isclass(response_format) and issubclass(
+        response_format, BaseModel
     )
-    openrouter_state["cumulative_cost"] = openrouter_state.get(
-        "cumulative_cost", 0
-    ) + sum(cost_dict.value_or(dict()).values())
-    # logger.debug(f"response:{pformat(res)}")
 
-    logger.info(
-        f"Cost of completion: {cost_dict.value_or('unknown')}, cumulative cost: {openrouter_state['cumulative_cost']} from {res['provider']}"
+    if not is_base_model:
+        logger.debug(
+            f"response_format is not a BaseModel subclass, using base completion"
+        )
+        return await a_openrouter_base_chat_completion(
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            images=images,
+            response_format=response_format,
+            provider=provider,
+            include_reasoning=include_reasoning,
+            reasoning=reasoning,
+            **kwargs,
+        )
+
+    # We have a BaseModel response_format, proceed with JSON handling
+    logger.debug(f"response_format is a BaseModel subclass: {response_format.__name__}")
+
+    # Validate compatibility using helper
+    validate_response_format(response_format, model)
+
+    # Check if model supports JSON
+    supports_json = openrouter_model_table.supports_json_output(model)
+    logger.debug(f"Model {model} supports JSON: {supports_json}")
+
+    # Check if this model is known to falsely claim JSON support
+    if model in _models_with_false_json_claims:
+        logger.warning(
+            f"Model {model} is known to falsely claim JSON support. "
+            f"Using fallback mechanism."
+        )
+        supports_json = False
+
+    # Prepare provider and kwargs for JSON
+    json_config = prepare_json_provider_and_kwargs(
+        provider=provider,
+        kwargs=kwargs,
+        response_format=response_format,
+        supports_json=supports_json,
+        logger=logger,
+        model=model,
     )
-    data = res["choices"][0]["message"]["content"]
 
-    if response_format is not None and issubclass(response_format, BaseModel):
-        try:
-            if "```" in data:
-                data = data.split("```")[1].strip()
-            return response_format.model_validate_json(data)
-        except Exception as e:
+    # Add schema example to prompt
+    schema_prompt = await a_cached_schema_example_provider(
+        response_format.model_json_schema()
+    )
+    enhanced_prompt = (
+        prompt
+        + f"\n\nThe response must follow the following json format example:{schema_prompt}"
+    )
+
+    # Call base completion with enhanced settings
+    # Note: response_format is already in json_config.kwargs when supports_json is True
+    try:
+        response_text = await a_openrouter_base_chat_completion(
+            prompt=enhanced_prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            images=images,
+            provider=json_config.provider,
+            include_reasoning=include_reasoning,
+            reasoning=reasoning,
+            **json_config.kwargs,
+        )
+    except RuntimeError as e:
+        error_msg = str(e)
+        # Check if this is a 404 error for models that claim to support JSON
+        if "404" in error_msg and "No endpoints found" in error_msg and supports_json:
+            # Add this model to our cache of false claims for future requests
+            _models_with_false_json_claims.add(model)
             logger.warning(
-                f"Error in response validation:\n{pformat(payload)}\n{pformat(res)} \n {e} cause:\n{data}"
+                f"Model {model} claims JSON support but returns 404. Added to fallback cache. "
+                f"Retrying without structured output and using JSON extraction."
             )
-            try:
-                data_dict = json_repair.loads(data)
-                return response_format.model_validate(data_dict)
-            except Exception as e:
-                logger.warning(f"json_repair could not repair.{data}")
-                fix_prompt = f"""
-An LLM failed to answer the following input with a correct json format.
-Please fix the following json object (Response) to match the schema:
-# Original Input:
-{prompt}
-# Response
-{data}
-"""
-                return await a_structured_llm_for_json_fix(
-                    fix_prompt, response_format=response_format
-                )
-    else:
-        return data
+
+            # Retry without response_format using fallback mechanism
+            response_text = await a_openrouter_base_chat_completion(
+                prompt=enhanced_prompt,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                images=images,
+                provider=provider,  # Use original provider without JSON enhancement
+                include_reasoning=include_reasoning,
+                reasoning=reasoning,
+                **kwargs,  # Use original kwargs without response_format
+            )
+
+            # Use parse_json_response to handle the JSON extraction and parsing
+            logger.debug(
+                f"Using fallback JSON parsing for response: {response_text[:100]}..."
+            )
+            result = await parse_json_response(
+                data=response_text,
+                response_format=response_format,
+                logger=logger,
+                a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+                prompt=prompt,
+            )
+            logger.debug(
+                f"Fallback parsed result type: {type(result)}, value: {result}"
+            )
+            return result
+        # Re-raise other errors as-is
+        raise
+
+    # Parse response with JSON fixing if needed
+    if not supports_json:
+        # Model doesn't support JSON, use parse_json_response for proper parsing
+        logger.debug(
+            f"Model doesn't support JSON, using fallback parsing for: {response_text[:100]}..."
+        )
+        result = await parse_json_response(
+            data=response_text,
+            response_format=response_format,
+            logger=logger,
+            a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+            prompt=prompt,
+        )
+        logger.debug(f"Fallback parsed result type: {type(result)}, value: {result}")
+        return result
+
+    # Try normal parsing with fallback
+    logger.debug(
+        f"Parsing response_text with parse_json_response: {response_text[:100]}..."
+    )
+    result = await parse_json_response(
+        data=response_text,
+        response_format=response_format,
+        logger=logger,
+        a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+        prompt=prompt,
+    )
+    logger.debug(f"Parsed result type: {type(result)}, value: {result}")
+    return result
 
 
-@injected
-async def a_llm__openrouter(
+# Removed - functionality merged into a_openrouter_chat_completion
+
+
+class ALlmOpenrouterProtocol(Protocol):
+    async def __call__(
+        self,
+        text: str,
+        model: str,
+        response_format=None,
+        **kwargs,
+    ) -> Any: ...
+
+
+@injected(protocol=ALlmOpenrouterProtocol)
+async def a_llm__openrouter(  # noqa: PINJ045
     openrouter_model_table: OpenRouterModelTable,
-    openrouter_api,
-    a_openai_compatible_llm,
-    logger,
+    openrouter_api: OpenRouterAPIProtocol,
+    a_openai_compatible_llm: AOpenaiCompatibleLlmProtocol,
+    logger: LoggerProtocol,
     openrouter_state: dict,
     /,
     text: str,
@@ -820,9 +1311,10 @@ async def a_llm__openrouter(
             raise OpenAPI3CompatibilityError(response_format, issues)
 
         # Additional Gemini-specific compatibility check when model contains 'gemini'
-        if "gemini" in model.lower():
-            if gemini_issues := is_gemini_compatible(response_format):
-                raise GeminiCompatibilityError(response_format, gemini_issues)
+        if "gemini" in model.lower() and (
+            gemini_issues := is_gemini_compatible(response_format)
+        ):
+            raise GeminiCompatibilityError(response_format, gemini_issues)
 
     res: ChatCompletion = await a_openai_compatible_llm(
         api=openrouter_api,
@@ -834,11 +1326,11 @@ async def a_llm__openrouter(
 
     cost = openrouter_model_table.pricing(model).calc_cost(res.usage)
     total_cost = sum(cost.values())
-    openrouter_state["cumulative_cost"] = (
-        openrouter_state.get("cumulative_cost", 0) + total_cost
-    )
+    # Don't mutate state, just log the cost
+    current_cumulative = openrouter_state.get("cumulative_cost", 0)
+    new_cumulative = current_cumulative + total_cost
     logger.info(
-        f"Cost of completion: {cost}, total cost: {total_cost}, cumulative cost: {openrouter_state['cumulative_cost']}"
+        f"Cost of completion: {cost}, total cost: {total_cost}, cumulative cost: {new_cumulative}"
     )
 
     data = res.choices[0].message.content
@@ -857,44 +1349,46 @@ class OptionalText(BaseModel):
     text_lines: list[str] | None
 
 
-test_call_gpt4o: IProxy = a_openrouter_chat_completion__without_fix(
+test_call_gpt4o: IProxy[Any] = a_openrouter_base_chat_completion(
     prompt="What is the capital of Japan?", model="openai/gpt-4o"
 )
 
-test_openai_compatible_llm: IProxy = a_openai_compatible_llm(
+test_openai_compatible_llm: IProxy[Any] = a_openai_compatible_llm(
     api=openrouter_api,
     model="deepseek/deepseek-chat",
     text="What is the capital of Japan?",
 )
 
-test_openrouter_text: IProxy = a_llm__openrouter(
+test_openrouter_text: IProxy[Any] = a_llm__openrouter(
     "What is the capital of Japan?", "deepseek/deepseek-chat"
 )
 
-test_openrouter_structure: IProxy = a_llm__openrouter(
+test_openrouter_structure: IProxy[Any] = a_llm__openrouter(
     f"What is the capital of Japan?.{Text.model_json_schema()}",
     # "deepseek/deepseek-chat",
     "deepseek/deepseek-r1-distill-qwen-32b",
     response_format=Text,
 )
 
-test_openrouter_model_table: IProxy = openrouter_model_table
+test_openrouter_model_table: IProxy[Any] = openrouter_model_table
 
-test_openrouter_chat_completion: IProxy = a_openrouter_chat_completion(
+test_openrouter_chat_completion: IProxy[Any] = a_openrouter_chat_completion(
     prompt="What is the capital of Japan?", model="deepseek/deepseek-chat"
 )
 
-test_openrouter_chat_completion_with_structure: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
-    model="deepseek/deepseek-chat",
-    # model="deepseek/deepseek-r1-distill-qwen-32b",
-    response_format=Text,
+test_openrouter_chat_completion_with_structure: IProxy[Any] = (
+    a_openrouter_chat_completion(
+        prompt="What is the capital of Japan?",
+        model="deepseek/deepseek-chat",
+        # model="deepseek/deepseek-r1-distill-qwen-32b",
+        response_format=Text,
+    )
 )
 
 # this must raise error though...
-test_openrouter_chat_completion_with_structure_optional: IProxy = (
+test_openrouter_chat_completion_with_structure_optional: IProxy[Any] = (
     a_openrouter_chat_completion(
-        prompt=f"What is the capital of Japan?",
+        prompt="What is the capital of Japan?",
         model="deepseek/deepseek-chat",
         response_format=OptionalText,
     )
@@ -917,15 +1411,15 @@ class PersonWithUnion(BaseModel):
 # These should raise GeminiCompatibilityError with Gemini-specific compatibility issues
 
 # Test with gemini-pro model
-test_gemini_pro_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+test_gemini_pro_with_incompatible_schema: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan?",
     model="google/gemini-pro",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
 
 # Test with gemini-flash model
-test_gemini_flash_with_incompatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan?",
+test_gemini_flash_with_incompatible_schema: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan?",
     model="google/gemini-2.0-flash-001",
     response_format=PersonWithUnion,  # This has Union type which is incompatible with Gemini
 )
@@ -937,26 +1431,28 @@ class SimpleResponse(BaseModel):
     confidence: float
 
 
-test_gemini_flash_with_compatible_schema: IProxy = a_openrouter_chat_completion(
-    prompt=f"What is the capital of Japan? Answer with high confidence.",
+test_gemini_flash_with_compatible_schema: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with high confidence.",
     model="google/gemini-2.0-flash-001",
     response_format=SimpleResponse,  # This should be compatible with Gemini
 )
 
-test_is_openapi3_compatible: IProxy = Injected.pure(is_openapi3_compatible).proxy(Text)
-test_is_openapi3_compatible_optional: IProxy = Injected.pure(
+test_is_openapi3_compatible: IProxy[Any] = Injected.pure(is_openapi3_compatible).proxy(
+    Text
+)
+test_is_openapi3_compatible_optional: IProxy[Any] = Injected.pure(
     is_openapi3_compatible
 ).proxy(OptionalText)
 
 # Tests for is_gemini_compatible function
-test_is_gemini_compatible: IProxy = Injected.pure(is_gemini_compatible).proxy(Text)
-test_is_gemini_compatible_optional: IProxy = Injected.pure(is_gemini_compatible).proxy(
-    OptionalText
-)
+test_is_gemini_compatible: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(Text)
+test_is_gemini_compatible_optional: IProxy[Any] = Injected.pure(
+    is_gemini_compatible
+).proxy(OptionalText)
 
-test_is_gemini_compatible_union: IProxy = Injected.pure(is_gemini_compatible).proxy(
-    PersonWithUnion
-)
+test_is_gemini_compatible_union: IProxy[Any] = Injected.pure(
+    is_gemini_compatible
+).proxy(PersonWithUnion)
 
 
 # Create example models with Dictionary for testing
@@ -985,13 +1481,13 @@ class PersonWithComplexValueDict(BaseModel):
     ]  # String keys, complex values - partially compatible
 
 
-test_is_gemini_compatible_dict: IProxy = Injected.pure(is_gemini_compatible).proxy(
+test_is_gemini_compatible_dict: IProxy[Any] = Injected.pure(is_gemini_compatible).proxy(
     PersonWithDict
 )
-test_is_gemini_compatible_complex_key_dict: IProxy = Injected.pure(
+test_is_gemini_compatible_complex_key_dict: IProxy[Any] = Injected.pure(
     is_gemini_compatible
 ).proxy(PersonWithComplexDict)
-test_is_gemini_compatible_complex_value_dict: IProxy = Injected.pure(
+test_is_gemini_compatible_complex_value_dict: IProxy[Any] = Injected.pure(
     is_gemini_compatible
 ).proxy(PersonWithComplexValueDict)
 
@@ -1009,18 +1505,76 @@ class PersonWithComplexList(BaseModel):
     addresses: list[Address]
 
 
-test_is_gemini_compatible_complex_list: IProxy = Injected.pure(
+test_is_gemini_compatible_complex_list: IProxy[Any] = Injected.pure(
     is_gemini_compatible
 ).proxy(PersonWithComplexList)
 
-test_return_empty_item: IProxy = a_openrouter_chat_completion(
-    prompt=f"Please answer with empty lines.",
+test_return_empty_item: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="Please answer with empty lines.",
     model="deepseek/deepseek-chat",
     response_format=Text,
 )
 
-test_resize_image: IProxy = a_resize_image_below_5mb(
+test_resize_image: IProxy[Any] = a_resize_image_below_5mb(
     PIL.Image.new("RGB", (4000, 4000), color="red")
+)
+
+# Test cases for JSON support detection
+test_model_supports_json: IProxy[Any] = Injected.partial(
+    openrouter_model_table.supports_json_output, model_id="openai/gpt-4o"
+)
+
+test_model_no_json_support: IProxy[Any] = Injected.partial(
+    openrouter_model_table.supports_json_output, model_id="meta-llama/llama-2-70b-chat"
+)
+
+# Test completion with model that doesn't support JSON (should use fallback)
+test_completion_no_json_support: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with the city name and country.",
+    model="meta-llama/llama-2-70b-chat",  # Model without JSON support
+    response_format=SimpleResponse,
+)
+
+# Test completion with model that supports JSON
+test_completion_with_json_support: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Answer with the city name and country.",
+    model="openai/gpt-4o",  # This model should support JSON
+    response_format=SimpleResponse,
+)
+
+# Test reasoning tokens with simple prompt
+test_reasoning_simple: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is 2+2? Think step by step.",
+    model="deepseek/deepseek-r1",
+    include_reasoning=True,
+)
+
+# Test reasoning tokens with structured output
+test_reasoning_with_structure: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the capital of Japan? Think through this step by step.",
+    model="deepseek/deepseek-r1",
+    response_format=SimpleResponse,
+    include_reasoning=True,
+)
+
+# Test reasoning with advanced configuration
+test_reasoning_advanced: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="Explain why the sky is blue. Use detailed reasoning.",
+    model="deepseek/deepseek-r1",
+    include_reasoning=True,
+    reasoning={
+        "effort": "high",
+    },
+)
+
+# Test reasoning with exclude option
+test_reasoning_exclude: IProxy[Any] = a_openrouter_chat_completion(
+    prompt="What is the meaning of life?",
+    model="deepseek/deepseek-r1",
+    reasoning={
+        "effort": "medium",
+        "exclude": True,  # Use reasoning internally but don't include in response
+    },
 )
 
 

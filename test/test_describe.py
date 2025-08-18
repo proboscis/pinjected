@@ -125,12 +125,14 @@ def test_describe_command_with_invalid_path():
     from io import StringIO
     from unittest.mock import patch
 
-    with patch("pinjected.helpers.find_default_design_paths", return_value=[]):
-        with patch("sys.stdout", new=StringIO()) as fake_out:
-            describe(var_path="pinjected.test_package.child.module1.test_runnable")
+    with (
+        patch("pinjected.helpers.find_default_design_paths", return_value=[]),
+        patch("sys.stdout", new=StringIO()) as fake_out,
+    ):
+        describe(var_path="pinjected.test_package.child.module1.test_runnable")
 
-            output = fake_out.getvalue()
-            assert "Dependency Graph Description" in output
+        output = fake_out.getvalue()
+        assert "Dependency Graph Description" in output
 
 
 @injected

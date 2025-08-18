@@ -115,7 +115,7 @@ def test_command_visibility_in_module():
         assert callable(main_impl.run), "The 'run' command should be callable"
         assert callable(main_impl.describe), "The 'describe' command should be callable"
 
-        main_module = importlib.import_module("pinjected.__main__")
+        importlib.import_module("pinjected.__main__")
     except ImportError as e:
         pytest.fail(f"Failed to import pinjected module: {e}")
     except Exception as e:

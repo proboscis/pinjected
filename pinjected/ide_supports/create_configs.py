@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from beartype import beartype
-from returns.maybe import Maybe, Some
+from returns.maybe import Maybe
 from returns.result import Success, safe
 
 import pinjected
@@ -17,7 +17,6 @@ import pinjected.global_configs
 from pinjected import Design, Designed, Injected, design, injected, instance
 from pinjected.di.injected import InjectedFromFunction, PartialInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
-from pinjected.di.metadata.location_data import ModuleVarLocation
 from pinjected.graph_inspection import DIGraphHelper
 from pinjected.helper_structure import (
     IdeaRunConfiguration,
@@ -185,7 +184,7 @@ def list_completions(default_design_paths: list[str]):
         return dict(
             name=key,
             description=f"injected {key}",  # the type text
-            tail=f"",  # a function signature
+            tail="",  # a function signature
         )
 
     # so, I want to extract the return type, and the function signature.
@@ -200,7 +199,11 @@ def list_completions(default_design_paths: list[str]):
 
 @instance
 def design_metadata(default_design_paths: list[str]):
-    d: Design = ModuleVarPath(default_design_paths[0]).load()
+    from pinjected.module_var_path import ModuleVarPath as MVPath
+    from pinjected.di.metadata.location_data import ModuleVarLocation as MVLocation
+    from returns.maybe import Some
+
+    d: Design = MVPath(default_design_paths[0]).load()
     # we load design, so we need to be careful with not to running things...
     """
     protocol->
@@ -218,21 +221,27 @@ def design_metadata(default_design_paths: list[str]):
     metas = []
     for k, bind in helper.total_bindings().items():
         k: IBindKey
-        match bind.metadata.bind(lambda m: m.code_location):
-            case Some(ModuleVarPath(qualified_name)):
-                metas.append(
-                    dict(
-                        key=k.ide_hint_string(),
-                        location=dict(type="path", value=qualified_name),
+        location_maybe = bind.metadata.bind(lambda m: m.code_location)
+        if isinstance(location_maybe, Some):
+            location = location_maybe.value_or(None)
+            if location is not None:
+                if isinstance(location, MVPath):
+                    metas.append(
+                        dict(
+                            key=k.ide_hint_string(),
+                            location=dict(type="path", value=location.path),
+                        )
                     )
-                )
-            case Some(ModuleVarLocation(fp, line, col)):
-                metas.append(
-                    dict(
-                        key=k.ide_hint_string(),
-                        location=dict(type="coordinates", value=f"{fp}:{line}:{col}"),
+                elif isinstance(location, MVLocation):
+                    metas.append(
+                        dict(
+                            key=k.ide_hint_string(),
+                            location=dict(
+                                type="coordinates",
+                                value=f"{location.path}:{location.line}:{location.column}",
+                            ),
+                        )
                     )
-                )
     logger.info(f"metas:{metas}")
     data_str = json.dumps(metas)
     data_str = "<pinjected>" + data_str + "</pinjected>"
@@ -252,7 +261,7 @@ IdeaConfigCreator = Callable[[ModuleVarSpec], list[IdeaRunConfiguration]]
 
 
 @injected
-def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dict):  # noqa: C901, PLR0912
+def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dict):
     args = None
     match tgt.var, meta:
         case (_, Success({"kind": "callable"})):
@@ -280,7 +289,7 @@ def extract_args_for_runnable(logger, /, tgt: ModuleVarSpec, ddp: str, meta: dic
 
 
 @injected
-def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
+def injected_to_idea_configs(
     runner_script_path: str,
     interpreter_path: str,
     default_design_paths: list[str],
@@ -364,6 +373,37 @@ def injected_to_idea_configs(  # noqa: C901, PLR0912, PLR0915
             results[name].append(IdeaRunConfiguration(**config))
             results[name].append(IdeaRunConfiguration(**viz_config))
             results[name].append(IdeaRunConfiguration(**describe_config))
+
+            # Add describe_json config
+            describe_json_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["describe-json"] + args[1:],
+                "name": f"describe_json {name}",
+            }
+            results[name].append(IdeaRunConfiguration(**describe_json_config))
+
+            # Add trace_key config - trace the specific key binding
+            trace_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["trace-key", name] + args[1:],
+                "name": f"trace {name}",
+            }
+            results[name].append(IdeaRunConfiguration(**trace_config))
+
+            # Add list config - list all IProxy objects in the module
+            module_path = tgt.var_path.rsplit(".", 1)[0]
+            list_config = {
+                "script_path": __main__.__file__,
+                "interpreter_path": interpreter_path,
+                "working_dir": default_working_dir.value_or(os.getcwd()),
+                "arguments": ["list", module_path],
+                "name": f"list module {module_path.split('.')[-1]}",
+            }
+            results[name].append(IdeaRunConfiguration(**list_config))
         else:
             # NOTE: __runnable_metadata__ is deprecated. @instance decorated functions
             # don't automatically get this metadata anymore, which is why they're skipped.

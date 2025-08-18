@@ -9,7 +9,17 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from threading import Lock, RLock
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    # These types are used only in type annotations
+    class RemoteInterpreterFactory:
+        def create(self, num_cpus: int): ...
+
+    class Var:
+        def __getitem__(self, item): ...
+        def fetch(self): ...
+
 
 import cloudpickle
 from frozendict import frozendict
@@ -89,7 +99,7 @@ class ProtocolWrappedDict:
         del self.cache[self.protocol.encode_key(key)]
 
     def keys(self):
-        return [self.protocol.decode_key(s) for s in self.cache.keys()]
+        return [self.protocol.decode_key(s) for s in self.cache.keys()]  # noqa: SIM118
 
     def items(self):
         return [(self.protocol.decode_key(k), v) for k, v in self.cache.items()]
@@ -115,7 +125,7 @@ class CachedFunction:
         # funcの引数が*varargs（可変長引数）のみを持つことを確認
         assert (
             len(sig.parameters) == 1
-            and list(sig.parameters.values())[0].kind
+            and list(sig.parameters.values())[0].kind  # noqa: RUF015
             == inspect.Parameter.VAR_POSITIONAL
         ), f"func must have only *args parameter, but got {sig}"
 
@@ -174,7 +184,7 @@ class CachedFunction:
             return self.cache_locks[key]
 
     def keys(self):
-        return [self.protocol.decode_key(s) for s in self.cache.keys()]
+        return [self.protocol.decode_key(s) for s in self.cache.keys()]  # noqa: SIM118
 
     def __delitem__(self, key):
         key = self.ensure_key_type(key)
@@ -385,7 +395,7 @@ class CacheNewValueValidationFailure(Exception):
 class AsyncCachedFunction:
     cache: dict
     func: Callable
-    en_async: "func -> async_func" = field(default=no_change)
+    en_async: Callable = field(default=no_change)  # func -> async_func converter
     value_serializer: Callable[[Any], bytes] | None = field(default=None)
     value_deserializer: Callable[[bytes], Any] | None = field(default=None)
     # key_serializer: Callable[[Any], str] = field(default=encode_base64_cloudpickle_str)
@@ -416,9 +426,9 @@ class AsyncCachedFunction:
     async def _load_value(self, key):
         def impl():
             decoder = self.value_deserializer or (lambda x: x)
-            start = datetime.datetime.now()
+            datetime.datetime.now()
             res = decoder(self.cache[key])
-            end = datetime.datetime.now()
+            datetime.datetime.now()
             # logger.debug(f"cache load took {(end - start).total_seconds()} seconds")
             return res
 
@@ -501,7 +511,7 @@ class AsyncCachedFunction:
                 return result
 
     def keys(self):
-        return [self.decode_key(s) for s in self.cache.keys()]
+        return [self.decode_key(s) for s in self.cache.keys()]  # noqa: SIM118
 
     def decode_key(self, key: str):
         if self.key_deserializer is None:

@@ -1,7 +1,10 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from pinjected.v2.keys import IBindKey
+
+if TYPE_CHECKING:
+    from pinjected.v2.async_resolver import AsyncResolver
 
 
 @dataclass

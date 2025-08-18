@@ -58,7 +58,7 @@ def test_await_op():
 
 def test_injected_dict():
     async def y_provider():
-        return f"y"
+        return "y"
 
     async def use_x(x):
         return f"used{x}"
@@ -96,7 +96,7 @@ def test_injected():
 
     # logger.opt(colors=True,ansi=True)
     async def provide_x():
-        logger.info(f"provide_x called.")
+        logger.info("provide_x called.")
         return "x"
 
     bound_x = Injected.bind(provide_x)
@@ -123,8 +123,12 @@ def test_injected():
 
 
 def test_lambda_as_provider():
-    provide_x = lambda: "x"
-    provide_y = lambda x: f"y{x}"
+    def provide_x():
+        return "x"
+
+    def provide_y(x):
+        return f"y{x}"
+
     d = design(x=Injected.bind(provide_x), y=Injected.bind(provide_y))
     g = d.to_graph()
     # assert Injected.bind(provide_y,x=provide_x).dependencies() == set()

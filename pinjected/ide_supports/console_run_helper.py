@@ -18,7 +18,7 @@ def main():
 @click.argument("script_path", type=click.Path(exists=True))
 @click.argument("func_name")
 def extract_func_source_and_imports(script_path: str, func_name: str):
-    func_and_imports = extract_func_source_and_imports_dict(func_name, script_path)
+    func_and_imports = extract_func_source_and_imports_dict(script_path)
 
     # Prepare the data containing the requested function source and imports
     data = {
@@ -214,7 +214,7 @@ __graph__[{target_name}]
 
 @injected
 def test_target_function():
-    print(f"hello")
+    print("hello")
 
 
 @contextmanager

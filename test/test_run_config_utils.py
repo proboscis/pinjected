@@ -25,7 +25,7 @@ async def test_create_configurations():
 
     # Print diagnostic information for the new method
     print(f"Method trace count: {len(mc.trace)}")
-    print(f"Method trace paths:")
+    print("Method trace paths:")
     for i, var in enumerate(mc.trace):
         print(f"  {i}. {var.var_path}")
 

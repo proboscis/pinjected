@@ -170,3 +170,170 @@ async def test_create_configurations_with_design():
 
 # Test comparing legacy and new methods removed since __meta_design__ is deprecated
 # and a_gather_from_path is also deprecated
+
+
+class TestHelperStructureMissingCoverage:
+    """Tests for missing coverage in helper_structure.py."""
+
+    @pytest.mark.asyncio
+    async def test_a_resolve_with_delegated_var_type(self):
+        """Test _a_resolve to cover DelegatedVar isinstance path."""
+        from pinjected.helper_structure import _a_resolve
+        from pinjected.di.proxiable import DelegatedVar
+        from pinjected import injected
+        from unittest.mock import Mock, AsyncMock, patch
+
+        # Create a simple injected function
+        @injected
+        def sample_func():
+            return "sample_value"
+
+        # Mock the whole flow
+        with patch("pinjected.helper_structure.AsyncResolver") as mock_resolver_cls:
+            # Mock the resolver instance
+            mock_resolver = AsyncMock()
+            mock_resolver.provide = AsyncMock(return_value="resolved_value")
+            mock_resolver_cls.return_value = mock_resolver
+
+            # Create DelegatedVar with mocked context
+            mock_context = Mock()
+            delegated = DelegatedVar(sample_func, mock_context)
+
+            # Test _a_resolve with DelegatedVar
+            result = await _a_resolve(delegated)
+
+            # Verify resolver was created and used
+            mock_resolver_cls.assert_called_once()
+            mock_resolver.provide.assert_called_once_with(delegated)
+            assert result == "resolved_value"
+
+    @pytest.mark.asyncio
+    async def test_a_resolve_with_injected(self):
+        """Test _a_resolve with Injected."""
+        from pinjected.di.injected import InjectedPure
+        from pinjected.helper_structure import _a_resolve
+
+        # Create an InjectedPure
+        injected = InjectedPure("test_value")
+
+        # Test _a_resolve with Injected
+        result = await _a_resolve(injected)
+        assert result == "test_value"
+
+    @pytest.mark.asyncio
+    async def test_a_resolve_with_regular_value(self):
+        """Test _a_resolve with regular value."""
+        from pinjected.helper_structure import _a_resolve
+
+        # Test with regular value
+        result = await _a_resolve(42)
+        assert result == 42
+
+        # Test with string
+        result = await _a_resolve("test")
+        assert result == "test"
+
+    @pytest.mark.asyncio
+    async def test_a_gather_from_path_deprecated(self):
+        """Test deprecated a_gather_from_path method."""
+        from pinjected.helper_structure import MetaContext
+        import warnings
+
+        test_file = Path(__file__).parent / "test_package/child/module1.py"
+
+        # Test that deprecation warning is raised
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            mc = await MetaContext.a_gather_from_path(test_file)
+
+            # Check that a deprecation warning was issued
+            assert len(w) >= 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "MetaContext.a_gather_from_path is deprecated" in str(w[0].message)
+
+            # The method should still work
+            assert mc is not None
+            assert hasattr(mc, "trace")
+            assert hasattr(mc, "accumulated")
+
+    @pytest.mark.asyncio
+    async def test_spec_trace_a_gather_from_path(self):
+        """Test SpecTrace.a_gather_from_path method."""
+        from pinjected.helper_structure import SpecTrace
+        from pinjected.di.design_spec.protocols import DesignSpec
+
+        # Create a test module with __design_spec__
+        test_code = """
+from pinjected.di.design_spec.impl import DesignSpecImpl, BindSpecImpl
+from pinjected.v2.keys import StrBindKey
+
+__design_spec__ = DesignSpecImpl(specs={
+    StrBindKey("test_key"): BindSpecImpl()
+})
+"""
+
+        # Create a temporary test file
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_code)
+            temp_path = Path(f.name)
+
+        try:
+            # Test SpecTrace.a_gather_from_path
+            spec_trace = await SpecTrace.a_gather_from_path(temp_path)
+
+            assert spec_trace is not None
+            assert isinstance(spec_trace.trace, list)
+            assert isinstance(spec_trace.accumulated, DesignSpec)
+        finally:
+            # Clean up
+            temp_path.unlink()
+
+    def test_idea_run_configuration(self):
+        """Test IdeaRunConfiguration dataclass."""
+        from pinjected.helper_structure import IdeaRunConfiguration
+
+        config = IdeaRunConfiguration(
+            name="test_config",
+            script_path="/path/to/script.py",
+            interpreter_path="/usr/bin/python",
+            arguments=["--arg1", "value1"],
+            working_dir="/working/dir",
+        )
+
+        assert config.name == "test_config"
+        assert config.script_path == "/path/to/script.py"
+        assert config.interpreter_path == "/usr/bin/python"
+        assert config.arguments == ["--arg1", "value1"]
+        assert config.working_dir == "/working/dir"
+
+    def test_idea_run_configurations(self):
+        """Test IdeaRunConfigurations dataclass."""
+        from pinjected.helper_structure import (
+            IdeaRunConfiguration,
+            IdeaRunConfigurations,
+        )
+
+        config1 = IdeaRunConfiguration(
+            name="config1",
+            script_path="/script1.py",
+            interpreter_path="/usr/bin/python",
+            arguments=[],
+            working_dir="/",
+        )
+
+        config2 = IdeaRunConfiguration(
+            name="config2",
+            script_path="/script2.py",
+            interpreter_path="/usr/bin/python",
+            arguments=["--test"],
+            working_dir="/",
+        )
+
+        configs = IdeaRunConfigurations(configs={"test": [config1, config2]})
+
+        assert "test" in configs.configs
+        assert len(configs.configs["test"]) == 2
+        assert configs.configs["test"][0].name == "config1"
+        assert configs.configs["test"][1].name == "config2"

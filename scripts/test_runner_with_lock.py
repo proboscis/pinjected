@@ -62,157 +62,80 @@ class PytestLockRunner:
 
                 time.sleep(0.5)
 
-    def _run_with_lock(self, cmd, cwd):
-        acquired = False
-        start_time = time.time()
-        wait_message_shown = False
-        while not acquired:
-            try:
-                with self.lock.acquire(timeout=0.1):
-                    acquired = True
-                    logger.info("Lock acquired, running pytest...")
-                    result = subprocess.run(cmd, cwd=cwd)
-                    return result.returncode
-            except Timeout:
-                if not wait_message_shown:
-                    logger.warning(
-                        "⏳ Another pytest instance is currently running. Waiting for it to complete..."
-                    )
-                    wait_message_shown = True
-                elapsed = time.time() - start_time
-                if elapsed > 5 and int(elapsed) % 5 == 0:
-                    logger.info(f"Still waiting... ({int(elapsed)}s elapsed)")
-                time.sleep(0.5)
-
-    def _sync_all_packages(self):
-        logger.info("Syncing all packages...")
-        subprocess.run(
-            ["uv", "sync", "--all-packages"], cwd=self.project_root, check=True
-        )
-
-    def _test_main_package(self):
-        logger.info("\nTesting main pinjected package...")
-        cmd = [
-            "uv",
-            "run",
-            "pytest",
-            "test",
-            "pinjected/test",
-            "pinjected/tests",
-        ]
-        rc = self._run_with_lock(cmd, self.project_root)
-        if rc not in [0, 5]:
-            return rc
-        if rc == 5:
-            logger.info("  No tests found in main package")
-        return 0
-
-    def _iter_testable_packages(self):
-        packages_dir = self.project_root / "packages"
-        for pkg_path in packages_dir.iterdir():
-            if not pkg_path.is_dir():
-                continue
-            pkg_name = pkg_path.name
-            if pkg_name == "pinjected-linter":
-                logger.info(f"Skipping {pkg_name} (tests hanging issue)...")
-                continue
-            if not (pkg_path / "tests").exists() and not (pkg_path / "test").exists():
-                continue
-            yield pkg_name, pkg_path
-
-    def _test_subpackage(self, pkg_name, pkg_path):
-        logger.info(f"Testing {pkg_name}...")
-        cmd = ["uv", "run", "pytest"]
-        rc = self._run_with_lock(cmd, pkg_path)
-        if rc not in [0, 5]:
-            return rc
-        if rc == 5:
-            logger.info(f"  No tests found in {pkg_name}")
-        logger.info("")
-        return 0
-
-    def _run_with_lock(self, cmd, cwd):
-        acquired = False
-        start_time = time.time()
-        wait_message_shown = False
-        while not acquired:
-            try:
-                with self.lock.acquire(timeout=0.1):
-                    acquired = True
-                    logger.info("Lock acquired, running pytest...")
-                    result = subprocess.run(cmd, cwd=cwd)
-                    return result.returncode
-            except Timeout:
-                if not wait_message_shown:
-                    logger.warning(
-                        "⏳ Another pytest instance is currently running. Waiting for it to complete..."
-                    )
-                    wait_message_shown = True
-                elapsed = time.time() - start_time
-                if elapsed > 5 and int(elapsed) % 5 == 0:
-                    logger.info(f"Still waiting... ({int(elapsed)}s elapsed)")
-                time.sleep(0.5)
-
-    def _sync_all_packages(self):
-        logger.info("Syncing all packages...")
-        subprocess.run(
-            ["uv", "sync", "--all-packages"], cwd=self.project_root, check=True
-        )
-
-    def _test_main_package(self):
-        logger.info("\nTesting main pinjected package...")
-        cmd = [
-            "uv",
-            "run",
-            "pytest",
-            "test",
-            "pinjected/test",
-            "pinjected/tests",
-        ]
-        rc = self._run_with_lock(cmd, self.project_root)
-        if rc not in [0, 5]:
-            return rc
-        if rc == 5:
-            logger.info("  No tests found in main package")
-        return 0
-
-    def _iter_testable_packages(self):
-        packages_dir = self.project_root / "packages"
-        for pkg_path in packages_dir.iterdir():
-            if not pkg_path.is_dir():
-                continue
-            pkg_name = pkg_path.name
-            if pkg_name == "pinjected-linter":
-                logger.info(f"Skipping {pkg_name} (tests hanging issue)...")
-                continue
-            if not (pkg_path / "tests").exists() and not (pkg_path / "test").exists():
-                continue
-            yield pkg_name, pkg_path
-
-    def _test_subpackage(self, pkg_name, pkg_path):
-        logger.info(f"Testing {pkg_name}...")
-        cmd = ["uv", "run", "pytest"]
-        rc = self._run_with_lock(cmd, pkg_path)
-        if rc not in [0, 5]:
-            return rc
-        if rc == 5:
-            logger.info(f"  No tests found in {pkg_name}")
-        logger.info("")
-        return 0
-
     def run_make_test_logic(self):
+        """Execute the make test logic with locking for each pytest invocation."""
         logger.info("Running make test logic with file locking...")
-        self._sync_all_packages()
 
-        rc = self._test_main_package()
-        if rc != 0:
-            return rc
+        # Sync all packages first
+        logger.info("Syncing all packages...")
+        subprocess.run(
+            ["uv", "sync", "--all-packages"], cwd=self.project_root, check=True
+        )
 
+        # Test main pinjected package
+        logger.info("\nTesting main pinjected package...")
+        with self.lock.acquire():
+            result = subprocess.run(
+                ["uv", "run", "pytest", "test", "pinjected/test", "pinjected/tests"],
+                cwd=self.project_root,
+            )
+            if result.returncode not in [0, 5]:  # 5 = no tests found
+                return result.returncode
+            elif result.returncode == 5:
+                logger.info("  No tests found in main package")
+
+        # Test subpackages
         logger.info("\nTesting subpackages...")
-        for pkg_name, pkg_path in self._iter_testable_packages():
-            rc = self._test_subpackage(pkg_name, pkg_path)
-            if rc != 0:
-                return rc
+        packages_dir = self.project_root / "packages"
+
+        for pkg_path in packages_dir.iterdir():
+            if not pkg_path.is_dir():
+                continue
+
+            pkg_name = pkg_path.name
+
+            # Check if package has tests
+            has_tests = (pkg_path / "tests").exists() or (pkg_path / "test").exists()
+            if not has_tests:
+                continue
+
+            # Skip pinjected-linter as noted in Makefile
+            if pkg_name == "pinjected-linter":
+                logger.info(f"Skipping {pkg_name} (tests hanging issue)...")
+                continue
+
+            logger.info(f"Testing {pkg_name}...")
+
+            # Acquire lock for each package test
+            wait_message_shown = False
+            acquired = False
+            start_time = time.time()
+
+            while not acquired:
+                try:
+                    with self.lock.acquire(timeout=0.1):
+                        acquired = True
+                        result = subprocess.run(["uv", "run", "pytest"], cwd=pkg_path)
+                        if result.returncode not in [0, 5]:
+                            return result.returncode
+                        elif result.returncode == 5:
+                            logger.info(f"  No tests found in {pkg_name}")
+
+                except Timeout:
+                    if not wait_message_shown:
+                        logger.warning(
+                            f"⏳ Waiting for another pytest instance to complete "
+                            f"before testing {pkg_name}..."
+                        )
+                        wait_message_shown = True
+
+                    elapsed = time.time() - start_time
+                    if elapsed > 5 and int(elapsed) % 5 == 0:
+                        logger.info(f"Still waiting... ({int(elapsed)}s elapsed)")
+
+                    time.sleep(0.5)
+
+            logger.info("")
 
         logger.success("✓ All tests passed")
         return 0

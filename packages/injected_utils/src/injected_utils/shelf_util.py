@@ -4,10 +4,10 @@ from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from filelock import FileLock
-
-T = TypeVar("T")
 from loguru import logger
 from returns.maybe import Maybe, Nothing, Some
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -32,59 +32,54 @@ class MyShelf(Generic[T]):
     def __getitem__(self, item):
         assert isinstance(item, str), f"key must be str, but got {item}"
         # logger.debug(f"waiting lock for getitem")
-        with self.lock:
+        with self.lock, shelve.open(self.path) as shelf:
             # logger.debug(f"obtained lock for getitem")
-            with shelve.open(self.path) as shelf:
-                try:
-                    value = self.deserializer.value_or(lambda x: x)(shelf[item])
-                    # logger.debug(f"value of {item} is {value}")
-                    return value
-                except KeyError as e:
-                    logger.warning(
-                        f"failed to load value of {item}, due to {e}, from {self.path}"
-                    )
-                    raise e
-                except Exception as e:
-                    logger.error(
-                        f"failed to load value of {item}, due to {type(e), e}, from {self.path}"
-                    )
-                    raise e
+            try:
+                value = self.deserializer.value_or(lambda x: x)(shelf[item])
+                # logger.debug(f"value of {item} is {value}")
+                return value
+            except KeyError as e:
+                logger.warning(
+                    f"failed to load value of {item}, due to {e}, from {self.path}"
+                )
+                raise e
+            except Exception as e:
+                logger.error(
+                    f"failed to load value of {item}, due to {type(e), e}, from {self.path}"
+                )
+                raise e
         # logger.debug(f"released lock for getitem")
 
     def __setitem__(self, key, value):
         assert isinstance(key, str), f"key must be str, but got {key}"
         # logger.debug(f"waiting lock for setitem")
-        with self.lock:
+        with self.lock, shelve.open(self.path) as shelf:
             # logger.debug(f"obtained lock for setitem")
-            with shelve.open(self.path) as shelf:
-                to_save = self.serializer.value_or(lambda x: x)(value)
-                shelf[key] = to_save
-                # make sure the data is deserializeable
-                # but it seems this is done okey...
-                self.deserializer.value_or(lambda x: x)(shelf[key])
+            to_save = self.serializer.value_or(lambda x: x)(value)
+            shelf[key] = to_save
+            # make sure the data is deserializeable
+            # but it seems this is done okey...
+            self.deserializer.value_or(lambda x: x)(shelf[key])
         # logger.debug(f"released lock for setitem")
 
     def __contains__(self, item):
         assert isinstance(item, str), f"item must be str, but got {item}"
         # logger.debug(f"waiting lock for contains")
-        with self.lock:
+        with self.lock, shelve.open(self.path) as shelf:
             # logger.debug(f"obtained lock for contains")
-            with shelve.open(self.path) as shelf:
-                return item in shelf
+            return item in shelf
 
     def keys(self):
-        with self.lock:
-            with shelve.open(self.path) as shelf:
-                for key in shelf.keys():
-                    yield key
+        with self.lock, shelve.open(self.path) as shelf:
+            for key in shelf:
+                yield key
 
     def __delitem__(self, key):
         assert isinstance(key, str), f"key must be str, but got {key}"
         # logger.debug(f"waiting lock for delitem")
-        with self.lock:
+        with self.lock, shelve.open(self.path) as shelf:
             # logger.debug(f"obtained lock for delitem")
-            with shelve.open(self.path) as shelf:
-                del shelf[key]
+            del shelf[key]
         # logger.debug(f"released lock for delitem")
 
     def items(self):
@@ -105,7 +100,6 @@ class MyShelf(Generic[T]):
         return Nothing
 
     def clear(self):
-        with self.lock:
+        with self.lock, shelve.open(self.path) as shelf:
             # remove the file
-            with shelve.open(self.path) as shelf:
-                shelf.clear()
+            shelf.clear()

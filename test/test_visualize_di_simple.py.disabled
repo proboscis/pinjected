@@ -1,0 +1,278 @@
+"""Simple tests for visualize_di.py module."""
+
+import pytest
+from unittest.mock import Mock, patch
+from pathlib import Path
+
+from pinjected.visualize_di import (
+    DIGraph,
+    get_file_mappings,
+    DIGraphException,
+    create_node_graph_structure
+)
+from pinjected.di.design_interface import Design
+from pinjected.v2.keys import StrBindKey
+from pinjected.v2.binds import IBind
+from pinjected.di.injected import Injected
+from returns.maybe import Some, Nothing
+
+
+class TestDIGraphException:
+    """Test the DIGraphException class."""
+    
+    def test_digraph_exception(self):
+        """Test DIGraphException creation."""
+        exception = DIGraphException("Test error")
+        
+        assert isinstance(exception, Exception)
+        assert str(exception) == "Test error"
+
+
+class TestGetFileMappings:
+    """Test the get_file_mappings function."""
+    
+    @patch('pathlib.Path.glob')
+    def test_get_file_mappings_py_files(self, mock_glob):
+        """Test get_file_mappings with Python files."""
+        # Mock glob to return some files
+        mock_files = [
+            Mock(spec=Path, stem="module1", suffix=".py"),
+            Mock(spec=Path, stem="module2", suffix=".py"),
+            Mock(spec=Path, stem="__init__", suffix=".py")  # Should be skipped
+        ]
+        mock_glob.return_value = mock_files
+        
+        result = get_file_mappings()
+        
+        # Should have 2 mappings (excluding __init__)
+        assert len(result) == 2
+        assert "module1" in result
+        assert "module2" in result
+        assert "__init__" not in result
+    
+    @patch('pathlib.Path.glob')
+    def test_get_file_mappings_pyi_files(self, mock_glob):
+        """Test get_file_mappings with .pyi stub files."""
+        # First call returns no .py files, second returns .pyi files
+        mock_glob.side_effect = [
+            [],  # No .py files
+            [Mock(spec=Path, stem="stub_module", suffix=".pyi")]
+        ]
+        
+        result = get_file_mappings()
+        
+        assert len(result) == 1
+        assert "stub_module" in result
+    
+    @patch('pathlib.Path.glob')
+    def test_get_file_mappings_handles_duplicates(self, mock_glob):
+        """Test that duplicates are handled."""
+        mock_files = [
+            Mock(spec=Path, stem="module", suffix=".py"),
+            Mock(spec=Path, stem="module", suffix=".py")  # Duplicate
+        ]
+        mock_glob.return_value = mock_files
+        
+        result = get_file_mappings()
+        
+        # Should only have one entry
+        assert len(result) == 1
+        assert "module" in result
+
+
+class TestCreateNodeGraphStructure:
+    """Test the create_node_graph_structure function."""
+    
+    def test_create_node_graph_structure_simple(self):
+        """Test creating node graph structure with simple dependencies."""
+        dependencies = {
+            "A": ["B", "C"],
+            "B": ["D"],
+            "C": [],
+            "D": []
+        }
+        
+        nodes, edges = create_node_graph_structure(dependencies)
+        
+        # Check nodes
+        assert nodes == ["A", "B", "C", "D"]
+        
+        # Check edges (A depends on B and C, B depends on D)
+        assert ("B", "A") in edges
+        assert ("C", "A") in edges
+        assert ("D", "B") in edges
+        assert len(edges) == 3
+    
+    def test_create_node_graph_structure_no_deps(self):
+        """Test with no dependencies."""
+        dependencies = {
+            "A": [],
+            "B": [],
+            "C": []
+        }
+        
+        nodes, edges = create_node_graph_structure(dependencies)
+        
+        assert nodes == ["A", "B", "C"]
+        assert edges == []
+    
+    def test_create_node_graph_structure_self_reference(self):
+        """Test that self-references are ignored."""
+        dependencies = {
+            "A": ["A", "B"],  # Self-reference should be ignored
+            "B": []
+        }
+        
+        nodes, edges = create_node_graph_structure(dependencies)
+        
+        assert nodes == ["A", "B"]
+        assert edges == [("B", "A")]  # Only B -> A edge
+
+
+class TestDIGraph:
+    """Test the DIGraph class."""
+    
+    def test_digraph_creation(self):
+        """Test creating DIGraph instance."""
+        mock_design = Mock(spec=Design)
+        mock_design.bindings = {}
+        
+        graph = DIGraph(mock_design)
+        
+        assert graph.d == mock_design
+        assert hasattr(graph, 'mappings')
+        assert hasattr(graph, 'total_bindings')
+    
+    def test_digraph_getitem(self):
+        """Test __getitem__ method."""
+        mock_design = Mock(spec=Design)
+        mock_injected = Mock(spec=Injected)
+        
+        with patch.object(DIGraph, 'mappings', {"test": mock_injected}):
+            graph = DIGraph(mock_design)
+            
+            result = graph["test"]
+            assert result == mock_injected
+    
+    def test_digraph_getitem_missing(self):
+        """Test __getitem__ with missing key."""
+        mock_design = Mock(spec=Design)
+        
+        with patch.object(DIGraph, 'mappings', {}):
+            graph = DIGraph(mock_design)
+            
+            with pytest.raises(KeyError):
+                _ = graph["missing"]
+    
+    def test_get_metadata_with_bind(self):
+        """Test get_metadata method with IBind."""
+        mock_design = Mock(spec=Design)
+        
+        # Create mock bind with metadata
+        mock_bind = Mock(spec=IBind)
+        mock_metadata = Mock()
+        mock_bind.metadata = Some(mock_metadata)
+        
+        with patch.object(DIGraph, 'total_bindings', {StrBindKey("test"): mock_bind}):
+            graph = DIGraph(mock_design)
+            
+            result = graph.get_metadata("test")
+            assert result == Some(mock_metadata)
+    
+    def test_get_metadata_no_metadata(self):
+        """Test get_metadata when bind has no metadata."""
+        mock_design = Mock(spec=Design)
+        
+        mock_bind = Mock(spec=IBind)
+        mock_bind.metadata = Nothing
+        
+        with patch.object(DIGraph, 'total_bindings', {StrBindKey("test"): mock_bind}):
+            graph = DIGraph(mock_design)
+            
+            result = graph.get_metadata("test")
+            assert result == Nothing
+    
+    def test_get_metadata_not_ibind(self):
+        """Test get_metadata when binding is not IBind."""
+        mock_design = Mock(spec=Design)
+        
+        with patch.object(DIGraph, 'total_bindings', {StrBindKey("test"): "not_ibind"}):
+            graph = DIGraph(mock_design)
+            
+            result = graph.get_metadata("test")
+            assert result == Nothing
+    
+    def test_get_all_nodes(self):
+        """Test get_all_nodes method."""
+        mock_design = Mock(spec=Design)
+        
+        mappings = {
+            "node1": Mock(),
+            "node2": Mock(),
+            "node3": Mock()
+        }
+        
+        with patch.object(DIGraph, 'mappings', mappings):
+            graph = DIGraph(mock_design)
+            
+            nodes = graph.get_all_nodes()
+            assert set(nodes) == {"node1", "node2", "node3"}
+    
+    def test_create_node_subgraph_all_nodes(self):
+        """Test create_node_subgraph with all nodes."""
+        mock_design = Mock(spec=Design)
+        
+        # Mock mappings with dependencies
+        mock_injected1 = Mock(spec=Injected)
+        mock_injected1.static_dependencies.return_value = ["dep1"]
+        
+        mock_injected2 = Mock(spec=Injected)
+        mock_injected2.static_dependencies.return_value = []
+        
+        mappings = {
+            "node1": mock_injected1,
+            "dep1": mock_injected2
+        }
+        
+        with patch.object(DIGraph, 'mappings', mappings):
+            graph = DIGraph(mock_design)
+            
+            with patch('pinjected.visualize_di.create_node_graph_structure') as mock_create:
+                mock_create.return_value = (["node1", "dep1"], [("dep1", "node1")])
+                
+                result = graph.create_node_subgraph(["node1", "dep1"])
+                
+                assert result is not None
+                mock_create.assert_called_once()
+    
+    def test_create_node_subgraph_subset(self):
+        """Test create_node_subgraph with subset of nodes."""
+        mock_design = Mock(spec=Design)
+        
+        mappings = {
+            "node1": Mock(spec=Injected),
+            "node2": Mock(spec=Injected),
+            "node3": Mock(spec=Injected)
+        }
+        
+        # Set up dependencies
+        mappings["node1"].static_dependencies.return_value = ["node2"]
+        mappings["node2"].static_dependencies.return_value = []
+        mappings["node3"].static_dependencies.return_value = []
+        
+        with patch.object(DIGraph, 'mappings', mappings):
+            graph = DIGraph(mock_design)
+            
+            # Only include node1 and node2
+            with patch('pinjected.visualize_di.create_node_graph_structure') as mock_create:
+                mock_create.return_value = (["node1", "node2"], [("node2", "node1")])
+                
+                graph.create_node_subgraph(["node1", "node2"])
+                
+                # Verify node3 was not included
+                call_args = mock_create.call_args[0][0]
+                assert "node3" not in call_args
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

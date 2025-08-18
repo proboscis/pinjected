@@ -24,9 +24,9 @@ def get_final_args_kwargs(
     new_kwargs = {}
 
     def add_by_type(param, value):
-        if (
-            param.kind == inspect.Parameter.POSITIONAL_ONLY
-            or param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+        if param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
         ):
             # logger.info(f"add {param.name} as args")
             new_args.append(value)
@@ -120,7 +120,7 @@ class Partial(Injected):
 
     def get_modified_signature(self):
         params = self.func_sig.parameters.copy()
-        for t in self.injection_targets.keys():
+        for t in self.injection_targets:
             del params[t]
         return inspect.Signature(parameters=list(params.values()))
 
@@ -164,6 +164,44 @@ class Partial(Injected):
         return f"{self.src_function.__name__}"
 
     def __call__(self, *args, **kwargs):
+        # Import here to avoid circular imports
+        from pinjected.di.injected import _is_at_module_level, _thread_local
+        import os
+
+        # Check if we should enforce the assertion - check env var at runtime
+        if os.environ.get("PINJECTED_ENABLE_IPROXY_AST_ASSERTION", "").lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        ):
+            frame = inspect.currentframe().f_back
+            # Check if we're at module level
+            if not _is_at_module_level():
+                # Not at module level = inside some function
+                allow_creation = getattr(_thread_local, "allow_iproxy", False)
+
+                if not allow_creation:
+                    calling_func = frame.f_code.co_name if frame else "<unknown>"
+
+                    raise RuntimeError(
+                        f"Direct call to @injected function '{self.src_function.__name__}' "
+                        f"detected inside function '{calling_func}'.\n\n"
+                        f"@injected functions return IProxy objects, not actual values. "
+                        f"This is likely not what you intended.\n\n"
+                        f"Solutions:\n"
+                        f"1. If you're in an @injected function:\n"
+                        f"   Declare '{self.src_function.__name__}' as a dependency (before '/')\n\n"
+                        f"2. If you're in a regular function:\n"
+                        f"   Use a resolved value from Design/Graph instead\n\n"
+                        f"3. For advanced usage (if you really need IProxy here):\n"
+                        f"   from pinjected import allow_iproxy_creation\n"
+                        f"   with allow_iproxy_creation():\n"
+                        f"       result = {self.src_function.__name__}(...)\n\n"
+                        f"To disable this check, set environment variable:\n"
+                        f"PINJECTED_ENABLE_IPROXY_AST_ASSERTION=false"
+                    )
+
         if self.modifier is not None:
             args, kwargs, causes = self.modifier(args, kwargs)
             causes: list[Injected]

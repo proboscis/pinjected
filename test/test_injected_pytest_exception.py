@@ -54,5 +54,15 @@ def test_injected_pytest_error():
             test_func()
             pytest.fail("Expected an exception but none was raised")
         except Exception as e:
-            unwrapped = unwrap_exception_group(e)
+            # In Python 3.11+ we get native ExceptionGroup which is not CompatibleExceptionGroup
+            # So we need to manually unwrap it
+            import sys
+
+            if sys.version_info >= (3, 11) and hasattr(e, "exceptions"):
+                # Manually unwrap native ExceptionGroup
+                while hasattr(e, "exceptions") and len(e.exceptions) == 1:
+                    e = e.exceptions[0]
+                unwrapped = e
+            else:
+                unwrapped = unwrap_exception_group(e)
             assert "Test error inside injected function" in str(unwrapped)

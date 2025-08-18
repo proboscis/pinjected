@@ -11,8 +11,11 @@ def redirect_output(queue, func, *args, **kwargs):
     sys.stdout = stdout_buffer
     sys.stderr = stderr_buffer
 
+    exception_to_raise = None
     try:
         func(*args, **kwargs)
+    except Exception as e:
+        exception_to_raise = e
     finally:
         # Restore original stdout and stderr
         sys.stdout = sys.__stdout__
@@ -24,6 +27,10 @@ def redirect_output(queue, func, *args, **kwargs):
 
         # Send the captured output through the queue
         queue.put((stdout_output, stderr_output))
+
+        # Re-raise the exception if one occurred
+        if exception_to_raise:
+            raise exception_to_raise
 
 
 def capture_output(func, *args, **kwargs):

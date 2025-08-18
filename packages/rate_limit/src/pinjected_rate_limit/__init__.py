@@ -1,8 +1,5 @@
 from pathlib import Path
 
-import loguru
-
-import pinjected
 from pinjected import *
 
 __version__ = "0.1.0"
