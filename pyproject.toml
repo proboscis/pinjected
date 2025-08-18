@@ -68,8 +68,7 @@ members = [
     "packages/niji_voice",
     "packages/injected_utils",
     "packages/gcp",
-    "packages/pytest_runner",
-    "packages/pinjected-linter"
+    "packages/pytest_runner"
 ]
 
 [dependency-groups]
