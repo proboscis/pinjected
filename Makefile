@@ -29,7 +29,6 @@ setup-all:
 	cd packages/niji_voice && uv sync --group dev
 	cd packages/injected_utils && uv sync --group dev
 	cd packages/gcp && uv sync --group dev
-	cd packages/pytest_runner && uv sync --group dev
 	cd packages/pinjected-linter && uv sync --group dev
 
 test:
@@ -48,7 +47,6 @@ test-all:
 	cd packages/niji_voice && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/injected_utils && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
-	cd packages/pytest_runner && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	uv sync --group dev --all-packages
 
