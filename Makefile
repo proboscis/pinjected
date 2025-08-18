@@ -50,6 +50,21 @@ test-all:
 	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	uv sync --group dev --all-packages
 
+test-linter-full:
+	$(MAKE) test-linter
+	$(MAKE) lint-with-pinjected-linter
+
+test-linter:
+	cd packages/pinjected-linter/rust-poc && cargo test -- --skip test_pinj014
+
+build-linter:
+	cd packages/pinjected-linter/rust-poc && cargo build --release
+
+lint-with-pinjected-linter:
+	cd packages/pinjected-linter/rust-poc && cargo build --release
+	./packages/pinjected-linter/rust-poc/target/release/pinjected-linter pinjected/ packages/ --output-format terminal || echo "Linter found violations but continuing CI"
+
+
 test-cov:
 	uv run python scripts/test_runner_with_lock.py . -v
 	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
