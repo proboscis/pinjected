@@ -50,7 +50,20 @@ test-all:
 	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/pytest_runner && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	$(MAKE) test-linter
+	$(MAKE) lint-with-pinjected-linter
 	uv sync --group dev --all-packages
+
+test-linter:
+	cd packages/pinjected-linter/rust-poc && cargo test
+
+build-linter:
+	cd packages/pinjected-linter/rust-poc && cargo build --release
+
+lint-with-pinjected-linter:
+	cd packages/pinjected-linter/rust-poc && cargo build --release
+	./packages/pinjected-linter/rust-poc/target/release/pinjected-linter pinjected/ packages/ --output-format terminal
+
 
 test-cov:
 	uv run python scripts/test_runner_with_lock.py . -v

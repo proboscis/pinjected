@@ -21,6 +21,18 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v3
 
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y pkg-config libssl-dev
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
       - name: Remove uv.lock
         run: rm -f uv.lock
 
