@@ -67,23 +67,24 @@ addopts = "--ignore=packages/pinjected-linter/rust-poc"
 
 [tool.uv.workspace]
 members = [
-    "packages/openai_support",
     "packages/anthropic",
-    "packages/wandb_util",
+    "packages/automation",
     "packages/error_reports",
-    "packages/reviewer",
-    "packages/rate_limit",
-    "packages/niji_voice",
-    "packages/injected_utils",
     "packages/gcp",
-    "packages/pinjected-linter"
+    "packages/injected_utils",
+    "packages/mlflow",
+    "packages/niji_voice",
+    "packages/onepassword",
+    "packages/openai_support",
+    "packages/rate_limit",
+    "packages/reviewer",
+    "packages/wandb_util",
 ]
 
 [dependency-groups]
 dev = [
     "pinjected-reviewer",
     "pinjected-error-reports",
-    "pinjected-linter",
     "ruff>=0.11.7",
     "flake8>=7.0.0",
     "flake8-cognitive-complexity>=0.1.0",
@@ -102,7 +103,6 @@ pinjected-rate-limit = { workspace = true }
 pinjected-niji-voice = { workspace = true }
 injected-utils = { workspace = true }
 pinjected-openai = { workspace = true }
-pinjected-linter = { workspace = true }
 [tool.ruff]
 target-version = "py310"
 line-length = 88
