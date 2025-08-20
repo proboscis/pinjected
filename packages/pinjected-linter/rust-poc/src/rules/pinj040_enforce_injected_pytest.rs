@@ -67,7 +67,7 @@ impl EnforceInjectedPytestRule {
     /// Create suggestion message
     fn create_suggestion_message(&self, func_name: &str) -> String {
         format!(
-            "Test function '{}' should use @injected_pytest decorator to properly handle dependency injection in pytest. Add @injected_pytest decorator before the function definition. Import it with: 'from pinjected.test import injected_pytest' or 'from pinjected.test.injected_pytest import injected_pytest'. Example: @injected_pytest def {}(...): ...",
+            "Test function '{}' should use @injected_pytest with a test design to inject dependencies.\n\nExample:\nfrom pinjected import design\nfrom pinjected.test import injected_pytest\n\ndi = design(x=...)\n\n@injected_pytest(di)\ndef {}(x): ...\n\nImports:\n- from pinjected import design\n- from pinjected.test import injected_pytest",
             func_name, func_name
         )
     }

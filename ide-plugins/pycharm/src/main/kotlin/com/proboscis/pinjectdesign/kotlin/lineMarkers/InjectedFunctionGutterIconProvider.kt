@@ -1,6 +1,6 @@
 package com.proboscis.pinjectdesign.kotlin.lineMarkers
 
-import com.proboscis.pinjectdesign.kotlin.util.GutterActionUtil
+import com.proboscis.pinjectdesign.kotlin.util.GutterActionUtilEnhanced
 import com.proboscis.pinjectdesign.kotlin.util.PinjectedDetectionUtil
 import com.intellij.codeInsight.daemon.GutterIconNavigationHandler
 import com.intellij.codeInsight.daemon.LineMarkerInfo
@@ -29,6 +29,10 @@ class InjectedFunctionGutterIconProvider : LineMarkerProvider {
         
         val targetName = PinjectedDetectionUtil.getInjectedTargetName(element)
         if (targetName != null) {
+            println("[InjectedGutterIcon] Found injected target: $targetName")
+            println("[InjectedGutterIcon] Element text: ${element.text}")
+            println("[InjectedGutterIcon] Parent: ${element.parent?.javaClass?.simpleName}")
+            
             log.debug("=== Gutter Icon Detection ===")
             log.debug("Found injected target: $targetName")
             log.debug("Element text: ${element.text}")
@@ -90,10 +94,8 @@ class InjectedFunctionGutterIconProvider : LineMarkerProvider {
             // Save all modified documents
             FileDocumentManager.getInstance().saveAllDocuments()
             
-            // Show popup with actions
-            val actions = GutterActionUtil.createActions(project, targetName)
-            log.debug("Created ${actions.size} actions for $targetName")
-            GutterActionUtil.showPopupChooser(e, actions)
+            // Show hierarchical popup with grouped actions
+            GutterActionUtilEnhanced.showHierarchicalPopup(e, project, targetName, element)
         }
     }
 }

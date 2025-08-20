@@ -12,6 +12,25 @@ from pinjected.test import injected_pytest
 from pinjected.test.injected_pytest import injected_pytest
 ```
 
+## Quick usage with a test design
+
+Although @injected_pytest is deprecated, if you are using it, this is the recommended way to inject dependencies using a design:
+
+```python
+from pinjected import design
+from pinjected.test import injected_pytest
+
+di = design(x=123)
+
+@injected_pytest(di)
+def test_x(x):
+    assert x == 123
+```
+
+Imports:
+- from pinjected import design
+- from pinjected.test import injected_pytest
+
 ## Overview
 
 The `@injected_pytest` decorator is deprecated. Use the modern pytest fixture integration with `register_fixtures_from_design` instead.

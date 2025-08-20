@@ -1,7 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
 
-use pinjected_linter::rules;
 use pinjected_linter::{lint_path, LinterOptions};
 
 fn write_file(dir: &std::path::Path, rel: &str, content: &str) {
