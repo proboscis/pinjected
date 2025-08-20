@@ -103,22 +103,69 @@ object GutterActionUtilEnhanced {
             
             if (matchingFunctions.isNotEmpty()) {
                 println("[IProxy Debug] Found ${matchingFunctions.size} matching functions for type: $iproxyType")
-                matchingFunctions.forEach { function ->
-                    // Clean up module path - remove file path prefix and extension
+                
+                // Add a header showing the count and type
+                injectedFunctionsGroup.add(object : AnAction(
+                    "Found ${matchingFunctions.size} function${if (matchingFunctions.size != 1) "s" else ""} accepting $iproxyType",
+                    "Click on a function to run it with the IProxy variable",
+                    null
+                ) {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        // Header is not clickable
+                    }
+                    
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.isEnabled = false
+                        val headerText = "<html><b>Found ${matchingFunctions.size} function${if (matchingFunctions.size != 1) "s" else ""} accepting $iproxyType</b></html>"
+                        // IMPORTANT: Use setText(text, false) to disable mnemonic processing
+                        // This prevents underscores from being consumed as mnemonics (keyboard shortcuts)
+                        // Without this, "a_func_x" would display as "afunc_x" with 'f' as the mnemonic
+                        e.presentation.setText(headerText, false)
+                    }
+                })
+                injectedFunctionsGroup.addSeparator()
+                
+                // Sort functions by module, then by name for better organization
+                val sortedFunctions = matchingFunctions.sortedWith(
+                    compareBy(
+                        { it.module.split("/").last().removeSuffix(".py") },
+                        { it.name }
+                    )
+                )
+                
+                sortedFunctions.forEach { function ->
+                    // Clean up module path - remove common prefixes and convert to Python module notation
                     val cleanModule = function.module
-                        .replace("/Users/s22625/repos/sge-hub/src/", "")
-                        .replace(".Users.s22625.repos.sge-hub.src.", "")
+                        .split("/").last()  // Get just the module name
                         .replace("/", ".")
                         .removeSuffix(".py")
-                        .removeSuffix("." + function.name)
+                    
+                    // Format the docstring for display (truncate if too long)
+                    val docstringPreview = function.docstring?.let { doc ->
+                        val cleaned = doc.trim().lines().firstOrNull()?.trim() ?: doc.trim()
+                        if (cleaned.length > 80) {
+                            cleaned.take(77) + "..."
+                        } else {
+                            cleaned
+                        }
+                    } ?: "No documentation available"
                     
                     println("[IProxy Debug] - Function: ${function.name} in ${cleanModule}")
-                    // Try different approach: disable mnemonic entirely
+                    println("[IProxy Debug]   Docstring: $docstringPreview")
+                    
+                    // Create a more informative action with rich text
                     val action = object : AnAction() {
                         init {
-                            // Set the template presentation without mnemonic
-                            templatePresentation.setText(function.name, false)
-                            templatePresentation.description = cleanModule
+                            // Create a formatted text with function name and module
+                            val displayText = "${function.name} — ${cleanModule}"
+                            // CRITICAL: Use setText(text, false) to preserve underscores in function names
+                            // The 'false' parameter disables mnemonic processing which would otherwise
+                            // treat underscores as mnemonic indicators (e.g., "a_func_x" -> "afunc_x")
+                            // This is an IntelliJ platform quirk where underscores define keyboard shortcuts
+                            templatePresentation.setText(displayText, false)
+                            
+                            // Set the description to show the docstring
+                            templatePresentation.description = docstringPreview
                         }
                         
                         override fun actionPerformed(e: AnActionEvent) {
@@ -129,8 +176,32 @@ object GutterActionUtilEnhanced {
                         
                         override fun update(e: AnActionEvent) {
                             super.update(e)
-                            // Ensure text is set without mnemonic processing
-                            e.presentation.setText(function.name, false)
+                            // Create HTML-formatted text for better display in the menu
+                            val displayText = buildString {
+                                append("<html>")
+                                append("<b>${function.name}</b>")
+                                append(" <font color='gray'>— ${cleanModule}</font>")
+                                if (function.docstring != null) {
+                                    append("<br>")
+                                    append("<font size='-1' color='#666666'>")
+                                    append(docstringPreview.replace("<", "&lt;").replace(">", "&gt;"))
+                                    append("</font>")
+                                }
+                                append("</html>")
+                            }
+                            // IMPORTANT: setText(displayText, false) - the 'false' flag is crucial!
+                            // It disables mnemonic processing to preserve underscores in function names.
+                            // IntelliJ's menu system treats underscores as mnemonic markers by default,
+                            // which would transform "test_func" into "testfunc" with 'f' as a keyboard shortcut.
+                            // HTML entities like &#95; don't work here - they display literally as text.
+                            e.presentation.setText(displayText, false)
+                            e.presentation.description = buildString {
+                                append("Module: ${function.module}\n")
+                                append("Location: ${function.filePath}:${function.lineNumber}\n")
+                                if (function.docstring != null) {
+                                    append("\nDocumentation:\n${function.docstring}")
+                                }
+                            }
                         }
                     }
                     injectedFunctionsGroup.add(action)
@@ -429,36 +500,42 @@ object GutterActionUtilEnhanced {
      */
     private fun findInjectedFunctions(project: Project, typeName: String): List<FunctionInfo> {
         return try {
-            // Auto-refresh indexer before querying (quick update)
-            println("[IProxy Debug] Auto-refreshing indexer before query...")
-            val projectRoot = project.basePath ?: "."
-            val updateCommand = listOf("pinjected-indexer", "--root", projectRoot, "update", "--quick")
-            
-            try {
-                val updateProcess = ProcessBuilder(updateCommand)
-                    .directory(java.io.File(projectRoot))
-                    .start()
+            // Auto-refresh indexer before querying (quick update) - only if indexer is available
+            val indexerPath = IProxyActionUtil.findIndexerPath()
+            if (indexerPath != null) {
+                println("[IProxy Debug] Auto-refreshing indexer before query...")
+                val projectRoot = project.basePath ?: "."
+                val updateCommand = listOf(indexerPath, "--root", projectRoot, "update", "--quick")
+                
+                try {
+                    val updateProcess = ProcessBuilder(updateCommand)
+                        .directory(java.io.File(projectRoot))
+                        .start()
+                        
+                    // Capture output for debugging
+                    val stdout = updateProcess.inputStream.bufferedReader().use { it.readText() }
+                    val stderr = updateProcess.errorStream.bufferedReader().use { it.readText() }
                     
-                // Capture output for debugging
-                val stdout = updateProcess.inputStream.bufferedReader().use { it.readText() }
-                val stderr = updateProcess.errorStream.bufferedReader().use { it.readText() }
-                
-                val completed = updateProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-                
-                if (stdout.isNotEmpty()) {
-                    println("[IProxy Debug] Auto-refresh stdout:\n$stdout")
+                    val completed = updateProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+                    
+                    if (stdout.isNotEmpty()) {
+                        println("[IProxy Debug] Auto-refresh stdout:\n$stdout")
+                    }
+                    if (stderr.isNotEmpty()) {
+                        println("[IProxy Debug] Auto-refresh stderr:\n$stderr")
+                    }
+                    
+                    if (completed && updateProcess.exitValue() == 0) {
+                        println("[IProxy Debug] Indexer auto-refresh completed successfully")
+                    } else {
+                        println("[IProxy Debug] Indexer auto-refresh failed with exit code: ${updateProcess.exitValue()}")
+                    }
+                } catch (e: Exception) {
+                    println("[IProxy Debug] Auto-refresh failed (non-critical): ${e.message}")
                 }
-                if (stderr.isNotEmpty()) {
-                    println("[IProxy Debug] Auto-refresh stderr:\n$stderr")
-                }
-                
-                if (completed && updateProcess.exitValue() == 0) {
-                    println("[IProxy Debug] Indexer auto-refresh completed successfully")
-                } else {
-                    println("[IProxy Debug] Indexer auto-refresh failed with exit code: ${updateProcess.exitValue()}")
-                }
-            } catch (e: Exception) {
-                println("[IProxy Debug] Auto-refresh failed (non-critical): ${e.message}")
+            } else {
+                println("[IProxy Debug] pinjected-indexer not found - skipping auto-refresh")
+                println("[IProxy Debug] Install with: cargo install pinjected-indexer")
             }
             
             println("[IProxy Debug] Querying pinjected-indexer for type: $typeName")
@@ -488,9 +565,25 @@ object GutterActionUtilEnhanced {
      */
     private fun refreshIndexer(project: Project) {
         println("[IProxy Debug] Refreshing pinjected-indexer...")
+        
+        // Find the indexer executable
+        val indexerPath = IProxyActionUtil.findIndexerPath()
+        if (indexerPath == null) {
+            println("[IProxy Debug] pinjected-indexer not found")
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("Pinjected Plugin")
+                .createNotification(
+                    "Indexer Not Found",
+                    "pinjected-indexer is not installed. Install with: cargo install pinjected-indexer",
+                    NotificationType.WARNING
+                )
+                .notify(project)
+            return
+        }
+        
         try {
             val projectRoot = project.basePath ?: "."
-            val command = listOf("pinjected-indexer", "--root", projectRoot, "update")
+            val command = listOf(indexerPath, "--root", projectRoot, "update")
             
             println("[IProxy Debug] Running command: ${command.joinToString(" ")}")
             
