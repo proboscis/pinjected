@@ -723,8 +723,15 @@ impl EnforcePyiStubsRule {
         }
 
         // Determine what imports we need
-        let needs_iproxy = !has_iproxy_import && truly_missing.iter().any(|s| s.has_instance_decorator || s.has_injected_decorator);
-        let needs_overload = !has_overload_import && truly_missing.iter().any(|s| s.has_injected_decorator);
+        // Also consider usage already present in existing content
+        let uses_iproxy_in_existing = existing_content.contains("IProxy");
+        let uses_overload_in_existing = existing_content.contains("@overload");
+        let needs_iproxy = !has_iproxy_import
+            && (uses_iproxy_in_existing
+                || truly_missing.iter().any(|s| s.has_instance_decorator || s.has_injected_decorator));
+        let needs_overload = !has_overload_import
+            && (uses_overload_in_existing
+                || truly_missing.iter().any(|s| s.has_injected_decorator));
         let needs_any = !has_any_import && (needs_iproxy || truly_missing.iter().any(|s| s.signature.is_none()));
 
         // Check if we need to expand any classes with ellipsis
@@ -1376,10 +1383,6 @@ impl LintRule for EnforcePyiStubsRule {
             return violations;
         }
 
-        // Only run this rule if pinjected is imported
-        if !has_pinjected_import(context.ast) {
-            return violations;
-        }
 
         // Extract public symbols from the module
         let module_symbols = self.extract_public_symbols(context.ast);

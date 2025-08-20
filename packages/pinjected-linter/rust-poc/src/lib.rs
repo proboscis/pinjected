@@ -228,6 +228,9 @@ fn analyze_file(
         });
     }
 
+    Ok(violations)
+}
+
 /// Analyze a single markdown file
 fn analyze_markdown_file(
     path: &Path,
