@@ -159,12 +159,13 @@ def call(function_path: str, iproxy_path: str):
 
     async def a_prep():
         from pinjected.module_var_path import ModuleVarPath
+        from pinjected.di.partially_injected import Partial
 
         # Load and validate the function
         func_var_path = ModuleVarPath(function_path)
-        func: PartiallyInjectedFunction = func_var_path.load()
-        assert isinstance(func, PartiallyInjectedFunction), (
-            f"expected {function_path} to be a PartiallyInjectedFunction, but got {type(func)}"
+        func = func_var_path.load()
+        assert isinstance(func, (PartiallyInjectedFunction, Partial)), (
+            f"expected {function_path} to be a PartiallyInjectedFunction or Partial, but got {type(func)}"
         )
 
         iproxy_var_path = ModuleVarPath(iproxy_path)
