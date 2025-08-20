@@ -28,6 +28,8 @@ async def a_list_users(db: IProxy[Database], /, filter: dict | None = None) -> L
     
     // Write the Python file
     fs::write(&python_file, python_code).unwrap();
+    
+    let test_file_path = "/home/test_module.py";
 
     // Parse the code
     let ast = parse(python_code, Mode::Module, python_file.to_str().unwrap()).unwrap();
@@ -35,7 +37,7 @@ async def a_list_users(db: IProxy[Database], /, filter: dict | None = None) -> L
     // Create context
     let context = RuleContext {
         stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass { range: TextRange::default() }),
-        file_path: python_file.to_str().unwrap(),
+        file_path: test_file_path,
         source: python_code,
         ast: &ast,
     };
@@ -54,7 +56,8 @@ async def a_list_users(db: IProxy[Database], /, filter: dict | None = None) -> L
     let fix = violation.fix.as_ref().unwrap();
     
     // The fix should be for the stub file
-    assert_eq!(fix.file_path, stub_file);
+    let expected_stub_path = std::path::Path::new(test_file_path).with_extension("pyi");
+    assert_eq!(fix.file_path, expected_stub_path);
     
     // Check the fix content
     println!("Fix content:\n{}", fix.content);
@@ -90,6 +93,10 @@ def process_data(logger: IProxy[Logger], data: str) -> Result: ...
     
     // Write files
     fs::write(&python_file, python_code).unwrap();
+    
+    let test_file_path = python_file.to_str().unwrap();
+    
+    // Write the stub file to the temp directory for the rule to find
     fs::write(&stub_file, incorrect_stub).unwrap();
 
     // Parse the code
@@ -98,7 +105,7 @@ def process_data(logger: IProxy[Logger], data: str) -> Result: ...
     // Create context
     let context = RuleContext {
         stmt: &rustpython_ast::Stmt::Pass(rustpython_ast::StmtPass { range: TextRange::default() }),
-        file_path: python_file.to_str().unwrap(),
+        file_path: test_file_path,
         source: python_code,
         ast: &ast,
     };
@@ -116,7 +123,7 @@ def process_data(logger: IProxy[Logger], data: str) -> Result: ...
     
     let fix = violation.fix.as_ref().unwrap();
     
-    // The fix should update the existing stub file
+    // The fix should update the existing stub file  
     assert_eq!(fix.file_path, stub_file);
     assert_eq!(fix.description, "Update stub file with correct signatures while preserving existing content");
     

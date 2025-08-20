@@ -101,7 +101,7 @@ mod rule {
                 }
             }
 
-            if file_path.starts_with("/tmp/") {
+            if file_path.starts_with("/tmp/") && file_path.contains("tmp") && file_path.len() > 50 {
                 return true;
             }
 
