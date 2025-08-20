@@ -55,7 +55,7 @@ test-linter-full:
 	$(MAKE) lint-with-pinjected-linter
 
 test-linter:
-	cd packages/pinjected-linter/rust-poc && cargo test -- --skip test_pinj014
+	cd packages/pinjected-linter/rust-poc && cargo test
 
 build-linter:
 	cd packages/pinjected-linter/rust-poc && cargo build --release
