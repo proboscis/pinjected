@@ -1,0 +1,360 @@
+package com.proboscis.pinjectdesign.kotlin.integration
+
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.module.Module
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ContentEntry
+import com.intellij.openapi.roots.ModifiableRootModel
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import com.intellij.testFramework.LightProjectDescriptor
+import com.intellij.testFramework.fixtures.CodeInsightTestFixture
+import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory
+import com.intellij.testFramework.fixtures.impl.LightTempDirTestFixtureImpl
+import com.jetbrains.python.PythonLanguage
+import com.jetbrains.python.fixtures.PyLightProjectDescriptor
+import com.jetbrains.python.fixtures.PyTestCase
+import com.jetbrains.python.psi.PyFile
+import com.proboscis.pinjectdesign.kotlin.lineMarkers.IProxyGutterIconProvider
+import com.proboscis.pinjectdesign.kotlin.util.IProxyActionUtil
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.Assert.*
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/**
+ * Functional integration test that simulates a real PyCharm environment.
+ * Tests the IProxy plugin functionality with actual Python files and indexing.
+ */
+class IProxyFunctionalTest : PyTestCase() {
+    
+    private lateinit var tempProjectDir: File
+    private lateinit var indexerProcess: Process?
+    
+    override fun getProjectDescriptor(): LightProjectDescriptor {
+        return PyLightProjectDescriptor.INSTANCE
+    }
+    
+    override fun setUp() {
+        super.setUp()
+        
+        // Create a temporary project directory
+        tempProjectDir = createTempDirectory("iproxy_test_project")
+        
+        // Set up Python files in the test project
+        setupTestProject()
+        
+        // Start the indexer in test mode
+        startTestIndexer()
+    }
+    
+    override fun tearDown() {
+        // Stop the indexer
+        stopTestIndexer()
+        
+        // Clean up temp directory
+        tempProjectDir.deleteRecursively()
+        
+        super.tearDown()
+    }
+    
+    @Test
+    fun testIProxyGutterIconsAppearInRealFile() {
+        // Create a Python file with IProxy variables
+        val pythonCode = """
+            from pinjected import IProxy, injected
+            from typing import List, Protocol
+            
+            class User:
+                def __init__(self, name: str):
+                    self.name = name
+            
+            # This should show a gutter icon
+            user_proxy: IProxy[User] = IProxy()
+            
+            # This should also show a gutter icon
+            users_proxy: IProxy[List[User]] = IProxy()
+            
+            class ProcessUserProtocol(Protocol):
+                def __call__(self) -> str: ...
+            
+            @injected(protocol=ProcessUserProtocol)
+            def process_user(user: User) -> str:
+                return f"Processing {user.name}"
+        """.trimIndent()
+        
+        val psiFile = myFixture.configureByText("test_iproxy.py", pythonCode)
+        
+        // Get the gutter icon provider
+        val provider = IProxyGutterIconProvider()
+        
+        // Collect all gutter markers
+        val markers = mutableListOf<com.intellij.codeInsight.daemon.LineMarkerInfo<*>>()
+        psiFile.accept(object : com.intellij.psi.PsiRecursiveElementVisitor() {
+            override fun visitElement(element: com.intellij.psi.PsiElement) {
+                super.visitElement(element)
+                provider.getLineMarkerInfo(element)?.let { markers.add(it) }
+            }
+        })
+        
+        // Verify we found the expected gutter icons
+        assertEquals("Should find 2 IProxy gutter icons", 2, markers.size)
+        
+        // Verify the tooltips
+        assertTrue("First marker should be for User", 
+            markers[0].lineMarkerTooltip?.contains("User") == true)
+        assertTrue("Second marker should be for List[User]", 
+            markers[1].lineMarkerTooltip?.contains("List[User]") == true)
+    }
+    
+    @Test
+    fun testIndexerIntegrationWithRealFiles() {
+        // Create test Python files
+        createTestFile("models.py", """
+            class User:
+                def __init__(self, name: str, email: str):
+                    self.name = name
+                    self.email = email
+            
+            class Product:
+                def __init__(self, name: str, price: float):
+                    self.name = name
+                    self.price = price
+        """.trimIndent())
+        
+        createTestFile("processors.py", """
+            from pinjected import injected, Protocol
+            from models import User, Product
+            
+            class ProcessUserProtocol(Protocol):
+                def __call__(self) -> str: ...
+            
+            @injected(protocol=ProcessUserProtocol)
+            def process_user(user: User) -> str:
+                return f"Processing {user.name}"
+            
+            @injected(protocol=ProcessUserProtocol)
+            def validate_user(user: User) -> str:
+                return "Valid" if user.name and user.email else "Invalid"
+        """.trimIndent())
+        
+        createTestFile("main.py", """
+            from pinjected import IProxy
+            from models import User, Product
+            
+            # IProxy variables that should be detected
+            user_proxy: IProxy[User] = IProxy()
+            product_proxy: IProxy[Product] = IProxy()
+        """.trimIndent())
+        
+        // Wait for indexer to process files
+        Thread.sleep(2000)
+        
+        // Query the indexer for User functions
+        val userFunctions = queryIndexer("User")
+        
+        // Verify we found the expected functions
+        assertTrue("Should find process_user function", 
+            userFunctions.any { it.contains("process_user") })
+        assertTrue("Should find validate_user function", 
+            userFunctions.any { it.contains("validate_user") })
+    }
+    
+    @Test
+    fun testClickingGutterIconShowsDropdown() {
+        val pythonCode = """
+            from pinjected import IProxy
+            
+            class User:
+                pass
+            
+            user_proxy: IProxy[User] = IProxy()
+        """.trimIndent()
+        
+        val psiFile = myFixture.configureByText("test_click.py", pythonCode)
+        val provider = IProxyGutterIconProvider()
+        
+        // Find the gutter marker
+        var foundMarker: com.intellij.codeInsight.daemon.LineMarkerInfo<*>? = null
+        psiFile.accept(object : com.intellij.psi.PsiRecursiveElementVisitor() {
+            override fun visitElement(element: com.intellij.psi.PsiElement) {
+                super.visitElement(element)
+                val marker = provider.getLineMarkerInfo(element)
+                if (marker != null && foundMarker == null) {
+                    foundMarker = marker
+                }
+            }
+        })
+        
+        assertNotNull("Should find a gutter marker", foundMarker)
+        
+        // Verify the marker has a navigation handler
+        assertNotNull("Marker should have navigation handler", foundMarker?.navigationHandler)
+        
+        // Simulate clicking (would normally show dropdown)
+        // In a real test environment, this would trigger the popup
+        val navigationHandler = foundMarker?.navigationHandler
+        assertNotNull("Navigation handler should exist", navigationHandler)
+    }
+    
+    @Test
+    fun testEndToEndWorkflow() {
+        // 1. Create a complete project structure
+        createTestFile("domain/models.py", """
+            class User:
+                def __init__(self, id: int, name: str):
+                    self.id = id
+                    self.name = name
+        """.trimIndent())
+        
+        createTestFile("services/user_service.py", """
+            from pinjected import injected, Protocol
+            from domain.models import User
+            
+            class GetUserProtocol(Protocol):
+                def __call__(self) -> User: ...
+            
+            @injected(protocol=GetUserProtocol)
+            def get_user_by_id(user_id: int, db_connection=None) -> User:
+                # Simulate database fetch
+                return User(user_id, f"User_{user_id}")
+            
+            @injected(protocol=GetUserProtocol)
+            def get_current_user(session=None) -> User:
+                # Simulate getting current user from session
+                return User(1, "Current User")
+        """.trimIndent())
+        
+        createTestFile("app.py", """
+            from pinjected import IProxy
+            from domain.models import User
+            
+            # This should show a gutter icon with 2 available functions
+            current_user: IProxy[User] = IProxy()
+            
+            def main():
+                # User would click the gutter icon and select a function
+                pass
+        """.trimIndent())
+        
+        // 2. Wait for indexing
+        Thread.sleep(2000)
+        
+        // 3. Load the app.py file
+        val appFile = myFixture.configureByText("app.py", 
+            File("${tempProjectDir}/app.py").readText())
+        
+        // 4. Find IProxy gutter icons
+        val provider = IProxyGutterIconProvider()
+        val markers = collectMarkers(appFile, provider)
+        
+        // 5. Verify gutter icon exists
+        assertEquals("Should find 1 IProxy gutter icon", 1, markers.size)
+        
+        // 6. Query indexer for available functions
+        val functions = queryIndexer("User")
+        
+        // 7. Verify both functions are available
+        assertTrue("Should find get_user_by_id", 
+            functions.any { it.contains("get_user_by_id") })
+        assertTrue("Should find get_current_user", 
+            functions.any { it.contains("get_current_user") })
+    }
+    
+    // Helper methods
+    
+    private fun setupTestProject() {
+        // Create basic project structure
+        File(tempProjectDir, "domain").mkdirs()
+        File(tempProjectDir, "services").mkdirs()
+        File(tempProjectDir, "tests").mkdirs()
+    }
+    
+    private fun createTestFile(relativePath: String, content: String) {
+        val file = File(tempProjectDir, relativePath)
+        file.parentFile.mkdirs()
+        file.writeText(content)
+    }
+    
+    private fun startTestIndexer() {
+        // Start the indexer pointing to our test directory
+        try {
+            val command = listOf(
+                "pinjected-indexer",
+                "--root", tempProjectDir.absolutePath,
+                "--log-level", "debug",
+                "daemon"
+            )
+            
+            indexerProcess = ProcessBuilder(command)
+                .directory(tempProjectDir)
+                .start()
+            
+            // Give indexer time to start
+            Thread.sleep(1000)
+        } catch (e: Exception) {
+            // Indexer might not be available in test environment
+            println("Warning: Could not start indexer: ${e.message}")
+            indexerProcess = null
+        }
+    }
+    
+    private fun stopTestIndexer() {
+        indexerProcess?.destroy()
+        indexerProcess?.waitFor(5, TimeUnit.SECONDS)
+    }
+    
+    private fun queryIndexer(typeName: String): List<String> {
+        return try {
+            val command = listOf(
+                "pinjected-indexer",
+                "--root", tempProjectDir.absolutePath,
+                "--log-level", "error",
+                "query-iproxy-functions",
+                typeName
+            )
+            
+            val process = ProcessBuilder(command)
+                .directory(tempProjectDir)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            process.waitFor(5, TimeUnit.SECONDS)
+            
+            // Parse JSON response
+            if (output.isNotBlank()) {
+                output.lines()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            println("Warning: Indexer query failed: ${e.message}")
+            emptyList()
+        }
+    }
+    
+    private fun collectMarkers(
+        psiFile: PsiFile,
+        provider: IProxyGutterIconProvider
+    ): List<com.intellij.codeInsight.daemon.LineMarkerInfo<*>> {
+        val markers = mutableListOf<com.intellij.codeInsight.daemon.LineMarkerInfo<*>>()
+        psiFile.accept(object : com.intellij.psi.PsiRecursiveElementVisitor() {
+            override fun visitElement(element: com.intellij.psi.PsiElement) {
+                super.visitElement(element)
+                provider.getLineMarkerInfo(element)?.let { markers.add(it) }
+            }
+        })
+        return markers
+    }
+    
+    private fun createTempDirectory(prefix: String): File {
+        val tempDir = File(System.getProperty("java.io.tmpdir"))
+        val projectDir = File(tempDir, "${prefix}_${System.currentTimeMillis()}")
+        projectDir.mkdirs()
+        return projectDir
+    }
+}
