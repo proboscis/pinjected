@@ -68,6 +68,7 @@ object GutterActionUtil {
      * Creates a list of action items for an injected function/variable.
      * Simply displays raw configuration names from pinjected with only the 
      * Update Configurations as a static menu item.
+     * For IProxy variables, also shows available @injected functions.
      */
     fun createActions(project: Project, name: String): List<ActionItem> {
         LOG.debug("Creating actions for injected: $name")

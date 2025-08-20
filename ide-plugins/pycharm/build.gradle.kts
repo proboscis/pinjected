@@ -14,9 +14,14 @@ repositories {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    implementation("com.google.code.gson:gson:2.10.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.2.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.0")
+    
+    // Note: Remote Robot dependencies commented out - need special repository setup
+    // testImplementation("com.intellij.remoterobot:remote-robot:0.11.16")
+    // testImplementation("com.intellij.remoterobot:remote-fixtures:0.11.16")
 }
 
 // Configure Gradle IntelliJ Plugin

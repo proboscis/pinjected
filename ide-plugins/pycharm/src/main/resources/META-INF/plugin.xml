@@ -19,6 +19,16 @@
             language="Python" 
             implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
             
+        <!-- IProxy Gutter Icon Provider (Disabled - using only green icon) -->
+        <!-- <codeInsight.lineMarkerProvider 
+            language="Python" 
+            implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.IProxyGutterIconProvider"/> -->
+            
+        <!-- IProxy Inlay Hints Provider for inline buttons (Disabled - using only green icon) -->
+        <!-- <codeInsight.inlayProvider
+            language="Python"
+            implementationClass="com.proboscis.pinjectdesign.kotlin.hints.IProxyInlayHintsProvider"/> -->
+            
         <!-- Goto Declaration Handler for navigating from dependency parameters to function definitions -->
         <gotoDeclarationHandler
             implementation="com.proboscis.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
