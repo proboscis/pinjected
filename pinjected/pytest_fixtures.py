@@ -34,8 +34,8 @@ import inspect
 from collections.abc import Awaitable
 from pathlib import Path
 from typing import Dict, Optional, Set, Union
-from weakref import WeakKeyDictionary
 
+import pytest
 import pytest_asyncio
 from loguru import logger
 
@@ -44,11 +44,12 @@ from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.partially_injected import PartiallyInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.helper_structure import MetaContext
+from pinjected.picklable_logger import PicklableLogger
 from pinjected.v2.keys import StrBindKey
 
 
-# Global storage for shared state per test
-_test_state: WeakKeyDictionary = WeakKeyDictionary()
+# Global storage for shared state keyed by scope-aware identifiers
+_test_state: Dict[object, "SharedTestState"] = {}
 
 
 class SharedTestState:
@@ -178,19 +179,38 @@ class DesignFixtures:
                     f"DelegatedVar resolved to {type(resolved_design)}, expected Design"
                 )
                 return None
+
             return resolved_design
         finally:
             await resolver.destruct()
 
     async def _get_or_create_state(self, request) -> SharedTestState:
-        """Get or create shared state for the current test."""
-        test_func = request.function
+        """Get or create shared state for the current scope."""
+        scope = getattr(request, "scope", "function")
+        if scope == "function":
+            key = (
+                getattr(request, "node", None).nodeid
+                if getattr(request, "node", None)
+                else request
+            )
+        elif scope == "module":
+            key = getattr(request, "module", None)
+        elif scope == "class":
+            key = (
+                getattr(request, "cls", None)
+                or getattr(request.node, "cls", None)
+                or request.node
+            )
+        elif scope == "session":
+            key = ("session",)
+        else:
+            key = (scope, request.node)
 
-        if test_func not in _test_state:
+        if key not in _test_state:
             state = SharedTestState()
-            _test_state[test_func] = state
+            _test_state[key] = state
 
-            # Create resolver once for the test
+            # Create resolver once for the given scope
             caller_path = Path(self.caller_file)
             mc = await MetaContext.a_gather_bindings_with_legacy(caller_path)
             final_design = await mc.a_final_design
@@ -218,9 +238,24 @@ class DesignFixtures:
             state.task_group = TaskGroup()
             await state.task_group.__aenter__()
 
-            merged_design = (
-                final_design + resolved_design + design(__task_group__=state.task_group)
-            )
+            fallback = None
+            if not self._has_binding(final_design, "logger") and not self._has_binding(
+                resolved_design, "logger"
+            ):
+                fallback = design(logger=PicklableLogger())
+            if fallback is not None:
+                merged_design = (
+                    fallback
+                    + final_design
+                    + resolved_design
+                    + design(__task_group__=state.task_group)
+                )
+            else:
+                merged_design = (
+                    final_design
+                    + resolved_design
+                    + design(__task_group__=state.task_group)
+                )
             state.resolver = AsyncResolver(merged_design, callbacks=[])
 
             # Schedule cleanup after test
@@ -228,26 +263,101 @@ class DesignFixtures:
                 state._cleanup_scheduled = True
 
                 def cleanup():
-                    # Use existing event loop if available
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
-                            # Schedule cleanup as a task in the running loop
                             _ = asyncio.create_task(state.close())  # noqa: RUF006
                         else:
-                            # Run in the existing loop
                             loop.run_until_complete(state.close())
                     except RuntimeError:
-                        # No event loop, create one just for cleanup
                         asyncio.run(state.close())
                     finally:
-                        # Remove from global state
-                        if test_func in _test_state:
-                            del _test_state[test_func]
+                        _test_state.pop(key, None)
 
                 request.addfinalizer(cleanup)
 
-        return _test_state[test_func]
+        return _test_state[key]
+
+    def _has_binding(self, d: Design, name: str) -> bool:
+        if not hasattr(d, "bindings"):
+            return False
+        for k in d.bindings:
+            if isinstance(k, StrBindKey):
+                if k.name == name:
+                    return True
+            elif (hasattr(k, "name") and getattr(k, "name", None) == name) or (
+                isinstance(k, str) and k == name
+            ):
+                return True
+        return False
+
+    async def _resolve_binding_value(self, state: "SharedTestState", name: str):
+        if name in state.resolved_values:
+            return state.resolved_values[name]
+        to_provide = Injected.by_name(name)
+        result = await state.resolver.provide(to_provide)
+        if isinstance(result, Awaitable):
+            result = await result
+        if isinstance(result, PartiallyInjectedFunction):
+            injected_params = set((result.injected_params or {}).keys())
+            param_names = list(result.func_sig.parameters.keys())
+            names_to_inject = [
+                pname
+                for pname in param_names
+                if pname not in injected_params
+                and self._has_binding(state.resolver.design, pname)
+            ]
+            injected_values = {}
+            for pname in names_to_inject:
+                injected_values[pname] = await self._resolve_binding_value(state, pname)
+            original_pif = result
+            remaining_params = [
+                n for n in original_pif.final_sig.parameters if n not in injected_values
+            ]
+            if len(remaining_params) == 0:
+                computed = original_pif(**injected_values)
+                if isinstance(computed, Awaitable):
+                    computed = await computed
+
+                class _PinjComputed:
+                    def __init__(self, value):
+                        self._pinj_cached = value
+
+                    def __call__(self, *args, **kwargs):
+                        return self._pinj_cached
+
+                    def __getattr__(self, name):
+                        return getattr(self._pinj_cached, name)
+
+                    def __getitem__(self, key):
+                        return self._pinj_cached[key]
+
+                    def __iter__(self):
+                        return iter(self._pinj_cached)
+
+                    def __len__(self):
+                        return len(self._pinj_cached)
+
+                    def __repr__(self):
+                        return repr(self._pinj_cached)
+
+                    def __str__(self):
+                        return str(self._pinj_cached)
+
+                result = _PinjComputed(computed)
+            else:
+
+                def _wrapped(*args, **kwargs):
+                    merged_kwargs = {**injected_values, **kwargs}
+                    res = original_pif(*args, **merged_kwargs)
+                    return res
+
+                result = _wrapped
+        state.resolved_values[name] = result
+        return result
+
+    def _resolve_binding_value_sync(self, state: "SharedTestState", name: str):
+        return asyncio.run(self._resolve_binding_value(state, name))
 
     def register(
         self,
@@ -277,36 +387,38 @@ class DesignFixtures:
             logger.warning(f"Fixture '{fixture_name}' already registered, skipping")
             return
 
-        # Create async fixture
-        @pytest_asyncio.fixture(scope=scope, name=fixture_name)
-        async def async_fixture_impl(request):
-            """Async fixture implementation using shared state."""
-            state = await self._get_or_create_state(request)
+        existing = getattr(self.caller_module, fixture_name, None)
+        if existing is not None and getattr(existing, "__pinj_fixture__", False):
+            logger.warning(f"Fixture '{fixture_name}' already registered, skipping")
+            self._registered_fixtures.add(fixture_name)
+            return
 
-            # Check if already resolved
-            if binding_name in state.resolved_values:
-                return state.resolved_values[binding_name]
+        if scope == "function":
 
-            # Use Injected.by_name to resolve the binding
-            to_provide = Injected.by_name(binding_name)
-            result = await state.resolver.provide(to_provide)
+            @pytest_asyncio.fixture(scope=scope, name=fixture_name)
+            async def async_fixture_impl(request):
+                state = await self._get_or_create_state(request)
+                if binding_name in state.resolved_values:
+                    return state.resolved_values[binding_name]
+                result = await self._resolve_binding_value(state, binding_name)
+                return result
 
-            # Handle PartiallyInjectedFunction
-            if isinstance(result, PartiallyInjectedFunction):
-                # For @injected functions, we keep the PartiallyInjectedFunction
-                # The test will decide whether to call it or not based on the use case
-                pass
+            setattr(async_fixture_impl, "__pinj_fixture__", True)
+            setattr(async_fixture_impl, "__pinj_scope__", scope)
+            setattr(self.caller_module, fixture_name, async_fixture_impl)
+        else:
 
-            # Handle awaitable results
-            if isinstance(result, Awaitable):
-                result = await result
+            @pytest.fixture(scope=scope, name=fixture_name)
+            def sync_fixture_impl(request):
+                state = asyncio.run(self._get_or_create_state(request))
+                if binding_name in state.resolved_values:
+                    return state.resolved_values[binding_name]
+                result = self._resolve_binding_value_sync(state, binding_name)
+                return result
 
-            # Cache the result
-            state.resolved_values[binding_name] = result
-            return result
-
-        # Register fixture
-        setattr(self.caller_module, fixture_name, async_fixture_impl)
+            setattr(sync_fixture_impl, "__pinj_fixture__", True)
+            setattr(sync_fixture_impl, "__pinj_scope__", scope)
+            setattr(self.caller_module, fixture_name, sync_fixture_impl)
 
         self._registered_fixtures.add(fixture_name)
         logger.info(f"Registered fixture '{fixture_name}' with scope '{scope}'")
