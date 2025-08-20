@@ -113,3 +113,24 @@ Requested by
 
 Local screenshots or logs (paths)
 - Manual CLI run output included inline above.
+Additional example CLI session
+- Reproduce locally:
+  - cd packages/pinjected-linter/rust-poc
+  - cargo build --release
+  - mkdir -p /tmp/pinj036_demo && cat >/tmp/pinj036_demo/sample.py <<'PY'
+from pinjected import injected
+
+@injected
+def get_value(x: int) -> str:
+    return str(x)
+PY
+  - ./target/release/pinjected-linter --enable PINJ036 /tmp/pinj036_demo
+  - ./target/release/pinjected-linter --enable PINJ036 --auto-fix /tmp/pinj036_demo
+  - cat /tmp/pinj036_demo/sample.pyi
+
+Expected .pyi excerpt after autofix:
+from typing import overload, Any
+from pinjected import IProxy
+
+@overload
+def get_value(x: int) -> IProxy[str]: ...
