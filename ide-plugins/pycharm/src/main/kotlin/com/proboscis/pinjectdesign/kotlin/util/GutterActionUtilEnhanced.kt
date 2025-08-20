@@ -588,13 +588,29 @@ object GutterActionUtilEnhanced {
             return
         }
         
-        // Create PyConfiguration for pinjected call
+        // Find the path to pinjected's __main__.py using the shared helper method
+        val pinjectedMainPath = try {
+            helper.findPinjectedMainPath()
+        } catch (e: Exception) {
+            LOG.error("Failed to find pinjected __main__.py path", e)
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("Pinjected Plugin")
+                .createNotification(
+                    "Configuration Error",
+                    "Could not find pinjected module. Is it installed?",
+                    NotificationType.ERROR
+                )
+                .notify(project)
+            return
+        }
+        
+        // Create PyConfiguration for pinjected call using the same pattern as existing runner
         val config = PyConfiguration(
             name = "pinjected call ${function.name} with $iproxyVarName",
-            script_path = helper.interpreterPath,
+            script_path = pinjectedMainPath,
             interpreter_path = helper.interpreterPath,
             arguments = listOf(
-                "-m", "pinjected", "call",
+                "call",
                 "${functionModule}.${function.name}",
                 "${iproxyModule}.$iproxyVarName"
             ),

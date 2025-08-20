@@ -79,9 +79,90 @@ open class InjectedFunctionActionHelper(val project: Project) {
     // Store last command output for error reporting
     var lastStdout: String? = null
     var lastStderr: String? = null
+    
+    // Cache for pinjected main path
+    private var cachedPinjectedMainPath: String? = null
 
     private fun getYourRunConfigurationType(): PythonConfigurationType {
         return PythonConfigurationType.getInstance()
+    }
+
+    /**
+     * Find the path to pinjected's __main__.py file.
+     * This is used to run pinjected commands directly.
+     * Results are cached to avoid repeated Python subprocess calls.
+     * 
+     * @param forceRefresh If true, ignores the cache and finds the path again
+     * @return The absolute path to pinjected/__main__.py
+     * @throws RuntimeException if the path cannot be found
+     */
+    fun findPinjectedMainPath(forceRefresh: Boolean = false): String {
+        // Return cached value if available and not forcing refresh
+        if (!forceRefresh && cachedPinjectedMainPath != null) {
+            log.info("Using cached pinjected __main__.py path: $cachedPinjectedMainPath")
+            return cachedPinjectedMainPath!!
+        }
+        
+        log.info("Finding pinjected __main__.py path...")
+        
+        // First try to import pinjected.__main__ directly
+        val directCommand = listOf(
+            interpreterPath,
+            "-c",
+            "import pinjected.__main__; print(pinjected.__main__.__file__)"
+        )
+        
+        try {
+            val process = ProcessBuilder(directCommand)
+                .directory(File(project.basePath ?: "."))
+                .start()
+            
+            val mainPath = process.inputStream.bufferedReader().use { it.readText().trim() }
+            val exitCode = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+            
+            if (exitCode && process.exitValue() == 0 && mainPath.isNotEmpty()) {
+                log.info("Found pinjected __main__.py at: $mainPath")
+                cachedPinjectedMainPath = mainPath  // Cache the result
+                return mainPath
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to find __main__.py via direct import: ${e.message}")
+        }
+        
+        // Fallback: find via pinjected module directory
+        val fallbackCommand = listOf(
+            interpreterPath,
+            "-c",
+            "import pinjected; import os; print(os.path.join(os.path.dirname(pinjected.__file__), '__main__.py'))"
+        )
+        
+        try {
+            val process = ProcessBuilder(fallbackCommand)
+                .directory(File(project.basePath ?: "."))
+                .start()
+            
+            val fallbackPath = process.inputStream.bufferedReader().use { it.readText().trim() }
+            val exitCode = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+            
+            if (exitCode && process.exitValue() == 0 && fallbackPath.isNotEmpty()) {
+                log.info("Found pinjected __main__.py via fallback at: $fallbackPath")
+                cachedPinjectedMainPath = fallbackPath  // Cache the result
+                return fallbackPath
+            }
+        } catch (e: Exception) {
+            log.error("Failed to find __main__.py via fallback: ${e.message}")
+        }
+        
+        throw RuntimeException("Could not find pinjected __main__.py - is pinjected installed?")
+    }
+    
+    /**
+     * Clear the cached pinjected main path.
+     * Useful when the Python environment changes.
+     */
+    fun clearPinjectedMainPathCache() {
+        cachedPinjectedMainPath = null
+        log.info("Cleared pinjected __main__.py path cache")
     }
 
     fun setupRunConfiguration(config: PythonRunConfiguration, src: PyConfiguration) {
