@@ -190,8 +190,6 @@ class BindInjected(IBind[T]):
     def __post_init__(self):
         from pinjected.di.injected import Injected as _Injected
 
-        if not isinstance(self.src, _Injected):
-            self.src = _Injected.wrap_injected_if_not(self.src)
         assert isinstance(self.src, _Injected), (
             f"src must be an Injected, got {self.src}"
         )

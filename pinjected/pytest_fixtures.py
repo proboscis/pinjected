@@ -35,7 +35,6 @@ from collections.abc import Awaitable
 from pathlib import Path
 from typing import Dict, Optional, Set, Union
 
-import pytest
 import pytest_asyncio
 from loguru import logger
 
@@ -356,9 +355,6 @@ class DesignFixtures:
         state.resolved_values[name] = result
         return result
 
-    def _resolve_binding_value_sync(self, state: "SharedTestState", name: str):
-        return asyncio.run(self._resolve_binding_value(state, name))
-
     def register(
         self,
         binding_name: str,
@@ -408,17 +404,17 @@ class DesignFixtures:
             setattr(self.caller_module, fixture_name, async_fixture_impl)
         else:
 
-            @pytest.fixture(scope=scope, name=fixture_name)
-            def sync_fixture_impl(request):
-                state = asyncio.run(self._get_or_create_state(request))
+            @pytest_asyncio.fixture(scope=scope, name=fixture_name)
+            async def async_fixture_impl_nonfunc(request):
+                state = await self._get_or_create_state(request)
                 if binding_name in state.resolved_values:
                     return state.resolved_values[binding_name]
-                result = self._resolve_binding_value_sync(state, binding_name)
+                result = await self._resolve_binding_value(state, binding_name)
                 return result
 
-            setattr(sync_fixture_impl, "__pinj_fixture__", True)
-            setattr(sync_fixture_impl, "__pinj_scope__", scope)
-            setattr(self.caller_module, fixture_name, sync_fixture_impl)
+            setattr(async_fixture_impl_nonfunc, "__pinj_fixture__", True)
+            setattr(async_fixture_impl_nonfunc, "__pinj_scope__", scope)
+            setattr(self.caller_module, fixture_name, async_fixture_impl_nonfunc)
 
         self._registered_fixtures.add(fixture_name)
         logger.info(f"Registered fixture '{fixture_name}' with scope '{scope}'")
