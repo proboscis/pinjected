@@ -7,6 +7,7 @@ use tracing::{info, warn};
 
 use crate::index::TypeIndex;
 use crate::rpc::RpcServer;
+use crate::watcher::FileWatcher;
 
 /// Configuration for the daemon
 #[derive(Clone)]
@@ -77,6 +78,15 @@ impl IndexerDaemon {
             index: index.clone(),
             last_activity: Arc::new(RwLock::new(Instant::now())),
         });
+        
+        // Start file watcher
+        let watcher = FileWatcher::new(config.project_root.clone(), index.clone())?;
+        tokio::spawn(async move {
+            if let Err(e) = watcher.start().await {
+                warn!("File watcher error: {}", e);
+            }
+        });
+        info!("Started file watcher for automatic reindexing");
         
         // Start idle checker
         let daemon_clone = daemon.clone();

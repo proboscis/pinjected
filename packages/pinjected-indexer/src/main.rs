@@ -52,6 +52,18 @@ enum Commands {
         /// Output cache file
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Quick mode (unused, for compatibility)
+        #[arg(long)]
+        quick: bool,
+    },
+    /// Update IProxy entrypoint index (alias for build)
+    Update {
+        /// Output cache file
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Quick mode (unused, for compatibility)
+        #[arg(long)]
+        quick: bool,
     },
     /// Find @injected functions that accept the given IProxy[T] type
     #[command(name = "query-iproxy-functions")]
@@ -98,7 +110,7 @@ async fn main() -> Result<()> {
         .init();
     
     match cli.command {
-        Some(Commands::Build { output }) => {
+        Some(Commands::Build { output, .. }) | Some(Commands::Update { output, .. }) => {
             // Build index and save
             let index = build_index(&cli.root).await?;
             if let Some(output_path) = output {

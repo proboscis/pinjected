@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::debug;
 use crate::index::LineIndex;
+use crate::project::ProjectConfig;
 
 /// Represents an @injected function
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +29,7 @@ pub struct IProxyVariable {
 }
 
 /// Parse a Python file and extract @injected functions
-pub async fn parse_python_file(path: &Path) -> Result<Vec<InjectedFunction>> {
+pub async fn parse_python_file(path: &Path, project_config: &ProjectConfig) -> Result<Vec<InjectedFunction>> {
     let content = tokio::fs::read_to_string(path).await?;
     
     // Quick check for performance
@@ -41,20 +42,20 @@ pub async fn parse_python_file(path: &Path) -> Result<Vec<InjectedFunction>> {
     
     // Extract functions
     let mut functions = Vec::new();
-    extract_injected_functions(&ast, &mut functions, path, &content);
+    extract_injected_functions(&ast, &mut functions, path, &content, project_config);
     
     debug!("Found {} @injected functions in {:?}", functions.len(), path);
     Ok(functions)
 }
 
 /// Extract @injected functions from AST
-fn extract_injected_functions(module: &Mod, functions: &mut Vec<InjectedFunction>, path: &Path, content: &str) {
+fn extract_injected_functions(module: &Mod, functions: &mut Vec<InjectedFunction>, path: &Path, content: &str, project_config: &ProjectConfig) {
     let Mod::Module(module) = module else {
         return;
     };
     
-    // Build module path from file path
-    let module_path = path_to_module(path);
+    // Build module path from file path using project configuration
+    let module_path = project_config.path_to_module(path);
     
     // Create line index for converting offsets to line numbers
     let line_index = LineIndex::new(content);
@@ -279,15 +280,9 @@ fn extract_docstring(body: &[Stmt]) -> Option<String> {
     None
 }
 
-/// Convert file path to module path
-fn path_to_module(path: &Path) -> String {
-    let path_str = path.to_string_lossy();
-    let path_str = path_str.trim_end_matches(".py");
-    path_str.replace('/', ".").replace('\\', ".")
-}
 
 /// Parse IProxy[T] variables from a Python file
-pub async fn parse_iproxy_variables(path: &Path) -> Result<Vec<IProxyVariable>> {
+pub async fn parse_iproxy_variables(path: &Path, project_config: &ProjectConfig) -> Result<Vec<IProxyVariable>> {
     let content = tokio::fs::read_to_string(path).await?;
     
     // Quick check for performance
@@ -300,19 +295,19 @@ pub async fn parse_iproxy_variables(path: &Path) -> Result<Vec<IProxyVariable>> 
     
     // Extract IProxy variables
     let mut variables = Vec::new();
-    extract_iproxy_variables(&ast, &mut variables, path, &content);
+    extract_iproxy_variables(&ast, &mut variables, path, &content, project_config);
     
     debug!("Found {} IProxy variables in {:?}", variables.len(), path);
     Ok(variables)
 }
 
 /// Extract IProxy[T] variables from AST
-fn extract_iproxy_variables(module: &Mod, variables: &mut Vec<IProxyVariable>, path: &Path, content: &str) {
+fn extract_iproxy_variables(module: &Mod, variables: &mut Vec<IProxyVariable>, path: &Path, content: &str, project_config: &ProjectConfig) {
     let Mod::Module(module) = module else {
         return;
     };
     
-    let module_path = path_to_module(path);
+    let module_path = project_config.path_to_module(path);
     
     // Create line index for converting offsets to line numbers
     let line_index = LineIndex::new(content);

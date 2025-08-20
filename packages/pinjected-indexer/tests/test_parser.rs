@@ -1,10 +1,12 @@
 use pinjected_indexer::parser::{parse_python_file, parse_iproxy_variables};
+use pinjected_indexer::project::ProjectConfig;
 use std::path::Path;
 
 #[tokio::test]
 async fn test_parse_injected_functions() {
     let fixture_path = Path::new("tests/fixtures/simple_app.py");
-    let functions = parse_python_file(fixture_path).await.unwrap();
+    let project_config = ProjectConfig::discover(Path::new(".")).unwrap();
+    let functions = parse_python_file(fixture_path, &project_config).await.unwrap();
     
     // Should find 5 @injected functions
     assert_eq!(functions.len(), 5);
@@ -34,7 +36,8 @@ async fn test_parse_injected_functions() {
 #[tokio::test]
 async fn test_parse_iproxy_variables() {
     let fixture_path = Path::new("tests/fixtures/simple_app.py");
-    let variables = parse_iproxy_variables(fixture_path).await.unwrap();
+    let project_config = ProjectConfig::discover(Path::new(".")).unwrap();
+    let variables = parse_iproxy_variables(fixture_path, &project_config).await.unwrap();
     
     // Should find 3 IProxy variables
     assert_eq!(variables.len(), 3);
@@ -74,7 +77,8 @@ class MyClass:
     let temp_file = temp_dir.path().join("no_injected.py");
     std::fs::write(&temp_file, content).unwrap();
     
-    let functions = parse_python_file(&temp_file).await.unwrap();
+    let project_config = ProjectConfig::discover(temp_dir.path()).unwrap();
+    let functions = parse_python_file(&temp_file, &project_config).await.unwrap();
     assert_eq!(functions.len(), 0);
 }
 
@@ -92,6 +96,7 @@ items: List[str] = []
     let temp_file = temp_dir.path().join("no_iproxy.py");
     std::fs::write(&temp_file, content).unwrap();
     
-    let variables = parse_iproxy_variables(&temp_file).await.unwrap();
+    let project_config = ProjectConfig::discover(temp_dir.path()).unwrap();
+    let variables = parse_iproxy_variables(&temp_file, &project_config).await.unwrap();
     assert_eq!(variables.len(), 0);
 }

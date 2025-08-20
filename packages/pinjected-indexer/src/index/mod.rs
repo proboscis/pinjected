@@ -10,6 +10,7 @@ use tracing::{debug, info};
 use std::collections::HashMap;
 
 use crate::parser::parse_python_file;
+use crate::project::ProjectConfig;
 pub use line_index::LineIndex;
 
 /// Information about an entrypoint function
@@ -45,11 +46,14 @@ pub struct TypeIndex {
     
     /// Statistics
     stats: Arc<parking_lot::RwLock<IndexStats>>,
+    
+    /// Project configuration
+    project_config: Arc<ProjectConfig>,
 }
 
 impl TypeIndex {
     /// Create a new empty index
-    pub fn new() -> Self {
+    pub fn new(project_config: ProjectConfig) -> Self {
         Self {
             entries: Arc::new(DashMap::new()),
             file_index: Arc::new(DashMap::new()),
@@ -59,13 +63,15 @@ impl TypeIndex {
                 indexed_files: 0,
                 last_updated: SystemTime::now(),
             })),
+            project_config: Arc::new(project_config),
         }
     }
     
     /// Build index from a directory
     pub async fn build(root: &Path) -> Result<Self> {
         info!("Building index for {:?}", root);
-        let index = Self::new();
+        let project_config = ProjectConfig::discover(root)?;
+        let index = Self::new(project_config);
         
         // Find all Python files
         let python_files = find_python_files(root)?;
@@ -113,12 +119,39 @@ impl TypeIndex {
         Ok(index)
     }
     
-    /// Index a single file
+    /// Reindex a single file (public for file watcher)
+    pub async fn reindex_file(&self, file_path: &Path) -> Result<()> {
+        self.index_file(file_path).await
+    }
+    
+    /// Remove a file from the index
+    pub async fn remove_file(&self, file_path: &Path) {
+        // Remove from file index and all associated entries
+        if let Some((_, old_types)) = self.file_index.remove(file_path) {
+            for type_name in old_types {
+                if let Some(mut entries) = self.entries.get_mut(&type_name) {
+                    entries.retain(|e| e.file_path != file_path);
+                    if entries.is_empty() {
+                        drop(entries);
+                        self.entries.remove(&type_name);
+                    }
+                }
+            }
+        }
+        
+        // Update stats
+        let mut stats = self.stats.write();
+        stats.indexed_files = self.file_index.len();
+        stats.total_functions = self.count_functions();
+        stats.total_types = self.entries.len();
+    }
+    
+    /// Index a single file (internal)
     async fn index_file(&self, file_path: &Path) -> Result<()> {
         debug!("Indexing {:?}", file_path);
         
         // Parse the file
-        let functions = parse_python_file(file_path).await?;
+        let functions = parse_python_file(file_path, &self.project_config).await?;
         
         // Remove old entries for this file
         if let Some((_, old_types)) = self.file_index.remove(file_path) {
@@ -225,7 +258,10 @@ impl TypeIndex {
         let data = tokio::fs::read(cache_file).await?;
         let entries: HashMap<String, Vec<EntrypointInfo>> = bincode::deserialize(&data)?;
         
-        let index = Self::new();
+        // Need to discover project config - assume cache is in project
+        let root = cache_file.parent().and_then(|p| p.parent()).unwrap_or_else(|| Path::new("."));
+        let project_config = ProjectConfig::discover(root)?;
+        let index = Self::new(project_config);
         for (type_name, funcs) in entries {
             index.entries.insert(type_name, funcs);
         }

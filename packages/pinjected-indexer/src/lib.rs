@@ -1,7 +1,9 @@
 pub mod daemon;
 pub mod index;
 pub mod parser;
+pub mod project;
 pub mod rpc;
+pub mod watcher;
 
 pub use index::{EntrypointInfo, TypeIndex};
 pub use parser::{InjectedFunction, IProxyVariable};

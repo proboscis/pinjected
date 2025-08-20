@@ -1,10 +1,12 @@
 use pinjected_indexer::parser::parse_python_file;
+use pinjected_indexer::project::ProjectConfig;
 use std::path::Path;
 
 #[tokio::test]
 async fn test_parameter_validation_rules() {
     let fixture_path = Path::new("tests/fixtures/parameter_validation.py");
-    let functions = parse_python_file(fixture_path).await.unwrap();
+    let project_config = ProjectConfig::discover(Path::new(".")).unwrap();
+    let functions = parse_python_file(fixture_path, &project_config).await.unwrap();
     
     // Should find only the VALID functions
     let valid_names: Vec<String> = functions.iter()
@@ -43,7 +45,8 @@ async fn test_parameter_validation_rules() {
 #[tokio::test]
 async fn test_extracted_parameter_types() {
     let fixture_path = Path::new("tests/fixtures/parameter_validation.py");
-    let functions = parse_python_file(fixture_path).await.unwrap();
+    let project_config = ProjectConfig::discover(Path::new(".")).unwrap();
+    let functions = parse_python_file(fixture_path, &project_config).await.unwrap();
     
     // Check that we extracted the correct parameter for each valid function
     for func in &functions {
