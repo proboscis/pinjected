@@ -101,10 +101,6 @@ mod rule {
                 }
             }
 
-            if file_path.starts_with("/tmp/") {
-                return true;
-            }
-
             false
         }
 
