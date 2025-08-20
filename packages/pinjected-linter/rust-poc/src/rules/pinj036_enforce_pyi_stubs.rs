@@ -6,7 +6,7 @@
 
 use crate::models::{Fix, RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
-use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_injected_decorator, has_injected_decorator_async, has_pinjected_import};
+use crate::utils::pinjected_patterns::{has_instance_decorator, has_instance_decorator_async, has_injected_decorator, has_injected_decorator_async};
 use rustpython_ast::{Arg, ArgWithDefault, Constant, Expr, Mod, Stmt, StmtAsyncFunctionDef, StmtFunctionDef};
 use rustpython_parser::{parse, Mode};
 use std::collections::{HashMap, HashSet};
