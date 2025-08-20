@@ -27,6 +27,56 @@ object IProxyActionUtil {
     private val LOG = Logger.getInstance("com.proboscis.pinjectdesign.kotlin.util.IProxyActionUtil")
     private val gson = Gson()
     
+    // Cache for indexer path
+    private var cachedIndexerPath: String? = null
+    
+    /**
+     * Find the pinjected-indexer executable.
+     * Checks common installation locations and PATH.
+     * 
+     * @return The path to pinjected-indexer, or null if not found
+     */
+    internal fun findIndexerPath(): String? {
+        // Return cached value if available
+        cachedIndexerPath?.let { return it }
+        
+        // Common installation paths
+        val possiblePaths = listOf(
+            "/usr/local/bin/pinjected-indexer",
+            "/usr/bin/pinjected-indexer",
+            "${System.getProperty("user.home")}/.cargo/bin/pinjected-indexer",
+            "${System.getProperty("user.home")}/.local/bin/pinjected-indexer",
+            "/opt/homebrew/bin/pinjected-indexer"  // macOS with Homebrew on ARM
+        )
+        
+        // Check each possible path
+        for (path in possiblePaths) {
+            if (java.io.File(path).exists() && java.io.File(path).canExecute()) {
+                LOG.info("Found pinjected-indexer at: $path")
+                cachedIndexerPath = path
+                return path
+            }
+        }
+        
+        // Try using 'which' command to find in PATH
+        try {
+            val process = ProcessBuilder("which", "pinjected-indexer").start()
+            if (process.waitFor(2, TimeUnit.SECONDS)) {
+                val output = process.inputStream.bufferedReader().readText().trim()
+                if (output.isNotEmpty() && java.io.File(output).exists()) {
+                    LOG.info("Found pinjected-indexer via which: $output")
+                    cachedIndexerPath = output
+                    return output
+                }
+            }
+        } catch (e: Exception) {
+            LOG.debug("Failed to find indexer via which command: ${e.message}")
+        }
+        
+        LOG.warn("pinjected-indexer not found in common locations or PATH")
+        return null
+    }
+    
     data class InjectedFunction(
         val function_name: String,
         val module_path: String,
@@ -74,11 +124,20 @@ object IProxyActionUtil {
     ): CompletableFuture<List<InjectedFunction>> {
         return CompletableFuture.supplyAsync {
             try {
+                // Find the indexer executable
+                val indexerPath = findIndexerPath()
+                if (indexerPath == null) {
+                    LOG.warn("pinjected-indexer not found. Please install it to enable @injected function discovery.")
+                    LOG.info("Install with: cargo install pinjected-indexer")
+                    // Return empty list gracefully when indexer is not available
+                    return@supplyAsync emptyList<InjectedFunction>()
+                }
+                
                 val projectRoot = project.basePath ?: "."
                 
-                // Build the command
+                // Build the command with the found path
                 val command = listOf(
-                    "pinjected-indexer",
+                    indexerPath,
                     "--root", projectRoot,
                     "--log-level", "error",
                     "query-iproxy-functions",
