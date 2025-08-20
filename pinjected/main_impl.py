@@ -1,9 +1,9 @@
 import asyncio
 import json
-from inspect import isawaitable
 from pathlib import Path
 
 from pinjected import Design, Injected, design
+from pinjected.di.partially_injected import PartiallyInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.exception_util import unwrap_exception_group
@@ -142,72 +142,57 @@ def decode_b64json(text):
     return data
 
 
-def call(
-    var_path: str | None = None,
-    design_path: str | None = None,
-    overrides: str | None = None,
-    meta_context_path: str | None = None,
-    base64_encoded_json: str | None = None,
-    call_kwargs_base64_json: str | None = None,
-    **kwargs,
-):
+def call(function_path: str, iproxy_path: str):
     """
-    Now we have multiples similar functions and having hard time distinguishing them.
-    run -> run_injected -> run_anything -> _run_target
-    call -> run_injected -> run_anything -> call_impl
-    # this is very complicated. we should clean this up.
-    the cause I think is that 'run' has special kwargs and kwargs in common arguments.
-    So first I need to separate options.
-    - var_path
-    - design_paths: list[str] to be accumulated
-    - meta_context_path: str # a path to gather meta context from.
+    Call an @injected function with an IProxy variable.
+
+    This command applies an IProxy object to an @injected function and executes it,
+    following the same pattern as the run function with RunContext.
+
+    :param function_path: Full module path to the @injected function (e.g., 'my_module.my_function')
+    :param iproxy_path: Full module path to the IProxy variable (e.g., 'my_module.my_iproxy')
+
+    Example:
+        pinjected call my_module.process_data my_config.data_proxy
     """
     from pinjected.pinjected_logging import logger
 
-    if base64_encoded_json is not None:
-        data = decode_b64json(base64_encoded_json)
-        var_path = data.pop("var_path")
-        design_path = data.pop("design_path", None)
-        overrides = data.pop("overrides", None)
-        meta_context_path = data.pop("meta_context_path", None)
-        kwargs = data
-        logger.info(
-            f"decoded {var_path=} {design_path=} {overrides=} {meta_context_path=} {kwargs=}"
+    async def a_prep():
+        from pinjected.module_var_path import ModuleVarPath
+
+        # Load and validate the function
+        func_var_path = ModuleVarPath(function_path)
+        func: PartiallyInjectedFunction = func_var_path.load()
+        assert isinstance(func, PartiallyInjectedFunction), (
+            f"expected {function_path} to be a PartiallyInjectedFunction, but got {type(func)}"
         )
 
-    # no_notification = kwargs.pop('pinjected_no_notification', False)
-    async def a_prep():
-        kwargs_overrides = parse_kwargs_as_design(**kwargs)
-        ovr = design()
-        if meta_context_path is not None:
-            mc = await MetaContext.a_gather_bindings_with_legacy(
-                Path(meta_context_path)
-            )
-            ovr += await mc.a_final_design
-        ovr += parse_overrides(overrides)
-        ovr += kwargs_overrides
-        cxt: RunContext = await a_get_run_context(design_path, var_path)
-        cxt = cxt.add_design(ovr)
-        func = await cxt.a_run()
-        if call_kwargs_base64_json is not None:
-            call_kwargs = decode_b64json(call_kwargs_base64_json)
-            logger.info(f"calling {var_path} with {call_kwargs}(decoded)")
-            res = func(**call_kwargs)
-            if isawaitable(res):
-                res = await res
-            logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
-        else:
-            # now we've got the function to call
-            def call_impl(*args, **call_kwargs):
-                # here we wrap the original function so that it won't return anything for the `fire`
-                logger.info(f"calling {var_path} with {args} {call_kwargs}")
-                res = func(*args, **call_kwargs)
-                if isawaitable(res):
-                    res = asyncio.run(res)
-                logger.info(f"result:\n<pinjected>\n{res}\n</pinjected>")
+        iproxy_var_path = ModuleVarPath(iproxy_path)
+        iproxy = iproxy_var_path.load()
 
-            # now, the resulting function canbe async, can fire handle that?
-            return call_impl
+        # Apply the IProxy to the function and execute
+        logger.info(f"Applying IProxy '{iproxy_path}' to function '{function_path}'")
+        # Get the RunContext from the IProxy's path (IProxy contains the design/context)
+        from pinjected.run_helpers.run_injected import (
+            a_get_run_context,
+            a_run_with_notify,
+        )
+
+        # Create a RunContext from the IProxy path - the IProxy provides the execution context
+        cxt: RunContext = await a_get_run_context(None, iproxy_path)
+
+        # Apply the IProxy to the function
+        # The function[iproxy] pattern means we're binding the IProxy's design to the function
+        call_result_proxy = func(iproxy)
+
+        # Define the task to run with the IProxy's context
+        async def task(cxt: RunContext):
+            return await cxt.a_provide(call_result_proxy)
+
+        # Execute with notification handling using the IProxy's context
+        result = await a_run_with_notify(cxt, task)
+
+        logger.info(f"Result:\n<pinjected>\n{result}\n</pinjected>")
 
     return asyncio.run(a_prep())
 
@@ -1045,6 +1030,9 @@ class PinjectedCLI:
     Available commands:
       run            - Run an injected variable with a specified design
       resolve        - Alias for 'run' command (dependency resolution and object construction)
+      call           - Call an @injected function with an IProxy variable
+                       Requires: function_path and iproxy_path
+                       Can be used as: call my_module.func my_module.iproxy
       check_config   - Display the current configuration
       create_overloads - Create type hint overloads for injected functions
       json_graph     - Generate a JSON representation of the dependency graph
@@ -1070,6 +1058,7 @@ class PinjectedCLI:
 
     Example:
       pinjected run --var_path=my_module.my_var
+      pinjected call my_module.my_function my_module.my_iproxy
       pinjected resolve --var_path=my_module.my_var
       pinjected describe --var_path=my_module.my_submodule.my_variable
       pinjected describe_json --var_path=my_module.my_submodule.my_iproxy_variable
@@ -1083,6 +1072,7 @@ class PinjectedCLI:
     def __init__(self):
         self.run = run
         self.resolve = run  # Add 'resolve' as an alias to 'run'
+        self.call = call
         self.check_config = check_config
         self.create_overloads = process_file
         self.json_graph = json_graph
