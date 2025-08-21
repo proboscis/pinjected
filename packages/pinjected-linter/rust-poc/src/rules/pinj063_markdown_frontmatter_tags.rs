@@ -53,7 +53,12 @@ impl MarkdownFrontmatterTagsRule {
                     out.push(c);
                 }
                 '#' if !in_single && !in_double => {
-                    break;
+                    if out.trim().is_empty() {
+                        out.push('#');
+                        continue;
+                    } else {
+                        break;
+                    }
                 }
                 _ => out.push(c),
             }
