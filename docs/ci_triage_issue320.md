@@ -50,3 +50,17 @@ Conclusion
 - Runner reliably avoids exit code 143 and releases locks under termination.
 - Makefile now uses the lock-based flow for test-cov to ensure deterministic orchestration.
 - CI failures are unrelated to the runner changes and should be addressed in separate follow-up PRs.
+Latest CI evidence (Aug 22, 2025)
+- Jobs failing: test (3.10) [ID 48650554220], build-and-test [ID 48650554198]; other matrix jobs canceled.
+- Observed behavior:
+  - Many tests executed normally until the GitHub Actions runner reported a shutdown signal.
+  - Termination message: "The runner has received a shutdown signal" followed by "make: *** [Makefile:69: test-cov] Error 143".
+  - Indicates CI cancellation/interruption, not a crash of scripts/test_runner_with_lock.py nor unhandled SIGTERM within pytest.
+- Unrelated failures previously observed:
+  - ide-plugins/pycharm/test_iproxy.py — TypeError about IProxy constructor.
+  - packages/pinjected-linter/tests/test_cli_doc_feature.py — ModuleNotFoundError: click.
+  - test/test_console_run_helper.py — collection/import errors.
+- Artifacts saved:
+  - /home/ubuntu/ci_test_3_10_48650554220_failed.log
+  - /home/ubuntu/ci_build_and_test_48650554198_failed.log
+- Conclusion: Within Option A scope, runner hardening stands; CI interruptions are external/unrelated. Follow-up PRs should handle ide-plugins and linter suite dependencies.

@@ -76,3 +76,15 @@ Notes
 Next steps (within scope A)
 - Keep PR focused on runner reliability: lock, signal handling, and process cleanup.
 - Document unrelated failures for follow-up issues/PRs; do not modify them here.
+Updated CI evidence (Aug 22, 2025)
+- Jobs: test (3.10) [48650554220], build-and-test [48650554198]; others canceled.
+- Behavior:
+  - Tests progressed broadly, then Actions runner received a shutdown signal; job ended with Error 143 from make (cancellation), not a runner crash.
+  - Confirms lock-based runner is not the cause; matches local runs showing no exit 143.
+- Unrelated suites (not in this PR):
+  - ide-plugins/pycharm/test_iproxy.py — TypeError: IProxy.__init__ missing 'value'.
+  - packages/pinjected-linter/tests/* — ModuleNotFoundError: click.
+  - test/test_console_run_helper.py — collection/import errors.
+- Logs saved (gh run view --log-failed):
+  - /home/ubuntu/ci_test_3_10_48650554220_failed.log
+  - /home/ubuntu/ci_build_and_test_48650554198_failed.log
