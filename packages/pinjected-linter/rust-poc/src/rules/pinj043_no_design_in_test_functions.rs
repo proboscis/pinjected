@@ -1,7 +1,7 @@
 //! PINJ043: No design() usage inside test functions
 //!
 //! The design() context manager should not be used inside test functions.
-//! design() should be created at module level and converted to fixtures using register_fixtures_from_design().
+//! design() should be created at module level and used with @injected_pytest decorator.
 
 use crate::models::{RuleContext, Severity, Violation};
 use crate::rules::base::LintRule;
@@ -85,7 +85,7 @@ impl NoDesignInTestFunctionsRule {
                 return Some(Violation {
                     rule_id: "PINJ043".to_string(),
                     message: format!(
-                        "design() cannot be used inside test function '{}'. Creating a design inside a test function does not inject dependencies into the test scope. Use register_fixtures_from_design() instead. At module level: test_design = design(my_service=MyService(), database=MockDatabase()); register_fixtures_from_design(test_design). In test function: def test_something(my_service, database): result = my_service.method(); assert result == expected.",
+                        "design() cannot be used inside test function '{}'. Creating a design inside a test function does not inject dependencies into the test scope. Use @injected_pytest decorator instead. At module level: test_design = design(my_service=MyService(), database=MockDatabase()). In test function: @injected_pytest(test_design) def test_something(my_service, database): result = my_service.method(); assert result == expected.",
                         parent_name
                     ),
                     offset: with_stmt.range.start().to_usize(),
@@ -113,7 +113,7 @@ impl NoDesignInTestFunctionsRule {
                 return Some(Violation {
                     rule_id: "PINJ043".to_string(),
                     message: format!(
-                        "design() cannot be used inside test function '{}'. Creating a design inside a test function does not inject dependencies into the test scope. Use register_fixtures_from_design() instead. At module level: test_design = design(async_service=AsyncService(), database=MockDatabase()); register_fixtures_from_design(test_design). In test function: @pytest.mark.asyncio async def test_something(async_service, database): result = await async_service.async_method(); assert result == expected.",
+                        "design() cannot be used inside test function '{}'. Creating a design inside a test function does not inject dependencies into the test scope. Use @injected_pytest decorator instead. At module level: test_design = design(async_service=AsyncService(), database=MockDatabase()). In test function: @injected_pytest(test_design) async def test_something(async_service, database): result = await async_service.async_method(); assert result == expected.",
                         parent_name
                     ),
                     offset: with_stmt.range.start().to_usize(),
@@ -219,7 +219,7 @@ impl LintRule for NoDesignInTestFunctionsRule {
     }
 
     fn description(&self) -> &str {
-        "design() cannot be used inside test functions. Creating a design inside a test does not inject dependencies. Use register_fixtures_from_design() instead."
+        "design() cannot be used inside test functions. Creating a design inside a test does not inject dependencies. Use @injected_pytest decorator instead."
     }
 
     fn check(&self, context: &RuleContext) -> Vec<Violation> {
@@ -294,7 +294,7 @@ def test_user_creation():
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "PINJ043");
         assert!(violations[0].message.contains("test_user_creation"));
-        assert!(violations[0].message.contains("register_fixtures_from_design"));
+        assert!(violations[0].message.contains("@injected_pytest"));
     }
 
     #[test]

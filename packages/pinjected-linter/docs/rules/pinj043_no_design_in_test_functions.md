@@ -13,12 +13,12 @@ Using `design()` inside test functions is not supported and will not work:
 3. **Wrong Approach**: Tests require proper dependency injection through pytest fixtures or `@injected_pytest`
 4. **Against Design**: Goes against pinjected's architecture for test dependency management
 
-The correct pattern is to use `register_fixtures_from_design()` which:
-- Provides full pytest fixture scoping (function, class, module, session)
-- Enables proper dependency sharing within the same scope
-- Integrates seamlessly with regular pytest fixtures
-- Supports better IDE integration and type hints
-- Keeps tests clean without decorators
+The correct pattern is to use `@injected_pytest` decorator which:
+- Provides direct dependency injection into test function parameters
+- Supports design overrides for test-specific configurations
+- Enables async test execution out of the box
+- Integrates with pinjected's meta context system
+- Keeps test logic clean and focused
 
 ## Examples
 
@@ -55,47 +55,7 @@ def test_parametrized(value):
     assert service.process(value) > 0  # NameError!
 ```
 
-### ✅ Correct - Recommended Approach Using register_fixtures_from_design
-
-```python
-from pinjected import design, instances
-from pinjected.test import register_fixtures_from_design
-import pytest
-
-# Create design at module level
-test_design = design(
-    user_service=MockUserService(),
-    database=MockDatabase()
-)
-
-# Or use instances() for multiple dependencies
-test_design += instances(
-    async_service=MockAsyncService(),
-    service=MockService()
-)
-
-# Register as pytest fixtures (recommended approach)
-register_fixtures_from_design(test_design)
-
-# Now write clean tests using fixtures
-def test_user_creation(user_service, database):
-    user = user_service.create_user("test@example.com")
-    assert user.id in database
-
-@pytest.mark.asyncio
-async def test_async_operation(async_service):
-    result = await async_service.do_something()
-    assert result is not None
-
-@pytest.mark.parametrize("value", [1, 2, 3])
-def test_parametrized(value, service):
-    # service is efficiently reused across all parameters
-    assert service.process(value) > 0
-```
-
-### ✅ Alternative Approach Using @injected_pytest
-
-While `@injected_pytest` is still supported, `register_fixtures_from_design()` is the recommended approach for better pytest integration:
+### ✅ Correct - Recommended Approach Using @injected_pytest
 
 ```python
 from pinjected.test import injected_pytest
@@ -117,7 +77,7 @@ test_design = design(
     async_service=MockAsyncService()
 )
 
-# Using @injected_pytest (supported but not recommended)
+# Using @injected_pytest (recommended approach)
 @injected_pytest(test_design)
 def test_user_creation(user_service, database):
     # Dependencies are automatically injected
@@ -129,6 +89,40 @@ async def test_async_operation(async_service):
     # async_service is injected from test_design
     result = await async_service.do_something()
     assert result is not None
+
+@injected_pytest(test_design)
+def test_parametrized_example(service):
+    # Dependencies are injected for each test
+    assert service.process(42) > 0
+```
+
+### ✅ Legacy Approach Using register_fixtures_from_design (Deprecated)
+
+**⚠️ Warning**: `register_fixtures_from_design()` is deprecated (see PINJ052). Use `@injected_pytest` instead.
+
+```python
+from pinjected import design, instances
+from pinjected.test import register_fixtures_from_design
+import pytest
+
+# Create design at module level
+test_design = design(
+    user_service=MockUserService(),
+    database=MockDatabase()
+)
+
+# Register as pytest fixtures (deprecated approach)
+register_fixtures_from_design(test_design)
+
+# Tests using fixtures
+def test_user_creation(user_service, database):
+    user = user_service.create_user("test@example.com")
+    assert user.id in database
+
+@pytest.mark.asyncio
+async def test_async_operation(async_service):
+    result = await async_service.do_something()
+    assert result is not None
 ```
 
 ## Common Patterns
@@ -138,7 +132,6 @@ async def test_async_operation(async_service):
 ```python
 # conftest.py
 from pinjected import design, instances
-from pinjected.test import register_fixtures_from_design
 
 # Shared test design for all tests
 shared_design = design(
@@ -147,11 +140,15 @@ shared_design = design(
     logger=MockLogger()
 )
 
-# Register with appropriate scope
-register_fixtures_from_design(
-    shared_design,
-    scope="session"  # Share expensive resources across all tests
-)
+# Use in individual test files with @injected_pytest
+# test_example.py
+from pinjected.test import injected_pytest
+from conftest import shared_design
+
+@injected_pytest(shared_design)
+def test_with_shared_dependencies(database, cache, logger):
+    # Dependencies from shared_design are injected
+    assert database.is_connected()
 ```
 
 ### Module-Specific Test Design
@@ -159,7 +156,7 @@ register_fixtures_from_design(
 ```python
 # test_user_service.py
 from pinjected import design
-from pinjected.test import register_fixtures_from_design
+from pinjected.test import injected_pytest
 
 # Module-specific mocks
 class MockEmailService:
@@ -175,20 +172,18 @@ user_test_design = design(
     email_service=MockEmailService()
 )
 
-# Register fixtures for this module
-register_fixtures_from_design(user_test_design)
-
-# Clean tests using fixtures
+# Clean tests using @injected_pytest
+@injected_pytest(user_test_design)
 def test_user_registration(user_service, email_service):
     user = user_service.register("test@example.com")
     assert email_service.sent_count == 1
 ```
 
-### Scoped Fixtures for Expensive Resources
+### Expensive Resources with @injected_pytest
 
 ```python
 from pinjected import design, instance
-from pinjected.test import register_fixtures_from_design
+from pinjected.test import injected_pytest
 
 @instance
 def ml_model():
@@ -205,12 +200,12 @@ expensive_design = design(
     database=database_connection
 )
 
-# Register with session scope to load once per test session
-register_fixtures_from_design(
-    expensive_design,
-    scope="session",
-    include={"ml_model", "database"}
-)
+# Use with @injected_pytest - resources are managed by pinjected's resolver
+@injected_pytest(expensive_design)
+def test_ml_prediction(ml_model, database):
+    # ml_model and database are injected
+    prediction = ml_model.predict(test_data)
+    database.save_result(prediction)
 ```
 
 ### Conditional Test Setup
@@ -219,7 +214,7 @@ register_fixtures_from_design(
 # Module level conditional design
 import os
 from pinjected import design
-from pinjected.test import register_fixtures_from_design
+from pinjected.test import injected_pytest
 
 # Build design conditionally at module level
 if os.getenv("USE_MOCK_DB"):
@@ -229,10 +224,8 @@ else:
 
 conditional_design = design(database=test_db)
 
-# Register the conditional fixtures
-register_fixtures_from_design(conditional_design)
-
-# Use in tests
+# Use with @injected_pytest
+@injected_pytest(conditional_design)
 def test_with_conditional_db(database):
     # database is either mock or real based on env
     assert database.is_connected()
@@ -242,7 +235,7 @@ def test_with_conditional_db(database):
 
 ```python
 from pinjected import design, injected
-from pinjected.test import register_fixtures_from_design
+from pinjected.test import injected_pytest
 
 # Function to test (uses @injected)
 @injected
@@ -265,8 +258,7 @@ test_design = design(
     fetch_user_data=fetch_user_data  # Include the function to test
 )
 
-register_fixtures_from_design(test_design)
-
+@injected_pytest(test_design)
 def test_fetch_user_data_cache_miss(fetch_user_data, database, cache, logger):
     # Set up test data
     user_id = "user123"
@@ -284,36 +276,9 @@ def test_fetch_user_data_cache_miss(fetch_user_data, database, cache, logger):
 
 ## Migration Guide
 
-To fix violations of this rule, migrate to using `register_fixtures_from_design()` or `@injected_pytest`:
+To fix violations of this rule, migrate to using `@injected_pytest`:
 
-### Option 1: Migrate to register_fixtures_from_design (Recommended)
-
-```python
-# Before (design() in test - NOT WORKING)
-def test_something():
-    with design() as d:
-        d.provide("service", MyService())
-        d.provide("database", MockDatabase())
-    # service and database are NOT in scope - test fails
-    result = service.method()  # NameError!
-
-# After (using register_fixtures_from_design)
-from pinjected.test import register_fixtures_from_design
-from pinjected import design
-
-test_design = design(
-    service=MyService(),
-    database=MockDatabase()
-)
-register_fixtures_from_design(test_design)
-
-def test_something(service, database):
-    # service and database are injected as pytest fixtures
-    result = service.method()
-    assert result == expected
-```
-
-### Option 2: Migrate to @injected_pytest (Alternative)
+### Option 1: Migrate to @injected_pytest (Recommended)
 
 ```python
 # Before (design() in test - NOT WORKING)
@@ -331,16 +296,45 @@ test_design = design(service=MyService())
 @injected_pytest(test_design)
 def test_something(service):
     result = service.method()
+    assert result == expected
+```
+
+### Option 2: Migrate to register_fixtures_from_design (Deprecated)
+
+**⚠️ Warning**: This approach is deprecated (see PINJ052). Use `@injected_pytest` instead.
+
+```python
+# Before (design() in test - NOT WORKING)
+def test_something():
+    with design() as d:
+        d.provide("service", MyService())
+        d.provide("database", MockDatabase())
+    # service and database are NOT in scope - test fails
+    result = service.method()  # NameError!
+
+# After (using register_fixtures_from_design - deprecated)
+from pinjected.test import register_fixtures_from_design
+from pinjected import design
+
+test_design = design(
+    service=MyService(),
+    database=MockDatabase()
+)
+register_fixtures_from_design(test_design)
+
+def test_something(service, database):
+    # service and database are injected as pytest fixtures
+    result = service.method()
+    assert result == expected
 ```
 
 ### Key Migration Points
 
 1. **Remove with design() blocks** from inside test functions
-2. **Choose your testing approach**:
-   - Use `@injected_pytest` for pinjected-native testing (recommended)
-   - Use `register_fixtures_from_design()` for pytest fixture integration
+2. **Use `@injected_pytest` decorator** for pinjected-native testing (recommended)
 3. **Update test function signatures** to receive dependencies as parameters
 4. **Create designs at module level**, not inside functions
+5. **Avoid deprecated `register_fixtures_from_design()`** - use `@injected_pytest` instead
 
 ## Configuration
 
