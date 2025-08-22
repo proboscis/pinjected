@@ -3,16 +3,17 @@ from pinjected import IProxy, injected
 
 
 class User:
-    name: str
+    def __init__(self, name: str = "test_user"):
+        self.name = name
 
 
 def some_func():
-    return IProxy()
+    return IProxy(42)
 
 
 # Test cases - watch the console output!
 test_proxy: IProxy[int] = some_func()
-user_proxy: IProxy[User] = IProxy()
+user_proxy: IProxy[User] = IProxy(User())
 
 
 class ProcessIntProtocol(Protocol):

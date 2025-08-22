@@ -212,6 +212,31 @@ This repository is organized as a monorepo with the following packages:
 
 ## Working with the Monorepo
 
+### System Dependencies
+
+The pinjected linter requires system dependencies for Rust compilation. These are automatically installed when you run `make sync`, but you can also install them manually:
+
+#### Ubuntu/Debian
+```bash
+sudo apt-get update
+sudo apt-get install -y pkg-config libssl-dev
+```
+
+#### RHEL/CentOS/Fedora
+```bash
+sudo yum install -y pkg-config openssl-devel
+```
+
+#### macOS
+```bash
+brew install pkg-config openssl
+```
+
+If you encounter linter compilation errors, try running:
+```bash
+make install-system-deps
+```
+
 ### Installation
 
 To install all packages for development:
