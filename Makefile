@@ -73,10 +73,12 @@ test-all:
 	uv sync --group dev --all-packages
 
 test-linter-full:
+	uv sync --all-packages
 	$(MAKE) test-linter
 	$(MAKE) lint-with-pinjected-linter
 
 test-linter:
+	cd packages/pinjected-linter && uv sync --group dev
 	cd packages/pinjected-linter/rust-poc && cargo test -- --skip test_pinj014
 
 build-linter:
