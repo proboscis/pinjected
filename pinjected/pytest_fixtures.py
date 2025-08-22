@@ -186,24 +186,41 @@ class DesignFixtures:
     async def _get_or_create_state(self, request) -> SharedTestState:
         """Get or create shared state for the current scope."""
         scope = getattr(request, "scope", "function")
+
+        try:
+            binding_names = tuple(sorted(self._extract_binding_names()))
+        except Exception:
+            binding_names = ()
+
+        fixtures_identity = (
+            self.__class__.__name__,
+            self.caller_file,
+            binding_names or (id(self),),
+        )
+
         if scope == "function":
-            key = (
-                getattr(request, "node", None).nodeid
-                if getattr(request, "node", None)
-                else request
-            )
+            node = getattr(request, "node", None)
+            nodeid = getattr(node, "nodeid", None)
+            key = ("function", self.caller_file, fixtures_identity, nodeid or request)
         elif scope == "module":
-            key = getattr(request, "module", None)
+            mod = getattr(request, "module", None)
+            key = ("module", self.caller_file, fixtures_identity, mod)
         elif scope == "class":
-            key = (
+            cls = (
                 getattr(request, "cls", None)
-                or getattr(request.node, "cls", None)
-                or request.node
+                or getattr(getattr(request, "node", None), "cls", None)
+                or getattr(request, "node", None)
             )
+            key = ("class", self.caller_file, fixtures_identity, cls)
         elif scope == "session":
-            key = ("session",)
+            key = ("session", self.caller_file, fixtures_identity)
         else:
-            key = (scope, request.node)
+            key = (
+                scope,
+                self.caller_file,
+                fixtures_identity,
+                getattr(request, "node", None),
+            )
 
         if key not in _test_state:
             state = SharedTestState()
