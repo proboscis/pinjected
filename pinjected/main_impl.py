@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 from pinjected import Design, Injected, design
-from pinjected.di.partially_injected import PartiallyInjectedFunction
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.tools.add_overload import process_file
 from pinjected.exception_util import unwrap_exception_group
@@ -142,7 +141,12 @@ def decode_b64json(text):
     return data
 
 
-def call(function_path: str, iproxy_path: str):
+def call(
+    function_path: str,
+    iproxy_path: str,
+    base64_encoded_json: str | None = None,
+    call_kwargs_base64_json: str | None = None,
+):
     """
     Call an @injected function with an IProxy variable.
 
@@ -151,17 +155,36 @@ def call(function_path: str, iproxy_path: str):
 
     :param function_path: Full module path to the @injected function (e.g., 'my_module.my_function')
     :param iproxy_path: Full module path to the IProxy variable (e.g., 'my_module.my_iproxy')
+    :param base64_encoded_json: Base64-encoded JSON containing keyword arguments for the function call
+    :param call_kwargs_base64_json: Base64-encoded JSON object containing keyword arguments for the function call
 
     Example:
         pinjected call my_module.process_data my_config.data_proxy
     """
     from pinjected.pinjected_logging import logger
 
+    call_kwargs = {}
+
+    if base64_encoded_json is not None:
+        import base64
+        import json
+
+        data = json.loads(base64.b64decode(base64_encoded_json).decode())
+        call_kwargs.update(data)
+        logger.info("decoded base64 kwargs for call")
+
+    if call_kwargs_base64_json is not None:
+        import base64
+        import json
+
+        decoded_kwargs = json.loads(base64.b64decode(call_kwargs_base64_json).decode())
+        if isinstance(decoded_kwargs, dict):
+            call_kwargs.update(decoded_kwargs)
+
     async def a_prep():
         from pinjected.module_var_path import ModuleVarPath
-        from pinjected.di.partially_injected import Partial
+        from pinjected.di.partially_injected import Partial, PartiallyInjectedFunction
 
-        # Load and validate the function
         func_var_path = ModuleVarPath(function_path)
         func = func_var_path.load()
         assert isinstance(func, (PartiallyInjectedFunction, Partial)), (
@@ -171,26 +194,22 @@ def call(function_path: str, iproxy_path: str):
         iproxy_var_path = ModuleVarPath(iproxy_path)
         iproxy = iproxy_var_path.load()
 
-        # Apply the IProxy to the function and execute
         logger.info(f"Applying IProxy '{iproxy_path}' to function '{function_path}'")
-        # Get the RunContext from the IProxy's path (IProxy contains the design/context)
         from pinjected.run_helpers.run_injected import (
             a_get_run_context,
             a_run_with_notify,
         )
 
-        # Create a RunContext from the IProxy path - the IProxy provides the execution context
         cxt: RunContext = await a_get_run_context(None, iproxy_path)
 
-        # Apply the IProxy to the function
-        # The function[iproxy] pattern means we're binding the IProxy's design to the function
-        call_result_proxy = func(iproxy)
+        if call_kwargs:
+            call_result_proxy = func(iproxy, **call_kwargs)
+        else:
+            call_result_proxy = func(iproxy)
 
-        # Define the task to run with the IProxy's context
         async def task(cxt: RunContext):
             return await cxt.a_provide(call_result_proxy)
 
-        # Execute with notification handling using the IProxy's context
         result = await a_run_with_notify(cxt, task)
 
         logger.info(f"Result:\n<pinjected>\n{result}\n</pinjected>")

@@ -91,7 +91,7 @@ lint-with-pinjected-linter:
 
 test-cov:
 	uv sync --all-packages
-	uv run python scripts/test_runner_with_lock.py . -v
+	uv run python scripts/test_runner_with_lock.py --make-test -v
 	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 
 publish:
