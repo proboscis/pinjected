@@ -5,9 +5,9 @@ use rustpython_parser::{parse, Mode};
 use rustpython_ast::text_size::TextRange;
 use rustpython_ast::Stmt;
 
-fn ctx_for<'a>(source: &'a str, file_path: &'a str) -> RuleContext<'a> {
-    let ast = Box::leak(Box::new(parse("", Mode::Module, file_path).unwrap()));
-    let dummy_stmt = Box::leak(Box::new(Stmt::Pass(rustpython_ast::StmtPass { range: TextRange::default() })));
+fn ctx_for(source: &'static str, file_path: &'static str) -> RuleContext<'static> {
+    let ast: &'static rustpython_ast::Mod = Box::leak(Box::new(parse("", Mode::Module, file_path).unwrap()));
+    let dummy_stmt: &'static Stmt = Box::leak(Box::new(Stmt::Pass(rustpython_ast::StmtPass { range: TextRange::default() })));
     RuleContext {
         stmt: dummy_stmt,
         file_path,
