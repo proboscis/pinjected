@@ -56,7 +56,8 @@ pythonpath = [
     "packages/reviewer/src",
     "packages/rate_limit/src",
     "packages/niji_voice/src",
-    "packages/injected_utils/src"
+    "packages/injected_utils/src",
+    "packages/pinjected-linter/src"
 ]
 testpaths = [
     "test",
@@ -76,6 +77,7 @@ members = [
     "packages/niji_voice",
     "packages/onepassword",
     "packages/openai_support",
+    "packages/pinjected-linter",
     "packages/rate_limit",
     "packages/reviewer",
     "packages/wandb_util",
