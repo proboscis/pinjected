@@ -142,8 +142,8 @@ def decode_b64json(text):
 
 
 def call(
-    function_path: str | None = None,
-    iproxy_path: str | None = None,
+    function_path: str,
+    iproxy_path: str,
     base64_encoded_json: str | None = None,
     call_kwargs_base64_json: str | None = None,
 ):
@@ -155,8 +155,8 @@ def call(
 
     :param function_path: Full module path to the @injected function (e.g., 'my_module.my_function')
     :param iproxy_path: Full module path to the IProxy variable (e.g., 'my_module.my_iproxy')
-    :param base64_encoded_json: Base64-encoded JSON that may include var_path, design_path, and extra call kwargs
-    :param call_kwargs_base64_json: Base64-encoded JSON object containing keyword arguments for the call
+    :param base64_encoded_json: Base64-encoded JSON containing keyword arguments for the function call
+    :param call_kwargs_base64_json: Base64-encoded JSON object containing keyword arguments for the function call
 
     Example:
         pinjected call my_module.process_data my_config.data_proxy
@@ -170,10 +170,8 @@ def call(
         import json
 
         data = json.loads(base64.b64decode(base64_encoded_json).decode())
-        function_path = data.pop("var_path", function_path)
-        iproxy_path = data.pop("design_path", iproxy_path)
         call_kwargs.update(data)
-        logger.info(f"decoded base64 for call: function_path={function_path}")
+        logger.info("decoded base64 kwargs for call")
 
     if call_kwargs_base64_json is not None:
         import base64
