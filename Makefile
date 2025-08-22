@@ -1,12 +1,34 @@
 
-.PHONY: test test-all test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils publish-gcp tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils tag-version-gcp release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils release-gcp sync setup-all setup-pre-commit
+.PHONY: test test-all test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils publish-gcp tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils tag-version-gcp release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils release-gcp sync setup-all setup-pre-commit install-system-deps
 
 setup-pre-commit:
 	@echo "Setting up pre-commit hooks..."
 	@uv run pre-commit install
 	@echo "✓ Pre-commit hooks installed"
 
+install-system-deps:
+	@echo "Installing system dependencies for Rust linter..."
+	@if command -v apt-get >/dev/null 2>&1; then \
+		echo "Detected apt package manager (Ubuntu/Debian)"; \
+		sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev; \
+	elif command -v yum >/dev/null 2>&1; then \
+		echo "Detected yum package manager (RHEL/CentOS)"; \
+		sudo yum install -y pkg-config openssl-devel; \
+	elif command -v brew >/dev/null 2>&1; then \
+		echo "Detected Homebrew (macOS)"; \
+		brew install pkg-config openssl; \
+	else \
+		echo "Unknown package manager. Please install pkg-config and OpenSSL development libraries manually."; \
+		echo "Ubuntu/Debian: sudo apt-get install pkg-config libssl-dev"; \
+		echo "RHEL/CentOS: sudo yum install pkg-config openssl-devel"; \
+		echo "macOS: brew install pkg-config openssl"; \
+		exit 1; \
+	fi
+	@echo "✓ System dependencies installed successfully"
+
 sync:
+	@echo "Installing system dependencies..."
+	@$(MAKE) install-system-deps || echo "⚠️  System dependency installation failed. You may need to install pkg-config and libssl-dev manually."
 	rm -rf packages/wandb
 	uv venv
 	uv sync --group dev
@@ -51,10 +73,12 @@ test-all:
 	uv sync --group dev --all-packages
 
 test-linter-full:
+	uv sync --all-packages
 	$(MAKE) test-linter
 	$(MAKE) lint-with-pinjected-linter
 
 test-linter:
+	cd packages/pinjected-linter && uv sync --group dev
 	cd packages/pinjected-linter/rust-poc && cargo test
 
 build-linter:
@@ -66,7 +90,8 @@ lint-with-pinjected-linter:
 
 
 test-cov:
-	uv run python scripts/test_runner_with_lock.py . -v
+	uv sync --all-packages
+	uv run python scripts/test_runner_with_lock.py --make-test -v
 	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 
 publish:

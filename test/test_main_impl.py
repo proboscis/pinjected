@@ -280,7 +280,7 @@ class TestCall:
     def test_call_with_base64_encoded_json(self, mock_logger, mock_asyncio_run):
         """Test call with base64 encoded JSON."""
         # Prepare base64 encoded data
-        data = {"var_path": "test.var", "design_path": "test.design", "extra": "value"}
+        data = {"extra": "value"}
         encoded = base64.b64encode(json.dumps(data).encode()).decode()
 
         # Setup return value from asyncio.run
@@ -290,11 +290,11 @@ class TestCall:
         mock_asyncio_run.return_value = mock_callable
 
         # Run the function
-        call(base64_encoded_json=encoded)
+        call("test.var", "test.design", base64_encoded_json=encoded)
 
         # Verify logger shows decoded info
         logger_calls = [str(call) for call in mock_logger.info.call_args_list]
-        assert any("decoded" in call and "test.var" in call for call in logger_calls)
+        assert any("decoded base64 kwargs for call" in call for call in logger_calls)
 
     @patch("pinjected.main_impl.asyncio.run")
     @patch("pinjected.pinjected_logging.logger")
