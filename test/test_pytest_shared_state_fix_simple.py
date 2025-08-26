@@ -2,9 +2,14 @@
 
 import pytest
 import random
+import warnings
 from typing import Protocol, Dict
 from pinjected import injected, design
 from pinjected.test import register_fixtures_from_design
+
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, message=".*register_fixtures_from_design.*"
+)
 
 
 class SimpleCounterProtocol(Protocol):

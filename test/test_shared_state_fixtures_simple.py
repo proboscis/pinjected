@@ -11,6 +11,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import Protocol, Dict
 from pinjected import injected, design
 from pinjected.pytest_fixtures import register_fixtures_from_design
+import warnings
+
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, message=".*register_fixtures_from_design.*"
+)
 
 
 class SharedCounterProtocol(Protocol):

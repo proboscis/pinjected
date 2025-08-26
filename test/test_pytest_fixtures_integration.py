@@ -19,12 +19,17 @@ to demonstrate the fixture registration and usage workflow.
 """
 
 from typing import Dict, List, Protocol
+import warnings
 
 import pytest
 
 from pinjected import design, injected, Injected, IProxy
 from pinjected.picklable_logger import PicklableLogger
 from pinjected.pytest_fixtures import register_fixtures_from_design
+
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, message=".*register_fixtures_from_design.*"
+)
 
 
 # ============================================================================
