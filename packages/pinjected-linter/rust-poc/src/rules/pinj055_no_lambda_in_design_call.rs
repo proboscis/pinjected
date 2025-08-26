@@ -1,7 +1,6 @@
 //! PINJ055: No lambda in direct design() function calls
 //!
 //! This rule forbids passing lambda functions as keyword arguments to design() calls.
-//! Lambda functions will be injected as-is rather than being called, which is rarely intended.
 //! Use @instance or @injected decorated functions instead.
 
 use crate::models::{RuleContext, Severity, Violation};
@@ -74,8 +73,13 @@ impl NoLambdaInDesignCallRule {
                                     rule_id: "PINJ055".to_string(),
                                     message: format!(
                                         "Function '{}' passed as '{}' argument to design() is not decorated with @injected or @instance. \
-                                         Non-decorated functions will be injected as-is rather than being called.",
-                                        func_name, arg_name
+                                         Functions are registered as DI targets, not called during binding. \
+                                         \n\nOptions:\n\
+                                         1. Use IProxy() to bind the function object as-is:\n   {}=IProxy({})\n   \
+                                         → Result: You get exactly the same function as dependency\n\
+                                         2. Use @injected decorator for dependency injection:\n   @injected\n   def {}(dep1, dep2, /, arg): pass\n   {}={}\n   \
+                                         → Result: You get a function with dependencies already resolved",
+                                        func_name, arg_name, arg_name, func_name, func_name, arg_name, func_name
                                     ),
                                     offset: keyword.value.range().start().to_usize(),
                                     file_path: String::new(),
