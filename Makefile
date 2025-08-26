@@ -53,10 +53,8 @@ setup-all:
 	cd packages/gcp && uv sync --group dev
 	cd packages/pinjected-linter && uv sync --group dev
 
-test:
-	@echo "Running tests with lock mechanism to prevent concurrent execution..."
-	@uv run python scripts/test_runner_with_lock.py --make-test
-
+test: test-core test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
+	@echo "Aggregated subpackage tests completed"
 test-all:
 	uv sync --all-packages
 	uv run python scripts/test_runner_with_lock.py .
@@ -71,6 +69,64 @@ test-all:
 	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	uv sync --group dev --all-packages
+
+# Run only core pinjected tests (root package)
+test-core:
+	uv sync --all-packages
+	uv run pytest test pinjected/test pinjected/tests
+
+# Run tests for a specific subpackage by name (usage: make test-pkg PACKAGE=openai_support)
+test-pkg:
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Missing PACKAGE variable. Usage: make test-pkg PACKAGE=<subpkg>"; \
+		exit 1; \
+	fi
+	cd packages/$(PACKAGE) && uv sync --group dev && uv run pytest -q
+# Subpackage test targets (Python)
+# Subpackage test targets (Python)
+.PHONY: test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
+test-openai_support:
+	cd packages/openai_support && uv venv && uv sync --group dev && uv run pytest -q
+test-anthropic:
+	cd packages/anthropic && uv venv && uv sync --group dev && uv run pytest -q
+test-wandb_util:
+	cd packages/wandb_util && uv venv && uv sync --group dev && uv run pytest -q
+test-error_reports:
+	cd packages/error_reports && uv venv && uv sync --group dev && uv run pytest -q
+test-reviewer:
+	cd packages/reviewer && uv venv && uv sync --group dev && uv run pytest -q
+test-rate_limit:
+	cd packages/rate_limit && uv venv && uv sync --group dev && uv run pytest -q
+test-niji_voice:
+	cd packages/niji_voice && uv venv && uv sync --group dev && uv run pytest -q
+test-injected_utils:
+	cd packages/injected_utils && uv venv && uv sync --group dev && uv run pytest -q
+test-gcp:
+	cd packages/gcp && uv venv && uv sync --group dev && uv run pytest -q
+
+# Aggregate for local development; CI will invoke per-package targets directly
+
+.PHONY: test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
+test-openai_support:
+	cd packages/openai_support && uv venv && uv sync --group dev && uv run pytest -q
+test-anthropic:
+	cd packages/anthropic && uv venv && uv sync --group dev && uv run pytest -q
+test-wandb_util:
+	cd packages/wandb_util && uv venv && uv sync --group dev && uv run pytest -q
+test-error_reports:
+	cd packages/error_reports && uv venv && uv sync --group dev && uv run pytest -q
+test-reviewer:
+	cd packages/reviewer && uv venv && uv sync --group dev && uv run pytest -q
+test-rate_limit:
+	cd packages/rate_limit && uv venv && uv sync --group dev && uv run pytest -q
+test-niji_voice:
+	cd packages/niji_voice && uv venv && uv sync --group dev && uv run pytest -q
+test-injected_utils:
+	cd packages/injected_utils && uv venv && uv sync --group dev && uv run pytest -q
+test-gcp:
+	cd packages/gcp && uv venv && uv sync --group dev && uv run pytest -q
+
+
 
 test-linter-full:
 	uv sync --all-packages
