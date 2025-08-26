@@ -273,18 +273,18 @@ impl NoUnmarkedInjectedCallsRule {
                             - Direct calls bypass pytest's dependency injection system\n\n\
                             CORRECT APPROACH FOR PYTEST:\n\
                             1. Use pytest fixtures: Declare '{}' as a fixture parameter\n\
-                            2. Set up fixtures using register_fixtures_from_design() at module level\n\
+                            2. Set up dependencies using @injected_pytest decorator\n\
                             3. Let pytest inject the resolved dependency\n\n\
                             EXAMPLE:\n\
                             # At module level:\n\
                             from pinjected import design\n\
-                            from pinjected.test import register_fixtures_from_design\n\n\
+                            from pinjected.test import injected_pytest\n\n\
                             test_design = design(\n\
                                 {}={}(),\n\
                                 # ... other dependencies\n\
-                            )\n\
-                            register_fixtures_from_design(test_design)\n\n\
+                            )\n\n\
                             # In your test:\n\
+                            @injected_pytest(test_design)\n\
                             def test_something({}, other_fixture):\n\
                                 # {} is now the resolved function, not an IProxy\n\
                                 result = {}(args)  # This works!\n\n\
