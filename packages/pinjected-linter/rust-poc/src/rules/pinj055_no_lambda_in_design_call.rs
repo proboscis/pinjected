@@ -1,7 +1,6 @@
 //! PINJ055: No lambda in direct design() function calls
 //!
 //! This rule forbids passing lambda functions as keyword arguments to design() calls.
-//! Lambda functions will be injected as-is rather than being called, which is rarely intended.
 //! Use @instance or @injected decorated functions instead.
 
 use crate::models::{RuleContext, Severity, Violation};
@@ -74,8 +73,9 @@ impl NoLambdaInDesignCallRule {
                                     rule_id: "PINJ055".to_string(),
                                     message: format!(
                                         "Function '{}' passed as '{}' argument to design() is not decorated with @injected or @instance. \
-                                         Non-decorated functions will be injected as-is rather than being called.",
-                                        func_name, arg_name
+                                         Functions are registered as DI targets, not called during binding. \
+                                         Use IProxy({}) to use the function as-is, or decorate with @injected/@instance for dependency injection.",
+                                        func_name, arg_name, func_name
                                     ),
                                     offset: keyword.value.range().start().to_usize(),
                                     file_path: String::new(),
