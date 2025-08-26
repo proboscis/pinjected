@@ -2,6 +2,7 @@ plugins {
     id("org.jetbrains.intellij") version "1.17.2"
     id("java")
     kotlin("jvm") version "1.9.22"
+    kotlin("plugin.serialization") version "1.9.22"
 }
 
 group = "com.cyberagent.ailab.pinjectdesign"
@@ -9,6 +10,10 @@ version = "0.1.0"
 
 repositories {
     mavenCentral()
+}
+
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 }
 
 // Configure Gradle IntelliJ Plugin

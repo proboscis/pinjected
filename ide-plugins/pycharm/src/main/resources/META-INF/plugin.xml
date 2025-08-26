@@ -18,6 +18,7 @@
             instance="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
             id="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
             displayName="PInject Design"/>
+        <codeInsight.lineMarkerProvider language="Python" implementationClass="com.cyberagent.ailab.pinjectdesign.lineMarkers.InjectedFunctionGutterIconProvider"/>
     </extensions>
 
     <actions>
