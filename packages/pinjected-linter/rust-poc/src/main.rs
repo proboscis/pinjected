@@ -819,9 +819,8 @@ fn apply_fixes(violations: &[(std::path::PathBuf, Vec<pinjected_linter::models::
     
     // Apply fixes to each file
     for (file_path, fixes) in fixes_by_file {
-        // For now, we'll apply the first fix for each file
-        // In the future, we might need more sophisticated logic for multiple fixes
-        if let Some((rule_id, fix)) = fixes.first() {
+        // Apply all fixes for each file
+        for (rule_id, fix) in fixes {
             eprintln!("  \x1b[32m✓\x1b[0m Applying fix to {}: {}", file_path.display(), fix.description);
             
             // Create parent directories if they don't exist
