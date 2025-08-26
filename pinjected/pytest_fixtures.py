@@ -128,8 +128,16 @@ class DesignFixtures:
             logger.info(
                 "Resolving DelegatedVar to extract binding names for fixture registration"
             )
-            # Run async resolution in sync context
-            resolved_design = asyncio.run(self._resolve_delegated_var())
+            # Run async resolution in sync context, handling existing event loop
+            try:
+                asyncio.get_running_loop()
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self._resolve_delegated_var())
+                    resolved_design = future.result()
+            except RuntimeError:
+                resolved_design = asyncio.run(self._resolve_delegated_var())
             if resolved_design:
                 # Cache the resolved design for later use
                 self._resolved_design_cache = resolved_design
