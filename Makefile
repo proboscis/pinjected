@@ -79,9 +79,6 @@ define RUN_PKG_TESTS
 	  fi )
 endef
 
-
-	uv sync --group dev --all-packages
-
 # Run only core pinjected tests (root package)
 .PHONY: test-core
 test-core:
