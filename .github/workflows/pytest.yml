@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     name: pytest (${{ matrix.python-version }}, ${{ matrix.package }})
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.10', '3.11', '3.12', '3.13']
         package: ['core', 'openai_support', 'anthropic', 'wandb_util', 'error_reports', 'reviewer', 'rate_limit', 'niji_voice', 'injected_utils', 'gcp']
