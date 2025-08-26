@@ -74,8 +74,10 @@ impl NoLambdaInDesignCallRule {
                                     message: format!(
                                         "Function '{}' passed as '{}' argument to design() is not decorated with @injected or @instance. \
                                          Functions are registered as DI targets, not called during binding. \
-                                         Use IProxy({}) to use the function as-is, or decorate with @injected/@instance for dependency injection.",
-                                        func_name, arg_name, func_name
+                                         \n\nOptions:\n\
+                                         1. Use IProxy() to call the function directly:\n   {}=IProxy({})\n\
+                                         2. Use @injected decorator for dependency injection:\n   @injected\n   def {}(dep1, dep2, /, arg): pass\n   {}={}",
+                                        func_name, arg_name, arg_name, func_name, func_name, arg_name, func_name
                                     ),
                                     offset: keyword.value.range().start().to_usize(),
                                     file_path: String::new(),
