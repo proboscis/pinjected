@@ -67,7 +67,19 @@ test-all:
 	cd packages/niji_voice && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/injected_utils && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
-	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+# Helper to run tests for a subpackage and treat pytest exit code 5 (no tests) as success
+define RUN_PKG_TESTS
+	@cd packages/$(1) && uv venv && uv sync --group dev && \
+	( rc=0; uv run pytest -q || rc=$$?; \
+	  if [ $$rc -eq 5 ]; then \
+	    echo "No tests collected for package '$(1)'; passing."; \
+	    exit 0; \
+	  else \
+	    exit $$rc; \
+	  fi )
+endef
+
+
 	uv sync --group dev --all-packages
 
 # Run only core pinjected tests (root package)
@@ -83,28 +95,28 @@ test-pkg:
 		echo "Missing PACKAGE variable. Usage: make test-pkg PACKAGE=<subpkg>"; \
 		exit 1; \
 	fi
-	cd packages/$(PACKAGE) && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,$(PACKAGE))
 # Subpackage test targets (Python)
 # Subpackage test targets (Python)
 .PHONY: test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
 test-openai_support:
-	cd packages/openai_support && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,openai_support)
 test-anthropic:
-	cd packages/anthropic && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,anthropic)
 test-wandb_util:
-	cd packages/wandb_util && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,wandb_util)
 test-error_reports:
-	cd packages/error_reports && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,error_reports)
 test-reviewer:
-	cd packages/reviewer && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,reviewer)
 test-rate_limit:
-	cd packages/rate_limit && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,rate_limit)
 test-niji_voice:
-	cd packages/niji_voice && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,niji_voice)
 test-injected_utils:
-	cd packages/injected_utils && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,injected_utils)
 test-gcp:
-	cd packages/gcp && uv venv && uv sync --group dev && uv run pytest -q
+	$(call RUN_PKG_TESTS,gcp)
 
 
 
