@@ -71,41 +71,21 @@ test-all:
 	uv sync --group dev --all-packages
 
 # Run only core pinjected tests (root package)
+.PHONY: test-core
 test-core:
 	uv sync --all-packages
-	uv run pytest test pinjected/test pinjected/tests
+	uv run pytest -q test pinjected/test pinjected/tests
 
 # Run tests for a specific subpackage by name (usage: make test-pkg PACKAGE=openai_support)
+.PHONY: test-pkg
 test-pkg:
 	@if [ -z "$(PACKAGE)" ]; then \
 		echo "Missing PACKAGE variable. Usage: make test-pkg PACKAGE=<subpkg>"; \
 		exit 1; \
 	fi
-	cd packages/$(PACKAGE) && uv sync --group dev && uv run pytest -q
+	cd packages/$(PACKAGE) && uv venv && uv sync --group dev && uv run pytest -q
 # Subpackage test targets (Python)
 # Subpackage test targets (Python)
-.PHONY: test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
-test-openai_support:
-	cd packages/openai_support && uv venv && uv sync --group dev && uv run pytest -q
-test-anthropic:
-	cd packages/anthropic && uv venv && uv sync --group dev && uv run pytest -q
-test-wandb_util:
-	cd packages/wandb_util && uv venv && uv sync --group dev && uv run pytest -q
-test-error_reports:
-	cd packages/error_reports && uv venv && uv sync --group dev && uv run pytest -q
-test-reviewer:
-	cd packages/reviewer && uv venv && uv sync --group dev && uv run pytest -q
-test-rate_limit:
-	cd packages/rate_limit && uv venv && uv sync --group dev && uv run pytest -q
-test-niji_voice:
-	cd packages/niji_voice && uv venv && uv sync --group dev && uv run pytest -q
-test-injected_utils:
-	cd packages/injected_utils && uv venv && uv sync --group dev && uv run pytest -q
-test-gcp:
-	cd packages/gcp && uv venv && uv sync --group dev && uv run pytest -q
-
-# Aggregate for local development; CI will invoke per-package targets directly
-
 .PHONY: test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
 test-openai_support:
 	cd packages/openai_support && uv venv && uv sync --group dev && uv run pytest -q
