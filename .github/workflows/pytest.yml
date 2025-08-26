@@ -56,25 +56,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-uv-
           
-    - name: Install dependencies (per package)
-      run: |
-        if [ "${{ matrix.package }}" = "core" ]; then
-          rm -f uv.lock
-          make sync
-        else
-          rm -f uv.lock
-          cd packages/${{ matrix.package }}
-          uv venv
-          uv sync --group dev
-        fi
-        
-    - name: Run tests per package
+    - name: Run tests per package via Makefile
       run: |
         if [ "${{ matrix.package }}" = "core" ]; then
           make test-core
         else
-          cd packages/${{ matrix.package }}
-          uv run pytest -q
+          make test-pkg PACKAGE=${{ matrix.package }}
         fi
 
   linter-rust:
