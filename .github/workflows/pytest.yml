@@ -17,9 +17,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: pytest (${{ matrix.python-version }}, ${{ matrix.package }})
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.10', '3.11', '3.12', '3.13']
+        package: ['core', 'openai_support', 'anthropic', 'wandb_util', 'error_reports', 'reviewer', 'rate_limit', 'niji_voice', 'injected_utils', 'gcp']
 
     steps:
     - uses: actions/checkout@v4
@@ -28,12 +31,6 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y pkg-config libssl-dev
-
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
         
     - name: Remove uv.lock
       run: rm -f uv.lock
@@ -49,26 +46,36 @@ jobs:
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
         uv --version
         
-    - name: Cache uv dependencies
+    - name: Cache uv environments
       uses: actions/cache@v4
       with:
-        path: .venv
-        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
+        path: |
+          .venv
+          packages/${{ matrix.package }}/.venv
+        key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ matrix.package }}-${{ hashFiles('pyproject.toml') }}-${{ hashFiles(format('packages/{0}/pyproject.toml', matrix.package)) }}
         restore-keys: |
           ${{ runner.os }}-uv-
           
-    - name: Install dependencies
+    - name: Run tests per package via Makefile
       run: |
-        make sync
-        make setup-all
-        uv pip install pytest-cov
-        
-    - name: Run tests with coverage
-      run: |
-        make test-cov
-        
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+        if [ "${{ matrix.package }}" = "core" ]; then
+          make test-core
+        else
+          make test-pkg PACKAGE=${{ matrix.package }}
+        fi
+
+  linter-rust:
+    runs-on: ubuntu-latest
+    name: cargo test (pinjected-linter)
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        toolchain: stable
+        override: true
+
+    - name: Run cargo tests for pinjected-linter
+      working-directory: packages/pinjected-linter/rust-poc
+      run: cargo test

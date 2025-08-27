@@ -53,10 +53,8 @@ setup-all:
 	cd packages/gcp && uv sync --group dev
 	cd packages/pinjected-linter && uv sync --group dev
 
-test:
-	@echo "Running tests with lock mechanism to prevent concurrent execution..."
-	@uv run python scripts/test_runner_with_lock.py --make-test
-
+test: test-core test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
+	@echo "Aggregated subpackage tests completed"
 test-all:
 	uv sync --all-packages
 	uv run python scripts/test_runner_with_lock.py .
@@ -69,8 +67,55 @@ test-all:
 	cd packages/niji_voice && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/injected_utils && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
-	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
-	uv sync --group dev --all-packages
+# Helper to run tests for a subpackage and treat pytest exit code 5 (no tests) as success
+define RUN_PKG_TESTS
+	@cd packages/$(1) && uv venv && uv sync --group dev && \
+	( rc=0; uv run pytest -q || rc=$$?; \
+	  if [ $$rc -eq 5 ]; then \
+	    echo "No tests collected for package '$(1)'; passing."; \
+	    exit 0; \
+	  else \
+	    exit $$rc; \
+	  fi )
+endef
+
+# Run only core pinjected tests (root package)
+.PHONY: test-core
+test-core:
+	uv sync --all-packages
+	uv run pytest -q test pinjected/test pinjected/tests
+
+# Run tests for a specific subpackage by name (usage: make test-pkg PACKAGE=openai_support)
+.PHONY: test-pkg
+test-pkg:
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Missing PACKAGE variable. Usage: make test-pkg PACKAGE=<subpkg>"; \
+		exit 1; \
+	fi
+	$(call RUN_PKG_TESTS,$(PACKAGE))
+# Subpackage test targets (Python)
+# Subpackage test targets (Python)
+.PHONY: test-openai_support test-anthropic test-wandb_util test-error_reports test-reviewer test-rate_limit test-niji_voice test-injected_utils test-gcp
+test-openai_support:
+	$(call RUN_PKG_TESTS,openai_support)
+test-anthropic:
+	$(call RUN_PKG_TESTS,anthropic)
+test-wandb_util:
+	$(call RUN_PKG_TESTS,wandb_util)
+test-error_reports:
+	$(call RUN_PKG_TESTS,error_reports)
+test-reviewer:
+	$(call RUN_PKG_TESTS,reviewer)
+test-rate_limit:
+	$(call RUN_PKG_TESTS,rate_limit)
+test-niji_voice:
+	$(call RUN_PKG_TESTS,niji_voice)
+test-injected_utils:
+	$(call RUN_PKG_TESTS,injected_utils)
+test-gcp:
+	$(call RUN_PKG_TESTS,gcp)
+
+
 
 test-linter-full:
 	uv sync --all-packages
