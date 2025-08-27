@@ -4,9 +4,22 @@ import functools
 import hashlib
 import inspect
 import sys
+from collections.abc import Awaitable, Callable, Iterable
 from copy import copy
 from dataclasses import dataclass, field
-from typing import List, Generic, Union, Callable, TypeVar, Tuple, Set, Dict, Any, Awaitable, Optional
+from inspect import Traceback
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    TypeVar,
+    Union,
+)
+
+if TYPE_CHECKING:
+    from pinjected.di.graph import IObjectGraph
+
+import builtins
 
 import cloudpickle
 from frozendict import frozendict
@@ -17,11 +30,100 @@ from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.args_modifier import ArgsModifier, KeepArgsPure
 from pinjected.di.injected_analysis import get_instance_origin
 from pinjected.di.proxiable import DelegatedVar
+import contextlib
+import threading
+import os
 
 T, U = TypeVar("T"), TypeVar("U")
 
 A = TypeVar("A")
 B = TypeVar("B")
+
+# Thread-local storage for IProxy creation context
+_thread_local = threading.local()
+
+# Check if IProxy AST assertion is enabled
+IPROXY_AST_ASSERTION_ENABLED = os.environ.get(
+    "PINJECTED_ENABLE_IPROXY_AST_ASSERTION", ""
+).lower() in ("true", "1", "yes", "on")
+
+
+@contextlib.contextmanager
+def allow_iproxy_creation():
+    """Explicitly allow IProxy/Partial creation within this context.
+
+    Use this when you intentionally want to create IProxy objects
+    inside a function. This is an advanced feature and should be
+    used sparingly.
+
+    Example:
+        def advanced_function():
+            with allow_iproxy_creation():
+                # OK - explicitly allowed
+                user_proxy = fetch_user("123")
+            return user_proxy
+    """
+    old_value = getattr(_thread_local, "allow_iproxy", False)
+    _thread_local.allow_iproxy = True
+    try:
+        yield
+    finally:
+        _thread_local.allow_iproxy = old_value
+
+
+def _is_at_module_level():
+    """Check if the current execution is at module level (not inside any function).
+
+    Returns True if we're at module/global scope, False if inside a function.
+    """
+    frame = inspect.currentframe()
+    try:
+        # Skip our own frame
+        frame = frame.f_back
+
+        # First, check if any frame in the stack is a decorator function
+        temp_frame = frame
+        while temp_frame:
+            code_name = temp_frame.f_code.co_name
+            # Allow decorator functions
+            if code_name in (
+                "injected_instance",
+                "injected_function",
+                "_injected_with_protocol",
+            ):
+                return True
+            temp_frame = temp_frame.f_back
+
+        # Skip frames until we find a non-internal frame
+        while frame and frame.f_code.co_name in ("__call__", "_is_at_module_level"):
+            frame = frame.f_back
+
+        # Check if the immediate calling frame is at module level
+        if frame and frame.f_code.co_name == "<module>":
+            return True
+
+        # Otherwise, check if we're inside any function
+        while frame:
+            code = frame.f_code
+            # If we find a real function (not module, comprehensions, etc)
+            # and it's not a class definition or locals
+            if code.co_name not in (
+                "<module>",
+                "<listcomp>",
+                "<dictcomp>",
+                "<setcomp>",
+                "<genexpr>",
+            ) and not (
+                code.co_name == "<locals>"
+                and frame.f_back
+                and frame.f_back.f_code.co_name.startswith("<")
+            ):
+                return False
+            frame = frame.f_back
+        return True
+    finally:
+        del frame  # Avoid reference cycles
+
 
 INJECTED_CONTEXT = frozendict()
 """
@@ -45,20 +147,20 @@ So the use needs to be careful to add context at the very end, for running purpo
 @dataclass
 class FrameInfo:
     original_frame: object
-    trc: "Traceback"
+    trc: Traceback
     filename: str
     line_number: int
     function_name: str
-    sources: List[str]
+    sources: list[str]
     line_idx_in_sources: int
 
 
-def get_frame_info(stack_idx) -> Union[None, FrameInfo]:
+def get_frame_info(stack_idx) -> None | FrameInfo:
     try:
         original_trc = inspect.stack(0)[stack_idx][0]
-        trc: "Traceback" = inspect.getframeinfo(original_trc)
+        trc: Traceback = inspect.getframeinfo(original_trc)
         return FrameInfo(original_trc, trc, *trc)
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -71,9 +173,9 @@ def partialclass(name, cls, *args, **kwds):
     :param kwds:
     :return:
     """
-    new_cls = type(name, (cls,), {
-        '__init__': functools.partialmethod(cls.__init__, *args, **kwds)
-    })
+    new_cls = type(
+        name, (cls,), {"__init__": functools.partialmethod(cls.__init__, *args, **kwds)}
+    )
 
     # The following is copied nearly ad verbatim from `namedtuple's` source.
     """
@@ -82,20 +184,18 @@ def partialclass(name, cls, *args, **kwds):
     # sys._getframe is not defined (Jython for example) or sys._getframe is not
     # defined for arguments greater than 0 (IronPython).
     """
-    try:
-        new_cls.__module__ = sys._getframe(1).f_globals.get('__name__', '__main__')
-    except (AttributeError, ValueError):
-        pass
+    with contextlib.suppress(AttributeError, ValueError):
+        new_cls.__module__ = sys._getframe(1).f_globals.get("__name__", "__main__")
 
     return new_cls
 
 
 @dataclass
 class ParamInfo:
-    params_to_fill: Dict  # = tgt_sig.parameters
-    params_state: Dict  # = dict()
-    vargs: List = field(default_factory=list)  # = []
-    kwargs: Dict = field(default_factory=dict)  # = dict()
+    params_to_fill: dict  # = tgt_sig.parameters
+    params_state: dict  # = dict()
+    vargs: list = field(default_factory=list)  # = []
+    kwargs: dict = field(default_factory=dict)  # = dict()
     # the problem is we may or may not have vargs and kwargs...
 
 
@@ -116,13 +216,7 @@ Let's got with 2nd option.
 
 
 class PicklableInjectedFunction:
-    def __init__(self,
-                 src: callable,
-                 __doc__,
-                 __name__,
-                 __skeleton__,
-                 __is_async__
-                 ):
+    def __init__(self, src: callable, __doc__, __name__, __skeleton__, __is_async__):
         self.src = src
         self.__doc__ = __doc__
         self.__name__ = __name__
@@ -131,11 +225,19 @@ class PicklableInjectedFunction:
 
     def __getstate__(self):
         return cloudpickle.dumps(
-            (self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__)
+            (
+                self.src,
+                self.__doc__,
+                self.__name__,
+                self.__skeleton__,
+                self.__is_async__,
+            )
         )
 
     def __setstate__(self, state):
-        self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__ = cloudpickle.loads(state)
+        self.src, self.__doc__, self.__name__, self.__skeleton__, self.__is_async__ = (
+            cloudpickle.loads(state)
+        )
 
     def __call__(self, *args, **kwargs):
         return self.src(*args, **kwargs)
@@ -153,7 +255,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     .. code-block:: python
 
-        from pinjected.di.util import Injected
+        from pinjected.di.util import Injected, design
         from pinjected import Design
 
         def provide_ab(a:int, b:int) -> int:
@@ -163,8 +265,8 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # arguments as dependencies.
         injected: Injected[int] = Injected.bind(provide_ab)
 
-        design = EmptyDesign.bind_instance(a=1, b=2)
-        assert design.to_graph()[injected] == 3
+        d = design(a=1, b=2)
+        assert d.to_graph()[injected] == 3
 
     Advanced Features:
     ------------------
@@ -177,25 +279,25 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected, instances
+            from pinjected.di.util import Injected, design
             from pinjected import Design
 
-            design: Design = instances(a=1)  # Shortcut for binding instances
+            d: Design = design(a=1)  # Direct way to bind dependencies
             a: Injected[int] = Injected.by_name('a')
             b: Injected[int] = a.map(lambda x: x + 1)  # b is now a + 1
 
-            g = design.to_graph()
+            g = d.to_graph()
             assert g[a] + 1 == g[b]
 
     2. **zip/mzip**: Combine multiple ``Injected`` instances.
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected
+            from pinjected.di.util import Injected, design
             from pinjected import Design
 
-            design = EmptyDesign.bind_instance(a=1, b=2)
-            g = design.to_graph()
+            d = design(a=1, b=2)
+            g = d.to_graph()
 
             a = Injected.by_name('a')
             b = Injected.by_name('b')
@@ -210,9 +312,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
         .. code-block:: python
 
-            from pinjected.di.util import Injected, instances
+            from pinjected.di.util import Injected, design
 
-            design = instances(a=1, b=2)
+            d = design(a=1, b=2)
             a = Injected.by_name('a')
             b = Injected.by_name('b')
             c = a.map(lambda x: x + 2)
@@ -227,24 +329,52 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def inject_partially(original_function: Callable, **injection_targets: "Injected") -> "Injected[Callable]":
+    def inject_partially(
+        original_function: Callable, **injection_targets: "Injected"
+    ) -> "Injected[Callable]":
         from pinjected.di.partially_injected import Partial
-        modifier = Injected._get_args_keeper(injection_targets, inspect.signature(original_function))
+
+        modifier = Injected._get_args_keeper(
+            injection_targets, inspect.signature(original_function), original_function
+        )
         # TODO move this modifier to @injected decorator.
         return Partial(original_function, injection_targets, modifier)
 
     @staticmethod
-    def _get_args_keeper(injection_targets, original_sig):
+    def _get_args_keeper(injection_targets, original_sig, original_function=None):
         original_args_with_Injected = []
         for k, v in original_sig.parameters.items():
-            if k not in injection_targets:
-                if v.annotation == Injected:
-                    original_args_with_Injected.append(k)
-        remaining_params = [p for name, p in original_sig.parameters.items() if name not in injection_targets]
-        remaining_signature: inspect.Signature = original_sig.replace(parameters=remaining_params)
+            if k not in injection_targets and v.annotation == Injected:
+                original_args_with_Injected.append(k)
+        remaining_params = [
+            p
+            for name, p in original_sig.parameters.items()
+            if name not in injection_targets
+        ]
+        remaining_signature: inspect.Signature = original_sig.replace(
+            parameters=remaining_params
+        )
+        function_name = (
+            getattr(original_function, "__name__", None) if original_function else None
+        )
+
+        # Try to get source file and line number
+        source_file = None
+        line_number = None
+        if original_function:
+            try:
+                source_file = inspect.getsourcefile(original_function)
+                line_number = inspect.getsourcelines(original_function)[1]
+            except (TypeError, OSError):
+                # Can't get source info for built-in functions or other special cases
+                pass
+
         modifier = KeepArgsPure(
             signature=remaining_signature,
-            targets=set(original_args_with_Injected)
+            targets=set(original_args_with_Injected),
+            function_name=function_name,
+            source_file=source_file,
+            line_number=line_number,
         )
         return modifier
 
@@ -256,17 +386,28 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :return: Injected[Callable[(whitelisted args)=>Any]]
         """
         argspec = inspect.getfullargspec(target_function)
-        args_to_be_injected = [a for a in argspec.args if a not in whitelist and a != "self"]
-        return Injected.inject_partially(target_function,
-                                         **{item: Injected.by_name(item) for item in args_to_be_injected})
+        args_to_be_injected = [
+            a for a in argspec.args if a not in whitelist and a != "self"
+        ]
+        return Injected.inject_partially(
+            target_function,
+            **{item: Injected.by_name(item) for item in args_to_be_injected},
+        )
 
     @staticmethod
-    def bind(_target_function_, _dynamic_dependencies_: set[str] = None,
-             **kwargs_mapping: Union[str, type, Callable, "Injected"]) -> "InjectedFromFunction":
-        assert not isinstance(_target_function_, Injected), f"target_function should not be an instance of Injected"
+    def bind(
+        _target_function_,
+        _dynamic_dependencies_: set[str] | None = None,
+        **kwargs_mapping: Union[str, type, Callable, "Injected"],
+    ) -> "InjectedFromFunction":
+        assert not isinstance(_target_function_, Injected), (
+            "target_function should not be an instance of Injected"
+        )
         # if isinstance(_target_function_, Injected):
         #     _target_function_ = _target_function_.get_provider()
-        assert callable(_target_function_), f"target_function should be callable, but got {_target_function_}"
+        assert callable(_target_function_), (
+            f"target_function should be callable, but got {_target_function_}"
+        )
         if not inspect.iscoroutinefunction(_target_function_):
             # we need to keep the function signature
 
@@ -276,15 +417,16 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             _a_target_function.__signature__ = inspect.signature(_target_function_)
 
             async_target_function = _a_target_function
-            async_target_function.__original_code__ = safe(inspect.getsource)(_target_function_).value_or(
-                "not available")
+            async_target_function.__original_code__ = safe(inspect.getsource)(
+                _target_function_
+            ).value_or("not available")
         else:
             async_target_function = _target_function_
         res = InjectedFromFunction(
             original_function=_target_function_,
             target_function=async_target_function,
             kwargs_mapping=kwargs_mapping,
-            dynamic_dependencies=_dynamic_dependencies_
+            dynamic_dependencies=_dynamic_dependencies_,
         )
         return res
 
@@ -296,27 +438,34 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :param kwargs:
         :return:
         """
-        en_injected = {k: Injected.pure(v) for k, v in kwargs.items() if not isinstance(v, (Injected, DelegatedVar))}
-        already_injected = {k: v for k, v in kwargs.items() if isinstance(v, (Injected, DelegatedVar))}
+        en_injected = {
+            k: Injected.pure(v)
+            for k, v in kwargs.items()
+            if not isinstance(v, (Injected, DelegatedVar))
+        }
+        already_injected = {
+            k: v for k, v in kwargs.items() if isinstance(v, (Injected, DelegatedVar))
+        }
         return Injected.bind(_target_function, **en_injected, **already_injected)
 
     def _faster_get_fname(self):
-
         try:
             frame = sys._getframe().f_back.f_back.f_back.f_back
             mod = frame.f_globals["__name__"]
             name = frame.f_lineno
-            return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(">", "__")
-        except Exception as e:
+            return f"{mod.replace('.', '_')}_L_{name}".replace("<", "__").replace(
+                ">", "__"
+            )
+        except Exception:
             # from pinjected.logging import logger
             # logger.warning(f"failed to get name of the injected location.")
-            return f"__unknown_module__maybe_due_to_pickling__"
+            return "__unknown_module__maybe_due_to_pickling__"
 
     def __init__(self):
         self.fname = self._faster_get_fname()
 
     @staticmethod
-    def partial(f: 'Injected[Callable]', *args: "Injected", **kwargs: "Injected"):
+    def partial(f: "Injected[Callable]", *args: "Injected", **kwargs: "Injected"):
         """
         applies partial application to the given function.
         """
@@ -331,22 +480,24 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         injected_args = Injected.tuple(*args)
         injected_kwargs = Injected.dict(**kwargs)
 
-        applied_func = Injected.mzip(f, injected_args, injected_kwargs).map(make_partially_applied)
-        # how can I keep __is_async_function__ ?
-        pf = PartialInjectedFunction(
-            applied_func
+        applied_func = Injected.mzip(f, injected_args, injected_kwargs).map(
+            make_partially_applied
         )
+        # how can I keep __is_async_function__ ?
+        pf = PartialInjectedFunction(applied_func)
         if hasattr(f, "__is_async_function__"):
             pf.__is_async_function__ = f.__is_async_function__  # this maybe not used
-            applied_func.__is_async_function__ = f.__is_async_function__  # this is important
+            applied_func.__is_async_function__ = (
+                f.__is_async_function__
+            )  # this is important
         return pf
 
     @abc.abstractmethod
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         pass
 
     @abc.abstractmethod
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         """
         :return: a set of dependencies which are not statically known. mainly used for analysis.
 
@@ -355,7 +506,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @property
-    def complete_dependencies(self) -> Set[str]:
+    def complete_dependencies(self) -> set[str]:
         return self.dependencies() | self.dynamic_dependencies()
 
     def get_signature(self):
@@ -369,7 +520,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         :return: a provider
         """
 
-    def map(self, f: Callable[[T], U]) -> 'Injected[U]':
+    def map(self, f: Callable[[T], U]) -> "Injected[U]":
         # return MappedInjected(self, f)
         if not inspect.iscoroutinefunction(f):
             # @functools.wraps(f) #wraps breaks built-in function to be unpicklable...
@@ -384,7 +535,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             new_f = f
         return MappedInjected(self, new_f, original_mapper=f)
 
-    def from_impl(impl: Callable, dependencies: Set[str]):
+    def from_impl(impl: Callable, dependencies: set[str]):
         return GeneratedInjected(impl, dependencies)
 
     def _faster_get_metadata(self):
@@ -398,8 +549,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         except Exception as e:
             # from pinjected.logging import logger
             from pinjected.pinjected_logging import logger
+
             logger.warning(f"failed to get name of the injected location, due to {e}")
-            return f"__unknown_module__maybe_due_to_pickling__", "unknown_location"
+            return "__unknown_module__maybe_due_to_pickling__", "unknown_location"
 
     @staticmethod
     def pure(value):
@@ -414,9 +566,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def by_name(name: str):
-        return InjectedByName(name, )
+        return InjectedByName(name)
 
-    def zip(self, other: "Injected[U]") -> "Injected[Tuple[T,U]]":
+    def zip(self, other: "Injected[U]") -> "Injected[builtins.tuple[T,U]]":
         return Injected.mzip(self, other)
 
     @staticmethod
@@ -460,35 +612,78 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         return Injected.mzip(*srcs).map(gather)
 
     @staticmethod
-    def map_elements(f: "Injected[Callable]", elements: "Injected[Iterable]") -> "Injected[Iterable]":
+    def map_elements(
+        f: "Injected[Callable]", elements: "Injected[Iterable]"
+    ) -> "Injected[Iterable]":
         """
-        # for (
-        #     f <- f,
-        #     elements <- elements
-        #     ) yield map(f,elements)
+        Maps a function over each element in an iterable, both of which are injected dependencies.
 
-        :param f:
-        :param elements:
-        :return:
+        This method applies the injected function `f` to each element in the injected iterable `elements`,
+        returning a new injected iterable with the results. This is useful for transforming collections
+        where both the function and the collection are provided via dependency injection.
 
+        :param f: An injected function to apply to each element
+        :param elements: An injected iterable containing the elements to transform
+        :return: An injected iterable containing the transformed elements
+
+        Example:
+        ```python
+        transform = Injected.by_name("transform_function")
+        data_list = Injected.by_name("data_collection")
+        transformed = Injected.map_elements(transform, data_list)
+        ```
         """
-        return Injected.mzip(
-            f, elements
-        ).map(lambda x: map(x[0], x[1]))
+        return Injected.mzip(f, elements).map(lambda x: map(x[0], x[1]))
 
     # this is ap of applicative functor.
-    def apply_injected_function(self, other: "Injected[Callable[[T],U]]") -> "Injected[U]":
-        return self.zip(other).map(
-            lambda t: t[1](t[0])
-        )
+    def apply_injected_function(
+        self, other: "Injected[Callable[[T],U]]"
+    ) -> "Injected[U]":
+        """
+        Applies an injected function to this injected value.
 
-    def and_then_injected(self, other: "Injected[Callable[[T],U]]") -> "Injected[Callable[[Any],U]]":
+        This method implements the "ap" operation of the applicative functor pattern,
+        allowing an injected function to be applied to an injected value.
+
+        :param other: An injected function that takes a value of type T and returns a value of type U
+        :return: An injected value of type U, the result of applying the function to this value
+        """
+        return self.zip(other).map(lambda t: t[1](t[0]))
+
+    def and_then_injected(
+        self, other: "Injected[Callable[[T],U]]"
+    ) -> "Injected[Callable[[Any],U]]":
+        """
+        Composes this injected callable with another injected function.
+
+        Creates a new injected function that first applies this function to its arguments,
+        then passes the result to the 'other' function.
+
+        :param other: An injected function to apply after this function
+        :return: An injected composed function that applies both functions in sequence
+        """
         return self.zip(other).map(
             lambda t: lambda *args, **kwargs: t[1](t[0](*args, **kwargs))
         )
 
     @staticmethod
-    def dict(**kwargs: "Injected") -> "Injected[Dict]":
+    def dict(**kwargs: "Injected") -> "Injected[builtins.dict]":
+        """
+        Creates an injected dictionary from injected values.
+
+        This method takes keyword arguments where each value is an injected instance
+        and returns an injected dictionary with the same keys and resolved values.
+
+        :param kwargs: Keyword arguments where values are Injected instances
+        :return: An injected dictionary containing the resolved values
+
+        Example:
+        ```python
+        a = Injected.by_name('a')
+        b = Injected.by_name('b')
+        injected_dict = Injected.dict(key_a=a, key_b=b)
+        ```
+        """
         # from pinjected.di.static_method_impl import idict
         # return idict(**kwargs)
         # raise RuntimeError("disabled")
@@ -505,6 +700,7 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         # it seems this thing is preventing from pickling?
         """
         from pinjected.di.app_injected import injected_proxy
+
         return injected_proxy(self)
 
     @staticmethod
@@ -520,7 +716,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
             case func if callable(func):
                 return Injected.bind(func)
             case _:
-                raise RuntimeError(f"not an injected object: {data},type(data)={type(data)}")
+                raise RuntimeError(
+                    f"not an injected object: {data},type(data)={type(data)}"
+                )
 
     def __add__(self, other: "Injected"):
         match other:
@@ -545,12 +743,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
         async def provide_from_resolver(__resolver__):
             return await __resolver__[tgt]
 
-        return Injected.bind(
-            provide_from_resolver,
-            _dynamic_dependencies_={tgt}
-        )
+        return Injected.bind(provide_from_resolver, _dynamic_dependencies_={tgt})
 
-    def add_dynamic_dependencies(self, *deps: Union[str, set[str]]):
+    def add_dynamic_dependencies(self, *deps: str | set[str]):
         deps_set = set()
         for item in deps:
             match item:
@@ -563,7 +758,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
                         assert isinstance(i, str), f"item should be string, but got {i}"
                         deps_set.add(i)
                 case _:
-                    raise RuntimeError(f"item should be string or set of string, but got {item}")
+                    raise RuntimeError(
+                        f"item should be string or set of string, but got {item}"
+                    )
         return InjectedWithDynamicDependencies(self, deps_set)
 
     def __len__(self):
@@ -577,7 +774,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
     #     return self.proxy[item]
 
     @staticmethod
-    def conditional(condition: "Injected[bool]", true_case: "Injected", false_case: "Injected"):
+    def conditional(
+        condition: "Injected[bool]", true_case: "Injected", false_case: "Injected"
+    ):
         return ConditionalInjected(condition, true_case, false_case)
 
     @staticmethod
@@ -599,24 +798,17 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 
     @staticmethod
     def conditional_preparation(
-            condition: "Injected[bool]",
-            preparation: "Injected",
-            utilization: "Injected"
+        condition: "Injected[bool]", preparation: "Injected", utilization: "Injected"
     ):
         return Injected.conditional(
-            condition,
-            utilization,
-            Injected.procedure(
-                preparation,
-                utilization
-            )
+            condition, utilization, Injected.procedure(preparation, utilization)
         )
 
     @abc.abstractmethod
     def __repr_expr__(self):
-        raise NotImplementedError()
+        raise NotImplementedError
 
-    def rebind_dependencies(self, **mapping: str)->'Injected':
+    def rebind_dependencies(self, **mapping: str) -> "Injected":
         """
         rebinds the dependencies with the given mapping.
         :param mapping: a dictionary of old_name -> new_name
@@ -636,9 +828,9 @@ class Injected(Generic[T], metaclass=abc.ABCMeta):
 @dataclass
 class ReboundInjected(Injected[T]):
     src: Injected[T]
-    mapping: Dict[str, str]
+    mapping: dict[str, str]
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         src_deps = self.src.dependencies()
         new_deps = set()
         for src_dep in src_deps:
@@ -646,7 +838,7 @@ class ReboundInjected(Injected[T]):
             new_deps.add(mapped)
         return new_deps
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         src_deps = self.src.dynamic_dependencies()
         new_deps = set()
         for src_dep in src_deps:
@@ -673,22 +865,24 @@ class ConditionalInjected(Injected):
     true: Injected
     false: Injected
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.condition.dependencies() | {"session"}
 
     def get_provider(self):
         def task(condition, session: "IObjectGraph"):
             if condition:
                 return session[self.true]
-            else:
-                return session[self.false]
+            return session[self.false]
 
         return Injected.bind(task, condition=self.condition).get_provider()
 
-    def dynamic_dependencies(self) -> Set[str]:
-        return self.condition.dynamic_dependencies() | \
-            self.true.dynamic_dependencies() | \
-            self.false.dynamic_dependencies() | {"session"}
+    def dynamic_dependencies(self) -> set[str]:
+        return (
+            self.condition.dynamic_dependencies()
+            | self.true.dynamic_dependencies()
+            | self.false.dynamic_dependencies()
+            | {"session"}
+        )
 
     def __repr_expr__(self):
         return f"({self.true.__repr_expr__()} if {self.condition.__repr_expr__()} else {self.false.__repr_expr__()})"
@@ -735,15 +929,17 @@ class InjectedCache(Injected[T]):
 
     This class significantly optimizes performance, especially in scenarios where operations are repeated with the same parameters or contexts, and computational resources are scarce or expensive.
     """
-    cache: Injected[Dict]
+
+    cache: Injected[dict]
     program: Injected[T]
-    program_dependencies: List[Injected]
+    program_dependencies: list[Injected]
 
     def __post_init__(self):
         self.program = Injected.ensure_injected(self.program)
 
         async def impl(t):
             from pinjected.pinjected_logging import logger
+
             resolver, cache, *deps = t
             logger.info(f"Checking for cache with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -758,23 +954,24 @@ class InjectedCache(Injected[T]):
             logger.info(f"Cache hit for {deps}, loaded")
             return res
 
-        self.impl = Injected.list(
-            Injected.by_name("__resolver__"),
-            self.cache,
-            *self.program_dependencies
-        ).eval().map(impl)
+        self.impl = (
+            Injected.list(
+                Injected.by_name("__resolver__"), self.cache, *self.program_dependencies
+            )
+            .eval()
+            .map(impl)
+        )
         assert isinstance(self.impl, Injected)
         assert isinstance(self.program, Injected)
 
     def get_provider(self):
         return self.impl.get_provider()
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.impl.dependencies()
 
-    def dynamic_dependencies(self) -> Set[str]:
-        return self.impl.dynamic_dependencies() | \
-            self.program.dynamic_dependencies()
+    def dynamic_dependencies(self) -> set[str]:
+        return self.impl.dynamic_dependencies() | self.program.dynamic_dependencies()
 
     def __hash__(self):
         return hash(self.impl)
@@ -804,8 +1001,7 @@ class IAsyncDict(abc.ABC):
 async def auto_await(tgt):
     if inspect.isawaitable(tgt):
         return await tgt
-    else:
-        return tgt
+    return tgt
 
 
 @dataclass
@@ -817,14 +1013,18 @@ class AsyncInjectedCache(Injected[T]):
     def __post_init__(self):
         self.program = Injected.ensure_injected(self.program)
         assert isinstance(self.program, Injected)
-        assert isinstance(self.program_dependencies, list), f"program_dependencies:{self.program_dependencies}"
+        assert isinstance(self.program_dependencies, list), (
+            f"program_dependencies:{self.program_dependencies}"
+        )
 
         from pinjected.v2.async_resolver import AsyncResolver
+
         # @cached_coroutine
         async def impl(__resolver__: AsyncResolver, cache: IAsyncDict, deps: list):
             # deps are all awaited here.
             # deps are only used to calc hash key
             from pinjected.pinjected_logging import logger
+
             assert isinstance(cache, IAsyncDict)
             logger.info(f"Checking cache for {self.program} with deps:{deps}")
             sha256_key = hashlib.sha256(str(deps).encode()).hexdigest()
@@ -851,7 +1051,7 @@ class AsyncInjectedCache(Injected[T]):
             impl,
             __resolver__=Injected.by_name("__resolver__"),
             cache=self.cache,
-            deps=Injected.list(*self.program_dependencies)
+            deps=Injected.list(*self.program_dependencies),
         )
 
         assert isinstance(self.impl, Injected)
@@ -860,12 +1060,11 @@ class AsyncInjectedCache(Injected[T]):
     def get_provider(self):
         return self.impl.get_provider()
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.impl.dependencies()
 
-    def dynamic_dependencies(self) -> Set[str]:
-        return self.impl.dynamic_dependencies() | \
-            self.program.dynamic_dependencies()
+    def dynamic_dependencies(self) -> set[str]:
+        return self.impl.dynamic_dependencies() | self.program.dynamic_dependencies()
 
     def __hash__(self):
         return hash(self.impl)
@@ -877,16 +1076,19 @@ class AsyncInjectedCache(Injected[T]):
 class GeneratedInjected(Injected):
     """creates Injected from dependencies and funct(**kwargs) signature"""
 
-    def __init__(self, impl: Callable, dependencies: Set[str]):
+    def __init__(self, impl: Callable, dependencies: set[str]):
         super().__init__()
         self.impl = impl
         self._dependencies = dependencies
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self._dependencies
 
     def get_provider(self):
         return create_function(self.get_signature(), func_impl=self.impl)
+
+    def dynamic_dependencies(self) -> set[str]:
+        return set()
 
     def __repr_expr__(self):
         return f"GeneratedInjected({self.impl}, {self.dependencies()})"
@@ -895,20 +1097,21 @@ class GeneratedInjected(Injected):
 class InjectedWithDynamicDependencies(Injected[T]):
     __match_args__ = ("src", "_dynamic_dependencies")
 
-    def __init__(self, src: Injected, dynamic_dependencies: Set[str]):
+    def __init__(self, src: Injected, dynamic_dependencies: set[str]):
         super(InjectedWithDynamicDependencies, self).__init__()
         self.src = src
-        assert isinstance(dynamic_dependencies,
-                          set), f"dynamic_dependencies should be set, but got {dynamic_dependencies}"
+        assert isinstance(dynamic_dependencies, set), (
+            f"dynamic_dependencies should be set, but got {dynamic_dependencies}"
+        )
         self._dynamic_dependencies = dynamic_dependencies
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.src.dependencies()
 
     def get_provider(self):
         return self.src.get_provider()
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.src.dynamic_dependencies() | self._dynamic_dependencies
 
     def __repr_expr__(self):
@@ -918,20 +1121,23 @@ class InjectedWithDynamicDependencies(Injected[T]):
 class MappedInjected(Injected):
     __match_args__ = ("src", "f")
 
-    def __init__(self, src: Injected[T], f: Callable[[T], Awaitable[U]], original_mapper):
+    def __init__(
+        self, src: Injected[T], f: Callable[[T], Awaitable[U]], original_mapper
+    ):
         super(MappedInjected, self).__init__()
         assert inspect.iscoroutinefunction(f), f"{f} is not a coroutine function"
         self.src = src
         self.f: Callable[[T], Awaitable[U]] = f
         self.original_mapper = original_mapper
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.src.dependencies()
 
     def get_provider(self):
         async def impl(**kwargs):
             assert self.dependencies() == set(
-                kwargs.keys())  # this is fine but get_provider returns wrong signatured func
+                kwargs.keys()
+            )  # this is fine but get_provider returns wrong signatured func
             if not inspect.iscoroutinefunction(self.src.get_provider()):
                 raise RuntimeError(f"provider is not a corountine function:{self.src}")
             tmp = await self.src.get_provider()(**kwargs)
@@ -943,60 +1149,68 @@ class MappedInjected(Injected):
 
         return create_function(self.get_signature(), func_impl=impl)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.src.dynamic_dependencies()
 
     def __repr_expr__(self):
         return f"{self.src.__repr_expr__()}.map({self.original_mapper})"
 
 
-def extract_dependency_including_self(f: Union[type, Callable]):
-    if isinstance(f, type):  # it's a constructor and we must use __init__ for backward compatibility.
+def extract_dependency_including_self(f: type | Callable):
+    if isinstance(
+        f, type
+    ):  # it's a constructor and we must use __init__ for backward compatibility.
         argspec = inspect.getfullargspec(f.__init__)
         return set(argspec.args)
-    elif isinstance(f, Callable):
+    if isinstance(f, Callable):
         argspec = inspect.getfullargspec(f)
         return set(argspec.args)
-    else:
-        raise RuntimeError(f"input:{f} is not either type or Callable")
+    raise RuntimeError(f"input:{f} is not either type or Callable")
 
 
-def extract_dependency(dep: Union[str, type, Callable, Injected, DelegatedVar[Injected]]) -> Set[str]:
+def extract_dependency(
+    dep: str | type | Callable | Injected | DelegatedVar[Injected],
+) -> set[str]:
     if isinstance(dep, str):
         return {dep}
-    elif isinstance(dep, type):  # it's a constructor and we must use __init__ for backward compatibility.
+    if isinstance(
+        dep, type
+    ):  # it's a constructor and we must use __init__ for backward compatibility.
         argspec = inspect.getfullargspec(dep.__init__)
-        return set(argspec.args) - {'self'}
-    elif isinstance(dep, DelegatedVar):
+        return set(argspec.args) - {"self"}
+    if isinstance(dep, DelegatedVar):
         return extract_dependency(dep.eval())
-    elif isinstance(dep, Injected):
+    if isinstance(dep, Injected):
         return dep.dependencies()
-    elif isinstance(dep, Callable):
+    if isinstance(dep, Callable):
         try:
             argspec = inspect.getfullargspec(dep)
         except Exception as e:
             from pinjected.pinjected_logging import logger
+
             logger.error(f"failed to get argspec of {dep}. of type {type(dep)}")
             raise e
 
-        return set(argspec.args) - {'self'}
-    else:
-        raise RuntimeError(f"dep must be either str/type/Callable/Injected. got {type(dep)}")
+        return set(argspec.args) - {"self"}
+    raise RuntimeError(
+        f"dep must be either str/type/Callable/Injected. got {type(dep)}"
+    )
 
 
-async def solve_injection(dep: Union[str, type, Callable, Injected], kwargs: dict):
+async def solve_injection(dep: str | type | Callable | Injected, kwargs: dict):
     if isinstance(dep, str):
         return kwargs[dep]
-    elif isinstance(dep, DelegatedVar):
+    if isinstance(dep, DelegatedVar):
         return await solve_injection(dep.eval(), kwargs)
-    elif isinstance(dep, Injected):
+    if isinstance(dep, Injected):
         return await solve_injection(dep.get_provider(), kwargs)
-    elif isinstance(dep, (type, Callable)) and inspect.iscoroutinefunction(dep):
+    if isinstance(dep, (type, Callable)) and inspect.iscoroutinefunction(dep):
         return await dep(**{k: kwargs[k] for k in extract_dependency(dep)})
-    elif isinstance(dep, (type, Callable)):
+    if isinstance(dep, (type, Callable)):
         return dep(**{k: kwargs[k] for k in extract_dependency(dep)})
-    else:
-        raise RuntimeError(f"dep must be one of str/type/Callable/Injected. got {type(dep)}")
+    raise RuntimeError(
+        f"dep must be one of str/type/Callable/Injected. got {type(dep)}"
+    )
 
 
 def combine_image_store(a, b):
@@ -1018,31 +1232,35 @@ def assert_kwargs_type(v):
     if isinstance(v, Injected):
         return
 
-    else:
-        raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
+    raise TypeError(f"{type(v)} is not any of [str,type,Callable,Injected],but {v}")
 
 
 class InjectedFromFunction(Injected[T]):
     """
     Used for Injected.bind
     """
+
     __match_args__ = ("target_function", "kwargs_mapping")
 
-    def __init__(self,
-                 original_function,
-                 target_function: Callable,
-                 kwargs_mapping: Dict[str, Union[str, type, Callable, Injected, DelegatedVar]],
-                 dynamic_dependencies: Optional[Set[str]] = None
-                 ):
+    def __init__(
+        self,
+        original_function,
+        target_function: Callable,
+        kwargs_mapping: dict[str, str | type | Callable | Injected | DelegatedVar],
+        dynamic_dependencies: set[str] | None = None,
+    ):
         # I think we need to know where this class is instantiated outside of pinjected_package
         from pinjected.pinjected_logging import logger
+
         self.origin_frame = get_instance_origin("pinjected")
         self.original_function = original_function
         super().__init__()
         assert not isinstance(target_function, (Injected, DelegatedVar))
         assert callable(target_function)
         self.target_function = target_function
-        assert inspect.iscoroutinefunction(self.target_function), f"{self.target_function} is not a coroutine function"
+        assert inspect.iscoroutinefunction(self.target_function), (
+            f"{self.target_function} is not a coroutine function"
+        )
         self.kwargs_mapping: dict[str, Injected] = copy(kwargs_mapping)
         for k, v in self.kwargs_mapping.items():
             if isinstance(v, DelegatedVar):
@@ -1063,14 +1281,17 @@ class InjectedFromFunction(Injected[T]):
             dynamic_dependencies = set()
         self._dynamic_dependencies = dynamic_dependencies
 
-    def override_mapping(self, **kwargs: Union[str, type, Callable, Injected]):
-        return InjectedFromFunction(self.target_function, {**self.kwargs_mapping, **kwargs})
+    def override_mapping(self, **kwargs: str | type | Callable | Injected):
+        return InjectedFromFunction(
+            self.target_function, {**self.kwargs_mapping, **kwargs}
+        )
 
     def get_provider(self):
         signature = self.get_signature()
 
         async def impl(**kwargs):
             from pinjected.pinjected_logging import logger
+
             deps = dict()
 
             async def update(key):
@@ -1082,11 +1303,15 @@ class InjectedFromFunction(Injected[T]):
                     try:
                         deps[key] = await solve_injection(mapped, kwargs)
                     except Exception as e:
-                        logger.error(f"failed to solve injection for {key}:{mapped} from {kwargs}")
+                        logger.error(
+                            f"failed to solve injection for {key}:{mapped} from {kwargs}"
+                        )
                         raise e
 
             tasks = []
-            logger.trace(f"missings:{self.missings},kwargs_mapping:{self.kwargs_mapping}")
+            logger.trace(
+                f"missings:{self.missings},kwargs_mapping:{self.kwargs_mapping}"
+            )
             for mdep in self.missings:
                 tasks.append(update(mdep))
             for k, dep in self.kwargs_mapping.items():
@@ -1104,25 +1329,29 @@ class InjectedFromFunction(Injected[T]):
         # you have to add a prefix 'provider'""
         return create_function(func_signature=signature, func_impl=impl)
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         # ahhhh this recursively demands for injection.
         # we need to distinguish what and what not to recursively inject
         res = set()
         for mdep in self.missings:
             d = extract_dependency(mdep)
-            assert isinstance(d, set), f"extracted dependency is not a set:{d}, from {mdep}"
+            assert isinstance(d, set), (
+                f"extracted dependency is not a set:{d}, from {mdep}"
+            )
             res |= d
             # logger.info(f"deps of missing:{d}")
         for k, dep in self.kwargs_mapping.items():
             d = extract_dependency(dep)
-            assert isinstance(d, set), f"extracted dependency is not a set:{d}, from {mdep}"
+            assert isinstance(d, set), (
+                f"extracted dependency is not a set:{d}, from {mdep}"
+            )
             res |= d
             # logger.info(f"deps of dependency({k}):{d}")
         return res
 
     # def __str__(self):
     #    return f"""InjectedFunction(target={self.target_function},kwargs_mapping={self.kwargs_mapping})"""
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self._dynamic_dependencies
 
     def __repr_expr__(self):
@@ -1139,7 +1368,7 @@ class InjectedFromFunction(Injected[T]):
                     kwargs_repr.append(f"{k}=${v.__name__}")
                 case Injected():
                     kwargs_repr.append(f"{k}={v.__repr_expr__()}")
-                case c if callable(v):
+                case _ if callable(v):
                     kwargs_repr.append(f"{k}={v.__name__}")
                 case unknown:
                     kwargs_repr.append(f"{k}={unknown}")
@@ -1154,7 +1383,7 @@ class InjectedPure(Injected[T]):
         super().__init__()
         self.value = value
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return set()
 
     def get_provider(self):
@@ -1169,7 +1398,7 @@ class InjectedPure(Injected[T]):
     def __repr__(self):
         return str(self)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return set()
 
     def __repr_expr__(self):
@@ -1183,7 +1412,7 @@ class InjectedByName(Injected[T]):
         super().__init__()
         self.name = name
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return {self.name}
 
     def get_provider(self):
@@ -1198,14 +1427,14 @@ class InjectedByName(Injected[T]):
     def __repr__(self):
         return str(self)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return set()
 
     def __repr_expr__(self):
         return f"${self.name}"
 
 
-class ZippedInjected(Injected[Tuple[A, B]]):
+class ZippedInjected(Injected[tuple[A, B]]):
     __match_args__ = ("a", "b")
 
     def __init__(self, a: Injected[A], b: Injected[B]):
@@ -1216,7 +1445,7 @@ class ZippedInjected(Injected[Tuple[A, B]]):
         self.a = a
         self.b = b
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return set(self.a.dependencies() | self.b.dependencies())
 
     def get_provider(self):
@@ -1231,7 +1460,7 @@ class ZippedInjected(Injected[Tuple[A, B]]):
         # logger.info(f"created signature:{signature} for ZippedInjected")
         return create_function(func_signature=signature, func_impl=impl)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.a.dynamic_dependencies() | self.b.dynamic_dependencies()
 
     def __repr_expr__(self):
@@ -1246,7 +1475,7 @@ class MZippedInjected(Injected):
         self.srcs = [Injected.ensure_injected(item) for item in srcs]
         assert all(isinstance(s, Injected) for s in self.srcs), self.srcs
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         res = set()
         for s in self.srcs:
             res |= s.dependencies()
@@ -1266,7 +1495,7 @@ class MZippedInjected(Injected):
         signature = self.get_signature()
         return create_function(func_signature=signature, func_impl=impl)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         res = set()
         for s in self.srcs:
             res |= s.dynamic_dependencies()
@@ -1285,9 +1514,10 @@ class DictInjected(Injected):
         self.srcs = {k: Injected.ensure_injected(v) for k, v in srcs.items()}
         assert all(isinstance(s, Injected) for s in self.srcs.values()), self.srcs
         from pinjected.pinjected_logging import logger
-        logger.warning(f"use of DictInjected is deprecated. use Injected.dict instead.")
 
-    def dependencies(self) -> Set[str]:
+        logger.warning("use of DictInjected is deprecated. use Injected.dict instead.")
+
+    def dependencies(self) -> set[str]:
         res = set()
         for s in self.srcs.values():
             res |= s.dependencies()
@@ -1311,7 +1541,7 @@ class DictInjected(Injected):
         signature = self.get_signature()
         return create_function(func_signature=signature, func_impl=impl)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         res = set()
         for s in self.srcs.values():
             res |= s.dynamic_dependencies()
@@ -1330,18 +1560,24 @@ def _injected_factory(**targets: Injected):
 
 
 class InjectedWithDefaultDesign(Injected):
-    __match_args__ = ('src', 'default_design_path')
+    __match_args__ = ("src", "default_design_path")
 
     def __init__(self, src: Injected, default_design_path: str):
         super().__init__()
         self.src = src  # why does this receive 4 play buttons?
         self.default_design_path: str = default_design_path
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.src.dependencies()
 
     def get_provider(self):
         return self.src.get_provider()
+
+    def dynamic_dependencies(self) -> set[str]:
+        return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"InjectedWithDefaultDesign({self.src.__repr_expr__()}, {self.default_design_path!r})"
 
 
 def with_default(design_path: str):
@@ -1357,17 +1593,23 @@ class RunnableInjected(Injected):
     design_path: str
     working_dir: str
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.src.dependencies()
 
     def get_provider(self):
         return self.src.get_provider()
 
+    def dynamic_dependencies(self) -> set[str]:
+        return self.src.dynamic_dependencies()
+
+    def __repr_expr__(self):
+        return f"RunnableInjected({self.src.__repr_expr__()}, {self.design_path!r}, {self.working_dir!r})"
+
 
 @dataclass
 class PartialInjectedFunction(Injected):
     src: Injected[Callable]
-    args_modifier: Optional[ArgsModifier] = None
+    args_modifier: ArgsModifier | None = None
 
     def __post_init__(self):
         assert isinstance(self.src, Injected), f"src:{self.src} is not an Injected"
@@ -1386,7 +1628,9 @@ class PartialInjectedFunction(Injected):
             called = self.src.proxy(*args, **kwargs)
             dyn_deps = set()
             for c in causes:
-                assert isinstance(c, (Injected, DelegatedVar)), f"causes:{causes} is not an Injected, but {type(c)}"
+                assert isinstance(c, (Injected, DelegatedVar)), (
+                    f"causes:{causes} is not an Injected, but {type(c)}"
+                )
                 if isinstance(c, DelegatedVar):
                     c = c.eval()
                 dyn = c.dynamic_dependencies()
@@ -1396,7 +1640,7 @@ class PartialInjectedFunction(Injected):
             return called.proxy
         return self.src.proxy(*args, **kwargs)
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.src.dependencies()
 
     def get_provider(self):
@@ -1406,16 +1650,16 @@ class PartialInjectedFunction(Injected):
     def __hash__(self):
         return hash(self.src)
 
-    def dynamic_dependencies(self) -> Set[str]:
+    def dynamic_dependencies(self) -> set[str]:
         return self.src.dynamic_dependencies()
 
     def __repr_expr__(self):
         return f"{self.src.__repr_expr__()}"
 
 
-def add_viz_metadata(metadata: Dict[str, Any]):
+def add_viz_metadata(metadata: dict[str, Any]):
     def impl(tgt: Injected):
-        if not hasattr(tgt, '__viz_metadata__'):
+        if not hasattr(tgt, "__viz_metadata__"):
             tgt.__viz_metadata__ = dict()
         tgt.__viz_metadata__.update(metadata)
         return tgt

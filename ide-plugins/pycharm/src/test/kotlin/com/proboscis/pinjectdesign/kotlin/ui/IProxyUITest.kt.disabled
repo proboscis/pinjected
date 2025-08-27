@@ -1,0 +1,352 @@
+package com.proboscis.pinjectdesign.kotlin.ui
+
+import com.intellij.remoterobot.RemoteRobot
+import com.intellij.remoterobot.data.RemoteComponent
+import com.intellij.remoterobot.fixtures.*
+import com.intellij.remoterobot.search.locators.byXpath
+import com.intellij.remoterobot.stepsProcessing.step
+import com.intellij.remoterobot.utils.waitFor
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.Assert.*
+import java.time.Duration
+
+/**
+ * UI automation test using JetBrains Remote Robot.
+ * This test actually launches PyCharm and interacts with the UI.
+ * 
+ * Prerequisites:
+ * 1. Add Remote Robot dependency to build.gradle.kts:
+ *    testImplementation("com.intellij.remoterobot:remote-robot:0.11.16")
+ *    testImplementation("com.intellij.remoterobot:remote-fixtures:0.11.16")
+ * 
+ * 2. Start PyCharm with Remote Robot plugin:
+ *    - Install "Robot Server Plugin" in target PyCharm
+ *    - Start PyCharm with: -Drobot-server.port=8082
+ * 
+ * 3. Run this test while PyCharm is running with Robot Server
+ */
+class IProxyUITest {
+    
+    private lateinit var robot: RemoteRobot
+    private val robotUrl = "http://127.0.0.1:8082"
+    
+    @Before
+    fun setup() {
+        robot = RemoteRobot(robotUrl)
+    }
+    
+    @After
+    fun teardown() {
+        // Clean up any open projects
+        robot.runJs("closeProject()")
+    }
+    
+    @Test
+    fun testIProxyGutterIconAppearsInUI() = with(robot) {
+        step("Create new Python project") {
+            welcomeFrame {
+                createNewProjectLink.click()
+            }
+            
+            newProjectDialog {
+                projectTypeTree.findText("Python").click()
+                projectNameField.text = "IProxyTestProject"
+                createButton.click()
+            }
+        }
+        
+        step("Wait for project to open") {
+            waitFor(Duration.ofSeconds(10)) {
+                idea {
+                    projectViewTree.hasText("IProxyTestProject")
+                }
+            }
+        }
+        
+        step("Create Python file with IProxy") {
+            idea {
+                // Open new file dialog
+                projectViewTree.rightClick()
+                popupMenu {
+                    menuItem("New").click()
+                    menuItem("Python File").click()
+                }
+                
+                // Enter file name
+                dialog("New Python File") {
+                    textField().text = "test_iproxy"
+                    button("OK").click()
+                }
+            }
+        }
+        
+        step("Write IProxy code") {
+            idea {
+                editor {
+                    // Type the IProxy code
+                    setText("""
+                        from pinjected import IProxy, injected, Protocol
+                        from typing import List
+                        
+                        class User:
+                            def __init__(self, name: str):
+                                self.name = name
+                        
+                        # This should show a gutter icon
+                        user_proxy: IProxy[User] = IProxy()
+                        
+                        class ProcessUserProtocol(Protocol):
+                            def __call__(self) -> str: ...
+                        
+                        @injected(protocol=ProcessUserProtocol)
+                        def process_user(user: User) -> str:
+                            return f"Processing {user.name}"
+                    """.trimIndent())
+                }
+            }
+        }
+        
+        step("Verify gutter icon appears") {
+            waitFor(Duration.ofSeconds(5)) {
+                idea {
+                    editor {
+                        // Check for gutter icon on line 9 (user_proxy line)
+                        val gutterIcons = findAll<GutterIcon>(byXpath("//div[@class='GutterIconRenderer']"))
+                        gutterIcons.isNotEmpty()
+                    }
+                }
+            }
+        }
+        
+        step("Click gutter icon to show dropdown") {
+            idea {
+                editor {
+                    // Find and click the gutter icon
+                    val gutterIcon = find<GutterIcon>(
+                        byXpath("//div[@class='GutterIconRenderer' and @line='9']")
+                    )
+                    gutterIcon.click()
+                }
+            }
+        }
+        
+        step("Verify dropdown menu appears") {
+            waitFor(Duration.ofSeconds(3)) {
+                popupMenu {
+                    hasText("process_user")
+                }
+            }
+        }
+        
+        step("Select function from dropdown") {
+            popupMenu {
+                menuItem("process_user").click()
+            }
+        }
+        
+        step("Verify action notification") {
+            idea {
+                // Check for notification balloon
+                val notification = find<NotificationBalloon>(
+                    byXpath("//div[@class='NotificationBalloon']")
+                )
+                assertTrue(notification.hasText("pinjected call"))
+            }
+        }
+    }
+    
+    @Test
+    fun testDebugInjectedFunction() = with(robot) {
+        step("Open existing project") {
+            welcomeFrame {
+                recentProjectsList.findText("IProxyTestProject").click()
+            }
+        }
+        
+        step("Open Python file") {
+            idea {
+                projectViewTree.findText("test_iproxy.py").doubleClick()
+            }
+        }
+        
+        step("Set breakpoint in @injected function") {
+            idea {
+                editor {
+                    // Click on line 16 gutter to set breakpoint
+                    clickOnGutterAtLine(16)
+                }
+            }
+        }
+        
+        step("Start debugging") {
+            idea {
+                // Click Debug button in toolbar
+                actionToolbar {
+                    actionButton("Debug").click()
+                }
+                
+                // Or use keyboard shortcut
+                keyboard {
+                    hotKey(KeyEvent.VK_SHIFT, KeyEvent.VK_F9)
+                }
+            }
+        }
+        
+        step("Verify debugger stops at breakpoint") {
+            waitFor(Duration.ofSeconds(10)) {
+                debugToolWindow {
+                    // Check that execution stopped at our breakpoint
+                    hasText("process_user:16")
+                    
+                    // Verify variables are visible
+                    variablesTree.hasText("user")
+                }
+            }
+        }
+        
+        step("Inspect variable values") {
+            debugToolWindow {
+                variablesTree {
+                    findText("user").click()
+                    // Verify user object details are shown
+                    hasText("name = ")
+                }
+            }
+        }
+        
+        step("Step through code") {
+            debugToolWindow {
+                // Step over
+                actionButton("Step Over").click()
+                
+                // Verify we moved to next line
+                waitFor {
+                    hasText("process_user:17")
+                }
+            }
+        }
+        
+        step("Continue execution") {
+            debugToolWindow {
+                actionButton("Resume Program").click()
+            }
+        }
+    }
+    
+    @Test
+    fun testAutoCompleteWithIProxy() = with(robot) {
+        step("Open editor with IProxy variable") {
+            idea {
+                editor {
+                    setText("""
+                        from pinjected import IProxy
+                        
+                        user_proxy: IProxy[User] = IProxy()
+                        
+                        # Type here to trigger autocomplete
+                        
+                    """.trimIndent())
+                    
+                    // Move cursor to line 5
+                    moveCursorToLine(5)
+                }
+            }
+        }
+        
+        step("Trigger autocomplete") {
+            idea {
+                editor {
+                    // Start typing to trigger autocomplete
+                    type("user_proxy.")
+                    
+                    // Or use Ctrl+Space
+                    keyboard {
+                        hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_SPACE)
+                    }
+                }
+            }
+        }
+        
+        step("Verify IProxy methods appear in autocomplete") {
+            waitFor(Duration.ofSeconds(3)) {
+                autocompletePopup {
+                    // Should show IProxy-specific completions
+                    hasText("resolve")
+                    hasText("get")
+                }
+            }
+        }
+    }
+    
+    // Helper fixtures
+    
+    private val RemoteRobot.welcomeFrame: WelcomeFrame
+        get() = find(WelcomeFrame::class.java, Duration.ofSeconds(10))
+    
+    private val RemoteRobot.idea: IdeaFrame
+        get() = find(IdeaFrame::class.java, Duration.ofSeconds(10))
+    
+    private val RemoteRobot.newProjectDialog: DialogFixture
+        get() = find(DialogFixture::class.java, byXpath("//div[@title='New Project']"))
+    
+    private val RemoteRobot.popupMenu: PopupMenuFixture
+        get() = find(PopupMenuFixture::class.java, Duration.ofSeconds(5))
+    
+    private val RemoteRobot.debugToolWindow: DebugToolWindowFixture
+        get() = find(DebugToolWindowFixture::class.java, Duration.ofSeconds(10))
+    
+    private val RemoteRobot.autocompletePopup: AutocompletePopupFixture
+        get() = find(AutocompletePopupFixture::class.java, Duration.ofSeconds(5))
+}
+
+// Custom fixtures for specific UI components
+
+@FixtureName("Welcome Frame")
+class WelcomeFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) : 
+    CommonContainerFixture(remoteRobot, remoteComponent) {
+    
+    val createNewProjectLink: JButtonFixture
+        get() = button(byXpath("//div[@text='New Project']"))
+    
+    val recentProjectsList: JListFixture
+        get() = jList(byXpath("//div[@class='RecentProjectsList']"))
+}
+
+@FixtureName("IDE Frame")
+class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) : 
+    CommonContainerFixture(remoteRobot, remoteComponent) {
+    
+    val projectViewTree: JTreeFixture
+        get() = jTree(byXpath("//div[@class='ProjectViewTree']"))
+    
+    val editor: EditorFixture
+        get() = find(EditorFixture::class.java)
+    
+    val actionToolbar: ActionToolbarFixture
+        get() = find(ActionToolbarFixture::class.java)
+}
+
+@FixtureName("Debug Tool Window")
+class DebugToolWindowFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) : 
+    CommonContainerFixture(remoteRobot, remoteComponent) {
+    
+    val variablesTree: JTreeFixture
+        get() = jTree(byXpath("//div[@class='VariablesTree']"))
+    
+    fun actionButton(text: String): JButtonFixture =
+        button(byXpath("//div[@text='$text']"))
+}
+
+@FixtureName("Autocomplete Popup")
+class AutocompletePopupFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) : 
+    CommonContainerFixture(remoteRobot, remoteComponent)
+
+@FixtureName("Gutter Icon")
+class GutterIcon(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) : 
+    CommonContainerFixture(remoteRobot, remoteComponent)
+
+@FixtureName("Notification Balloon")
+class NotificationBalloon(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) : 
+    CommonContainerFixture(remoteRobot, remoteComponent)

@@ -1,7 +1,7 @@
 <idea-plugin>
-    <id>com.cyberagent.ailab.pinjectdesign</id>
+    <id>com.proboscis.pinjectdesign</id>
     <name>PInject Design</name>
-    <vendor email="support@cyberagent.ai" url="https://www.cyberagent.ai">CyberAgent AI Lab</vendor>
+    <vendor>Proboscis</vendor>
 
     <description><![CDATA[
     A plugin for Python dependency injection design.
@@ -12,22 +12,56 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService 
-            serviceImplementation="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettings"/>
-        <applicationConfigurable 
-            parentId="tools"
-            instance="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
-            id="com.cyberagent.ailab.pinjectdesign.settings.PInjectDesignSettingsConfigurable" 
-            displayName="PInject Design"/>
-        <codeInsight.lineMarkerProvider language="Python" implementationClass="com.cyberagent.ailab.pinjectdesign.lineMarkers.InjectedFunctionGutterIconProvider"/>
+            serviceImplementation="com.proboscis.pinjectdesign.settings.PInjectDesignSettings"/>
+            
+        <!-- Our Gutter Icon Provider for HTML Dependency Graph Visualization -->
+        <codeInsight.lineMarkerProvider 
+            language="Python" 
+            implementationClass="com.proboscis.pinjectdesign.lineMarkers.InjectedFunctionGutterIconProvider"/>
+            
+        <!-- IProxy Gutter Icon Provider (Disabled - using only green icon) -->
+        <!-- <codeInsight.lineMarkerProvider 
+            language="Python" 
+            implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.IProxyGutterIconProvider"/> -->
+            
+        <!-- IProxy Inlay Hints Provider for inline buttons (Disabled - using only green icon) -->
+        <!-- <codeInsight.inlayProvider
+            language="Python"
+            implementationClass="com.proboscis.pinjectdesign.kotlin.hints.IProxyInlayHintsProvider"/> -->
+            
+        <!-- Goto Declaration Handler for navigating from dependency parameters to function definitions -->
+        <gotoDeclarationHandler
+            implementation="com.proboscis.pinjectdesign.kotlin.handlers.InjectedGotoDeclarationHandler"/>
+            
+        <!-- Notification Group -->
+        <notificationGroup id="Pinjected Plugin" 
+                         displayType="BALLOON" 
+                         key="notification.group.pinjected"/>
+                         
+        <!-- Tool Window -->
+        <toolWindow id="Pinjected"
+                    secondary="false"
+                    icon="AllIcons.Actions.Execute"
+                    anchor="left"
+                    factoryClass="com.proboscis.pinjectdesign.kotlin.toolwindow.PinjectedToolWindowFactory"/>
     </extensions>
 
     <actions>
-        <action id="PInjectDesign.AnalyzeCode" 
-                class="com.cyberagent.ailab.pinjectdesign.actions.AnalyzePythonCodeAction"
-                text="Analyze Python Code"
-                description="Analyze Python code structure">
+        <!-- Injected Function Actions -->
+        <action id="PInjectDesign.RunSelectedInjected" 
+                class="com.proboscis.pinjectdesign.kotlin.actions.RunSelectedInjectedAction"
+                text="Run Selected Injected Function"
+                description="Run the selected injected function">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
+        </action>
+        
+        <!-- Diagnostics Action -->
+        <action id="PInjectDesign.RunDiagnostics"
+                class="com.proboscis.pinjectdesign.kotlin.actions.RunDiagnosticsAction"
+                text="Run Pinjected Diagnostics"
+                description="Check Pinjected plugin configuration and troubleshoot issues">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
         </action>
     </actions>
 </idea-plugin>

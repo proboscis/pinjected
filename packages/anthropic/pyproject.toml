@@ -20,8 +20,8 @@ classifiers = [
 
 dependencies = [
     "pinjected",
-    "anthropic>=0.37.1",
-    "injected-utils>=0.1.32",
+    "anthropic",
+    "injected-utils",
     "loguru",
     "returns",
     "cloudpickle",
@@ -30,19 +30,23 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
+    "anthropic"
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/pinjected_anthropic"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/pinjected_anthropic"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.sources]
 pinjected = { workspace = true }
+injected-utils = { workspace = true }
 
 [dependency-groups]
 dev = [

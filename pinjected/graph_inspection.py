@@ -1,12 +1,15 @@
 import inspect
 import re
 from dataclasses import dataclass
-from pprint import pformat
+from typing import TYPE_CHECKING
 
+from pinjected.di.injected import Injected
 from pinjected.pinjected_logging import logger
-from pinjected import Injected
-from pinjected.v2.binds import IBind, BindInjected, ExprBind
-from pinjected.v2.keys import IBindKey, StrBindKey, DestructorKey
+from pinjected.v2.binds import BindInjected, ExprBind, IBind
+from pinjected.v2.keys import DestructorKey, IBindKey, StrBindKey
+
+if TYPE_CHECKING:
+    from pinjected.di.design_interface import Design
 
 
 def default_get_arg_names_from_class_name(class_name):
@@ -24,17 +27,16 @@ def default_get_arg_names_from_class_name(class_name):
     """
     parts = []
     rest = class_name
-    if rest.startswith('_'):
-        rest = rest[1:]
+    rest = rest.removeprefix("_")
     while True:
-        m = re.match(r'([A-Z][a-z]+)(.*)', rest)
+        m = re.match(r"([A-Z][a-z]+)(.*)", rest)
         if m is None:
             break
         parts.append(m.group(1))
         rest = m.group(2)
     if not parts:
         return []
-    return ['_'.join(part.lower() for part in parts)]
+    return ["_".join(part.lower() for part in parts)]
 
 
 def find_classes(modules, classes):
@@ -58,7 +60,7 @@ def _get_explicit_or_default_modules(modules):
 def _find_classes_in_module(module):
     classes = set()
     for member_name, member in inspect.getmembers(module):
-        if inspect.isclass(member) and not member_name == '__class__':
+        if inspect.isclass(member) and member_name != "__class__":
             classes.add(member)
     return classes
 
@@ -78,7 +80,7 @@ class DIGraphHelper:
             match k, v:
                 case (StrBindKey(name), BindInjected(Injected() as injected)):
                     mappings[name] = injected
-                case (StrBindKey(name), ExprBind(src,meta)):
+                case (StrBindKey(name), ExprBind(src, _)):
                     mappings[name] = src
                 case (DestructorKey(name), _):
                     pass
@@ -89,6 +91,7 @@ class DIGraphHelper:
     def total_bindings(self) -> dict[IBindKey, IBind]:
         if self.use_implicit_bindings:
             from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
+
             implicit_bindings = IMPLICIT_BINDINGS
             # TODO add the qualified name for the global_implicit_mappings. but how?
             # logger.debug(f"global_implicit_mappings: {pformat(global_implicit_mappings)}")

@@ -2,9 +2,9 @@ name: Python Tests
 
 on:
   push:
-    branches: [ main, dev, feature/design-spec ]
+    branches: [ main, feature/design-spec ]
   pull_request:
-    branches: [ main, dev, feature/design-spec ]
+    branches: [ main, feature/design-spec ]
 
 permissions:
   contents: read
@@ -23,6 +23,20 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y pkg-config libssl-dev
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        
+    - name: Remove uv.lock
+      run: rm -f uv.lock
         
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5

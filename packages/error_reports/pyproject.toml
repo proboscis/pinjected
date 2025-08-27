@@ -28,19 +28,27 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
+    "pinjected-niji-voice",
+    "injected-utils",
+    "pinjected-openai"
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/pinjected_error_reports"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/pinjected_error_reports"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.sources]
 pinjected = { workspace = true }
+pinjected-niji-voice={ workspace = true }
+injected-utils={ workspace = true }
+pinjected-openai={ workspace = true }
 
 [dependency-groups]
 dev = [

@@ -1,12 +1,12 @@
 import importlib.util
 import os
 import sys
-from typing import List, Generic, TypeVar, Any, Callable, Union
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, Generic, TypeVar
 
 import fire
 from cytoolz import memoize
-from pydantic import BaseModel
 from pydantic.dataclasses import dataclass
 
 T = TypeVar("T")
@@ -16,8 +16,11 @@ T = TypeVar("T")
 class ModuleVarSpec(Generic[T]):
     var: T
     var_path: str
+
     def __post_init__(self):
-        assert isinstance(self.var_path, str), f"var_path must be a string, not {type(self.var_path)}({self.var_path})"
+        assert isinstance(self.var_path, str), (
+            f"var_path must be a string, not {type(self.var_path)}({self.var_path})"
+        )
 
     @property
     def module_file_path(self):
@@ -26,7 +29,7 @@ class ModuleVarSpec(Generic[T]):
         return ModuleVarPath(self.var_path).module_file_path
 
     def __str__(self):
-        return f"ModuleVarSpec({self.var_path} with type {str(type(self.var))})"
+        return f"ModuleVarSpec({self.var_path} with type {type(self.var)!s})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -61,18 +64,20 @@ def get_module_path(root_path, module_path):
     relative_path = os.path.relpath(module_path, root_path)
     without_extension = os.path.splitext(relative_path)[0]
     path = without_extension.replace(os.path.sep, ".")
-    if str(path).split(".")[0] == "src":
-        if not (Path(root_path) / "src" / "__init__.py").exists():
-            # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
-            # Although 'src' should not be in the module path at all, i handle this specific case.
-            # Probably we should make this part adjustable from __meta_design__ or something.
-            path = path[4:]
+    if (
+        str(path).split(".")[0] == "src"
+        and not (Path(root_path) / "src" / "__init__.py").exists()
+    ):
+        # THIS, is a hack to support repos that has 'src' as the top level package and happens to have an __init__.py
+        # Although 'src' should not be in the module path at all, i handle this specific case.
+        # Probably we should make this part adjustable from __meta_design__ or something.
+        path = path[4:]
     return path
 
 
 def inspect_module_for_type(
-    module_path: Union[str, Path], accept: Callable[[str, Any], bool]
-) -> List[ModuleVarSpec[T]]:
+    module_path: str | Path, accept: Callable[[str, Any], bool]
+) -> list[ModuleVarSpec[T]]:
     from pinjected.pinjected_logging import logger
 
     logger.debug(f"inspecting module:{module_path}")

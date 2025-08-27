@@ -1,8 +1,14 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Callable, Union
+from typing import Generic, TypeVar, Union, TYPE_CHECKING
 
 from pinjected.di.proxiable import DelegatedVar
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
+    from pinjected.di.design_interface import Design
+    from pinjected.di.injected import Injected
 
 T = TypeVar("T")
 
@@ -30,14 +36,14 @@ class Designed(Generic[T], ABC):
     def bind(target: Union["Injected"]):
         from pinjected import Injected
         from pinjected.di.util import EmptyDesign
+
         if isinstance(target, DelegatedVar):
             return PureDesigned(EmptyDesign, Injected.ensure_injected(target))
-        elif isinstance(target, Injected):
+        if isinstance(target, Injected):
             return PureDesigned(EmptyDesign, target)
-        elif isinstance(target, Callable):
+        if isinstance(target, Callable):
             return Designed.bind(Injected.bind(target))
-        else:
-            raise TypeError("target must be a subclass of Injected")
+        raise TypeError("target must be a subclass of Injected")
 
     def override(self, design: "Design"):
         return PureDesigned(self.design + design, self.internal_injected)
@@ -47,14 +53,17 @@ class Designed(Generic[T], ABC):
 
     @staticmethod
     def zip(*others: "Self"):
-        from pinjected import Injected
-        from pinjected import EmptyDesign
+        from pinjected import EmptyDesign, Injected
+
         d = sum([o.design for o in others], EmptyDesign)
-        return Designed.bind(Injected.mzip(*[o.internal_injected for o in others])).override(d)
+        return Designed.bind(
+            Injected.mzip(*[o.internal_injected for o in others])
+        ).override(d)
 
     @property
     def proxy(self):
         from pinjected.di.app_designed import designed_proxy
+
         return designed_proxy(self)
 
 

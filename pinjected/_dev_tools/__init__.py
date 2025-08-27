@@ -1,17 +1,8 @@
-from pathlib import Path
+"""Dev tools package."""
 
-from pinjected import *
+from pinjected import design, instance
+from pinjected._dev_tools.doc_merger import generate_merged_doc
 
+__all__ = ["design", "generate_merged_doc", "instance"]
 
-@instance
-def generate_merged_doc(logger):
-    docs = list(sorted(list(Path("docs").rglob("*.md"))))
-    logger.info(docs)
-    merged_text = "\n".join([doc.read_text() for doc in docs])
-    Path("merged_doc.md").write_text(merged_text)
-
-
-__meta_design__ = design(
-    overrides=design(
-    )
-)
+__design__ = design(overrides=design())

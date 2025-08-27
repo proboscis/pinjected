@@ -1,6 +1,10 @@
 import ast
 
+
 def fix_imports(source):
+    if not source.strip():
+        return source
+
     # Parse the source code into an AST
     tree = ast.parse(source)
 
@@ -39,22 +43,37 @@ def fix_imports(source):
         if module in used_variables:
             import_lines.append(f"import {module}")
 
-    # Find the line numbers of import statements in the source code
-    import_line_numbers = set()
+    # Find the line number ranges of import statements
+    import_line_ranges = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            import_line_numbers.add(node.lineno)
+            # For multiline imports, we need to find the full range
+            start_line = node.lineno
+            # The end_lineno attribute gives us the last line of the node
+            end_line = getattr(node, "end_lineno", node.lineno)
+            for line in range(start_line, end_line + 1):
+                import_line_ranges.add(line)
 
     # Split the source code into lines
     source_lines = source.split("\n")
 
     # Remove the original import statements
-    source_lines = [line for lineno, line in enumerate(source_lines, start=1) if lineno not in import_line_numbers]
+    filtered_lines = []
+    for lineno, line in enumerate(source_lines, start=1):
+        if lineno not in import_line_ranges:
+            filtered_lines.append(line)
+
+    # Remove leading empty lines from filtered content
+    while filtered_lines and not filtered_lines[0].strip():
+        filtered_lines.pop(0)
 
     # Insert the purified import statements at the beginning
-    source_lines = import_lines + [""] + source_lines
+    if import_lines:
+        result_lines = import_lines + [""] + filtered_lines
+    else:
+        result_lines = filtered_lines
 
     # Join the lines back into a single string
-    purified_source = "\n".join(source_lines)
+    purified_source = "\n".join(result_lines)
 
     return purified_source

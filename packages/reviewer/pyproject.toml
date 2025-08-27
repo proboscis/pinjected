@@ -29,19 +29,29 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
+    "argparse",
+    "pinjected-openai",
+    "injected-utils"
 ]
+
+[project.scripts]
+pinjected-reviewer = "pinjected_reviewer.__main__:main"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/pinjected_reviewer","src/review_materials"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/pinjected_reviewer"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.sources]
 pinjected = { workspace = true }
+pinjected-openai = { workspace = true }
+injected-utils = { workspace = true }
 
 [dependency-groups]
 dev = [

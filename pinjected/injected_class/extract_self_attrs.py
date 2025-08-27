@@ -14,13 +14,16 @@ class AsyncMethodVisitor(ast.NodeVisitor):
         self.current_method = None
 
     def visit_Attribute(self, node):
-        if isinstance(node.value, ast.Name) and node.value.id == 'self':
-            if self.current_method:
-                self.async_methods[self.current_method].add(node.attr)
+        if (
+            isinstance(node.value, ast.Name)
+            and node.value.id == "self"
+            and self.current_method
+        ):
+            self.async_methods[self.current_method].add(node.attr)
         self.generic_visit(node)
 
 
-def extract_attribute_accesses(cls)->dict[str,set[str]]:
+def extract_attribute_accesses(cls) -> dict[str, set[str]]:
     source_code = inspect.getsource(cls)
     tree = ast.parse(source_code)
     visitor = AsyncMethodVisitor()
@@ -58,10 +61,10 @@ def get_async_method_source(source_code, method_name):
     return None
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     result = extract_attribute_accesses(example_class)
     print(result)
     # Example usage of ast.unparse
-    async_method_source = get_async_method_source(example_class, 'async_method2')
+    async_method_source = get_async_method_source(example_class, "async_method2")
     print("\nSource of async_method2:")
     print(async_method_source)

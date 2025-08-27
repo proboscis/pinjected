@@ -1,10 +1,13 @@
 import ast
 import importlib
+import importlib.util
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from beartype import beartype
+
+from pinjected.module_inspector import ModuleVarSpec
 
 
 @dataclass(frozen=True)
@@ -13,6 +16,7 @@ class ModuleVarPath:
     represents a path where a variable is defined.
     like a.b.c.d
     """
+
     path: str
 
     def __post_init__(self):
@@ -38,12 +42,11 @@ class ModuleVarPath:
         return f"from {self.module_name} import {self.var_name}"
 
     @property
-    def module_file_path(self)->Path:
+    def module_file_path(self) -> Path:
         if self.module_name in sys.modules:
             return Path(sys.modules[self.module_name].__file__)
-        else:
-            __import__(self.module_name)
-            return Path(sys.modules[self.module_name].__file__)
+        __import__(self.module_name)
+        return Path(sys.modules[self.module_name].__file__)
 
     @staticmethod
     def from_local_variable(var_name):
@@ -56,28 +59,55 @@ class ModuleVarPath:
         returns a code snippet that defines the variable
         :return:
         """
-        return find_var_or_func_definition_code_in_module(self.module_name, self.var_name)
+        return find_var_or_func_definition_code_in_module(
+            self.module_name, self.var_name
+        )
 
     def depending_import_lines(self):
         return find_import_statements_in_module(self.module_name)
 
-@beartype
-def load_variable_by_module_path(full_module_path:str):
-    from pinjected.pinjected_logging import logger
-    logger.info(f"loading {full_module_path}")
-    module_path_parts = full_module_path.split('.')
-    variable_name = module_path_parts[-1]
-    module_path = '.'.join(module_path_parts[:-1])
+    def to_spec(self) -> ModuleVarSpec:
+        """
+        returns a ModuleVarSpec object
+        :return:
+        """
+        return ModuleVarSpec(var=self.load(), var_path=self.path)
 
-    # Import the module
-    module = importlib.import_module(module_path)
+
+@beartype
+def load_variable_by_module_path(full_module_path: str):
+    from pinjected.pinjected_logging import logger
+
+    logger.info(f"loading {full_module_path}")
+
+    if full_module_path is None:
+        raise ValueError(
+            "Module path cannot be None. Please provide a path in the format 'full.module.path.var.name'"
+        )
+
+    if "." not in full_module_path:
+        raise ValueError("Empty module name")
+
+    module_path_parts = full_module_path.split(".")
+    variable_name = module_path_parts[-1]
+    module_path = ".".join(module_path_parts[:-1])
+
+    try:
+        # Import the module
+        module = importlib.import_module(module_path)
+    except ImportError:
+        raise ImportError(
+            f"Could not import module '{module_path}'. Please ensure the module exists and is importable."
+        )
 
     # Retrieve the variable using getattr()
     if not hasattr(module, variable_name):
         logger.warning(
-            f"Module {module_path} at {module.__file__} does not have variable {variable_name}. src = \n{Path(module.__file__).read_text()}")
-        raise RuntimeError(
-            f"Module {module_path} at {module.__file__} does not have variable {variable_name}. but has {dir(module)}")
+            f"Module {module_path} at {module.__file__} does not have variable {variable_name}. src = \n{Path(module.__file__).read_text()}"
+        )
+        raise ValueError(
+            f"Module '{module_path}' does not have variable '{variable_name}'. Available variables: {', '.join(dir(module))[:200]}..."
+        )
     variable = getattr(module, variable_name)
 
     logger.info(f"loaded {full_module_path}")
@@ -93,17 +123,19 @@ def find_var_or_func_definition_code_in_module(module_dot_path, name):
 
     module_file_path = module.__file__
 
-    if module_file_path.endswith('.pyc'):
+    if module_file_path.endswith(".pyc"):
         module_file_path = module_file_path[:-1]  # convert .pyc to .py
 
-    with open(module_file_path, 'r') as f:
+    with open(module_file_path) as f:
         lines = f.readlines()
-        tree = ast.parse(''.join(lines))
+        tree = ast.parse("".join(lines))
 
     definition = None
 
     for node in ast.walk(tree):
-        if definition is None and isinstance(node, (ast.Assign, ast.AnnAssign, ast.FunctionDef, ast.AsyncFunctionDef)):
+        if definition is None and isinstance(
+            node, (ast.Assign, ast.AnnAssign, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
             targets = []
             if isinstance(node, ast.Assign):
                 targets = node.targets
@@ -113,19 +145,22 @@ def find_var_or_func_definition_code_in_module(module_dot_path, name):
             for target in targets:
                 if isinstance(target, ast.Name) and target.id == name:
                     start_line = node.lineno  # 1-based index
-                    end_line = getattr(node, 'end_lineno',
-                                       start_line)  # Some older Python versions don't have end_lineno
-                    definition = ''.join(lines[start_line - 1:end_line]).strip()
+                    end_line = getattr(
+                        node, "end_lineno", start_line
+                    )  # Some older Python versions don't have end_lineno
+                    definition = "".join(lines[start_line - 1 : end_line]).strip()
 
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == name
+            ):
                 start_line = node.lineno
-                end_line = getattr(node, 'end_lineno', start_line)
-                definition = ''.join(lines[start_line - 1:end_line]).strip()
+                end_line = getattr(node, "end_lineno", start_line)
+                definition = "".join(lines[start_line - 1 : end_line]).strip()
 
     if definition:
         return definition
-    else:
-        raise RuntimeError(f"{name} is not defined in the given module: {module_dot_path}")
+    raise RuntimeError(f"{name} is not defined in the given module: {module_dot_path}")
 
 
 def find_import_statements_in_module(module_dot_path):
@@ -136,19 +171,38 @@ def find_import_statements_in_module(module_dot_path):
 
     module_file_path = module.__file__
 
-    if module_file_path.endswith('.pyc'):
+    if module_file_path.endswith(".pyc"):
         module_file_path = module_file_path[:-1]  # convert .pyc to .py
 
-    with open(module_file_path, 'r') as f:
+    with open(module_file_path) as f:
         lines = f.readlines()
-        tree = ast.parse(''.join(lines))
+        tree = ast.parse("".join(lines))
 
     import_statements = []
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             start_line = node.lineno
-            end_line = getattr(node, 'end_lineno', start_line)
-            import_statements.append(''.join(lines[start_line - 1:end_line]).strip())
+            end_line = getattr(node, "end_lineno", start_line)
+            import_statements.append("".join(lines[start_line - 1 : end_line]).strip())
 
     return import_statements
+
+
+def load_variable_from_script(script_file: Path, varname: str):
+    """Load a variable from a Python script file.
+
+    Args:
+        script_file: Path to the Python script file
+        varname: Name of the variable to load from the script
+
+    Returns:
+        The value of the variable from the script
+
+    Raises:
+        AttributeError: If the variable is not found in the script
+    """
+    spec = importlib.util.spec_from_file_location("module.name", script_file)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, varname)

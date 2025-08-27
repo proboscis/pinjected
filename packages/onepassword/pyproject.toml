@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling==1.26.3"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinjected-onepassword"
+version = "0.1.0"
+description = "OnePassword API bindings for pinjected dependency injection framework"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "proboscis", email = "nameissoap@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pinjected",
+    "loguru",
+    "returns",
+    "cloudpickle",
+    "frozendict",
+    "makefun",
+    "cytoolz",
+    "beartype",
+    "rich",
+    "onepassword-sdk>=0.3.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pinjected_onepassword"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src/pinjected_onepassword"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1,<9",
+    "tqdm>=4.66.5",
+    "click>=8.1.7",
+    "wandb>=0.17.8",
+    "pytest-xdist>=3.6.1",
+    "pre-commit>=4.2.0",
+    "ruff>=0.11.7",
+]
+
+#[tool.ruff.lint.per-file-ignores]
+#"tests/*" = ["ANN201"]

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling==1.26.3"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinjected-gcp"
+version = "0.1.0"
+description = "Google Cloud Platform bindings for pinjected library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "proboscis", email = "nameissoap@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pinjected",
+    "google-cloud-storage>=2.0.0",
+    "httpx",
+    "tenacity",
+    "loguru",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pinjected_gcp"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src/pinjected_gcp"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1,<9"
+]

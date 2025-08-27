@@ -1,7 +1,8 @@
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TypeVar, Any, Callable, Generic, Iterator
+from typing import Any, Generic, TypeVar
 
-from pinjected.di.proxiable import IProxyContext, DelegatedVar
+from pinjected.di.proxiable import DelegatedVar, IProxyContext
 
 T = TypeVar("T")
 U = TypeVar("U")

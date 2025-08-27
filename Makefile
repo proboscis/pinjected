@@ -1,36 +1,98 @@
 
-.PHONY: test test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils sync setup-all
+.PHONY: test test-all test-cov publish publish-openai publish-anthropic publish-wandb publish-error-reports publish-reviewer publish-rate-limit publish-niji-voice publish-injected-utils publish-gcp tag-version tag-version-openai tag-version-anthropic tag-version-wandb tag-version-error-reports tag-version-reviewer tag-version-rate-limit tag-version-niji-voice tag-version-injected-utils tag-version-gcp release release-openai release-anthropic release-wandb release-error-reports release-reviewer release-rate-limit release-niji-voice release-injected-utils release-gcp sync setup-all setup-pre-commit install-system-deps
+
+setup-pre-commit:
+	@echo "Setting up pre-commit hooks..."
+	@uv run pre-commit install
+	@echo "✓ Pre-commit hooks installed"
+
+install-system-deps:
+	@echo "Installing system dependencies for Rust linter..."
+	@if command -v apt-get >/dev/null 2>&1; then \
+		echo "Detected apt package manager (Ubuntu/Debian)"; \
+		sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev; \
+	elif command -v yum >/dev/null 2>&1; then \
+		echo "Detected yum package manager (RHEL/CentOS)"; \
+		sudo yum install -y pkg-config openssl-devel; \
+	elif command -v brew >/dev/null 2>&1; then \
+		echo "Detected Homebrew (macOS)"; \
+		brew install pkg-config openssl; \
+	else \
+		echo "Unknown package manager. Please install pkg-config and OpenSSL development libraries manually."; \
+		echo "Ubuntu/Debian: sudo apt-get install pkg-config libssl-dev"; \
+		echo "RHEL/CentOS: sudo yum install pkg-config openssl-devel"; \
+		echo "macOS: brew install pkg-config openssl"; \
+		exit 1; \
+	fi
+	@echo "✓ System dependencies installed successfully"
 
 sync:
+	@echo "Installing system dependencies..."
+	@$(MAKE) install-system-deps || echo "⚠️  System dependency installation failed. You may need to install pkg-config and libssl-dev manually."
+	rm -rf packages/wandb
 	uv venv
-	uv sync
+	uv sync --group dev
 	uv pip install tqdm
+	uv run --package pinjected-reviewer -- pinjected-reviewer uninstall
+	@echo "Setting up pre-commit hooks..."
+	$(MAKE) setup-pre-commit
+
+lint:
+	uvx ruff check
+	uv run flake8
 
 setup-all:
 	cd packages/openai_support && uv sync --group dev
 	cd packages/anthropic && uv sync --group dev
-	cd packages/wandb && uv sync --group dev
+	cd packages/wandb_util && uv sync --group dev
 	cd packages/error_reports && uv sync --group dev
 	cd packages/reviewer && uv sync --group dev
 	cd packages/rate_limit && uv sync --group dev
 	cd packages/niji_voice && uv sync --group dev
 	cd packages/injected_utils && uv sync --group dev
+	cd packages/gcp && uv sync --group dev
+	cd packages/pinjected-linter && uv sync --group dev
 
 test:
+	@echo "Running tests with lock mechanism to prevent concurrent execution..."
+	@uv run python scripts/test_runner_with_lock.py --make-test
+
+test-all:
 	uv sync --all-packages
-	cd test && uv run pytest
-	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
-	cd packages/anthropic && uv sync --group dev && uv run -m pytest tests
-	cd packages/wandb && uv sync --group dev && uv run -m pytest tests
-	cd packages/error_reports && uv sync --group dev && uv run -m pytest tests
-	cd packages/reviewer && uv sync --group dev && uv run -m pytest tests
-	cd packages/rate_limit && uv sync --group dev && uv run -m pytest tests
-	cd packages/niji_voice && uv sync --group dev && uv run -m pytest tests
-	cd packages/injected_utils && uv sync --group dev && uv run -m pytest tests
+	uv run python scripts/test_runner_with_lock.py .
+	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/anthropic && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/wandb_util && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/error_reports && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/reviewer && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/rate_limit && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/niji_voice && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/injected_utils && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/gcp && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	cd packages/pinjected-linter && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
+	uv sync --group dev --all-packages
+
+test-linter-full:
+	uv sync --all-packages
+	$(MAKE) test-linter
+	$(MAKE) lint-with-pinjected-linter
+
+test-linter:
+	cd packages/pinjected-linter && uv sync --group dev
+	cd packages/pinjected-linter/rust-poc && cargo test
+
+build-linter:
+	cd packages/pinjected-linter/rust-poc && cargo build --release
+
+lint-with-pinjected-linter:
+	cd packages/pinjected-linter/rust-poc && cargo build --release
+	./packages/pinjected-linter/rust-poc/target/release/pinjected-linter pinjected/ packages/ --output-format terminal || echo "Linter found violations but continuing CI"
+
 
 test-cov:
-	cd test && uv run pytest -v --cov=pinjected --cov-report=xml
-	cd packages/openai_support && uv sync --group dev && uv run -m pytest tests
+	uv sync --all-packages
+	uv run python scripts/test_runner_with_lock.py --make-test -v
+	cd packages/openai_support && uv sync --group dev && uv run python ../../scripts/test_runner_with_lock.py tests
 
 publish:
 	uv build
@@ -69,8 +131,8 @@ publish-anthropic:
 	cd packages/anthropic && uv pip publish dist/*.whl dist/*.tar.gz
 
 publish-wandb:
-	cd packages/wandb && uv build
-	cd packages/wandb && uv pip publish dist/*.whl dist/*.tar.gz
+	cd packages/wandb_util && uv build
+	cd packages/wandb_util && uv pip publish dist/*.whl dist/*.tar.gz
 
 publish-error-reports:
 	cd packages/error_reports && uv build
@@ -97,7 +159,7 @@ tag-version-anthropic:
 	git push --tags
 
 tag-version-wandb:
-	git tag pinjected-wandb-v$(shell grep -m 1 version packages/wandb/pyproject.toml | cut -d'"' -f2)
+	git tag pinjected-wandb-v$(shell grep -m 1 version packages/wandb_util/pyproject.toml | cut -d'"' -f2)
 	git push --tags
 
 tag-version-error-reports:
@@ -138,3 +200,13 @@ tag-version-injected-utils:
 
 release-niji-voice: tag-version-niji-voice publish-niji-voice
 release-injected-utils: tag-version-injected-utils publish-injected-utils
+
+publish-gcp:
+	cd packages/gcp && uv build
+	cd packages/gcp && uv pip publish dist/*.whl dist/*.tar.gz
+
+tag-version-gcp:
+	git tag pinjected-gcp-v$(shell grep -m 1 version packages/gcp/pyproject.toml | cut -d'"' -f2)
+	git push --tags
+
+release-gcp: tag-version-gcp publish-gcp

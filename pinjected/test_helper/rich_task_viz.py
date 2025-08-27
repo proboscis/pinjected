@@ -1,7 +1,6 @@
-from asyncio import Future
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Dict, AsyncIterator
 
 from rich.console import Console, ConsoleRenderable
 from rich.live import Live
@@ -14,13 +13,16 @@ class RichTaskVisualizer:
     Visualize the tasks in progress in async. No progress bar.
     Shows one line message per task.
     """
-    statuses: Dict[str, ConsoleRenderable | str] = field(default_factory=dict)
-    messages: Dict[str, ConsoleRenderable | str] = field(default_factory=dict)
+
+    statuses: dict[str, ConsoleRenderable | str] = field(default_factory=dict)
+    messages: dict[str, ConsoleRenderable | str] = field(default_factory=dict)
     console: Console = field(default_factory=Console)
     live: Live = field(init=False)
 
     def __post_init__(self):
-        self.live = Live(self._generate_table(), console=self.console, refresh_per_second=8)
+        self.live = Live(
+            self._generate_table(), console=self.console, refresh_per_second=8
+        )
 
     def add(self, name: str, status, message: str | ConsoleRenderable):
         """Add a new task with the given message."""
@@ -40,7 +42,6 @@ class RichTaskVisualizer:
             del self.messages[name]
         self.update()
 
-
     def update_message(self, name: str, message: str | ConsoleRenderable):
         """Update the message for a specific task."""
         if name in self.statuses:
@@ -54,7 +55,7 @@ class RichTaskVisualizer:
         table.add_column("Status", style="magenta")
         table.add_column("Message", style="green")
 
-        for name in self.statuses.keys():
+        for name in self.statuses:
             status = self.statuses[name]
             message = self.messages[name]
             table.add_row(name, status, message)

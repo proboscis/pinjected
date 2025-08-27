@@ -25,7 +25,7 @@ dependencies = [
     "filelock>=3.16.1",
     "tqdm",
     "returns",
-    "pandas>=2.2.3",
+    "pandas",
     "aiosqlite>=0.21.0",
     "cloudpickle",
     "frozendict",
@@ -33,16 +33,19 @@ dependencies = [
     "cytoolz",
     "beartype",
     "rich",
+    "filelock"
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/injected_utils"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src/injected_utils"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.sources]
 pinjected = { workspace = true }
@@ -52,5 +55,5 @@ dev = [
     "pytest>=8.1.1,<9"
 ]
 
-[tool.ruff]
+[tool.ruff.lint]
 ignore = ["F403", "F405", "F401"]

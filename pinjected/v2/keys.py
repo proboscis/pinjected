@@ -7,7 +7,6 @@ class IBindKey(ABC):
     """
     hold a providing key and metadata
     """
-    pass
 
     @abc.abstractmethod
     def ide_hint_string(self):

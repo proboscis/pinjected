@@ -1,16 +1,14 @@
-from pathlib import Path
+"""
+pinjected-reviewer - A git pre-commit hook for reviewing code with pinjected.
+"""
 
-import loguru
-from pinjected import *
-import pinjected
+from pinjected import design
 
-__version__ = "0.1.0"
+__version__ = "0.3.1"
 
-default_design = design(
-    cache_root_path=Path("~/.cache/pinjected_reviewer").expanduser(),
-) + providers(
-    logger=lambda: loguru.logger,
-)
-__meta_design__ = instances(
-    overrides=default_design
-)
+from pinjected_reviewer import entrypoint
+from pinjected_reviewer.__pinjected__ import __pinjected_reviewer_default_design
+
+__all__ = ["__design__", "__version__", "entrypoint"]
+
+__design__ = design(overrides=__pinjected_reviewer_default_design)

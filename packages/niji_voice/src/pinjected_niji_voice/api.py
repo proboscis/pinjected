@@ -3,15 +3,15 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 import httpx
-from pinjected import *
 from pydantic import BaseModel, Field, HttpUrl
 from pydub import AudioSegment
 from pydub.playback import play
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from pinjected import *
 
 
 class VoiceStyle(BaseModel):
@@ -20,9 +20,9 @@ class VoiceStyle(BaseModel):
 
 
 class VoiceActor(BaseModel):
-    age: Optional[int] = None
-    birthDay: Optional[int] = Field(default=None, ge=1, le=31)
-    birthMonth: Optional[int] = Field(default=None, ge=1, le=12)
+    age: int | None = None
+    birthDay: int | None = Field(default=None, ge=1, le=31)
+    birthMonth: int | None = Field(default=None, ge=1, le=12)
     gender: str
     id: UUID
     largeImageUrl: HttpUrl
@@ -63,9 +63,9 @@ class VoiceResponse(BaseModel):
 class NijiVoiceParam:
     actor_name: str
     script: str
-    sound_duration: Optional[float] = None
-    emotion_level: Optional[float] = None
-    format = 'mp3'
+    sound_duration: float | None = None
+    emotion_level: float | None = None
+    format = "mp3"
     speed = 1.0
 
     """
@@ -99,7 +99,7 @@ Defaults to mp3
         payload = {
             "script": self.script,
             "speed": str(self.speed),
-            "format": self.format
+            "format": self.format,
         }
         if self.emotion_level is not None:
             payload["emotionalLevel"] = str(self.emotion_level)
@@ -115,37 +115,33 @@ Defaults to mp3
 
 @injected
 async def a_niji_generate_voice_raw(
-        a_niji_post,
-        niji_voice_actor_list: VoiceActorList,
-        /,
-        param: NijiVoiceParam,
+    a_niji_post,
+    niji_voice_actor_list: VoiceActorList,
+    /,
+    param: NijiVoiceParam,
 ) -> VoiceResponse:
     actor_id = niji_voice_actor_list.actor_by_name(param.actor_name).id
     data = await a_niji_post(
-        endpoint=f"voice-actors/{actor_id}/generate-voice",
-        payload=param.to_payload()
+        endpoint=f"voice-actors/{actor_id}/generate-voice", payload=param.to_payload()
     )
     return VoiceResponse.model_validate(data)
 
 
 @injected
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10)
-)
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def a_niji_post(
-        logger,
-        niji_voice_api_key: str,
-        niji_voice_api_url: str,
-        /,
-        endpoint: str,
-        payload: dict
+    logger,
+    niji_voice_api_key: str,
+    niji_voice_api_url: str,
+    /,
+    endpoint: str,
+    payload: dict,
 ) -> dict:
     logger.info(f"POST {endpoint} {payload}")
     header = {
-        'accept': 'application/json',
-        'x-api-key': niji_voice_api_key,
-        'content-type': 'application/json'
+        "accept": "application/json",
+        "x-api-key": niji_voice_api_key,
+        "content-type": "application/json",
     }
     url = f"{niji_voice_api_url}/{endpoint}"
     try:
@@ -159,16 +155,12 @@ async def a_niji_post(
 
 
 @instance
-async def niji_voice_actor_list(
-        niji_voice_api_key: str,
-        niji_voice_api_url: str
-):
-    headers = {
-        'accept': 'application/json',
-        'x-api-key': niji_voice_api_key
-    }
+async def niji_voice_actor_list(niji_voice_api_key: str, niji_voice_api_url: str):
+    headers = {"accept": "application/json", "x-api-key": niji_voice_api_key}
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{niji_voice_api_url}/voice-actors", headers=headers)
+        response = await client.get(
+            f"{niji_voice_api_url}/voice-actors", headers=headers
+        )
         return VoiceActorList.model_validate(response.json())
 
 
@@ -181,10 +173,7 @@ async def a_download_data(url) -> bytes:
 
 @injected
 async def a_niji_voice_download(
-        a_niji_generate_voice_raw,
-        /,
-        param: NijiVoiceParam,
-        dst: Path
+    a_niji_generate_voice_raw, /, param: NijiVoiceParam, dst: Path
 ):
     response = await a_niji_generate_voice_raw(param=param)
     bytes = await a_download_data(response.generatedVoice.audioFileUrl)
@@ -197,91 +186,93 @@ def niji_voice_api_url():
     return "https://api.nijivoice.com/api/platform/v1"
 
 
-test_niji_voice_actor_list: IProxy = niji_voice_actor_list
+_test_niji_voice_actor_list: IProxy = niji_voice_actor_list
 
-test_param = NijiVoiceParam(
-    actor_name="水戸 明日菜",
-    script="ハローワールド"
-)
-test_param2 = NijiVoiceParam(
-    actor_name="漆夜 蓮",
-    script="ハローワールド"
-)
+_test_param = NijiVoiceParam(actor_name="水戸 明日菜", script="ハローワールド")
+_test_param2 = NijiVoiceParam(actor_name="漆夜 蓮", script="ハローワールド")
 
-test_generate_voice: IProxy = a_niji_generate_voice_raw(
-    param=test_param2
+_test_generate_voice: IProxy = a_niji_generate_voice_raw(param=_test_param2)
+
+_test_download_voice: IProxy = a_niji_voice_download(
+    param=_test_param, dst=Path("test.mp3")
 )
 
-test_download_voice:IProxy = a_niji_voice_download(
-    param=test_param,
-    dst=Path("test.mp3")
-)
 
 @injected
 async def a_niji_voice_generate_cached(
-        a_niji_voice_download,
-        niji_voice_cache_dir:Path,
-        /,
-        param: NijiVoiceParam
+    a_niji_voice_download, niji_voice_cache_dir: Path, /, param: NijiVoiceParam
 ):
     cache_key = param.cache_key()
-    cache_path = niji_voice_cache_dir / param.actor_name / f"{param.script[:30]}<{cache_key}>.mp3"
+    cache_path = (
+        niji_voice_cache_dir
+        / param.actor_name
+        / f"{param.script[:30]}<{cache_key}>.mp3"
+    )
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     if cache_path.exists():
         return cache_path
     result = await a_niji_voice_download(param=param, dst=cache_path)
     return result
 
+
 @injected
 async def a_niji_voice_play(
-        a_niji_voice_generate_cached,
-        logger,
-        /,
-        param: NijiVoiceParam,
+    a_niji_voice_generate_cached,
+    logger,
+    /,
+    param: NijiVoiceParam,
 ):
     file_path = await a_niji_voice_generate_cached(param=param)
+
     def play_task():
         logger.info(f"{param.actor_name}: {param.script}")
         seg = AudioSegment.from_file(file_path)
         play(seg)
+
     await asyncio.get_event_loop().run_in_executor(None, play_task)
     return file_path
 
 
 @dataclass
 class NijiVoice:
-    audio:AudioSegment
+    audio: AudioSegment
+
     async def a_play(self):
-        await asyncio.get_event_loop().run_in_executor(None,play,self.audio)
+        await asyncio.get_event_loop().run_in_executor(None, play, self.audio)
+
 
 @injected
 async def a_niji_voice(
-        a_niji_voice_generate_cached,
-        /,
-        param: NijiVoiceParam
-)->NijiVoice:
+    a_niji_voice_generate_cached, /, param: NijiVoiceParam
+) -> NijiVoice:
     file_path = await a_niji_voice_generate_cached(param=param)
-    loaded = await asyncio.get_event_loop().run_in_executor(None,AudioSegment.from_file,file_path)
+    loaded = await asyncio.get_event_loop().run_in_executor(
+        None, AudioSegment.from_file, file_path
+    )
     return NijiVoice(audio=loaded)
+
 
 @instance
 def niji_voice_cache_dir():
     return Path("~/.cache/niji_voice").expanduser()
 
-test_play_voice:IProxy = a_niji_voice_play(param=NijiVoiceParam(
-    actor_name="小夜",
-    script="完成しました。",
-    #emotion_level=0,
-))
 
-test_play_voice2:IProxy = a_niji_voice_play(param=NijiVoiceParam(
-    actor_name="小夜",
-    script="うーん、、、失敗しました。",
-    #emotion_level=0,
-))
-
-
-__meta_design__ = design(
-    overrides=design(
+_test_play_voice: IProxy = a_niji_voice_play(
+    param=NijiVoiceParam(
+        actor_name="小夜",
+        script="完成しました。",
+        # emotion_level=0,
     )
 )
+
+
+_test_play_voice2: IProxy = a_niji_voice_play(
+    param=NijiVoiceParam(
+        actor_name="小夜",
+        script="うーん、、、失敗しました。",
+        # emotion_level=0,
+    )
+)
+
+
+__design__ = design(overrides=design())

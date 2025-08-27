@@ -1,12 +1,10 @@
 import inspect
 import sys
-from pinjected.pinjected_logging import logger
+
 
 def get_instance_origin_slow(package_name):
-    from pinjected.pinjected_logging import logger
     # Get the current frame
-    #logger.debug(f"trying to get the instance origin")
-
+    # logger.debug(f"trying to get the instance origin")
 
     current_frame = sys._getframe()
 
@@ -18,15 +16,15 @@ def get_instance_origin_slow(package_name):
         # This 'getmodule' is taking way too much time (80%)
         # Actually for configurations we don't need this... canwe configure this?
         # or maybe we should memoize,, but the key is current frame :(
-        if '__module__' not in current_frame.f_globals:
+        if "__module__" not in current_frame.f_globals:
             module = inspect.getmodule(current_frame)
         else:
-            module = current_frame.f_globals['__module__']
-        #module = inspect.getmodule(current_frame)
+            module = current_frame.f_globals["__module__"]
+        # module = inspect.getmodule(current_frame)
         if module is not None and not module.__name__.startswith(package_name):
             frame_info = inspect.getframeinfo(current_frame)
             # maybe this is taking so much time?
-            #logger.debug(f"found instance origin:{frame_info.filename}")
+            # logger.debug(f"found instance origin:{frame_info.filename}")
             return frame_info
 
         # Move to the next frame in the call stack
@@ -34,7 +32,7 @@ def get_instance_origin_slow(package_name):
 
 
 def get_instance_origin(package_name):
-    #logger.debug("Trying to get the instance origin")
+    # logger.debug("Trying to get the instance origin")
 
     current_frame = sys._getframe()
 
@@ -47,7 +45,7 @@ def get_instance_origin(package_name):
             lineno = current_frame.f_lineno
             function_name = current_frame.f_code.co_name
             # Log and return the frame information
-            #logger.debug(f"Found instance origin: {filename}")
+            # logger.debug(f"Found instance origin: {filename}")
             return {
                 "filename": filename,
                 "lineno": lineno,

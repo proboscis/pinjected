@@ -5,7 +5,7 @@ from pinjected import injected
 from pinjected.helper_structure import IdeaRunConfiguration
 from pinjected.module_inspector import ModuleVarSpec
 from pinjected.module_var_path import ModuleVarPath
-from pinjected.run_config_utils import IdeaConfigCreator
+from pinjected.ide_supports.create_configs import IdeaConfigCreator
 
 
 class IRunner:
@@ -16,7 +16,10 @@ class IRunner:
 class LocalRunner(IRunner):
     async def run(self, cmd: str) -> str:
         import subprocess
-        return subprocess.run(cmd, shell=True, capture_output=True).stdout.decode()
+
+        return subprocess.run(
+            cmd, shell=True, capture_output=True, check=False
+        ).stdout.decode()
 
 
 TEST_ENV = injected(LocalRunner)()
@@ -34,17 +37,17 @@ async def _run_command_with_env(env: IRunner, tgt_var_path: str):
 
 # this is the entry point
 run_command_with_env = _run_command_with_env(
-    injected('target_environment'),
-    injected('target_variable'),
+    injected("target_environment"),
+    injected("target_variable"),
 )
 
 
 @injected
 def idea_config_creator_from_envs(
-        interpreter_path,
-        default_working_dir,
-        /,
-        environments: list[ModuleVarPath | str],
+    interpreter_path,
+    default_working_dir,
+    /,
+    environments: list[ModuleVarPath | str],
 ) -> IdeaConfigCreator:
     def impl(tgt: ModuleVarSpec) -> list[IdeaRunConfiguration]:
         res = []
@@ -57,7 +60,9 @@ def idea_config_creator_from_envs(
             res.append(
                 IdeaRunConfiguration(
                     name=f"submit {var_name} to env: {env.var_name}",
-                    script_path=str(pinjected.__file__).replace("__init__.py", "__main__.py"),
+                    script_path=str(pinjected.__file__).replace(
+                        "__init__.py", "__main__.py"
+                    ),
                     interpreter_path=interpreter_path,
                     arguments=[
                         "run",

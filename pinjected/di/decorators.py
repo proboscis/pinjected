@@ -1,23 +1,41 @@
+import asyncio
+import functools
 import inspect
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Union, Callable, Annotated
+from typing import Union, Optional, overload, Any
 
 from returns.maybe import Some
 
-from pinjected import Injected
 from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
-from pinjected.di.injected import PartialInjectedFunction, extract_dependency
+from pinjected.di.injected import Injected, PartialInjectedFunction, extract_dependency
 from pinjected.di.proxiable import DelegatedVar
 from pinjected.di.util import get_code_location
-import functools
-import asyncio
-
 from pinjected.v2.binds import BindInjected
 from pinjected.v2.keys import StrBindKey
 
 
+def _extract_injection_targets(sig: inspect.Signature) -> dict:
+    """Extract injection targets from function signature.
+
+    :param sig: Function signature to analyze
+    :return: Dictionary mapping parameter names to injection targets
+    """
+    tgts = dict()
+    for k, v in sig.parameters.items():
+        if k.startswith("__"):
+            tgts[k] = Injected.by_name(k)
+        elif k.startswith("_"):
+            tgts[k] = Injected.by_name(k[1:])
+        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
+            tgts[k] = Injected.by_name(k)
+    return tgts
+
+
 def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     """
+    .. deprecated:: Use ``@injected`` instead with positional-only parameters (parameters before ``/``) for dependencies.
+
     Wraps a function, injecting dependencies for parameters that start with an underscore or are positional-only.
     This enhanced version supports class methods, recognizing and bypassing the 'self' parameter automatically.
     The function also registers the newly created function in the ``IMPLICIT_BINDINGS`` global dictionary.
@@ -44,25 +62,29 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     .. note::
         The function or a class will be automatically registered with its name, in the global ``IMPLICIT_BINDINGS`` dictionary, making it recognizable by the system's dependency injection mechanisms.
     """
-    # How can we make this work on a class method?
+    import warnings
+
+    warnings.warn(
+        "injected_function is deprecated. Use @injected with positional-only parameters (parameters before '/') for dependencies.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    # Extract injection targets from signature
     sig: inspect.Signature = inspect.signature(f)
-    tgts = dict()
+    tgts = _extract_injection_targets(sig)
+
+    # Set parent frame if not provided
     if parent_frame is None:
         parent_frame = inspect.currentframe().f_back
-    for k, v in sig.parameters.items():
-        if k.startswith("__"):
-            tgts[k] = Injected.by_name(k)
-        elif k.startswith("_"):
-            tgts[k] = Injected.by_name(k[1:])
-        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
-            tgts[k] = Injected.by_name(k)
 
+    # Create injected function
     new_f = Injected.inject_partially(f, **tgts)
-    if isinstance(f, type):
-        key_name = f"new_{f.__name__}"
-    else:
-        key_name = f.__name__
 
+    # Determine key name based on type
+    key_name = f"new_{f.__name__}" if isinstance(f, type) else f.__name__
+
+    # Register in implicit bindings
     from pinjected.di.metadata.bind_metadata import BindMetadata
 
     IMPLICIT_BINDINGS[StrBindKey(key_name)] = BindInjected(
@@ -75,7 +97,9 @@ def injected_function(f, parent_frame=None) -> PartialInjectedFunction:
     return new_f
 
 
-def injected_instance(f) -> Injected:
+def injected_instance(
+    f=None, *, callable: bool = False
+) -> Union[Injected, Callable[[Callable], Injected]]:
     """
     The ``injected_instance`` (also accessible as ``instance``) is a decorator that creates an
     ``Injected`` instance from a function. This function essentially converts a regular function
@@ -84,9 +108,13 @@ def injected_instance(f) -> Injected:
 
     :param f: The function that generates an instance, typically utilizing dependencies.
     :type f: Function
+    :param callable: If True, indicates that the function returns a callable object (e.g., a function,
+                     closure, or callable class instance) that should be called directly. This allows
+                     the linter to understand that calls to the returned value are intentional.
+    :type callable: bool
 
-    :return: An instance of ``Injected`` that wraps the provided function.
-    :rtype: Injected
+    :return: An instance of ``Injected`` that wraps the provided function, or a decorator if f is None.
+    :rtype: Union[Injected, Callable[[Callable], Injected]]
 
     :Example:
 
@@ -110,37 +138,86 @@ def injected_instance(f) -> Injected:
         _logger = design.provide('logger')  # returns a Logger instance
         _logger.info('hello world')
 
+    :Example with callable=True:
+
+    .. code-block:: python
+
+        @instance(callable=True)
+        def event_handler_factory(logger):
+            def handle_event(event):
+                logger.info(f"Handling event: {event}")
+                # Process event...
+            return handle_event
+
+        # Now, 'event_handler_factory' returns a callable that can be invoked directly
+        design = design(
+            event_handler_factory=event_handler_factory
+        )
+
+        # Usage
+        handler = design.provide('event_handler_factory')  # returns the handle_event function
+        handler(some_event)  # This direct call is allowed and won't trigger PINJ004
+
     This approach allows the function to be integrated into a dependency injection system easily,
     with the ``Injected`` instance handling the complexities of resolving and managing dependencies.
     """
 
-    is_coroutine = inspect.iscoroutinefunction(f)
-    # if is_coroutine:
-    #     f = cached_coroutine(f)
+    def decorator(func):
+        # is_coroutine = inspect.iscoroutinefunction(func)
+        # if is_coroutine:
+        #     func = cached_coroutine(func)
 
-    sig: inspect.Signature = inspect.signature(f)
-    tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
-    called_partial = Injected.inject_partially(f, **tgts)()
-    from pinjected.pinjected_logging import logger
+        sig: inspect.Signature = inspect.signature(func)
+        tgts = {k: Injected.by_name(k) for k, v in sig.parameters.items()}
+        called_partial = Injected.inject_partially(func, **tgts)()
 
-    # logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
-    instance = called_partial.eval()
-    # instance = Injected.bind(f)
-    from pinjected.di.metadata.bind_metadata import BindMetadata
+        # logger.info(f"called_partial:{called_partial}->dir:{called_partial.value.func}")
+        instance = called_partial.eval()
+        # instance = Injected.bind(func)
+        from pinjected.di.metadata.bind_metadata import BindMetadata
 
-    # instance.__is_async_function__ = is_coroutine
-    IMPLICIT_BINDINGS[StrBindKey(f.__name__)] = BindInjected(
-        instance,
-        _metadata=Some(
-            BindMetadata(
-                code_location=Some(get_code_location(inspect.currentframe().f_back))
-            )
-        ),
-    )
-    return instance.proxy
+        # instance.__is_async_function__ = is_coroutine
+        IMPLICIT_BINDINGS[StrBindKey(func.__name__)] = BindInjected(
+            instance,
+            _metadata=Some(
+                BindMetadata(
+                    code_location=Some(
+                        get_code_location(inspect.currentframe().f_back)
+                    ),
+                    is_callable_instance=callable,
+                )
+            ),
+        )
+        return instance.proxy
+
+    # Handle the case where @instance is used with or without parentheses
+    if f is None:
+        # Called as @instance(callable=True)
+        return decorator
+    else:
+        # Called as @instance
+        return decorator(f)
 
 
-def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
+@overload
+def injected(tgt: str) -> DelegatedVar: ...
+
+
+@overload
+def injected(
+    tgt: type | Callable, *, protocol: Optional[Any] = None
+) -> DelegatedVar: ...
+
+
+@overload
+def injected(
+    *, protocol: Optional[Any] = None
+) -> Callable[[Callable], DelegatedVar]: ...
+
+
+def injected(
+    tgt: Optional[Union[str, type, Callable]] = None, *, protocol: Optional[Any] = None
+) -> Union[DelegatedVar, Callable[[Callable], DelegatedVar]]:
     """
     The ``injected`` decorator automates dependency injection, transforming a target (string, class, or callable)
     into an ``Injected`` instance. It specifically treats positional-only parameters as dependencies,
@@ -151,6 +228,8 @@ def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
                 1. ``str``: the name of a dependency.
                 2. ``type``: a class that needs automated dependency injection for instantiation.
                 3. ``Callable``: a function or method requiring dependencies.
+    :param protocol: Optional Protocol class that defines the interface for the injected function.
+                     Enables better type safety and IDE support.
     :return: An appropriate ``Injected`` instance, proxy, or wrapped entity with dependencies injected,
              contingent on the nature of ``tgt``.
 
@@ -170,6 +249,14 @@ def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
         # For direct dependency retrieval via a string identifier.
         dependency_instance = injected("dependency_key")
 
+        # With protocol specification
+        class FetchUserProtocol(Protocol):
+            def __call__(self, user_id: str) -> User: ...
+
+        @injected(protocol=FetchUserProtocol)
+        def fetch_user(db, /, user_id: str) -> User:
+            return db.get_user(user_id)
+
     In these examples, ``dependency1`` is a positional-only parameter and treated as a dependency to be
     automatically injected. On the other hand, ``normal_param`` is a non-positional-only parameter. It's
     not considered a dependency within the automatic injection process, and thus, must be specified
@@ -182,12 +269,78 @@ def injected(tgt: Union[str, type, Callable]) -> DelegatedVar:
         function/method invocation or class instantiation. This strategy enhances code readability
         and ensures that the dependency injection framework adheres to explicit programming practices.
     """
+    if tgt is None:
+        # Called as @injected(protocol=SomeProtocol) or @injected()
+        def decorator(func: Callable) -> DelegatedVar:
+            return _injected_with_protocol(
+                func,
+                protocol=protocol,
+                parent_frame=inspect.currentframe().f_back.f_back,
+            )
+
+        return decorator
+
     if isinstance(tgt, str):
+        # String targets don't support protocol
+        if protocol is not None:
+            raise TypeError(
+                "Protocol parameter is not supported for string dependencies"
+            )
         return Injected.by_name(tgt).proxy
-    elif isinstance(tgt, type):
-        return injected_function(tgt, parent_frame=inspect.currentframe().f_back)
-    elif callable(tgt):
-        return injected_function(tgt, parent_frame=inspect.currentframe().f_back)
+
+    if isinstance(tgt, type) or callable(tgt):
+        return _injected_with_protocol(
+            tgt, protocol=protocol, parent_frame=inspect.currentframe().f_back
+        )
+
+    raise TypeError(f"Invalid target type: {type(tgt)}")
+
+
+def _injected_with_protocol(
+    tgt: Union[type, Callable], protocol: Optional[Any] = None, parent_frame=None
+) -> DelegatedVar:
+    """Internal helper to handle protocol-aware injection."""
+    # First check what injected_function returns
+    sig: inspect.Signature = inspect.signature(tgt)
+    tgts = dict()
+    if parent_frame is None:
+        parent_frame = inspect.currentframe().f_back
+
+    # Extract dependencies based on naming conventions and position-only parameters
+    for k, v in sig.parameters.items():
+        if k.startswith("__"):
+            tgts[k] = Injected.by_name(k)
+        elif k.startswith("_"):
+            tgts[k] = Injected.by_name(k[1:])
+        elif v.kind == inspect.Parameter.POSITIONAL_ONLY:
+            tgts[k] = Injected.by_name(k)
+
+    new_f = Injected.inject_partially(tgt, **tgts)
+
+    # Determine the key name
+    if isinstance(tgt, type):
+        key_name = f"new_{tgt.__name__}"
+    else:
+        key_name = tgt.__name__
+
+    # Create metadata with protocol information
+    from pinjected.di.metadata.bind_metadata import BindMetadata
+
+    metadata = BindMetadata(
+        code_location=Some(get_code_location(parent_frame)), protocol=protocol
+    )
+
+    # Store in IMPLICIT_BINDINGS with protocol metadata
+    IMPLICIT_BINDINGS[StrBindKey(key_name)] = BindInjected(
+        new_f,
+        _metadata=Some(metadata),
+    )
+
+    # Add protocol attribute to the result for runtime access
+    if protocol is not None:
+        new_f.__protocol__ = protocol
+
+    return new_f
 
 
 def injected_class(cls):
@@ -205,8 +358,6 @@ def injected_method(f):
 
 class CachedAwaitable:
     def __init__(self, coro):
-        from pinjected.pinjected_logging import logger
-
         # logger.warning(f'CachedAwaitable created with {coro}')
         self.coro = coro
         self._cache = None
@@ -253,9 +404,9 @@ def dynamic(*providables):
     """
 
     def impl(tgt):
-        all_deps = set(
-            sum([list(extract_dependency(p)) for p in providables], start=[])
-        )
+        all_deps = set()
+        for p in providables:
+            all_deps.update(extract_dependency(p))
         match tgt:
             case Injected() as i:
                 return i.add_dynamic_dependencies(*all_deps)

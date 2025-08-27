@@ -1,12 +1,12 @@
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from cytoolz import valmap
 
 from pinjected.di.applicative import Applicative
-from pinjected.di.expr_util import Expr, Call, Attr, GetItem, Object, BiOp, UnaryOp
-from pinjected.di.func_util import fix_args_kwargs
-from pinjected.di.proxiable import T, DelegatedVar, IProxyContext
+from pinjected.di.expr_util import Attr, BiOp, Call, Expr, GetItem, Object, UnaryOp
+from pinjected.di.proxiable import DelegatedVar, IProxyContext, T
 
 
 @dataclass
@@ -90,25 +90,27 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
             case Object([*items] as x) if isinstance(x, list):
                 t = app.zip(*[ensure_pure(item) for item in items])
                 return app.map(t, en_list)
-            case Object(([*items] as x)) if isinstance(x, tuple):
+            case Object([*items] as x) if isinstance(x, tuple):
                 t = app.zip(*[ensure_pure(item) for item in items])
                 return app.map(t, en_tuple)
             case Object({**items} as x) if isinstance(x, dict):
                 values = app.zip(*[ensure_pure(item) for item in items.values()])
-                return app.map(values, lambda t: {k: v for k, v in zip(items.keys(), t)})
+                return app.map(
+                    values,
+                    lambda t: {k: v for k, v in zip(items.keys(), t, strict=False)},
+                )
 
             case Object(x):
                 return ensure_pure(x)
             case Call(Expr() as f, args, kwargs):
-                injected_func: "T[Callable]" = _eval(f)
+                injected_func: T[Callable] = _eval(f)
                 args = app.zip(*eval_tuple(args))
-                kwargs: "T[dict]" = app.dict(**eval_dict(kwargs))
+                kwargs: T[dict] = app.dict(**eval_dict(kwargs))
 
                 # now we are all in the world of injected. how can I combine them all?
                 # so all the arguments are converted into Injected if not, then combined together
                 # so if you are to pass an Injected as an argument, you must wrap it with Injected.pure
                 def apply(t):
-                    from pinjected.pinjected_logging import logger
                     func, args, kwargs = t
                     # args,kwargs = fix_args_kwargs(func,args,kwargs)
                     return func(*args, **kwargs)
@@ -122,19 +124,17 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     try:
                         return getattr(x, attr_name)
                     except AttributeError as e:
-                        raise RuntimeError(f"failed to get attribute {attr_name} from {x} in AST:{data}") from e
+                        raise RuntimeError(
+                            f"failed to get attribute {attr_name} from {x} in AST:{data}"
+                        ) from e
 
-                return app.map(
-                    injected_data,
-                    try_get_attr
-                )
+                return app.map(injected_data, try_get_attr)
 
             case GetItem(Expr() as data, Expr() as key):
                 injected_data = _eval(data)
                 injected_key = _eval(key)
                 return app.map(
-                    app.zip(injected_data, injected_key),
-                    lambda t: t[0][t[1]]
+                    app.zip(injected_data, injected_key), lambda t: t[0][t[1]]
                 )
             case BiOp(op, Expr() as left, Expr() as right):
                 injected_left = _eval(left)
@@ -144,11 +144,8 @@ def eval_applicative(expr: Expr[T], app: Applicative[T]) -> T:
                     x, y = t
                     return eval("x " + op + " y", None, dict(x=x, y=y))
 
-                return app.map(
-                    app.zip(injected_left, injected_right),
-                    eval_biop
-                )
-            case UnaryOp('await', Expr() as tgt):
+                return app.map(app.zip(injected_left, injected_right), eval_biop)
+            case UnaryOp("await", Expr() as tgt):
                 injected_tgt = _eval(tgt)
                 return app._await_(injected_tgt)
             case UnaryOp(op, Expr() as tgt):

@@ -4,21 +4,20 @@ Here i make a converter of a class.
 2. replace original class's methods with injected versions.
 
 """
+
+import asyncio
 import inspect
-from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import wraps
-
-from pinjected.pinjected_logging import logger
 
 from pinjected import Injected
 from pinjected.compatibility.task_group import TaskGroup
 from pinjected.di.partially_injected import Partial
 from pinjected.injected_class.extract_self_attrs import extract_attribute_accesses
 from pinjected.injected_class.test_module import PClassExample
-from pinjected.v2.keys import StrBindKey
+from pinjected.pinjected_logging import logger
 from pinjected.v2.async_resolver import AsyncResolver
-import asyncio
+from pinjected.v2.keys import StrBindKey
 
 
 @dataclass
@@ -33,7 +32,7 @@ class TargetClassSample:
         return (self._dep1, args)
 
 
-PLACEHOLDER = 'PLACEHOLDER'
+PLACEHOLDER = "PLACEHOLDER"
 
 
 class MacroTransformedExample:
@@ -82,26 +81,25 @@ This way, the func signature is preserved.
 
 def convert_method_into_dynamic_injected_method_old(key: str, method):
     signature = inspect.signature(method)
-    assert inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(
-        method), f"method:{method} must be async to be converted."
-    assert 'self' in signature.parameters.keys()
-    logger.info(f"method parameters:{signature.parameters.keys()}")
+    assert inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(method), (
+        f"method:{method} must be async to be converted."
+    )
+    assert "self" in signature.parameters
+    logger.info(f"method parameters:{signature.parameters}")
     logger.info(f"converting method:{method}")
     targets = [
-        p for p in signature.parameters.keys() if
-        p.startswith("__self_") and p != 'self'
+        p for p in signature.parameters if p.startswith("__self_") and p != "self"
     ]
     logger.info(f"positionals:{targets}")
 
     internal_method_impl = Injected.inject_partially(
         original_function=method,
-        **{d: Injected.dynamic(d.replace('__self__', "")[:-2]) for d in targets}
+        **{d: Injected.dynamic(d.replace("__self__", "")[:-2]) for d in targets},
     )
     from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
     from pinjected.v2.binds import BindInjected
-    IMPLICIT_BINDINGS[StrBindKey(key)] = BindInjected(
-        internal_method_impl
-    )
+
+    IMPLICIT_BINDINGS[StrBindKey(key)] = BindInjected(internal_method_impl)
 
     async def replaced_method(self, *args, **kwargs):
         impl = await self.__resolver__[key]
@@ -141,17 +139,20 @@ class InjectedMethod:
         return await myself.method(self, *args, **kwargs)
 
 
-def convert_method_into_dynamic_injected_method(key: str, method, dynamic_deps_mapping: dict[str, Injected]):
+def convert_method_into_dynamic_injected_method(
+    key: str, method, dynamic_deps_mapping: dict[str, Injected]
+):
     signature = inspect.signature(method)
     if not (inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(method)):
-        logger.warning(f"method:{method} is not async method. double check if it's asynccontextmanager")
+        logger.warning(
+            f"method:{method} is not async method. double check if it's asynccontextmanager"
+        )
 
-    assert 'self' in signature.parameters.keys()
+    assert "self" in signature.parameters
     logger.info(f"method parameters:{signature.parameters.keys()}")
     logger.info(f"converting method:{method}")
     targets = [
-        p for p in signature.parameters.keys() if
-        p.startswith("__self_") and p != 'self'
+        p for p in signature.parameters if p.startswith("__self_") and p != "self"
     ]
     logger.info(f"positionals:{targets}")
 
@@ -159,15 +160,14 @@ def convert_method_into_dynamic_injected_method(key: str, method, dynamic_deps_m
         InjectedMethod,
         dynamic_attr_mapping=Injected.pure(dynamic_deps_mapping),
         method=Injected.pure(method),
-        resolver=Injected.by_name('__resolver__')
+        resolver=Injected.by_name("__resolver__"),
     )
 
     from pinjected.di.implicit_globals import IMPLICIT_BINDINGS
     from pinjected.v2.binds import BindInjected
-    IMPLICIT_BINDINGS[StrBindKey(key)] = BindInjected(
-        internal_method_impl
-    )
-    method_injection_key = '__' + method.__name__ + '_injected__'
+
+    IMPLICIT_BINDINGS[StrBindKey(key)] = BindInjected(internal_method_impl)
+    method_injection_key = "__" + method.__name__ + "_injected__"
 
     async def replaced_method(self, *args, **kwargs):
         if getattr(self, method_injection_key, None) is None:
@@ -185,8 +185,7 @@ def pclass(cls):
     3. make a new constructor to accept impls + session
     4. replace original methods with impls\
     """
-    #
-    injected_attrs = [v for v in cls.__annotations__ if v.startswith('_')]
+    injected_attrs = [v for v in cls.__annotations__ if v.startswith("_")]
     logger.info(f"injectable attrs:{injected_attrs}")
     target_methods = []
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
@@ -203,26 +202,27 @@ def pclass(cls):
 
     attribute_accesses = extract_attribute_accesses(cls)
     for method_name in attribute_accesses:
-        setattr(cls, method_name, convert_method_into_dynamic_injected_method(
-            key=f"{cls.__module__}.{cls.__name__}.{method_name}",
-            method=getattr(cls, method_name),
-            dynamic_deps_mapping={attr: Injected.by_name(attr[1:]) for attr in attribute_accesses[method_name]}
-        ))
+        setattr(
+            cls,
+            method_name,
+            convert_method_into_dynamic_injected_method(
+                key=f"{cls.__module__}.{cls.__name__}.{method_name}",
+                method=getattr(cls, method_name),
+                dynamic_deps_mapping={
+                    attr: Injected.by_name(attr[1:])
+                    for attr in attribute_accesses[method_name]
+                },
+            ),
+        )
 
     converted = dataclass(cls)
     # make a new constructor to add __resolver__ as its attribute.
 
     injected_constructor = Injected.inject_partially(
-        converted,
-        **{d: Injected.pure(PLACEHOLDER) for d in injected_attrs}
+        converted, **{d: Injected.pure(PLACEHOLDER) for d in injected_attrs}
     )
 
-    def constructor_with_resolver(
-            __resolver__,
-            constructor,
-            *args,
-            **kwargs
-    ):
+    def constructor_with_resolver(__resolver__, constructor, *args, **kwargs):
         self = constructor(*args, **kwargs)
         self.__resolver__ = __resolver__
         return self
@@ -230,7 +230,7 @@ def pclass(cls):
     res = Injected.inject_partially(
         constructor_with_resolver,
         constructor=injected_constructor,
-        __resolver__=Injected.by_name('__resolver__')
+        __resolver__=Injected.by_name("__resolver__"),
     )
     # IMPLICIT_BINDINGS[StrBindKey(f'new_{cls.__name__}')] = BindInjected(res)
     return res
@@ -240,16 +240,13 @@ async def main():
     from pinjected import design
 
     ModClass: Partial = pclass(PClassExample)
-    d = design(
-        dep=0,
-        dep1="dep1_value"
-    )
+    d = design(dep=0, dep1="dep1_value")
     r = d.to_resolver()
-    instance = (await r[ModClass])('a', 'b', 'c')
+    instance = (await r[ModClass])("a", "b", "c")
     logger.info(instance)
     logger.info(await instance.simple_method(0))
     logger.info(instance.method_with_dep1)
-    logger.info(await instance.method_with_dep1('x_value'))
+    logger.info(await instance.method_with_dep1("x_value"))
     # logger.info(await instance.method1(1))
 
 
@@ -305,5 +302,5 @@ use injected functions for external exposure!
 It's much simpler.
 """
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

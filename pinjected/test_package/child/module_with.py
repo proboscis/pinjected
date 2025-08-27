@@ -1,16 +1,36 @@
-
 from pinjected import design, injected
+from pinjected.schema.handlers import (
+    PinjectedHandleMainException,
+    PinjectedHandleMainResult,
+)
 
 with design(x=10):
-    y = injected('x')
+    y = injected("x")
     with design(y=20):
-        z = injected('y')
+        z = injected("y")
     with design(x=100):
         z2 = y
 
 default_design = design()
 
-__meta_design__ = design(
-    default_design_paths=['pinjected.test_package.child.module_with.default_design'],
-    overrides=design()
+
+@injected
+async def __handle_exception(context, e: Exception):
+    print(f"Exception: {e}")
+    return "handled"
+
+
+@injected
+async def __handle_success(context, result):
+    print(f"Success: {result}")
+
+
+__test_handling_design = design(
+    **{
+        PinjectedHandleMainException.key.name: __handle_exception,
+        PinjectedHandleMainResult.key.name: __handle_success,
+    }
 )
+
+
+__design__ = design() + __test_handling_design

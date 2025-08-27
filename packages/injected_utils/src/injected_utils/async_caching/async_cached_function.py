@@ -1,16 +1,22 @@
 import asyncio
 import os
-import threading
+from collections.abc import Awaitable, Callable, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Callable, Generic, ParamSpec, TypeVar, Awaitable, Protocol, Optional, Tuple
-from loguru import logger
-from typing import MutableMapping
+from typing import (
+    Generic,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+)
 
-P = ParamSpec('P')
-U = TypeVar('U')
-T = TypeVar('T')
-Key = TypeVar('Key', contravariant=True)  # contravariantに変更
+from loguru import logger
+
+P = ParamSpec("P")
+U = TypeVar("U")
+T = TypeVar("T")
+Key = TypeVar("Key", contravariant=True)  # contravariantに変更
 
 ParamToKey = Callable[[P], Awaitable[Key]]
 IsErrorToRetry = Callable[[Exception], Awaitable[str]]
@@ -18,14 +24,12 @@ InvalidateValue = Callable[[tuple[P.args, P.kwargs], U], Awaitable[str]]
 
 
 class AsyncCacheProtocol(Protocol, Generic[Key, U]):
-    async def a_set(self, key: Key, value: U) -> None:
-        ...
+    async def a_set(self, key: Key, value: U) -> None: ...
 
-    async def a_get(self, key: Key) -> U:
-        ...
+    async def a_get(self, key: Key) -> U: ...
 
-    async def a_contains(self, key: Key) -> bool:
-        ...
+    async def a_contains(self, key: Key) -> bool: ...
+
 
 @dataclass
 class ValueMappedAsyncCache(AsyncCacheProtocol[Key, U], Generic[Key, T, U]):
@@ -50,6 +54,7 @@ class BlockingDictAsyncCache(AsyncCacheProtocol[Key, U]):
     """
     A simple in-memory cache using a dictionary. This is a blocking cache, so it is not suitable for high-throughput
     """
+
     src: dict[Key, U]
 
     async def a_set(self, key: Key, value: U) -> None:
@@ -68,8 +73,9 @@ class ThreadPooledDictAsyncCache(AsyncCacheProtocol[Key, U]):
     A simple cache using dict-like interface. This is a thread-pooled cache, so it is suitable for high-throughput
     (if the io is GIL-free)
     """
+
     src: MutableMapping[Key, U]
-    n_threads: Optional[int] = field(default=None)
+    n_threads: int | None = field(default=None)
 
     def __post_init__(self):
         if self.n_threads is None:
@@ -77,13 +83,50 @@ class ThreadPooledDictAsyncCache(AsyncCacheProtocol[Key, U]):
         self.pool = ThreadPoolExecutor(self.n_threads)
 
     async def a_set(self, key: Key, value: U) -> None:
-        return await asyncio.get_event_loop().run_in_executor(self.pool, lambda: self.src.__setitem__(key, value))
+        return await asyncio.get_event_loop().run_in_executor(
+            self.pool, lambda: self.src.__setitem__(key, value)
+        )
 
     async def a_get(self, key: Key) -> U:
-        return await asyncio.get_event_loop().run_in_executor(self.pool, lambda: self.src.__getitem__(key))
+        return await asyncio.get_event_loop().run_in_executor(
+            self.pool, lambda: self.src.__getitem__(key)
+        )
 
     async def a_contains(self, key: Key) -> bool:
-        return await asyncio.get_event_loop().run_in_executor(self.pool, lambda: key in self.src)
+        return await asyncio.get_event_loop().run_in_executor(
+            self.pool, lambda: key in self.src
+        )
+
+
+class KeyedAsyncLock(Generic[Key]):
+    def __init__(self):
+        self.locks: dict[Key, asyncio.Lock] = {}
+        self._lock = asyncio.Lock()  # Lock for managing the locks dict
+
+    @asynccontextmanager
+    async def lock(self, key: Key):
+        """
+        Get a lock for the given key. If the lock doesn't exist, create it.
+        Usage: async with keyed_lock.lock("my_key"): ...
+        """
+        try:
+            # Safely get or create the lock for this key
+            async with self._lock:
+                if key not in self.locks:
+                    self.locks[key] = asyncio.Lock()
+                lock = self.locks[key]
+
+            # Acquire the lock for this key
+            await lock.acquire()
+            yield
+        finally:
+            # Release the lock
+            lock.release()
+
+            # Clean up if no one is waiting
+            async with self._lock:
+                if not lock.locked() and key in self.locks:
+                    del self.locks[key]
 
 
 @dataclass
@@ -140,33 +183,43 @@ class AsyncCachedFunctionV2(Generic[Key, U, P]):
         - リトライ可能な場合は関数を再実行
         - それ以外はエラーを伝播
     """
+
     a_func: Callable[P, Awaitable[U]]
     a_param_to_key: Callable[P, Awaitable[Key]]
     cache: AsyncCacheProtocol[Key, U]
     a_is_error_to_retry: Callable[[Exception], Awaitable[str]]
-    a_invalidate_value: Callable[[Tuple[P.args, P.kwargs], U], Awaitable[str]]
+    a_invalidate_value: Callable[[tuple[P.args, P.kwargs], U], Awaitable[str]]
 
-    async def _calc_cache_with_set(self, inputs: Tuple[P.args, P.kwargs], key: Key) -> U:
+    def __post_init__(self):
+        self.lock: KeyedAsyncLock[Key] = KeyedAsyncLock()
+
+    async def _calc_cache_with_set(
+        self, inputs: tuple[P.args, P.kwargs], key: Key
+    ) -> U:
         value = await self.a_func(*inputs[0], **inputs[1])
         await self.cache.a_set(key, value)
         return value
 
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> U:
         key = await self.a_param_to_key(*args, **kwargs)
-
-        if not await self.cache.a_contains(key):
-            return await self._calc_cache_with_set((args, kwargs), key)
-        try:
-            value = await self.cache.a_get(key)
-            if invalidate := await self.a_invalidate_value((args, kwargs), value):
-                logger.warning(f"Invalidating cache for {key}. Reason: {invalidate}")
+        async with self.lock.lock(key):
+            if not await self.cache.a_contains(key):
                 return await self._calc_cache_with_set((args, kwargs), key)
-            return value
-        except Exception as e:
-            handler = self.a_is_error_to_retry
-            if handler is not None and (retry_msg := await handler(e)):
-                logger.warning(f"Error occurred for {key}. Retrying msg: {retry_msg}")
-                value = await self.a_func(*args, **kwargs)
-                await self.cache.a_set(key, value)
+            try:
+                value = await self.cache.a_get(key)
+                if invalidate := await self.a_invalidate_value((args, kwargs), value):
+                    logger.warning(
+                        f"Invalidating cache for {key}. Reason: {invalidate}"
+                    )
+                    return await self._calc_cache_with_set((args, kwargs), key)
                 return value
-            raise e
+            except Exception as e:
+                handler = self.a_is_error_to_retry
+                if handler is not None and (retry_msg := await handler(e)):
+                    logger.warning(
+                        f"Error occurred for {key}. Retrying msg: {retry_msg}"
+                    )
+                    value = await self.a_func(*args, **kwargs)
+                    await self.cache.a_set(key, value)
+                    return value
+                raise e

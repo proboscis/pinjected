@@ -1,0 +1,389 @@
+package com.proboscis.pinjectdesign.kotlin.integration
+
+import com.intellij.execution.ExecutionManager
+import com.intellij.execution.RunManager
+import com.intellij.execution.configurations.RunConfiguration
+import com.intellij.execution.executors.DefaultDebugExecutor
+import com.intellij.execution.runners.ExecutionEnvironmentBuilder
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.project.Project
+import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.XDebuggerUtil
+import com.intellij.xdebugger.breakpoints.XBreakpointManager
+import com.intellij.xdebugger.breakpoints.XLineBreakpoint
+import com.jetbrains.python.debugger.PyDebugProcess
+import com.jetbrains.python.debugger.PyDebugRunner
+import com.jetbrains.python.fixtures.PyTestCase
+import com.jetbrains.python.run.PythonConfigurationType
+import com.jetbrains.python.run.PythonRunConfiguration
+import org.junit.Test
+import org.junit.Assert.*
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/**
+ * Tests debugging functionality with IProxy and @injected functions.
+ * Verifies that breakpoints work correctly in injected functions called via IProxy.
+ */
+class IProxyDebuggerTest : PyTestCase() {
+    
+    @Test
+    fun testBreakpointInInjectedFunction() {
+        // Create a test Python file with IProxy and @injected function
+        val testFile = createDebugTestFile()
+        
+        // Set a breakpoint in the @injected function
+        val breakpointLine = 15 // Line with "return f"Processing {user.name}""
+        setBreakpoint(testFile, breakpointLine)
+        
+        // Create a run configuration
+        val runConfig = createPythonRunConfiguration(testFile)
+        
+        // Start debugging
+        val debugLatch = CountDownLatch(1)
+        var hitBreakpoint = false
+        
+        ApplicationManager.getApplication().invokeLater {
+            try {
+                val executor = DefaultDebugExecutor.getDebugExecutorInstance()
+                val environment = ExecutionEnvironmentBuilder
+                    .createOrNull(executor, runConfig)
+                    ?.build()
+                
+                if (environment != null) {
+                    // Set up debug listener
+                    setupDebugListener(environment.project) { line ->
+                        if (line == breakpointLine) {
+                            hitBreakpoint = true
+                            debugLatch.countDown()
+                        }
+                    }
+                    
+                    // Start debugging
+                    environment.runner.execute(environment)
+                }
+            } catch (e: Exception) {
+                println("Debug execution failed: ${e.message}")
+                debugLatch.countDown()
+            }
+        }
+        
+        // Wait for breakpoint to be hit
+        debugLatch.await(10, TimeUnit.SECONDS)
+        
+        // Verify breakpoint was hit
+        assertTrue("Breakpoint should be hit in @injected function", hitBreakpoint)
+    }
+    
+    @Test
+    fun testStepIntoInjectedFunction() {
+        val testFile = createDebugTestFile()
+        
+        // Set breakpoint at the call site
+        val callSiteLine = 25 // Line where we call the injected function
+        setBreakpoint(testFile, callSiteLine)
+        
+        val stepIntoLatch = CountDownLatch(1)
+        var steppedIntoFunction = false
+        
+        ApplicationManager.getApplication().invokeLater {
+            val runConfig = createPythonRunConfiguration(testFile)
+            val executor = DefaultDebugExecutor.getDebugExecutorInstance()
+            val environment = ExecutionEnvironmentBuilder
+                .createOrNull(executor, runConfig)
+                ?.build()
+            
+            if (environment != null) {
+                setupDebugListener(environment.project) { line ->
+                    if (line == callSiteLine) {
+                        // Simulate step into
+                        performStepInto(environment.project)
+                    } else if (line > 10 && line < 20) {
+                        // We're inside the injected function
+                        steppedIntoFunction = true
+                        stepIntoLatch.countDown()
+                    }
+                }
+                
+                environment.runner.execute(environment)
+            }
+        }
+        
+        stepIntoLatch.await(10, TimeUnit.SECONDS)
+        assertTrue("Should step into @injected function", steppedIntoFunction)
+    }
+    
+    @Test
+    fun testVariableInspectionInInjectedFunction() {
+        val testFile = createDebugTestFileWithVariables()
+        
+        // Set breakpoint inside the function
+        val breakpointLine = 18
+        setBreakpoint(testFile, breakpointLine)
+        
+        val inspectionLatch = CountDownLatch(1)
+        var inspectedVariables = mutableMapOf<String, Any?>()
+        
+        ApplicationManager.getApplication().invokeLater {
+            val runConfig = createPythonRunConfiguration(testFile)
+            val executor = DefaultDebugExecutor.getDebugExecutorInstance()
+            val environment = ExecutionEnvironmentBuilder
+                .createOrNull(executor, runConfig)
+                ?.build()
+            
+            if (environment != null) {
+                setupDebugListenerWithVariableInspection(environment.project) { line, variables ->
+                    if (line == breakpointLine) {
+                        inspectedVariables.putAll(variables)
+                        inspectionLatch.countDown()
+                    }
+                }
+                
+                environment.runner.execute(environment)
+            }
+        }
+        
+        inspectionLatch.await(10, TimeUnit.SECONDS)
+        
+        // Verify we can inspect variables
+        assertTrue("Should have 'user' variable", inspectedVariables.containsKey("user"))
+        assertTrue("Should have 'result' variable", inspectedVariables.containsKey("result"))
+    }
+    
+    @Test
+    fun testConditionalBreakpointInInjectedFunction() {
+        val testFile = createLoopTestFile()
+        
+        // Set conditional breakpoint that only triggers for specific user
+        val breakpointLine = 16
+        setConditionalBreakpoint(testFile, breakpointLine, "user.id == 5")
+        
+        val conditionLatch = CountDownLatch(1)
+        var breakpointHitCount = 0
+        var lastUserId = -1
+        
+        ApplicationManager.getApplication().invokeLater {
+            val runConfig = createPythonRunConfiguration(testFile)
+            val executor = DefaultDebugExecutor.getDebugExecutorInstance()
+            val environment = ExecutionEnvironmentBuilder
+                .createOrNull(executor, runConfig)
+                ?.build()
+            
+            if (environment != null) {
+                setupDebugListenerWithVariableInspection(environment.project) { line, variables ->
+                    if (line == breakpointLine) {
+                        breakpointHitCount++
+                        lastUserId = (variables["user"] as? Map<*, *>)?.get("id") as? Int ?: -1
+                        
+                        if (lastUserId == 5) {
+                            conditionLatch.countDown()
+                        }
+                    }
+                }
+                
+                environment.runner.execute(environment)
+            }
+        }
+        
+        conditionLatch.await(10, TimeUnit.SECONDS)
+        
+        // Verify conditional breakpoint worked
+        assertEquals("Breakpoint should only hit once", 1, breakpointHitCount)
+        assertEquals("Should break for user.id == 5", 5, lastUserId)
+    }
+    
+    // Helper methods
+    
+    private fun createDebugTestFile(): File {
+        val content = """
+            from pinjected import IProxy, injected, Protocol
+            
+            class User:
+                def __init__(self, id: int, name: str):
+                    self.id = id
+                    self.name = name
+            
+            class ProcessUserProtocol(Protocol):
+                def __call__(self) -> str: ...
+            
+            @injected(protocol=ProcessUserProtocol)
+            def process_user(user: User) -> str:
+                # Breakpoint will be set here
+                result = f"Processing {user.name}"
+                return result
+            
+            # IProxy variable
+            user_proxy: IProxy[User] = IProxy()
+            
+            def main():
+                test_user = User(1, "Test User")
+                
+                # Call the injected function
+                result = process_user(test_user)
+                print(result)
+            
+            if __name__ == "__main__":
+                main()
+        """.trimIndent()
+        
+        val file = File.createTempFile("debug_test", ".py")
+        file.writeText(content)
+        return file
+    }
+    
+    private fun createDebugTestFileWithVariables(): File {
+        val content = """
+            from pinjected import IProxy, injected, Protocol
+            
+            class User:
+                def __init__(self, id: int, name: str, email: str):
+                    self.id = id
+                    self.name = name
+                    self.email = email
+            
+            class ValidateUserProtocol(Protocol):
+                def __call__(self) -> bool: ...
+            
+            @injected(protocol=ValidateUserProtocol)
+            def validate_user(user: User) -> bool:
+                # Multiple variables to inspect
+                name_valid = len(user.name) > 0
+                email_valid = "@" in user.email
+                result = name_valid and email_valid
+                return result  # Breakpoint here
+            
+            def main():
+                test_user = User(1, "John Doe", "john@example.com")
+                is_valid = validate_user(test_user)
+                print(f"User valid: {is_valid}")
+            
+            if __name__ == "__main__":
+                main()
+        """.trimIndent()
+        
+        val file = File.createTempFile("debug_vars_test", ".py")
+        file.writeText(content)
+        return file
+    }
+    
+    private fun createLoopTestFile(): File {
+        val content = """
+            from pinjected import IProxy, injected, Protocol
+            from typing import List
+            
+            class User:
+                def __init__(self, id: int, name: str):
+                    self.id = id
+                    self.name = name
+            
+            class ProcessUserProtocol(Protocol):
+                def __call__(self) -> str: ...
+            
+            @injected(protocol=ProcessUserProtocol)
+            def process_user(user: User) -> str:
+                # Conditional breakpoint: user.id == 5
+                result = f"Processing user {user.id}: {user.name}"
+                return result
+            
+            def main():
+                users = [User(i, f"User_{i}") for i in range(10)]
+                
+                for user in users:
+                    result = process_user(user)
+                    print(result)
+            
+            if __name__ == "__main__":
+                main()
+        """.trimIndent()
+        
+        val file = File.createTempFile("debug_loop_test", ".py")
+        file.writeText(content)
+        return file
+    }
+    
+    private fun setBreakpoint(file: File, line: Int) {
+        ApplicationManager.getApplication().runReadAction {
+            val project = myFixture.project
+            val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                .findFileByIoFile(file)
+            
+            if (virtualFile != null) {
+                val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager
+                breakpointManager.addLineBreakpoint(
+                    XDebuggerUtil.getInstance().findBreakpointType(
+                        com.jetbrains.python.debugger.PyLineBreakpointType::class.java
+                    ),
+                    virtualFile.url,
+                    line - 1 // 0-indexed
+                )
+            }
+        }
+    }
+    
+    private fun setConditionalBreakpoint(file: File, line: Int, condition: String) {
+        ApplicationManager.getApplication().runReadAction {
+            val project = myFixture.project
+            val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                .findFileByIoFile(file)
+            
+            if (virtualFile != null) {
+                val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager
+                val breakpoint = breakpointManager.addLineBreakpoint(
+                    XDebuggerUtil.getInstance().findBreakpointType(
+                        com.jetbrains.python.debugger.PyLineBreakpointType::class.java
+                    ),
+                    virtualFile.url,
+                    line - 1
+                )
+                
+                // Set condition
+                breakpoint?.conditionExpression = condition
+            }
+        }
+    }
+    
+    private fun createPythonRunConfiguration(file: File): RunConfiguration {
+        val project = myFixture.project
+        val runManager = RunManager.getInstance(project)
+        
+        val configurationType = PythonConfigurationType.getInstance()
+        val factory = configurationType.configurationFactories[0]
+        
+        val runConfiguration = runManager.createConfiguration(
+            "Debug Test",
+            factory
+        )
+        
+        val pythonConfig = runConfiguration.configuration as PythonRunConfiguration
+        pythonConfig.scriptName = file.absolutePath
+        
+        return runConfiguration.configuration
+    }
+    
+    private fun setupDebugListener(
+        project: Project,
+        onBreakpoint: (Int) -> Unit
+    ) {
+        // This is simplified - in real implementation would use XDebugSession listeners
+        val debuggerManager = XDebuggerManager.getInstance(project)
+        // Would add actual debug session listener here
+    }
+    
+    private fun setupDebugListenerWithVariableInspection(
+        project: Project,
+        onBreakpoint: (Int, Map<String, Any?>) -> Unit
+    ) {
+        // This is simplified - in real implementation would use XDebugSession
+        // and PyDebugValue to inspect variables
+        val debuggerManager = XDebuggerManager.getInstance(project)
+        // Would add actual debug session listener with variable inspection here
+    }
+    
+    private fun performStepInto(project: Project) {
+        // This would use XDebugSession.stepInto() in real implementation
+        val debuggerManager = XDebuggerManager.getInstance(project)
+        val currentSession = debuggerManager.currentSession
+        currentSession?.stepInto()
+    }
+}

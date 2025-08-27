@@ -1,21 +1,28 @@
 from pathlib import Path
 
-import loguru
-from pinjected import *
-import pinjected
-
 from pinjected_openai.clients import async_openai_client, openai_api_key
+from pinjected_openai.direct_openai import (
+    a_sllm_openai,
+    a_structured_llm_openai,
+    a_sllm_gpt4o_direct,
+    a_sllm_gpt5_nano_direct,
+    a_sllm_gpt5_direct,
+)
+
+from pinjected import *
 
 __version__ = "0.4.24"
 
+__all__ = [
+    "a_sllm_gpt4o_direct",
+    "a_sllm_gpt5_direct",
+    "a_sllm_gpt5_nano_direct",
+    "a_sllm_openai",
+    "a_structured_llm_openai",
+    "async_openai_client",
+    "openai_api_key",
+]
+
 default_design = design(
     cache_root_path=Path("~/.cache/pinjected_openai").expanduser(),
-) + providers(
-    logger=lambda: loguru.logger,
-    async_openai_client=async_openai_client,
-    #openai_api_key=openai_api_key
-)
-__meta_design__ = instances(
-    #default_design_path="pinjected_openai.default_design"
-    overrides=default_design
 )

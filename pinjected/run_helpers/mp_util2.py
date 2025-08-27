@@ -1,6 +1,7 @@
+import io
 import multiprocessing
 import sys
-import io
+
 
 def redirect_output(queue, func, *args, **kwargs):
     stdout_buffer = io.StringIO()
@@ -10,8 +11,11 @@ def redirect_output(queue, func, *args, **kwargs):
     sys.stdout = stdout_buffer
     sys.stderr = stderr_buffer
 
+    exception_to_raise = None
     try:
         func(*args, **kwargs)
+    except Exception as e:
+        exception_to_raise = e
     finally:
         # Restore original stdout and stderr
         sys.stdout = sys.__stdout__
@@ -24,15 +28,18 @@ def redirect_output(queue, func, *args, **kwargs):
         # Send the captured output through the queue
         queue.put((stdout_output, stderr_output))
 
+        # Re-raise the exception if one occurred
+        if exception_to_raise:
+            raise exception_to_raise
+
+
 def capture_output(func, *args, **kwargs):
     # Create a queue for communication
     queue = multiprocessing.Queue()
 
     # Create and start the process
     process = multiprocessing.Process(
-        target=redirect_output,
-        args=(queue, func) + args,
-        kwargs=kwargs
+        target=redirect_output, args=(queue, func) + args, kwargs=kwargs
     )
     process.start()
     process.join()
@@ -42,13 +49,16 @@ def capture_output(func, *args, **kwargs):
 
     return stdout_data, stderr_data
 
+
 # Example usage
 def example_function(message):
     print(f"This is stdout: {message}")
     print(f"This is stderr: {message}", file=sys.stderr)
     # Example of using a library that writes directly to stdout
     import os
+
     os.system('echo "This is from os.system"')
+
 
 if __name__ == "__main__":
     stdout, stderr = capture_output(example_function, "Hello, World!")

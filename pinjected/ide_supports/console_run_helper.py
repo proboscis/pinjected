@@ -6,7 +6,7 @@ from pprint import pformat
 
 import click
 
-from pinjected import injected, Injected
+from pinjected import Injected, injected
 
 
 @click.group()
@@ -15,15 +15,17 @@ def main():
 
 
 @main.command()
-@click.argument('script_path', type=click.Path(exists=True))
-@click.argument('func_name')
+@click.argument("script_path", type=click.Path(exists=True))
+@click.argument("func_name")
 def extract_func_source_and_imports(script_path: str, func_name: str):
-    func_and_imports = extract_func_source_and_imports_dict(func_name, script_path)
+    func_and_imports = extract_func_source_and_imports_dict(script_path)
 
     # Prepare the data containing the requested function source and imports
     data = {
-        'code': func_and_imports['functions'].get(func_name, f"Function {func_name} not found."),
-        'imports': list(set(func_and_imports['imports']))
+        "code": func_and_imports["functions"].get(
+            func_name, f"Function {func_name} not found."
+        ),
+        "imports": list(set(func_and_imports["imports"])),
     }
     # Convert the data to JSON format and print it
     text = json.dumps(data, indent=4)
@@ -41,10 +43,13 @@ def extract_func_source_and_imports_dict(script_path):
 
     # Function to get the source code of decorators with "@"
     def get_decorators_source(decorators):
-        return ["@" + ast.get_source_segment(file_content, decorator).strip() for decorator in decorators]
+        return [
+            "@" + ast.get_source_segment(file_content, decorator).strip()
+            for decorator in decorators
+        ]
 
     # Initialize a dictionary to store functions and imports
-    func_and_imports = {'functions': {}, 'imports': []}
+    func_and_imports = {"functions": {}, "imports": []}
     # Walk through the AST nodes
     for node in ast.walk(node_tree):
         # Check if the node is a function
@@ -52,20 +57,19 @@ def extract_func_source_and_imports_dict(script_path):
             # Get decorators source code with "@"
             decorators_source = get_decorators_source(node.decorator_list)
             # Get the source code of the function definition
-            func_source_lines = file_content.splitlines()[node.lineno - 1:node.end_lineno]
+            func_source_lines = file_content.splitlines()[
+                node.lineno - 1 : node.end_lineno
+            ]
             func_source = "\n".join(decorators_source + func_source_lines)
             # Store the function source code in the dictionary
-            func_and_imports['functions'][node.name] = func_source
+            func_and_imports["functions"][node.name] = func_source
         # Check if the node is an import or import from statement
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             # Get the source code of the import
             import_source = ast.get_source_segment(file_content, node)
             # Store the import source code in the list
-            func_and_imports['imports'].append(import_source)
+            func_and_imports["imports"].append(import_source)
     return func_and_imports
-
-
-
 
 
 class WithBlockVisitor(ast.NodeVisitor):
@@ -76,23 +80,26 @@ class WithBlockVisitor(ast.NodeVisitor):
         # In Python 3.9 and above, 'with' statements use 'items' which is a list of 'withitem' objects.
         # In earlier versions, the context expression was directly available as 'context_expr'.
         # We'll check for both to ensure compatibility.
-        with_items = getattr(node, 'items', None) or [node]
+        with_items = getattr(node, "items", None) or [node]
 
         for item in with_items:
-            context_expr = getattr(item, 'context_expr', None) or item
+            context_expr = getattr(item, "context_expr", None) or item
 
             # Check if the with statement contains a call to reload
-            if isinstance(context_expr, ast.Call) and getattr(context_expr.func, 'id', None) == 'reload':
+            if (
+                isinstance(context_expr, ast.Call)
+                and getattr(context_expr.func, "id", None) == "reload"
+            ):
                 # Get the list of reload targets
                 reload_targets = [arg.s for arg in context_expr.args]
                 # Process each item in the with block
                 for body_item in node.body:
-                    if isinstance(body_item, ast.AnnAssign) and isinstance(body_item.target, ast.Name):
+                    if isinstance(body_item, ast.AnnAssign) and isinstance(
+                        body_item.target, ast.Name
+                    ):
                         variable_name = body_item.target.id
                         # Assign reload targets to the variable in the result dict
-                        self.result[variable_name] = {
-                            'reload_targets': reload_targets
-                        }
+                        self.result[variable_name] = {"reload_targets": reload_targets}
 
 
 def extract_with_block_structure(source_code):
@@ -148,12 +155,13 @@ def extrract_assignments(source_code):
     # Return the collected assignments
     return visitor.assignments
 
+
 @main.command()
-@click.argument('script_path', type=click.Path(exists=True))
-@click.argument('target_name')
+@click.argument("script_path", type=click.Path(exists=True))
+@click.argument("target_name")
 def generate_code_with_reload(
-        script_path: str,
-        target_name: str,
+    script_path: str,
+    target_name: str,
 ):
     """
     1. find all function names using extract_func_source_and_imports
@@ -164,6 +172,7 @@ def generate_code_with_reload(
     :return:
     """
     from pinjected.pinjected_logging import logger
+
     source = Path(script_path).read_text()
     func_table = extract_func_source_and_imports_dict(script_path)
     logger.info(f"func_table:{pformat(func_table)}")
@@ -171,11 +180,13 @@ def generate_code_with_reload(
     if target_name not in reload_table:
         reload_targets = []
     else:
-        reload_targets = reload_table[target_name]['reload_targets']
-    funcs_to_reload = [func_table['functions'][func_name] for func_name in reload_targets]
-    imports = func_table['imports']
-    imports = '\n'.join(imports)
-    func_defs = '\n'.join(funcs_to_reload)
+        reload_targets = reload_table[target_name]["reload_targets"]
+    funcs_to_reload = [
+        func_table["functions"][func_name] for func_name in reload_targets
+    ]
+    imports = func_table["imports"]
+    imports = "\n".join(imports)
+    func_defs = "\n".join(funcs_to_reload)
     assignments: dict[str, str] = extrract_assignments(source)
     # logger.info(pformat(assignments))
 
@@ -197,13 +208,13 @@ __graph__[{target_name}]
 """
     # oops, target_name is not in the scope
     logger.debug(f"generated code:{code}")
-    data = "<pinjected>\n" + json.dumps({'code': code}) + "\n</pinjected>"
+    data = "<pinjected>\n" + json.dumps({"code": code}) + "\n</pinjected>"
     print(data)
 
 
 @injected
 def test_target_function():
-    print(f"hello")
+    print("hello")
 
 
 @contextmanager
@@ -212,17 +223,18 @@ def reload(*targets):
     yield
 
 
-with reload('test_target_function'):
+with reload("test_target_function"):
     x = 0
     run_test: Injected = test_target_function
 
 
 def is_pydevd():
     import os
-    return 'PYDEVD_LOAD_VALUES_ASYNC' in os.environ
+
+    return "PYDEVD_LOAD_VALUES_ASYNC" in os.environ
 
 
-if __name__ == '__main__' and not is_pydevd():
+if __name__ == "__main__" and not is_pydevd():
     """
     this code generation works, 
     now the remaining task is, 

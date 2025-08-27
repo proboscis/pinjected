@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pinjected"
-version = "0.2.246-beta.3"
+version = "0.3.0-beta"
 description = "Immutable Dependency Injection for Python."
 authors = [
-    {name = "proboscis", email = "nameissoap@gmail.com"}
+    { name = "proboscis", email = "nameissoap@gmail.com" }
 ]
-license = {text = "MIT"}
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
     "returns",
@@ -30,6 +30,8 @@ dependencies = [
     "pytest-asyncio",
     "pytest-xdist",
     "tqdm",
+    "pre-commit>=4.2.0",
+    "filelock>=3.18.0",
 ]
 
 [project.optional-dependencies]
@@ -46,19 +48,53 @@ pinjected = "pinjected.main_impl:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
-asyncio_default_fixture_loop_scope = "function"
+asyncio_default_fixture_loop_scope = "module"
 pythonpath = [
     "packages/anthropic/src",
-    "packages/wandb/src",
+    "packages/wandb_util/src",
     "packages/error_reports/src",
     "packages/reviewer/src",
     "packages/rate_limit/src",
     "packages/niji_voice/src",
-    "packages/injected_utils/src"
+    "packages/injected_utils/src",
+    "packages/pinjected-linter/src"
 ]
+testpaths = [
+    "test",
+    "pinjected",
+    "packages"
+]
+addopts = "--ignore=packages/pinjected-linter/rust-poc"
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = [
+    "packages/anthropic",
+    "packages/automation",
+    "packages/error_reports",
+    "packages/gcp",
+    "packages/injected_utils",
+    "packages/mlflow",
+    "packages/niji_voice",
+    "packages/onepassword",
+    "packages/openai_support",
+    "packages/pinjected-linter",
+    "packages/rate_limit",
+    "packages/reviewer",
+    "packages/wandb_util",
+]
+
+[dependency-groups]
+dev = [
+    "pinjected-reviewer",
+    "pinjected-error-reports",
+    "ruff>=0.11.7",
+    "flake8>=7.0.0",
+    "flake8-cognitive-complexity>=0.1.0",
+    "flake8-pyproject>=1.2.3",
+    "pre-commit>=4.2.0",
+    "pytest-cov>=6.2.1",
+    "pytest-testmon>=2.1.3",
+]
 
 [tool.uv.sources]
 pinjected-anthropic = { workspace = true }
@@ -68,3 +104,171 @@ pinjected-reviewer = { workspace = true }
 pinjected-rate-limit = { workspace = true }
 pinjected-niji-voice = { workspace = true }
 injected-utils = { workspace = true }
+pinjected-openai = { workspace = true }
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "remote_packages/",
+]
+
+lint.select = [
+    "E", # pyflakes/flake8 errors
+    "F", # pyflakes errors
+    "W", # pyflakes warnings
+    "C901", # McCabe complexity errors
+    "PLR", # pylint‐style design checks
+    "RUF", # Ruff‐specific rules
+    "SIM", # Code similarity checks
+]
+lint.ignore = [
+    #"F401", # unused import
+    "F403", # star import used
+    "F405", # name may be undefined, or defined from star import
+    "F407", # undefined forward reference
+    "F811", # redefinition of unused name
+    "F541", # f-string missing placeholders
+    "E261", # at least two spaces before inline comment
+    "E262", # inline comment should start with '# '
+    "E265", # block comment should start with '# '
+    "E266", # too many leading '#' for block comment
+    "F722", # unexpected token at end of expression
+    "E501", # line too long
+    "W291", # trailing whitespace
+    "W293", # blank line contains whitespace
+    "PLR2004", # magic number
+    "PLR0913", # Too many arguments in function definition: I want this but not working for @injected functions...
+    "RUF005", # collection concatenation (not correct for pinjected)
+    "SIM108", # tenary if-else. but makes it hard to read.
+    "RUF003", # commenting for full-character parenthesis
+    "RUF002", # commenting for full-character brackets
+    "RUF001", # Full character comment
+    "RUF100", # Unused noqa directive (we use noqa for pinjected-linter)
+    #
+    "COM812", # trailing comma
+    "S101", # use of assert
+    # T201 needs to be resolved with loguru.logger at least.
+    "ERA001", # Commented out code
+    "C408", # dict() to {}
+    "TD002", # Missing TODO author
+    "RET504", # unnecessary asignment before return
+    "D100", # Missing docstring in public module
+    "D101", # missing doc in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public method,
+    "D200", # multiline doc stuff
+    "D104", # Missing doc
+    "D415", # Doc
+    "D105", # Missing doc
+    "D400", # doc
+    "D205", # require blank line
+    "ANN001", # type annotation for func argument
+    "EM102", # f-string in exception
+    "N806", # enforce lower case for variable
+    "TRY003", # exception with dynamic message
+    "G004", # fstring in logger
+    "D", # all doc?
+    "Q000", # prefer double quotes?
+    "TRY400",
+    "TRY300",
+    "TRY301"
+]
+
+
+# Cyclomatic complexity → C901
+[tool.ruff.lint.mccabe]
+# Flag C901 errors whenever a function's cyclomatic complexity exceeds 6
+max-complexity = 6
+[tool.ruff.lint.pylint]
+# 1. Too many arguments → R0913
+max-args = 5
+# 2. Too many local variables → R0914
+max-locals = 5
+# 3. Too many branches → R0912
+max-branches = 6
+# 4. Too many statements → R0915
+max-statements = 40
+# 5. Too many nested blocks → R0916
+max-nested-blocks = 2
+
+[tool.pyright]
+typeCheckingMode = "off"
+
+
+[tool.flake8]
+max-cognitive-complexity = 15
+select = ["CCR"]  # Only check cognitive complexity
+#ignore = ["E", "F", "W"]  # Ignore all other error codes
+ignore = ['ALL']
+# Paths and patterns to ignore when running `flake8`
+exclude = [
+    ".venv",
+    "__pycache__",
+    ".git",
+    ".tox",
+    ".nox",
+    ".eggs",
+    "*.egg",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN201"]
+"packages/*/tests/**/*.py" = ["ANN201"]
+# Temporarily ignore complexity errors for existing code
+# TODO: Refactor these files to reduce complexity
+"**/*.py" = ["C901", "PLR0912", "PLR0915", "PLR0911"]
+
+[tool.pinjected-linter]
+# Enable all rules using the "ALL" keyword
+enable = ["ALL"]
+
+# Optionally disable specific rules
+disable = ["PINJ001", "PINJ005", "PINJ015"]  # Instance and injected function naming rules excluded
+
+# Exclude paths from linting
+exclude = [
+    ".venv",
+    "venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".ruff_cache",
+    "node_modules",
+    "packages/pinjected-linter/rust-poc",  # Intentional test files for linter rules
+]
+
+# Additional configuration options
+max_line_length = 120
+check_docstrings = true
+
+# Configure specific rules
+[tool.pinjected-linter.rules.PINJ014]
+# Minimum number of @injected functions to require stub file
+min_injected_functions = 1
+# Additional paths to search for stub files
+stub_search_paths = ["stubs", "typings", "types"]
+# Patterns to ignore
+ignore_patterns = ["**/tests/**", "**/test/**", "**/test_*.py", "**/*_test.py"]

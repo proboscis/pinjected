@@ -1,16 +1,22 @@
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar, Callable, Optional
+from typing import TypeVar
 
-from returns.future import FutureResultE, future_safe, FutureResult
-from returns.io import IOFailure, IOSuccess, IOResultE
+from returns.future import FutureResult, FutureResultE, future_safe
+from returns.io import IOFailure, IOResultE, IOSuccess
 from returns.maybe import Maybe, Nothing, Some
 from returns.unsafe import unsafe_perform_io
 
-from pinjected.di.design_spec.protocols import BindSpec, DesignSpec, ValidatorType, SpecDocProviderType
-from pinjected.v2.keys import IBindKey, StrBindKey
+from pinjected.di.design_spec.protocols import (
+    BindSpec,
+    DesignSpec,
+    SpecDocProviderType,
+    ValidatorType,
+)
+from pinjected.v2.keys import IBindKey
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -18,27 +24,39 @@ class BindSpecImpl(BindSpec[T]):
     validator: Maybe[Callable[[IBindKey, T], FutureResultE[str]]] = Nothing
     spec_doc_provider: Maybe[Callable[[IBindKey], FutureResultE[str]]] = Nothing
 
+    def __str__(self) -> str:
+        """
+        Improved string representation for BindSpecImpl to provide useful information for JSON graphs.
+        """
+        info = {
+            "type": self.__class__.__name__,
+            "has_validator": self.validator != Nothing,
+            "has_documentation": self.spec_doc_provider != Nothing,
+        }
+        return str(info)
+
 
 @dataclass(frozen=True)
 class MergedDesignSpec(DesignSpec):
     """
     A design spec created by merging multiple specs together.
-    
+
     In the current implementation, when looking up a key, the specs are searched
     in the order they appear in the srcs list. The first spec that contains the key
     will be used. This means that the first spec in the list takes precedence.
-    
+
     When using the + operator with DesignSpecImpl, the srcs list is created in the order
     [self, other], so the left-hand spec (self) takes precedence over the right-hand
     spec (other) for duplicate keys.
     """
+
     srcs: list[DesignSpec]
 
     def get_spec(self, key: IBindKey) -> Maybe[BindSpec]:
         """
         Search for a key in all source specs in order.
         Returns the first matching spec found from reverse order, or Nothing if no spec is found.
-        
+
         This means that last specs in the srcs list take precedence over first ones.
         """
         for src in reversed(self.srcs):
@@ -47,21 +65,35 @@ class MergedDesignSpec(DesignSpec):
                 return spec
         return Nothing
 
+    def __add__(self, other):
+        """
+        Combine two design specs, with the right-hand side (other) taking precedence.
+        If both specs define bindings for the same key, the binding from 'other' will be used.
+
+        Args:
+            other: The spec to add, which will override this spec for duplicate keys
+
+        Returns:
+            A new DesignSpec combining both specs with the right-hand side having precedence
+        """
+        return MergedDesignSpec(srcs=[self, other])
+
 
 @dataclass(frozen=True)
 class DesignSpecImpl(DesignSpec):
     """
     Implementation of DesignSpec that stores bindings in a dictionary.
-    
+
     When adding this spec to another spec with the + operator, the result is a MergedDesignSpec
     where this spec takes precedence over the other spec for duplicate keys.
     """
+
     specs: dict[IBindKey, BindSpec]
 
     def __add__(self, other: DesignSpec) -> DesignSpec:
         """
         Create a merged spec where this spec takes precedence over the other spec.
-        
+
         The resulting MergedDesignSpec will check this spec first for each key,
         and only if the key is not found will it check the other spec.
         """
@@ -76,10 +108,11 @@ class DesignSpecImpl(DesignSpec):
 
 
 class SimpleBindSpec(BindSpec[T]):
-    def __init__(self,
-                 validator: Optional[Callable[[T], str]] = None,
-                 documentation: Optional[str] = None
-                 ):
+    def __init__(
+        self,
+        validator: Callable[[T], str] | None = None,
+        documentation: str | None = None,
+    ):
         self._validator = validator
         self._documentation = documentation
 
@@ -94,7 +127,7 @@ class SimpleBindSpec(BindSpec[T]):
     def validator(self) -> Maybe[ValidatorType]:
         if self._validator is None:
             return Nothing
-        return Some(self._validator)
+        return Some(self._validator_impl)
 
     @future_safe
     async def _doc_impl(self, key: IBindKey) -> str:
@@ -106,13 +139,24 @@ class SimpleBindSpec(BindSpec[T]):
             return Nothing
         return Some(lambda key: FutureResult.from_value(self._documentation))
 
+    def __str__(self) -> str:
+        """
+        Improved string representation for SimpleBindSpec to provide useful information for JSON graphs.
+        """
+        info = {
+            "type": self.__class__.__name__,
+            "has_validator": self._validator is not None,
+            "documentation": self._documentation,
+        }
+        return str(info)
+
 
 """
 Now, we need a way to accumulate specs from repo, so that RunContext can use it to provide better guidance.
 
 """
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from loguru import logger
 
     success = IOSuccess("success")
@@ -126,16 +170,14 @@ if __name__ == '__main__':
     logger.info(unsafe_perform_io(success).unwrap())  # success
     logger.info(unsafe_perform_io(success.unwrap()))  # success
 
-
     # so, IOSuccess is a single monad rather than IO[Success[T]]
     # Ah, so we are to use @impure_safe for IOResult
     # @safe for Result
     # @future_safe for FutureResultE -> IOResultE
     @future_safe
     async def error_func():
-        logger.warning(f"calling error func")
+        logger.warning("calling error func")
         raise Exception("error")
-
 
     fut_res: FutureResultE[str] = error_func()
     logger.info(fut_res)  # FutureResultE(Failure(Exception()))
@@ -144,7 +186,6 @@ if __name__ == '__main__':
     # wait, then..
     logger.info(unsafe_perform_io(res))  # => Failure(Exception('error'))
 
-
     # so, <IOResult: <Success: ...> is actually IOSuccess, while it looks like IO[Result[T]]
     # hmm, but we dont have value_or, for FutureResultE
     # what we have is lash
@@ -152,12 +193,10 @@ if __name__ == '__main__':
     async def recover(fail):
         return "recovered"
 
-
     def recover2(fail):
         return FutureResult.from_value("recovered")
 
-
-    logger.info(f"check recovering")
+    logger.info("check recovering")
     recovered: FutureResultE = fut_res.lash(recover)
     recovered_2 = fut_res.lash(recover2)
     recovered_3 = fut_res.lash(lambda x: FutureResult.from_value("recovered"))
@@ -166,15 +205,19 @@ if __name__ == '__main__':
     logger.info(asyncio.run(recovered_2.awaitable()))  # FutureResultE(Some(recovered))
     logger.info(asyncio.run(recovered_3.awaitable()))  # FutureResultE(Some(recovered))
 
-
     async def await_target(f: FutureResultE):
         return await f
 
-
     logger.info(asyncio.run(await_target(fut_res)))
-    logger.info(asyncio.run(await_target(recovered)))  # FutureResultE(Success(recovered))
-    logger.info(asyncio.run(await_target(recovered_2)))  # FutureResultE(Some(recovered))
-    logger.info(asyncio.run(await_target(recovered_3)))  # FutureResultE(Some(recovered))
+    logger.info(
+        asyncio.run(await_target(recovered))
+    )  # FutureResultE(Success(recovered))
+    logger.info(
+        asyncio.run(await_target(recovered_2))
+    )  # FutureResultE(Some(recovered))
+    logger.info(
+        asyncio.run(await_target(recovered_3))
+    )  # FutureResultE(Some(recovered))
 
     # Checking Maybe Behavior
     some = Some("hello")
