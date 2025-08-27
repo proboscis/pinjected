@@ -17,7 +17,7 @@
         <!-- Our Gutter Icon Provider for HTML Dependency Graph Visualization -->
         <codeInsight.lineMarkerProvider 
             language="Python" 
-            implementationClass="com.proboscis.pinjectdesign.lineMarkers.InjectedFunctionGutterIconProvider"/>
+            implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
             
         <!-- IProxy Gutter Icon Provider (Disabled - using only green icon) -->
         <!-- <codeInsight.lineMarkerProvider 
