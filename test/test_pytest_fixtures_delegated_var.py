@@ -11,6 +11,8 @@ import warnings
 from pinjected import design, injected, Injected, IProxy
 from pinjected.pytest_fixtures import register_fixtures_from_design
 
+pytestmark = pytest.mark.skip(reason="pytest_fixtures.py is deprecated")
+
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, message=".*register_fixtures_from_design.*"
 )

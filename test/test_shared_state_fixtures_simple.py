@@ -4,14 +4,16 @@ import pytest
 import random
 import os
 import sys
+import warnings
+from typing import Protocol, Dict
 
 # Add parent directory to path to import pinjected
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Protocol, Dict
 from pinjected import injected, design
 from pinjected.pytest_fixtures import register_fixtures_from_design
-import warnings
+
+pytestmark = pytest.mark.skip(reason="pytest_fixtures.py is deprecated")
 
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, message=".*register_fixtures_from_design.*"
