@@ -13,6 +13,9 @@ from pinjected_openai.openrouter.refactored_simple import (
 )
 from pydantic import BaseModel
 import PIL.Image
+from packages.openai_support.conftest import apikey_skip_if_needed
+
+apikey_skip_if_needed()
 
 
 # Test models

@@ -1,9 +1,12 @@
 """Debug test to understand what's being returned."""
 
+from packages.openai_support.conftest import apikey_skip_if_needed
 import pytest
 from pinjected.test import injected_pytest
 from pydantic import BaseModel
 from loguru import logger
+
+apikey_skip_if_needed()
 
 
 class SimpleModel(BaseModel):

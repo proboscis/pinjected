@@ -1,8 +1,11 @@
 """Debug the flow with response_format."""
 
+from packages.openai_support.conftest import apikey_skip_if_needed
 import pytest
 from pinjected.test import injected_pytest
 from pydantic import BaseModel
+
+apikey_skip_if_needed()
 
 
 class SimpleModel(BaseModel):

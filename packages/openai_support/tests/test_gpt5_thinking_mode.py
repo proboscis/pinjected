@@ -1,9 +1,12 @@
 """Test GPT-5 thinking mode functionality in direct OpenAI implementation."""
 
+from packages.openai_support.conftest import apikey_skip_if_needed
 import pytest
 from pinjected import design, injected
 from pinjected.test import injected_pytest
 from pydantic import BaseModel
+
+apikey_skip_if_needed()
 
 
 class ReasoningResponse(BaseModel):

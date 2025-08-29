@@ -8,6 +8,9 @@ from pinjected_openai.openrouter.util import (
 )
 from pydantic import BaseModel, Field
 from loguru import logger
+from packages.openai_support.conftest import apikey_skip_if_needed
+
+apikey_skip_if_needed()
 
 
 class SimpleModel(BaseModel):
@@ -302,8 +305,8 @@ async def test_real_world_analysis(
 ):
     """Test real-world text analysis scenario."""
     text = """
-    Apple Inc. announced today that Tim Cook will be visiting Tokyo next month 
-    to meet with Japanese partners. The company reported strong Q4 earnings, 
+    Apple Inc. announced today that Tim Cook will be visiting Tokyo next month
+    to meet with Japanese partners. The company reported strong Q4 earnings,
     beating analyst expectations. Market sentiment remains positive.
     """
 
