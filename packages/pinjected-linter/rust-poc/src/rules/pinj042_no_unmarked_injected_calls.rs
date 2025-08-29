@@ -899,7 +899,7 @@ def test_backtest_integration():
         assert_eq!(violations[0].rule_id, "PINJ042");
         assert!(violations[0].message.contains("directly in pytest test function"));
         assert!(violations[0].message.contains("dependencies should be requested as fixtures"));
-        assert!(violations[0].message.contains("register_fixtures_from_design"));
+        assert!(violations[0].message.contains("@injected_pytest"));
         assert!(violations[0].message.contains("CORRECT APPROACH FOR PYTEST"));
         assert!(violations[0].message.contains("PROBABLY WRONG"));
     }
