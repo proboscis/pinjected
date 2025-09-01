@@ -178,6 +178,10 @@ pub fn get_rule_docs() -> HashMap<&'static str, &'static str> {
         "PINJ063",
         include_str!("../../docs/rules/pinj063_markdown_frontmatter_tags.md"),
     );
+    docs.insert(
+        "PINJ064",
+        include_str!("../../docs/rules/pinj064_no_optional_dependencies.md"),
+    );
 
     docs
 }

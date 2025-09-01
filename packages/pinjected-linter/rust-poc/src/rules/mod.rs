@@ -56,6 +56,7 @@ pub mod pinj060_no_dataclass_attribute_mutation;
 pub mod pinj061_enforce_module_design_in_pytests;
 pub mod pinj062_no_duplicate_injected_instance_names;
 pub mod pinj063_markdown_frontmatter_tags;
+pub mod pinj064_no_optional_dependencies;
 
 // ... etc
 
@@ -120,6 +121,7 @@ pub fn get_all_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(pinj061_enforce_module_design_in_pytests::EnforceModuleDesignInPytestsRule::new()),
         Box::new(pinj062_no_duplicate_injected_instance_names::NoDuplicateInjectedInstanceNamesRule::new()),
         Box::new(pinj063_markdown_frontmatter_tags::MarkdownFrontmatterTagsRule::new()),
+        Box::new(pinj064_no_optional_dependencies::NoOptionalDependenciesRule::new()),
     ]
 }
 
