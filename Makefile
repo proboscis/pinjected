@@ -70,7 +70,7 @@ test-all:
 # Helper to run tests for a subpackage and treat pytest exit code 5 (no tests) as success
 define RUN_PKG_TESTS
 	@cd packages/$(1) && uv venv && uv sync --group dev && \
-	( rc=0; uv run pytest -q || rc=$$?; \
+	( rc=0; uv run pytest -v -s --timeout=30 || rc=$$?; \
 	  if [ $$rc -eq 5 ]; then \
 	    echo "No tests collected for package '$(1)'; passing."; \
 	    exit 0; \
@@ -83,7 +83,7 @@ endef
 .PHONY: test-core
 test-core:
 	uv sync --all-packages
-	uv run pytest -q test pinjected/test pinjected/tests
+	uv run pytest -v -s --timeout=30 test pinjected/test pinjected/tests
 
 # Run tests for a specific subpackage by name (usage: make test-pkg PACKAGE=openai_support)
 .PHONY: test-pkg
