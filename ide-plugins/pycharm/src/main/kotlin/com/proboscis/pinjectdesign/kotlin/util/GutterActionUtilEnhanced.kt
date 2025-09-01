@@ -9,6 +9,7 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
@@ -372,6 +373,53 @@ object GutterActionUtilEnhanced {
                 }
             })
         }
+        
+        utilitiesGroup.add(object : AnAction(
+            "Visualize Dependency Graph",
+            "Run HTML dependency graph visualization for this target",
+            null
+        ) {
+            override fun actionPerformed(e: AnActionEvent) {
+                val helper = InjectedFunctionActionHelperObject.createSafely(project)
+                if (helper != null) {
+                    helper.runInBackground("Visualizing dependency graph for $name") { indicator ->
+                        indicator.text = "Looking for $name in the script"
+                        indicator.fraction = 0.1
+                        
+                        try {
+                            helper.cachedConfigurations(name).blockingGet(30000)!!.firstOrNull {
+                                it.name.endsWith("_viz")
+                            }?.let { vizConfig ->
+                                indicator.text = "Running visualization for ${vizConfig.name}"
+                                indicator.fraction = 0.9
+                                helper.runConfig(vizConfig)
+                                indicator.fraction = 1.0
+                            } ?: throw Exception("No visualization config found for $name")
+                        } catch (ex: Exception) {
+                            ApplicationManager.getApplication().invokeLater {
+                                NotificationGroupManager.getInstance()
+                                    .getNotificationGroup("Pinjected Plugin")
+                                    .createNotification(
+                                        "Visualization Failed",
+                                        "Failed to visualize dependency graph for $name: ${ex.message}",
+                                        NotificationType.ERROR
+                                    )
+                                    .notify(project)
+                            }
+                        }
+                    }
+                } else {
+                    NotificationGroupManager.getInstance()
+                        .getNotificationGroup("Pinjected Plugin")
+                        .createNotification(
+                            "Python Not Configured",
+                            "Please configure Python interpreter for this project",
+                            NotificationType.ERROR
+                        )
+                        .notify(project)
+                }
+            }
+        })
         
         utilitiesGroup.addSeparator()
         utilitiesGroup.add(object : AnAction(

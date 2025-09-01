@@ -14,7 +14,7 @@
         <applicationService 
             serviceImplementation="com.proboscis.pinjectdesign.settings.PInjectDesignSettings"/>
             
-        <!-- Injected Function Gutter Icon Provider -->
+        <!-- Our Gutter Icon Provider for HTML Dependency Graph Visualization -->
         <codeInsight.lineMarkerProvider 
             language="Python" 
             implementationClass="com.proboscis.pinjectdesign.kotlin.lineMarkers.InjectedFunctionGutterIconProvider"/>
