@@ -12,7 +12,7 @@ import httpx
 import httpcore
 from openai import AsyncOpenAI, APITimeoutError
 from tenacity import (
-    AsyncRetrying,
+    retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -467,6 +467,18 @@ class ModelParameterHandler:
 
 
 @injected(protocol=ASllmOpenaiProtocol)
+@retry(
+    retry=retry_if_exception_type(
+        (
+            httpcore.ConnectTimeout,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            APITimeoutError,
+        )
+    ),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=5, max=120),
+)
 async def a_sllm_openai(
     async_openai_client: AsyncOpenAI,
     logger: LoggerProtocol,
@@ -549,25 +561,8 @@ async def a_sllm_openai(
             **kwargs,
         )
 
-        # Phase 3: Make API call with retry for transient timeouts
-        retryer = AsyncRetrying(
-            retry=retry_if_exception_type(
-                (
-                    httpcore.ConnectTimeout,
-                    httpx.ConnectTimeout,
-                    httpx.ReadTimeout,
-                    APITimeoutError,
-                )
-            ),
-            stop=stop_after_attempt(10),
-            wait=wait_exponential(multiplier=1, min=5, max=120),
-            reraise=True,
-        )
-        async for attempt in retryer:
-            with attempt:
-                response = await async_openai_client.chat.completions.create(
-                    **api_params
-                )
+        # Phase 3: Make API call (retries handled by @retry decorator)
+        response = await async_openai_client.chat.completions.create(**api_params)
 
         # Update state with cumulative costs
         updated_state = _log_usage_and_cost(
