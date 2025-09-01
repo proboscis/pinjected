@@ -1,6 +1,8 @@
 # Pytest Fixtures from Pinjected Design
 
-This document describes how to use pinjected's Design objects to automatically create pytest fixtures, allowing seamless integration between pinjected's dependency injection and pytest's fixture system.
+**⚠️ DEPRECATION WARNING**: The `register_fixtures_from_design` approach described in this document is deprecated. Use `@injected_pytest` decorator instead for modern test dependency injection. See [migration guide](#migration-to-injected_pytest) below.
+
+This document describes the legacy approach to using pinjected's Design objects with pytest fixtures. For new projects, use `@injected_pytest` decorator instead.
 
 ## Table of Contents
 
@@ -16,14 +18,23 @@ This document describes how to use pinjected's Design objects to automatically c
 
 ## Overview
 
-The `pinjected.test` module allows you to automatically generate pytest fixtures from a pinjected Design object. This enables you to:
+The `pinjected.test` module previously allowed you to automatically generate pytest fixtures from a pinjected Design object. This approach is now deprecated in favor of the `@injected_pytest` decorator which provides more direct and flexible dependency injection.
 
-- Use pinjected's dependency injection in your tests
-- Automatically expose all bindings in a Design as pytest fixtures
-- Maintain consistency between application dependencies and test fixtures
-- Leverage pinjected's powerful binding and design composition features in tests
+**Legacy approach** (deprecated):
+- Use `register_fixtures_from_design` to convert Design objects to pytest fixtures
+- Requires understanding of pytest fixture scoping and registration
+- Indirect dependency injection through fixture system
 
-## Quick Start
+**Modern approach** (recommended):
+- Use `@injected_pytest` decorator for direct dependency injection
+- Explicit dependency visibility in test signatures
+- Easy test-specific dependency overrides
+
+## Quick Start (Deprecated)
+
+**⚠️ Warning**: This approach is deprecated. Use `@injected_pytest` instead.
+
+Legacy example using `register_fixtures_from_design`:
 
 ```python
 # In conftest.py or test file
@@ -37,11 +48,33 @@ test_design = design(
     auth_service=auth_service,
 )
 
-# Register all bindings as fixtures
+# Register all bindings as fixtures (DEPRECATED)
 register_fixtures_from_design(test_design)
 
-# Now use them in tests
+# Tests using fixtures
 @pytest.mark.asyncio
+async def test_user_creation(user_service, database):
+    user = await user_service.create_user("test@example.com")
+    assert user.id in database
+```
+
+## Modern Approach (Recommended)
+
+Use `@injected_pytest` decorator instead:
+
+```python
+from pinjected import design
+from pinjected.test import injected_pytest
+
+# Define your test design
+test_design = design(
+    database=database_connection,
+    user_service=user_service,
+    auth_service=auth_service,
+)
+
+# Use @injected_pytest decorator (RECOMMENDED)
+@injected_pytest(test_design)
 async def test_user_creation(user_service, database):
     user = await user_service.create_user("test@example.com")
     assert user.id in database
@@ -695,6 +728,80 @@ Ensure fixtures are registered before tests run:
 ### "Event loop is closed" Error
 
 Make sure to use `@pytest.mark.asyncio` decorator:
+
+## Migration to @injected_pytest
+
+To migrate from the deprecated `register_fixtures_from_design` approach to the modern `@injected_pytest` decorator:
+
+### Before (Deprecated)
+
+```python
+from pinjected import design
+from pinjected.test import register_fixtures_from_design
+import pytest
+
+# Create test design
+test_design = design(
+    database=database_connection,
+    user_service=user_service,
+)
+
+# Register fixtures (DEPRECATED)
+register_fixtures_from_design(test_design)
+
+# Tests using fixtures
+def test_user_creation(user_service, database):
+    user = user_service.create_user("test@example.com")
+    assert user.id in database
+
+@pytest.mark.asyncio
+async def test_async_operation(user_service):
+    result = await user_service.async_method()
+    assert result is not None
+```
+
+### After (Recommended)
+
+```python
+from pinjected import design
+from pinjected.test import injected_pytest
+
+# Create test design
+test_design = design(
+    database=database_connection,
+    user_service=user_service,
+)
+
+# Use @injected_pytest decorator (RECOMMENDED)
+@injected_pytest(test_design)
+def test_user_creation(user_service, database):
+    user = user_service.create_user("test@example.com")
+    assert user.id in database
+
+@injected_pytest(test_design)
+async def test_async_operation(user_service):
+    # No need for @pytest.mark.asyncio - handled automatically
+    result = await user_service.async_method()
+    assert result is not None
+```
+
+### Key Benefits of @injected_pytest
+
+1. **Direct Dependency Injection**: Dependencies are injected directly into test function parameters
+2. **Explicit Dependencies**: Test signatures clearly show what dependencies are used
+3. **Test-Specific Overrides**: Easy to override dependencies for specific tests using `test_design.override(...)`
+4. **Async Support**: Automatic async test handling without `@pytest.mark.asyncio`
+5. **No Fixture Registration**: No need to manage fixture registration separately
+
+### Migration Steps
+
+1. Remove `register_fixtures_from_design()` calls
+2. Add `@injected_pytest(test_design)` decorator to each test function
+3. Remove `@pytest.mark.asyncio` from async tests (handled automatically)
+4. Update imports to use `from pinjected.test import injected_pytest`
+
+For more information, see the [PINJ052 linter rule documentation](../packages/pinjected-linter/docs/rules/pinj052_deprecated_register_fixtures.md).
+
 ```python
 @pytest.mark.asyncio  # Required!
 async def test_something(my_fixture):

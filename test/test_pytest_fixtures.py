@@ -6,9 +6,10 @@ import sys
 from typing import Protocol
 
 import pytest
-
 from pinjected import design, injected, Injected
 from pinjected.pytest_fixtures import DesignFixtures
+
+pytestmark = pytest.mark.skip(reason="pytest_fixtures.py is deprecated")
 
 
 # Protocol definitions

@@ -128,8 +128,16 @@ class DesignFixtures:
             logger.info(
                 "Resolving DelegatedVar to extract binding names for fixture registration"
             )
-            # Run async resolution in sync context
-            resolved_design = asyncio.run(self._resolve_delegated_var())
+            # Run async resolution in sync context, handling existing event loop
+            try:
+                asyncio.get_running_loop()
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self._resolve_delegated_var())
+                    resolved_design = future.result()
+            except RuntimeError:
+                resolved_design = asyncio.run(self._resolve_delegated_var())
             if resolved_design:
                 # Cache the resolved design for later use
                 self._resolved_design_cache = resolved_design
@@ -484,6 +492,25 @@ def register_fixtures_from_design(
     """
     Convenience function to create DesignFixtures and register all bindings.
 
+    .. deprecated::
+        This function is deprecated. Use @injected_pytest decorator instead.
+
+        Migration example:
+
+        Old (deprecated):
+        ```python
+        register_fixtures_from_design(test_design)
+        def test_something(service, database):
+            pass
+        ```
+
+        New (recommended):
+        ```python
+        @injected_pytest(test_design)
+        def test_something(service, database):
+            pass
+        ```
+
     This is the main entry point for most users.
 
     Example:
@@ -493,7 +520,7 @@ def register_fixtures_from_design(
     from pinjected.pytest_fixtures import register_fixtures_from_design
     from my_app import test_design
 
-    # Register all fixtures from the design
+    # Register all fixtures from the design (DEPRECATED)
     register_fixtures_from_design(test_design)
 
     # Or with options
@@ -520,6 +547,14 @@ def register_fixtures_from_design(
     DesignFixtures
         The DesignFixtures instance (for advanced use cases)
     """
+    import warnings
+
+    warnings.warn(
+        "register_fixtures_from_design is deprecated. Use @injected_pytest decorator instead. "
+        "See PINJ052 linter rule for migration guidance.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     fixtures = DesignFixtures(design_obj)
     fixtures.register_all(scope=scope, include=include, exclude=exclude)
     return fixtures

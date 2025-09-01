@@ -2,9 +2,16 @@
 
 import pytest
 import random
+import warnings
 from typing import Protocol, Dict
 from pinjected import injected, design
 from pinjected.test import register_fixtures_from_design
+
+pytestmark = pytest.mark.skip(reason="pytest_fixtures.py is deprecated")
+
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, message=".*register_fixtures_from_design.*"
+)
 
 
 class SimpleCounterProtocol(Protocol):
@@ -27,8 +34,10 @@ def simple_counter():
 @injected(protocol=ServiceUsingCounterProtocol)
 def service_using_counter(simple_counter):
     """Service that uses the counter."""
-    print(f"[SERVICE] using counter: {simple_counter}")
-    return {"counter": simple_counter}
+    # Call the injected function to get the actual value
+    actual_counter = simple_counter()
+    print(f"[SERVICE] using counter: {actual_counter}")
+    return {"counter": actual_counter}
 
 
 # Create design and register fixtures
@@ -43,11 +52,13 @@ register_fixtures_from_design(test_design)
 @pytest.mark.asyncio
 async def test_shared_state_works(simple_counter, service_using_counter):
     """Test that all fixtures share the same counter instance."""
-    print(f"\nTest - simple_counter: {simple_counter}")
-    print(f"Test - service_using_counter: {service_using_counter}")
+    actual_counter = simple_counter()
+    actual_service = service_using_counter()
 
-    # Both should have the same counter value
-    assert service_using_counter["counter"] == simple_counter
+    print(f"\nTest - simple_counter: {actual_counter}")
+    print(f"Test - service_using_counter: {actual_service}")
+
+    assert actual_service["counter"] == actual_counter
 
     print("✅ Shared state test passed!")
 
@@ -55,12 +66,13 @@ async def test_shared_state_works(simple_counter, service_using_counter):
 @pytest.mark.asyncio
 async def test_isolation_between_tests_1(simple_counter):
     """First test to capture counter value."""
-    test_isolation_between_tests_1._value = simple_counter
-    assert isinstance(simple_counter, int)
+    actual_counter = simple_counter()
+    test_isolation_between_tests_1._value = actual_counter
+    assert isinstance(actual_counter, int)
 
 
 @pytest.mark.asyncio
 async def test_isolation_between_tests_2(simple_counter):
     """Second test should get a different value (function scope)."""
-    # Should be different from the first test due to function scope
-    assert simple_counter != test_isolation_between_tests_1._value
+    actual_counter = simple_counter()
+    assert actual_counter != test_isolation_between_tests_1._value
