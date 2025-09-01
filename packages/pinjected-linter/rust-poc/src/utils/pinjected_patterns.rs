@@ -134,6 +134,54 @@ pub fn has_injected_decorator_async(func: &StmtAsyncFunctionDef) -> bool {
     func.decorator_list.iter().any(|d| is_injected_decorator(d))
 }
 
+/// Check if an expression is an @injected_pytest decorator
+pub fn is_injected_pytest_decorator(expr: &Expr) -> bool {
+    match expr {
+        Expr::Name(name) => name.id.as_str() == "injected_pytest",
+        Expr::Call(call) => {
+            // Check if the function being called is injected_pytest
+            // This handles @injected_pytest() and @injected_pytest(__design__)
+            is_injected_pytest_decorator(&call.func)
+        }
+        Expr::Attribute(attr) => {
+            // Check for pinjected.test.injected_pytest
+            if let Expr::Attribute(inner_attr) = &*attr.value {
+                if let Expr::Name(name) = &*inner_attr.value {
+                    return name.id.as_str() == "pinjected"
+                        && inner_attr.attr.as_str() == "test"
+                        && attr.attr.as_str() == "injected_pytest";
+                }
+            }
+            // Check for test.injected_pytest
+            if let Expr::Name(name) = &*attr.value {
+                return name.id.as_str() == "test"
+                    && attr.attr.as_str() == "injected_pytest";
+            }
+            // Check for test_helpers.injected_pytest (legacy)
+            if let Expr::Name(name) = &*attr.value {
+                return name.id.as_str() == "test_helpers"
+                    && attr.attr.as_str() == "injected_pytest";
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Check if a function has @injected_pytest decorator
+pub fn has_injected_pytest_decorator(func: &StmtFunctionDef) -> bool {
+    func.decorator_list
+        .iter()
+        .any(|d| is_injected_pytest_decorator(d))
+}
+
+/// Check if an async function has @injected_pytest decorator
+pub fn has_injected_pytest_decorator_async(func: &StmtAsyncFunctionDef) -> bool {
+    func.decorator_list
+        .iter()
+        .any(|d| is_injected_pytest_decorator(d))
+}
+
 /// Check if a function name follows noun convention (for @instance)
 pub fn is_noun_like(name: &str) -> bool {
     const VERB_PREFIXES: &[&str] = &[
