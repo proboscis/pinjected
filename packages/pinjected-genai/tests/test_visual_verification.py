@@ -284,16 +284,20 @@ async def test_visual_generate_then_edit(
     """Generate an image, then edit it, and display both for visual comparison."""
     logger.info("Starting visual test for generate-then-edit workflow")
 
-    # Step 1: Generate an initial image
+    # Step 1: Generate an initial image using a_edit_image__genai without input
     initial_prompt = "A simple landscape with mountains and a clear blue sky"
-    logger.info(f"Generating initial image: {initial_prompt}")
+    logger.info(
+        f"Generating initial image using edit function without input: {initial_prompt}"
+    )
 
-    initial_result = await a_generate_image__genai(
-        prompt=initial_prompt, model="gemini-2.5-flash-image-preview"
+    initial_result = await a_edit_image__genai(
+        input_images=[],  # Empty list to generate from scratch
+        prompt=initial_prompt,
+        model="gemini-2.5-flash-image-preview",
     )
 
     assert initial_result.image is not None
-    logger.info("Initial image generated successfully")
+    logger.info("Initial image generated successfully using edit function")
 
     # Convert generated image to PIL Image for editing
     initial_pil_image = initial_result.image.to_pil_image()
