@@ -8,7 +8,15 @@ import json
 from typing import Any, Protocol, TYPE_CHECKING
 
 import PIL.Image
-from openai import AsyncOpenAI
+import httpx
+import httpcore
+from openai import AsyncOpenAI, APITimeoutError
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 from pinjected import design, injected, instance
 from pydantic import BaseModel, ValidationError
 
@@ -459,7 +467,19 @@ class ModelParameterHandler:
 
 
 @injected(protocol=ASllmOpenaiProtocol)
-async def a_sllm_openai(  # noqa: PINJ045
+@retry(
+    retry=retry_if_exception_type(
+        (
+            httpcore.ConnectTimeout,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            APITimeoutError,
+        )
+    ),
+    stop=stop_after_attempt(10),
+    wait=wait_exponential(multiplier=1, min=5, max=120),
+)
+async def a_sllm_openai(
     async_openai_client: AsyncOpenAI,
     logger: LoggerProtocol,
     openai_model_table: OpenAIModelTable,
@@ -541,7 +561,7 @@ async def a_sllm_openai(  # noqa: PINJ045
             **kwargs,
         )
 
-        # Phase 3: Make API call
+        # Phase 3: Make API call (retries handled by @retry decorator)
         response = await async_openai_client.chat.completions.create(**api_params)
 
         # Update state with cumulative costs
@@ -562,7 +582,7 @@ async def a_sllm_openai(  # noqa: PINJ045
 
 # Create a StructuredLLM-compatible wrapper
 @injected(protocol=AStructuredLlmOpenaiProtocol)
-async def a_structured_llm_openai(  # noqa: PINJ045
+async def a_structured_llm_openai(
     a_sllm_openai: ASllmOpenaiProtocol,
     logger: LoggerProtocol,
     /,
