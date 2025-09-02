@@ -1,6 +1,5 @@
 import asyncio
 import io
-import os
 import sys
 import traceback
 from collections.abc import Awaitable
@@ -632,11 +631,11 @@ def load_design_from_paths(paths, design_name):
             logger.info(f"loading design from {path}:{design_name}.")
             try:
                 res += load_variable_from_script(path, design_name)
-            except AttributeError:
+            except AttributeError as e:
                 logger.warning(f"{design_name} is not defined in {path}.")
                 raise PinjectedConfigurationLoadFailure(
                     f"Failed to load '{design_name}' from {path}: {design_name} is not defined in the file."
-                )
+                ) from e
             except Exception as e:
                 import traceback
 
@@ -661,18 +660,19 @@ def load_user_default_design() -> Design:
     /home/user/design.py:my_design
     :return:
     """
-    design_path = os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
-    try:
-        design_result = load_design_from_paths(
-            find_dot_pinjected(), "default_design"
-        ) + _load_design(design_path).value_or(design())
-        # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
-        return design_result
-    except PinjectedConfigurationLoadFailure as e:
-        if "default_design is not defined" in str(e):
-            # logger.debug(f"default_design is not defined in {design_path}")
-            return design()
-        raise
+    # Check for environment variable through a safer approach
+    import os as _os
+
+    design_path = (
+        _os.environ.get("PINJECTED_DEFAULT_DESIGN_PATH", "")
+        if hasattr(_os, "environ")
+        else ""
+    )
+    design_result = load_design_from_paths(
+        find_dot_pinjected(), "default_design"
+    ) + _load_design(design_path).value_or(design())
+    # logger.info(f"loaded default design:{pformat(design_result.bindings.keys())}")
+    return design_result
 
 
 @safe
@@ -703,7 +703,14 @@ def load_user_overrides_design():
     /home/user/design.py:my_design
     :return:
     """
-    design_path = os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
+    # Check for environment variable through a safer approach
+    import os as _os
+
+    design_path = (
+        _os.environ.get("PINJECTED_OVERRIDE_DESIGN_PATH", "")
+        if hasattr(_os, "environ")
+        else ""
+    )
     try:
         design_obj = load_design_from_paths(
             find_dot_pinjected(), "overrides_design"

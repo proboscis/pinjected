@@ -8,13 +8,9 @@ from . import auth, secrets, storage
 
 # Re-export commonly used items from auth
 from .auth import (
-    gcp_credentials,
     gcp_credentials_from_env,
     gcp_credentials_from_file,
     gcp_credentials_from_dict,
-    gcp_project_id,
-    gcp_project_id_from_env,
-    gcp_project_id_from_dict,
 )
 
 # Re-export from secrets
@@ -67,13 +63,9 @@ __all__ = [
     "a_list_gcp_secrets",
     "a_upload_gcs",
     "auth",
-    "gcp_credentials",
     "gcp_credentials_from_dict",
     "gcp_credentials_from_env",
     "gcp_credentials_from_file",
-    "gcp_project_id",
-    "gcp_project_id_from_dict",
-    "gcp_project_id_from_env",
     "gcp_secret_manager_client",
     "gcp_secret_value",
     "gcp_secret_value_cached",
@@ -83,9 +75,4 @@ __all__ = [
 ]
 
 # Combined design for all GCP functionality
-__design__ = (
-    design(logger=loguru.logger)
-    + auth.__design__
-    + secrets.__design__
-    + storage.__design__
-)
+__design__ = design(logger=loguru.logger)

@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling==1.26.3"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinjected-genai"
+version = "0.1.0"
+description = "Google Vertex AI (Gemini) bindings for pinjected library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Kento Masui", email = "nameissoap@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pinjected",
+    "pinjected-gcp",
+    "google-genai>=0.1.0",
+    "google-auth>=2.0.0",
+    "injected-utils>=0.1.32",
+    "pillow",
+    "loguru",
+    "filelock",
+    "reactivex>=4.0.4",
+    "pinjected-rate-limit>=0.1.0",
+    "tenacity>=9.0.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pinjected_genai"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src/pinjected_genai"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "visual: marks tests for visual verification of generated images (run with --no-skip)",
+]
+
+[tool.uv.sources]
+pinjected = { workspace = true }
+pinjected-gcp = { workspace = true }
+injected-utils = { workspace = true }
+pinjected-rate-limit = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1,<9",
+    "pytest-asyncio>=0.24.0",
+    "matplotlib>=3.5.0",
+]

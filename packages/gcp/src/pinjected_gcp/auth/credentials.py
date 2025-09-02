@@ -9,7 +9,6 @@ from google.oauth2 import service_account
 from google.auth.credentials import Credentials
 from loguru import logger
 from pinjected import design, instance
-from pinjected.di.iproxy import IProxy
 
 
 @instance
@@ -37,7 +36,7 @@ def gcp_service_account_dict_from_file(
 @instance
 def gcp_credentials_from_file(
     gcp_service_account_path: Path,
-    gcp_scopes: list[str],
+    # gcp_scopes: list[str],
 ) -> Credentials:
     """
     Create GCP credentials from a service account JSON file.
@@ -57,7 +56,7 @@ def gcp_credentials_from_file(
     logger.info(f"Loading GCP credentials from {gcp_service_account_path}")
     return service_account.Credentials.from_service_account_file(
         str(gcp_service_account_path),
-        scopes=gcp_scopes,
+        # scopes=gcp_scopes,
     )
 
 
@@ -150,7 +149,7 @@ def gcp_project_id_from_env() -> str:
 
 
 # Default scopes
-default_gcp_scopes = IProxy.bind(["https://www.googleapis.com/auth/cloud-platform"])
+default_gcp_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
 
 # Design for auth module
 __design__ = design(
