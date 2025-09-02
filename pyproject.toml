@@ -79,6 +79,7 @@ members = [
     "packages/niji_voice",
     "packages/onepassword",
     "packages/openai_support",
+    "packages/pinjected-genai",
     "packages/pinjected-linter",
     "packages/rate_limit",
     "packages/reviewer",
@@ -107,6 +108,7 @@ pinjected-rate-limit = { workspace = true }
 pinjected-niji-voice = { workspace = true }
 injected-utils = { workspace = true }
 pinjected-openai = { workspace = true }
+pinjected-genai = { workspace = true }
 [tool.ruff]
 target-version = "py310"
 line-length = 88

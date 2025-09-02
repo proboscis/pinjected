@@ -278,9 +278,7 @@ async def test_visual_aspect_ratios(a_generate_image__genai, logger, /):
 @pytest.mark.integration
 @pytest.mark.asyncio
 @injected_pytest(design())
-async def test_visual_generate_then_edit(
-    a_generate_image__genai, a_edit_image__genai, logger, /
-):
+async def test_visual_generate_then_edit(a_edit_image__genai, logger, /):
     """Generate an image, then edit it, and display both for visual comparison."""
     logger.info("Starting visual test for generate-then-edit workflow")
 

@@ -187,6 +187,7 @@ class MetaContext:
             attr_names=["__meta_design__", "__design__"],
             special_filenames=["__init__.py", "__pinjected__.py"],
         ):
+            logger.info(f"Found design variable at: {var.var_path}")
             trace.append(var)
             ovr = EmptyDesign
             if var.var_path.endswith("__meta_design__"):
@@ -294,7 +295,10 @@ class MetaContext:
             # Simply return the accumulated design plus user configurations
             # Note: 'overrides' is no longer a special pre-defined key, but users can still
             # have their own 'overrides' binding if they want
-            return load_user_default_design() + acc + load_user_overrides_design()
+            d = load_user_default_design() + acc + load_user_overrides_design()
+            for k in d.bindings:
+                logger.info(f"Final Design Key: {k}:{d.bindings[k]}")
+            return d
 
     @staticmethod
     async def a_load_default_design_for_variable(var: ModuleVarPath | str):
