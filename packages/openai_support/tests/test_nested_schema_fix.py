@@ -7,6 +7,9 @@ from pinjected.test import injected_pytest
 from pydantic import BaseModel
 from typing import Optional, List
 from pinjected_openai.direct_openai import ensure_strict_schema
+from packages.openai_support.conftest import apikey_skip_if_needed
+
+apikey_skip_if_needed()
 
 
 class ScoreWithReasoningV2(BaseModel):

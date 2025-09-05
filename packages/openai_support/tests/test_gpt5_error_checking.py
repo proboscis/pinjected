@@ -5,6 +5,9 @@ import json
 import pytest
 from pinjected import design, injected
 from pinjected.test import injected_pytest
+from packages.openai_support.conftest import apikey_skip_if_needed
+
+apikey_skip_if_needed()
 
 
 @pytest.mark.asyncio
@@ -153,10 +156,10 @@ async def test_gpt5_openrouter_error_checking(
         if "metadata" in error and "raw" in error["metadata"]:
             raw = error["metadata"]["raw"]
             if isinstance(raw, str):
-                try:
+                from contextlib import suppress
+
+                with suppress(Exception):
                     raw = json.loads(raw)
-                except Exception:  # noqa: S110
-                    pass
 
             if isinstance(raw, dict) and "error" in raw:
                 openai_error = raw["error"]

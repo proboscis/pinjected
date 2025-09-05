@@ -1,9 +1,12 @@
 """Test service_tier parameter support in a_sllm_openai function."""
 
+from packages.openai_support.conftest import apikey_skip_if_needed
 import pytest
 from pinjected import design, injected
 from pinjected.test import injected_pytest
 from pydantic import BaseModel
+
+apikey_skip_if_needed()
 
 
 class SimpleResponse(BaseModel):

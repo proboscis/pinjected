@@ -20,6 +20,9 @@ from loguru import logger
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock
+from packages.openai_support.conftest import apikey_skip_if_needed
+
+apikey_skip_if_needed()
 
 
 # Mark all tests in this file as e2e tests

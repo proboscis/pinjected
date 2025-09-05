@@ -1,8 +1,11 @@
 """Test to verify the duplicate response_format parameter fix."""
 
+from packages.openai_support.conftest import apikey_skip_if_needed
 import pytest
 from pinjected.test import injected_pytest
 from pydantic import BaseModel
+
+apikey_skip_if_needed()
 
 
 class SimpleResponse(BaseModel):

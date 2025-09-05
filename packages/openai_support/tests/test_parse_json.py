@@ -8,6 +8,9 @@ from pinjected_openai.openrouter.util import (
 )
 from pydantic import BaseModel
 from loguru import logger
+from packages.openai_support.conftest import apikey_skip_if_needed
+
+apikey_skip_if_needed()
 
 
 class SimpleModel(BaseModel):
