@@ -10,6 +10,8 @@ from PIL import Image
 
 from pinjected import injected
 
+from .genai_pricing import GenAIModelTable, log_generation_cost
+
 
 @dataclass
 class GeneratedImage:
@@ -47,6 +49,8 @@ class AGenerateImageProtocol(Protocol):
 async def a_generate_image__genai(
     genai_client: genai.Client,
     logger: logger,
+    genai_model_table: GenAIModelTable,
+    genai_state: dict,
     /,
     prompt: str,
     model: str,
@@ -102,6 +106,26 @@ async def a_generate_image__genai(
 
         logger.info("Successfully generated image")
 
+        # Calculate and log costs
+        # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
+        # For image generation, we know 1 image generated but not exact token count
+        usage = {
+            "text_input_chars": len(prompt),
+            "text_output_chars": len(combined_text) if combined_text else 0,
+            # We don't know the actual token counts for images,
+            # the API would need to provide this
+            "image_output_tokens": 0,  # Would need API to provide actual tokens
+        }
+
+        # Log the cost (state update happens within the DI framework)
+        log_generation_cost(
+            usage=usage,
+            model=model,
+            genai_model_table=genai_model_table,
+            genai_state=genai_state,
+            logger=logger,
+        )
+
         return GenerationResult(
             text=combined_text, image=generated_image, model_used=model
         )
@@ -124,6 +148,8 @@ class AEditImageProtocol(Protocol):
 async def a_edit_image__genai(
     genai_client: genai.Client,
     logger: logger,
+    genai_model_table: GenAIModelTable,
+    genai_state: dict,
     /,
     input_images: List[Image.Image],
     prompt: str,
@@ -199,6 +225,25 @@ async def a_edit_image__genai(
 
         logger.info("Successfully edited image")
 
+        # Calculate and log costs
+        # Note: Gen AI API doesn't provide token counts, so we estimate from chars
+        usage = {
+            "text_input_chars": len(prompt),
+            "text_output_chars": len(combined_text) if combined_text else 0,
+            # We don't know the actual token counts for images
+            "image_input_tokens": 0,  # Would need API to provide actual tokens
+            "image_output_tokens": 0,  # Would need API to provide actual tokens
+        }
+
+        # Log the cost (state update happens within the DI framework)
+        log_generation_cost(
+            usage=usage,
+            model=model,
+            genai_model_table=genai_model_table,
+            genai_state=genai_state,
+            logger=logger,
+        )
+
         return GenerationResult(
             text=combined_text, image=generated_image, model_used=model
         )
@@ -221,6 +266,8 @@ class ADescribeImageProtocol(Protocol):
 async def a_describe_image__genai(
     genai_client: genai.Client,
     logger: logger,
+    genai_model_table: GenAIModelTable,
+    genai_state: dict,
     /,
     image_path: str,
     prompt: Optional[str] = None,
@@ -263,6 +310,26 @@ async def a_describe_image__genai(
 
         if response.text:
             logger.info("Successfully described image")
+
+            # Calculate and log costs
+            text_prompt = prompt if prompt else "Describe this image in detail."
+            usage = {
+                "text_input_chars": len(text_prompt),
+                "text_output_chars": len(response.text),
+                # We don't know the actual token counts for input images
+                "image_input_tokens": 0,  # Would need API to provide actual tokens
+                "image_output_tokens": 0,  # No images generated
+            }
+
+            # Log the cost (state update happens within the DI framework)
+            log_generation_cost(
+                usage=usage,
+                model=model,
+                genai_model_table=genai_model_table,
+                genai_state=genai_state,
+                logger=logger,
+            )
+
             return response.text
         else:
             logger.warning("No description generated for image")
