@@ -35,3 +35,25 @@ def genai_state() -> dict: ...
 # IProxy definitions for dependency injection
 genai_model_table: IProxy[GenAIModelTable]
 genai_state: IProxy[dict]
+
+# Additional symbols:
+class GenAIState:
+    cumulative_cost: float
+    total_cost_usd: float
+    cost_breakdown: Dict[str, float]
+    total_text_input_tokens: int
+    total_text_output_tokens: int
+    total_image_input_tokens: int
+    total_image_output_tokens: int
+    request_count: int
+    def to_dict(self) -> dict: ...
+    def update_from_usage(self, usage: dict, cost_dict: dict) -> "GenAIState": ...
+
+# Additional symbols:
+class CostBreakdown:
+    text_input: float
+    text_output: float
+    image_input: float
+    image_output: float
+    def add(self, other: "CostBreakdown") -> "CostBreakdown": ...
+    def to_dict(self) -> Dict[str, float]: ...

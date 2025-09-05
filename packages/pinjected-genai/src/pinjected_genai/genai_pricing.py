@@ -3,24 +3,50 @@
 This module provides pricing information and cost calculation for Google's Gemini models.
 Cost tracking is performed per API call and cumulatively.
 
-Note: The Gen AI SDK does not currently provide token usage counts in API responses.
-Text token counts are estimated from character counts (4 chars ≈ 1 token).
-Image token counts cannot be accurately calculated without API support.
+Token usage counts are extracted from the Gen AI API responses via usage_metadata.
+Both text and image tokens are tracked separately for accurate cost calculation.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Dict, Optional, Protocol
 
 from pinjected import instance
+
+
+@dataclass(frozen=True)
+class CostBreakdown:
+    """Immutable breakdown of costs by modality type."""
+
+    text_input: float = 0.0
+    text_output: float = 0.0
+    image_input: float = 0.0
+    image_output: float = 0.0
+
+    def add(self, other: "CostBreakdown") -> "CostBreakdown":
+        """Add costs from another breakdown and return a new instance."""
+        return CostBreakdown(
+            text_input=self.text_input + other.text_input,
+            text_output=self.text_output + other.text_output,
+            image_input=self.image_input + other.image_input,
+            image_output=self.image_output + other.image_output,
+        )
+
+    def to_dict(self) -> Dict[str, float]:
+        """Convert to dictionary for backward compatibility."""
+        return {
+            "text_input": self.text_input,
+            "text_output": self.text_output,
+            "image_input": self.image_input,
+            "image_output": self.image_output,
+        }
 
 
 @dataclass
 class ModelPricing:
     """Pricing information for a Gen AI model.
 
-    All prices are per million tokens. For text, we estimate tokens from
-    character count (4 chars ≈ 1 token). For images, actual token counts
-    must be provided by the API (currently not available in Gen AI SDK).
+    All prices are per million tokens. Token counts are extracted from
+    the API response's usage_metadata for both text and image modalities.
     """
 
     # Prices per million tokens
@@ -34,8 +60,8 @@ class ModelPricing:
 
         Args:
             usage: Dictionary containing usage metrics:
-                - text_input_tokens: Number of input tokens (or text_input_chars to convert)
-                - text_output_tokens: Number of output tokens (or text_output_chars to convert)
+                - text_input_tokens: Number of input tokens (required)
+                - text_output_tokens: Number of output tokens (required)
                 - image_input_tokens: Number of input tokens for images
                 - image_output_tokens: Number of output tokens for image generation
 
@@ -47,16 +73,18 @@ class ModelPricing:
                 - image_output: Cost for output images
                 - total: Total cost
         """
-        # Get token counts - support both tokens and chars (converting chars to tokens)
-        text_in_tokens = usage.get("text_input_tokens", 0)
-        if text_in_tokens == 0 and "text_input_chars" in usage:
-            # Convert chars to tokens (4 chars ≈ 1 token)
-            text_in_tokens = usage["text_input_chars"] / 4
+        # Get token counts - require actual token counts, no character fallback
+        if "text_input_tokens" not in usage:
+            raise ValueError(
+                "Missing required field 'text_input_tokens' in usage dictionary"
+            )
+        if "text_output_tokens" not in usage:
+            raise ValueError(
+                "Missing required field 'text_output_tokens' in usage dictionary"
+            )
 
-        text_out_tokens = usage.get("text_output_tokens", 0)
-        if text_out_tokens == 0 and "text_output_chars" in usage:
-            # Convert chars to tokens (4 chars ≈ 1 token)
-            text_out_tokens = usage["text_output_chars"] / 4
+        text_in_tokens = usage["text_input_tokens"]
+        text_out_tokens = usage["text_output_tokens"]
 
         # Get image token counts directly from API response
         image_in_tokens = usage.get("image_input_tokens", 0)
@@ -80,8 +108,9 @@ class ModelPricing:
 class GenAIModelTable:
     """Table of Gen AI model pricing information.
 
-    Note: Pricing information must be hardcoded as the Gen AI SDK
-    does not provide pricing via API.
+    Pricing information is hardcoded as the Gen AI SDK
+    does not provide pricing via API. Token counts are obtained
+    from API responses.
     """
 
     # Pricing as of January 2025 (prices in USD per million tokens)
@@ -156,80 +185,126 @@ class LoggerProtocol(Protocol):
         ...
 
 
-def calculate_cumulative_cost(genai_state: dict, cost_dict: dict) -> dict:
-    """Calculate new state with updated cumulative cost.
+@dataclass
+class GenAIState:
+    """State for tracking Gen AI API usage and costs."""
 
-    Args:
-        genai_state: Current state dictionary
-        cost_dict: Cost breakdown for current call
+    # Cost tracking
+    cumulative_cost: float = 0.0
+    total_cost_usd: float = 0.0  # Alias for cumulative_cost for backward compatibility
 
-    Returns:
-        Updated state dictionary
-    """
-    current_total = genai_state.get("cumulative_cost", 0.0)
-    current_breakdown = genai_state.get(
-        "cost_breakdown",
-        {
-            "text_input": 0.0,
-            "text_output": 0.0,
-            "image_input": 0.0,
-            "image_output": 0.0,
-        },
-    )
+    # Cost breakdown by type
+    cost_breakdown: CostBreakdown = field(default_factory=CostBreakdown)
 
-    # Update total
-    new_total = current_total + cost_dict.get("total", 0.0)
+    # Token counts
+    total_text_input_tokens: int = 0
+    total_text_output_tokens: int = 0
+    total_image_input_tokens: int = 0
+    total_image_output_tokens: int = 0
 
-    # Update breakdown
-    new_breakdown = {
-        "text_input": current_breakdown["text_input"]
-        + cost_dict.get("text_input", 0.0),
-        "text_output": current_breakdown["text_output"]
-        + cost_dict.get("text_output", 0.0),
-        "image_input": current_breakdown["image_input"]
-        + cost_dict.get("image_input", 0.0),
-        "image_output": current_breakdown["image_output"]
-        + cost_dict.get("image_output", 0.0),
-    }
+    # Request tracking
+    request_count: int = 0
 
-    # Increment request count
-    request_count = genai_state.get("request_count", 0) + 1
+    def to_dict(self) -> dict:
+        """Convert to dictionary for backward compatibility."""
+        return {
+            "cumulative_cost": self.cumulative_cost,
+            "total_cost_usd": self.total_cost_usd,
+            "cost_breakdown": self.cost_breakdown.to_dict(),
+            "total_text_input_tokens": self.total_text_input_tokens,
+            "total_text_output_tokens": self.total_text_output_tokens,
+            "total_image_input_tokens": self.total_image_input_tokens,
+            "total_image_output_tokens": self.total_image_output_tokens,
+            "request_count": self.request_count,
+        }
 
-    return {
-        **genai_state,
-        "cumulative_cost": new_total,
-        "cost_breakdown": new_breakdown,
-        "request_count": request_count,
-    }
+    def update_from_usage(self, usage: dict, cost_dict: dict) -> "GenAIState":
+        """Create new state with updated values from usage and cost.
+
+        Args:
+            usage: Dictionary with token counts
+            cost_dict: Dictionary with cost breakdown
+
+        Returns:
+            New GenAIState instance with updated values
+        """
+        new_cumulative = self.cumulative_cost + cost_dict.get("total", 0.0)
+
+        new_breakdown = CostBreakdown(
+            text_input=self.cost_breakdown.text_input
+            + cost_dict.get("text_input", 0.0),
+            text_output=self.cost_breakdown.text_output
+            + cost_dict.get("text_output", 0.0),
+            image_input=self.cost_breakdown.image_input
+            + cost_dict.get("image_input", 0.0),
+            image_output=self.cost_breakdown.image_output
+            + cost_dict.get("image_output", 0.0),
+        )
+
+        return GenAIState(
+            cumulative_cost=new_cumulative,
+            total_cost_usd=new_cumulative,
+            cost_breakdown=new_breakdown,
+            total_text_input_tokens=self.total_text_input_tokens
+            + usage.get("text_input_tokens", 0),
+            total_text_output_tokens=self.total_text_output_tokens
+            + usage.get("text_output_tokens", 0),
+            total_image_input_tokens=self.total_image_input_tokens
+            + usage.get("image_input_tokens", 0),
+            total_image_output_tokens=self.total_image_output_tokens
+            + usage.get("image_output_tokens", 0),
+            request_count=self.request_count + 1,
+        )
 
 
 def log_generation_cost(
     usage: dict,
     model: str,
     genai_model_table: GenAIModelTable,
-    genai_state: dict,
+    genai_state: GenAIState,  # noqa: PINJ056
     logger: LoggerProtocol,
-) -> dict:
-    """Calculate and log generation costs, returning updated state.
+) -> GenAIState:
+    """Calculate and log generation costs, mutating and returning the state.
 
     Args:
         usage: Usage metrics dictionary
         model: Model name used
         genai_model_table: Model pricing table
-        genai_state: Current state
+        genai_state: GenAIState instance to update (will be mutated)
         logger: Logger instance
 
     Returns:
-        Updated state dictionary with new costs
+        Same GenAIState instance with updated costs (mutated)
     """
     pricing = genai_model_table.get_pricing(model)
 
     if not pricing:
-        logger.warning(f"No pricing information available for model: {model}")
-        return genai_state
+        error_msg = f"No pricing information available for model: {model}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
     cost_dict = pricing.calc_cost(usage)
-    new_state = calculate_cumulative_cost(genai_state, cost_dict)
+
+    # Mutate the state directly for accumulation
+    genai_state.cumulative_cost += cost_dict.get("total", 0.0)  # noqa: PINJ056
+    genai_state.total_cost_usd = genai_state.cumulative_cost  # noqa: PINJ056
+
+    # Create a new CostBreakdown with the updated costs
+    new_cost_breakdown = CostBreakdown(
+        text_input=cost_dict.get("text_input", 0.0),
+        text_output=cost_dict.get("text_output", 0.0),
+        image_input=cost_dict.get("image_input", 0.0),
+        image_output=cost_dict.get("image_output", 0.0),
+    )
+    genai_state.cost_breakdown = genai_state.cost_breakdown.add(new_cost_breakdown)  # noqa: PINJ056
+
+    # Update token counts
+    genai_state.total_text_input_tokens += usage.get("text_input_tokens", 0)  # noqa: PINJ056
+    genai_state.total_text_output_tokens += usage.get("text_output_tokens", 0)  # noqa: PINJ056
+    genai_state.total_image_input_tokens += usage.get("image_input_tokens", 0)  # noqa: PINJ056
+    genai_state.total_image_output_tokens += usage.get("image_output_tokens", 0)  # noqa: PINJ056
+
+    genai_state.request_count += 1  # noqa: PINJ056
 
     # Format cost string
     cost_parts = []
@@ -247,37 +322,28 @@ def log_generation_cost(
     logger.info(
         f"GenAI Cost: {cost_str} | "
         f"Total: ${cost_dict['total']:.6f} | "
-        f"Cumulative: ${new_state['cumulative_cost']:.6f}"
+        f"Cumulative: ${genai_state.cumulative_cost:.6f}"
     )
 
     # Log detailed breakdown periodically
-    if new_state.get("request_count", 0) % 10 == 0:
-        breakdown = new_state["cost_breakdown"]
+    if genai_state.request_count % 10 == 0:
+        breakdown = genai_state.cost_breakdown
         logger.info(
             f"Cost breakdown - "
-            f"Text Input: ${breakdown['text_input']:.4f}, "
-            f"Text Output: ${breakdown['text_output']:.4f}, "
-            f"Image Input: ${breakdown['image_input']:.4f}, "
-            f"Image Output: ${breakdown['image_output']:.4f}"
+            f"Text Input: ${breakdown.text_input:.4f}, "
+            f"Text Output: ${breakdown.text_output:.4f}, "
+            f"Image Input: ${breakdown.image_input:.4f}, "
+            f"Image Output: ${breakdown.image_output:.4f}"
         )
 
-    return new_state
+    return genai_state
 
 
 @instance
-def genai_state() -> dict:
+def genai_state() -> GenAIState:
     """Get initial Gen AI state for cost tracking.
 
     Returns:
-        Initial state dictionary
+        Initial GenAIState instance
     """
-    return {
-        "cumulative_cost": 0.0,
-        "cost_breakdown": {
-            "text_input": 0.0,
-            "text_output": 0.0,
-            "image_input": 0.0,
-            "image_output": 0.0,
-        },
-        "request_count": 0,
-    }
+    return GenAIState()

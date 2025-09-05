@@ -6,9 +6,9 @@ from unittest.mock import Mock
 from pinjected_genai.genai_pricing import (
     GenAIModelTable,
     ModelPricing,
-    calculate_cumulative_cost,
     log_generation_cost,
     genai_state,
+    GenAIState,
 )
 from pinjected import design
 from pinjected.test import injected_pytest
@@ -46,15 +46,15 @@ def test_model_pricing_calculation_with_image_tokens(logger, /):
 
     # Test with actual token counts
     usage = {
-        "text_input_chars": 400,  # 400 chars = 100 tokens
-        "text_output_chars": 0,
+        "text_input_tokens": 100,  # 100 tokens directly
+        "text_output_tokens": 0,
         "image_input_tokens": 1290,  # Example: 1 input image uses 1290 tokens
         "image_output_tokens": 1290,  # Example: 1 output image uses 1290 tokens
     }
 
     cost = pricing.calc_cost(usage)
 
-    # Text input: 400 chars = 100 tokens = 0.0001M tokens * 0.30 = 0.000030
+    # Text input: 100 tokens = 0.0001M tokens * 0.30 = 0.000030
     # Image input: 1290 tokens = 0.00129M tokens * 0.30 = 0.000387
     # Image output: 1290 tokens = 0.00129M tokens * 30.0 = 0.0387
     assert cost["text_input"] == pytest.approx(0.000030, rel=1e-6)
@@ -76,15 +76,15 @@ def test_model_pricing_calculation(logger, /):
 
     # Test text-only usage
     usage = {
-        "text_input_chars": 4000,  # 4K chars = 1K tokens
-        "text_output_chars": 8000,  # 8K chars = 2K tokens
+        "text_input_tokens": 1000,  # 1K tokens
+        "text_output_tokens": 2000,  # 2K tokens
         "image_input_tokens": 0,
         "image_output_tokens": 0,
     }
 
     cost = pricing.calc_cost(usage)
 
-    # 4K chars = 1K tokens = 0.001M tokens
+    # 1K tokens = 0.001M tokens
     # Input: 0.001 * 0.30 = 0.0003
     # Output: 0.002 * 2.50 = 0.005
     assert cost["text_input"] == pytest.approx(0.0003, rel=1e-6)
@@ -127,19 +127,19 @@ def test_genai_model_table(genai_model_table, logger, /):
 
 
 @injected_pytest(get_test_di())
-def test_calculate_cumulative_cost(genai_state, logger, /):
-    """Test cumulative cost calculation."""
+def test_cumulative_cost_tracking(genai_state, logger, /):
+    """Test cumulative cost tracking with GenAIState dataclass."""
     # Start with initial state
-    state = genai_state
+    assert isinstance(genai_state, GenAIState)
 
-    assert state["cumulative_cost"] == 0.0
-    assert state["cost_breakdown"]["text_input"] == 0.0
-    assert state["cost_breakdown"]["text_output"] == 0.0
-    assert state["cost_breakdown"]["image_input"] == 0.0
-    assert state["cost_breakdown"]["image_output"] == 0.0
-    assert state["request_count"] == 0
+    assert genai_state.cumulative_cost == 0.0
+    assert genai_state.cost_breakdown.text_input == 0.0
+    assert genai_state.cost_breakdown.text_output == 0.0
+    assert genai_state.cost_breakdown.image_input == 0.0
+    assert genai_state.cost_breakdown.image_output == 0.0
+    assert genai_state.request_count == 0
 
-    # Add first cost
+    # Simulate first cost update
     cost1 = {
         "text_input": 0.001,
         "text_output": 0.002,
@@ -148,15 +148,28 @@ def test_calculate_cumulative_cost(genai_state, logger, /):
         "total": 0.043,
     }
 
-    state = calculate_cumulative_cost(state, cost1)
+    # Manually update state as log_generation_cost would do
+    genai_state.cumulative_cost += cost1["total"]
+    genai_state.total_cost_usd = genai_state.cumulative_cost
+    # Create new CostBreakdown instance (immutable)
+    from pinjected_genai.genai_pricing import CostBreakdown
 
-    assert state["cumulative_cost"] == 0.043
-    assert state["cost_breakdown"]["text_input"] == 0.001
-    assert state["cost_breakdown"]["text_output"] == 0.002
-    assert state["cost_breakdown"]["image_output"] == 0.04
-    assert state["request_count"] == 1
+    new_cost_breakdown = CostBreakdown(
+        text_input=cost1["text_input"],
+        text_output=cost1["text_output"],
+        image_input=cost1["image_input"],
+        image_output=cost1["image_output"],
+    )
+    genai_state.cost_breakdown = genai_state.cost_breakdown.add(new_cost_breakdown)
+    genai_state.request_count += 1
 
-    # Add second cost
+    assert genai_state.cumulative_cost == 0.043
+    assert genai_state.cost_breakdown.text_input == 0.001
+    assert genai_state.cost_breakdown.text_output == 0.002
+    assert genai_state.cost_breakdown.image_output == 0.04
+    assert genai_state.request_count == 1
+
+    # Simulate second cost update
     cost2 = {
         "text_input": 0.002,
         "text_output": 0.003,
@@ -165,30 +178,42 @@ def test_calculate_cumulative_cost(genai_state, logger, /):
         "total": 0.045,
     }
 
-    state = calculate_cumulative_cost(state, cost2)
+    genai_state.cumulative_cost += cost2["total"]
+    genai_state.total_cost_usd = genai_state.cumulative_cost
+    # Create another new CostBreakdown instance and add it
+    new_cost_breakdown2 = CostBreakdown(
+        text_input=cost2["text_input"],
+        text_output=cost2["text_output"],
+        image_input=cost2["image_input"],
+        image_output=cost2["image_output"],
+    )
+    genai_state.cost_breakdown = genai_state.cost_breakdown.add(new_cost_breakdown2)
+    genai_state.request_count += 1
 
-    assert state["cumulative_cost"] == pytest.approx(0.088, rel=1e-6)
-    assert state["cost_breakdown"]["text_input"] == pytest.approx(0.003, rel=1e-6)
-    assert state["cost_breakdown"]["text_output"] == pytest.approx(0.005, rel=1e-6)
-    assert state["cost_breakdown"]["image_output"] == pytest.approx(0.08, rel=1e-6)
-    assert state["request_count"] == 2
+    assert genai_state.cumulative_cost == pytest.approx(0.088, rel=1e-6)
+    assert genai_state.cost_breakdown.text_input == pytest.approx(0.003, rel=1e-6)
+    assert genai_state.cost_breakdown.text_output == pytest.approx(0.005, rel=1e-6)
+    assert genai_state.cost_breakdown.image_output == pytest.approx(0.08, rel=1e-6)
+    assert genai_state.request_count == 2
 
 
 @injected_pytest(get_test_di())
 def test_log_generation_cost(genai_model_table, genai_state, logger, /):
     """Test logging generation costs."""
     logger = Mock()
+    logger.error = Mock()
+    logger.info = Mock()
     table = genai_model_table
     state = genai_state
 
     usage = {
-        "text_input_chars": 1000,
-        "text_output_chars": 2000,
-        "images_input": 0,
-        "images_output": 1,
+        "text_input_tokens": 250,  # ~1000 chars / 4
+        "text_output_tokens": 500,  # ~2000 chars / 4
+        "image_input_tokens": 0,
+        "image_output_tokens": 1290,  # Standard image generation tokens
     }
 
-    new_state = log_generation_cost(
+    returned_state = log_generation_cost(
         usage=usage,
         model="gemini-2.5-flash-image-preview",
         genai_model_table=table,
@@ -196,9 +221,10 @@ def test_log_generation_cost(genai_model_table, genai_state, logger, /):
         logger=logger,
     )
 
-    # Check state was updated
-    assert new_state["cumulative_cost"] > 0
-    assert new_state["request_count"] == 1
+    # Check state was mutated (same object returned)
+    assert returned_state is state
+    assert state.cumulative_cost > 0
+    assert state.request_count == 1
 
     # Check logger was called
     logger.info.assert_called()
@@ -207,24 +233,26 @@ def test_log_generation_cost(genai_model_table, genai_state, logger, /):
     assert "Total:" in log_message
     assert "Cumulative:" in log_message
 
-    # Test with unknown model
+    # Test with unknown model - now raises ValueError
     logger.reset_mock()
-    new_state = log_generation_cost(
-        usage=usage,
-        model="unknown-model",
-        genai_model_table=table,
-        genai_state=state,
-        logger=logger,
-    )
 
-    # State should be unchanged
-    assert new_state == state
+    with pytest.raises(ValueError) as exc_info:
+        log_generation_cost(
+            usage=usage,
+            model="unknown-model",
+            genai_model_table=table,
+            genai_state=state,
+            logger=logger,
+        )
 
-    # Warning should be logged
-    logger.warning.assert_called_once()
-    warning_message = logger.warning.call_args[0][0]
-    assert "No pricing information" in warning_message
-    assert "unknown-model" in warning_message
+    assert "No pricing information available" in str(exc_info.value)
+    assert "unknown-model" in str(exc_info.value)
+
+    # Error should be logged before raising
+    logger.error.assert_called_once()
+    error_message = logger.error.call_args[0][0]
+    assert "No pricing information" in error_message
+    assert "unknown-model" in error_message
 
 
 @injected_pytest(get_test_di())
@@ -233,25 +261,27 @@ def test_log_generation_cost_periodic_breakdown(
 ):
     """Test that detailed breakdown is logged every 10 requests."""
     logger = Mock()
+    logger.info = Mock()
     table = genai_model_table
     state = genai_state
 
     usage = {
-        "text_input_chars": 100,
-        "text_output_chars": 200,
-        "images_input": 0,
-        "images_output": 1,
+        "text_input_tokens": 25,  # ~100 chars / 4
+        "text_output_tokens": 50,  # ~200 chars / 4
+        "image_input_tokens": 0,
+        "image_output_tokens": 1290,
     }
 
     # Make 10 requests
     for i in range(10):
-        state = log_generation_cost(
+        returned_state = log_generation_cost(
             usage=usage,
             model="gemini-2.5-flash-image-preview",
             genai_model_table=table,
             genai_state=state,
             logger=logger,
         )
+        assert returned_state is state  # Should return same mutated object
 
     # Check that breakdown was logged on the 10th request
     calls = logger.info.call_args_list

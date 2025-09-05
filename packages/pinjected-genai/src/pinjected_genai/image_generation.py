@@ -1,16 +1,76 @@
 import base64
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Optional, Protocol
+from typing import List, Optional, Protocol, Dict
 
 from google import genai
 from google.genai import types
+from google.genai.types import MediaModality, GenerateContentResponseUsageMetadata
 from loguru import logger
 from PIL import Image
 
 from pinjected import injected
 
-from .genai_pricing import GenAIModelTable, log_generation_cost
+from .genai_pricing import GenAIModelTable, GenAIState, log_generation_cost
+
+
+def extract_modality_specific_tokens(
+    usage_metadata: GenerateContentResponseUsageMetadata,
+) -> Dict[str, int]:
+    """Extract modality-specific token counts from usage metadata.
+
+    Args:
+        usage_metadata: The GenerateContentResponseUsageMetadata from Gen AI API
+
+    Returns:
+        Dict with keys: text_input_tokens, text_output_tokens, image_input_tokens, image_output_tokens
+    """
+    result = {
+        "text_input_tokens": 0,
+        "text_output_tokens": 0,
+        "image_input_tokens": 0,
+        "image_output_tokens": 0,
+    }
+
+    # Process input token details
+    if usage_metadata.prompt_tokens_details:
+        for detail in usage_metadata.prompt_tokens_details:
+            if detail.modality == MediaModality.TEXT:
+                result["text_input_tokens"] += detail.token_count
+            elif detail.modality == MediaModality.IMAGE:
+                result["image_input_tokens"] += detail.token_count
+
+    # Process output token details
+    if usage_metadata.candidates_tokens_details:
+        for detail in usage_metadata.candidates_tokens_details:
+            if detail.modality == MediaModality.TEXT:
+                result["text_output_tokens"] += detail.token_count
+            elif detail.modality == MediaModality.IMAGE:
+                result["image_output_tokens"] += detail.token_count
+
+    return result
+
+
+def extract_token_counts_from_usage_metadata(usage_metadata) -> Dict[str, int]:
+    """Extract modality-specific token counts from usage_metadata.
+
+    Returns a dict with keys:
+    - text_input_tokens
+    - text_output_tokens
+    - image_input_tokens
+    - image_output_tokens
+
+    Raises:
+        ValueError: If usage_metadata is None or invalid format
+    """
+    if usage_metadata is None:
+        raise ValueError(
+            "usage_metadata is None - API did not return token usage information"
+        )
+
+    # If it's already the right type, use it directly
+    assert isinstance(usage_metadata, GenerateContentResponseUsageMetadata)
+    return extract_modality_specific_tokens(usage_metadata)
 
 
 @dataclass
@@ -50,7 +110,7 @@ async def a_generate_image__genai(
     genai_client: genai.Client,
     logger: logger,
     genai_model_table: GenAIModelTable,
-    genai_state: dict,
+    genai_state: GenAIState,  # noqa: PINJ056
     /,
     prompt: str,
     model: str,
@@ -107,16 +167,19 @@ async def a_generate_image__genai(
         logger.info("Successfully generated image")
 
         # Calculate and log costs
-        # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
-        # For images, we use an estimate of ~1290 tokens per image until API provides actual counts
-        # This is based on typical image token usage in multimodal models
-        usage = {
-            "text_input_chars": len(prompt),
-            "text_output_chars": len(combined_text) if combined_text else 0,
-            # Estimate image tokens since API doesn't provide actual counts yet
-            # Using ~1290 tokens as a reasonable estimate for a generated image
-            "image_output_tokens": 1290 if generated_image else 0,
-        }
+        # Extract actual token counts from API response
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            # Use helper to extract modality-specific token counts
+            usage = extract_token_counts_from_usage_metadata(response.usage_metadata)
+            logger.debug(
+                f"Using actual token counts from API: text_in={usage['text_input_tokens']}, text_out={usage['text_output_tokens']}, image_in={usage['image_input_tokens']}, image_out={usage['image_output_tokens']}"
+            )
+        else:
+            error_msg = (
+                "API did not provide usage_metadata - cannot determine token counts"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Log the cost (state update happens within the DI framework)
         log_generation_cost(
@@ -150,7 +213,7 @@ async def a_edit_image__genai(
     genai_client: genai.Client,
     logger: logger,
     genai_model_table: GenAIModelTable,
-    genai_state: dict,
+    genai_state: GenAIState,  # noqa: PINJ056
     /,
     input_images: List[Image.Image],
     prompt: str,
@@ -227,19 +290,12 @@ async def a_edit_image__genai(
         logger.info("Successfully edited image")
 
         # Calculate and log costs
-        # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
-        # For images, we use an estimate of ~1290 tokens per image until API provides actual counts
-        # This is based on typical image token usage in multimodal models
-        usage = {
-            "text_input_chars": len(prompt),
-            "text_output_chars": len(combined_text) if combined_text else 0,
-            # Estimate image tokens since API doesn't provide actual counts yet
-            # Using ~1290 tokens as a reasonable estimate per image
-            "image_input_tokens": len(input_images) * 1290,  # Estimate for input images
-            "image_output_tokens": 1290
-            if generated_image
-            else 0,  # Estimate for output image
-        }
+        # Extract actual token counts from API response
+        # Use helper to extract modality-specific token counts
+        usage = extract_token_counts_from_usage_metadata(response.usage_metadata)
+        logger.debug(
+            f"Using actual token counts from API: text_in={usage['text_input_tokens']}, text_out={usage['text_output_tokens']}, image_in={usage['image_input_tokens']}, image_out={usage['image_output_tokens']}"
+        )
 
         # Log the cost (state update happens within the DI framework)
         log_generation_cost(
@@ -273,7 +329,7 @@ async def a_describe_image__genai(
     genai_client: genai.Client,
     logger: logger,
     genai_model_table: GenAIModelTable,
-    genai_state: dict,
+    genai_state: GenAIState,  # noqa: PINJ056
     /,
     image_path: str,
     prompt: Optional[str] = None,
@@ -319,18 +375,27 @@ async def a_describe_image__genai(
 
             # Calculate and log costs
             text_prompt = prompt if prompt else "Describe this image in detail."
-            # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
-            # For images, we use an estimate of ~1290 tokens per image until API provides actual counts
-            usage = {
-                "text_input_chars": len(text_prompt),
-                "text_output_chars": len(response.text),
-                # Estimate image tokens since API doesn't provide actual counts yet
-                # Using ~1290 tokens as a reasonable estimate for the input image
-                "image_input_tokens": 1290,  # Estimate for the input image being described
-                "image_output_tokens": 0,  # No images generated
-            }
+            # Extract actual token counts from API response
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                logger.debug(
+                    f"Raw usage_metadata type: {type(response.usage_metadata)}"
+                )
+                logger.debug(f"Raw usage_metadata: {response.usage_metadata}")
+                # Use helper to extract modality-specific token counts
+                usage = extract_token_counts_from_usage_metadata(
+                    response.usage_metadata
+                )
+                logger.debug(
+                    f"Using actual token counts from API: text_in={usage['text_input_tokens']}, text_out={usage['text_output_tokens']}, image_in={usage['image_input_tokens']}, image_out={usage['image_output_tokens']}"
+                )
+            else:
+                error_msg = (
+                    "API did not provide usage_metadata - cannot determine token counts"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
-            # Log the cost (state update happens within the DI framework)
+            # Log the cost (returns updated state but doesn't mutate)
             log_generation_cost(
                 usage=usage,
                 model=model,
@@ -341,8 +406,9 @@ async def a_describe_image__genai(
 
             return response.text
         else:
-            logger.warning("No description generated for image")
-            return ""
+            error_msg = f"No description generated for image: {image_path}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     except Exception as e:
         logger.error(f"Failed to describe image: {e}")
