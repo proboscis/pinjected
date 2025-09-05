@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import List, Optional, Protocol, overload
+from typing import List, Optional, Protocol, overload, Dict
 
+from google.genai.types import GenerateContentResponseUsageMetadata, MediaModality
 from PIL import Image
 
 from pinjected import IProxy
@@ -61,3 +62,24 @@ async def a_edit_image__genai(
 async def a_describe_image__genai(
     image_path: str, prompt: Optional[str] = ..., model: str = ...
 ) -> IProxy[str]: ...
+
+# Additional symbols:
+def extract_token_counts_from_usage_metadata(usage_metadata) -> Dict[str, int]: ...
+
+class ModalityTokenCount:
+    modality: MediaModality
+    token_count: int
+
+class UsageMetadata:
+    prompt_token_count: Optional[int]
+    candidates_token_count: Optional[int]
+    total_token_count: Optional[int]
+    prompt_tokens_details: Optional[List[ModalityTokenCount]]
+    candidates_tokens_details: Optional[List[ModalityTokenCount]]
+    cached_content_token_count: Optional[int]
+    def extract_modality_specific_tokens(self) -> Dict[str, int]: ...
+
+# Additional symbols:
+def extract_modality_specific_tokens(
+    usage_metadata: GenerateContentResponseUsageMetadata,
+) -> Dict[str, int]: ...

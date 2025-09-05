@@ -80,9 +80,3 @@ def genai_client(
         f"in {genai_auth_client.location}"
     )
     return client
-
-
-@instance
-def genai_model_name() -> str:
-    """Default model name for image generation (nano-banana)."""
-    return "gemini-2.5-flash-image-preview"

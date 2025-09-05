@@ -61,9 +61,3 @@ def test_genai_client(genai_client, /):
     # Since we're patching genai.Client, the created instance would be our mock
     # But the real code creates a real genai.Client, so just check it's not None
     # In integration tests, we'd check it's actually working
-
-
-@injected_pytest(design())
-def test_genai_model_name_default(genai_model_name, /):
-    """Test default model name for nano-banana."""
-    assert genai_model_name == "gemini-2.5-flash-image-preview"
