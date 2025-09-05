@@ -108,13 +108,14 @@ async def a_generate_image__genai(
 
         # Calculate and log costs
         # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
-        # For image generation, we know 1 image generated but not exact token count
+        # For images, we use an estimate of ~1290 tokens per image until API provides actual counts
+        # This is based on typical image token usage in multimodal models
         usage = {
             "text_input_chars": len(prompt),
             "text_output_chars": len(combined_text) if combined_text else 0,
-            # We don't know the actual token counts for images,
-            # the API would need to provide this
-            "image_output_tokens": 0,  # Would need API to provide actual tokens
+            # Estimate image tokens since API doesn't provide actual counts yet
+            # Using ~1290 tokens as a reasonable estimate for a generated image
+            "image_output_tokens": 1290 if generated_image else 0,
         }
 
         # Log the cost (state update happens within the DI framework)
@@ -226,13 +227,18 @@ async def a_edit_image__genai(
         logger.info("Successfully edited image")
 
         # Calculate and log costs
-        # Note: Gen AI API doesn't provide token counts, so we estimate from chars
+        # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
+        # For images, we use an estimate of ~1290 tokens per image until API provides actual counts
+        # This is based on typical image token usage in multimodal models
         usage = {
             "text_input_chars": len(prompt),
             "text_output_chars": len(combined_text) if combined_text else 0,
-            # We don't know the actual token counts for images
-            "image_input_tokens": 0,  # Would need API to provide actual tokens
-            "image_output_tokens": 0,  # Would need API to provide actual tokens
+            # Estimate image tokens since API doesn't provide actual counts yet
+            # Using ~1290 tokens as a reasonable estimate per image
+            "image_input_tokens": len(input_images) * 1290,  # Estimate for input images
+            "image_output_tokens": 1290
+            if generated_image
+            else 0,  # Estimate for output image
         }
 
         # Log the cost (state update happens within the DI framework)
@@ -313,11 +319,14 @@ async def a_describe_image__genai(
 
             # Calculate and log costs
             text_prompt = prompt if prompt else "Describe this image in detail."
+            # Note: Gen AI API doesn't provide token counts, so we estimate from chars/images
+            # For images, we use an estimate of ~1290 tokens per image until API provides actual counts
             usage = {
                 "text_input_chars": len(text_prompt),
                 "text_output_chars": len(response.text),
-                # We don't know the actual token counts for input images
-                "image_input_tokens": 0,  # Would need API to provide actual tokens
+                # Estimate image tokens since API doesn't provide actual counts yet
+                # Using ~1290 tokens as a reasonable estimate for the input image
+                "image_input_tokens": 1290,  # Estimate for the input image being described
                 "image_output_tokens": 0,  # No images generated
             }
 
