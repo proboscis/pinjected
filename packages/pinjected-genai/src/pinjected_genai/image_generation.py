@@ -102,6 +102,7 @@ class AGenerateImageProtocol(Protocol):
         self,
         prompt: str,
         model: str,
+        temperature: float = 0.9,
     ) -> GenerationResult: ...
 
 
@@ -114,6 +115,7 @@ async def a_generate_image__genai(
     /,
     prompt: str,
     model: str,
+    temperature: float = 0.9,
 ) -> GenerationResult:
     """Generate an image using Google Gen AI SDK with nano-banana model."""
 
@@ -122,7 +124,7 @@ async def a_generate_image__genai(
     try:
         # Configure generation with image output
         config = types.GenerateContentConfig(
-            temperature=0.9,
+            temperature=temperature,
             max_output_tokens=8192,
             response_modalities=["TEXT", "IMAGE"],  # Enable image generation
         )
@@ -205,6 +207,7 @@ class AEditImageProtocol(Protocol):
         input_images: List[Image.Image],
         prompt: str,
         model: str,
+        temperature: float = 0.9,
     ) -> GenerationResult: ...
 
 
@@ -218,6 +221,7 @@ async def a_edit_image__genai(
     input_images: List[Image.Image],
     prompt: str,
     model: str,
+    temperature: float = 0.9,
 ) -> GenerationResult:
     """Edit/generate an image based on input images (can be empty or multiple) using Google Gen AI SDK."""
 
@@ -247,7 +251,7 @@ async def a_edit_image__genai(
 
         # Configure generation with image output
         config = types.GenerateContentConfig(
-            temperature=0.9,
+            temperature=temperature,
             max_output_tokens=8192,
             response_modalities=["TEXT", "IMAGE"],  # Enable image generation
         )
@@ -321,6 +325,7 @@ class ADescribeImageProtocol(Protocol):
         image_path: str,
         prompt: Optional[str] = None,
         model: str = "gemini-2.5-flash",
+        temperature: float = 0.7,
     ) -> str: ...
 
 
@@ -334,6 +339,7 @@ async def a_describe_image__genai(
     image_path: str,
     prompt: Optional[str] = None,
     model: str = "gemini-2.5-flash",
+    temperature: float = 0.7,
 ) -> str:
     """Describe an image using Google Gen AI SDK."""
     logger.info(f"Describing image: {image_path}")
@@ -361,7 +367,7 @@ async def a_describe_image__genai(
 
         # Configure generation
         config = types.GenerateContentConfig(
-            temperature=0.7,
+            temperature=temperature,
             max_output_tokens=2048,
         )
 

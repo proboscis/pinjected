@@ -27,6 +27,7 @@ class AGenerateImageProtocol(Protocol):
         self,
         prompt: str,
         model: str,
+        temperature: float = 0.9,
     ) -> GenerationResult: ...
 
 class AEditImageProtocol(Protocol):
@@ -35,6 +36,7 @@ class AEditImageProtocol(Protocol):
         input_images: List[Image.Image],
         prompt: str,
         model: str,
+        temperature: float = 0.9,
     ) -> GenerationResult: ...
 
 class ADescribeImageProtocol(Protocol):
@@ -43,6 +45,7 @@ class ADescribeImageProtocol(Protocol):
         image_path: str,
         prompt: Optional[str] = None,
         model: str = "gemini-2.5-flash",
+        temperature: float = 0.7,
     ) -> str: ...
 
 # Gen AI SDK functions
@@ -52,15 +55,18 @@ a_describe_image__genai: ADescribeImageProtocol
 
 @overload
 async def a_generate_image__genai(
-    prompt: str, model: str
+    prompt: str, model: str, temperature: float = 0.9
 ) -> IProxy[GenerationResult]: ...
 @overload
 async def a_edit_image__genai(
-    input_images: List[Image.Image], prompt: str, model: str
+    input_images: List[Image.Image], prompt: str, model: str, temperature: float = 0.9
 ) -> IProxy[GenerationResult]: ...
 @overload
 async def a_describe_image__genai(
-    image_path: str, prompt: Optional[str] = ..., model: str = ...
+    image_path: str,
+    prompt: Optional[str] = ...,
+    model: str = ...,
+    temperature: float = ...,
 ) -> IProxy[str]: ...
 
 # Additional symbols:
