@@ -583,7 +583,7 @@ class CustomKeyHasher:
             f"CustomKeyHasher.calc_cache_key called with signature: {self.signature}"
         )
         logger.debug(
-            f"Added key: {added_key}, actual args: {actual_args}, kwargs: {kwargs}"
+            f"Added key: {str(added_key)[:100]}..., actual args: {str(actual_args)[:100]}..., kwargs: {str(kwargs)[:100]}..."
         )
         logger.debug(f"Key hashers: {self.key_hasher}")
 
@@ -636,7 +636,7 @@ class CustomKeyHasher:
         # Create the final cache key including the added_key
         final_key = {"added_key": added_key, "params": frozendict(encoded_dict)}
 
-        logger.debug(f"Final cache key structure: {final_key}")
+        logger.debug(f"Final cache key structure: {str(final_key)[:100]}")
 
         return cloudpickle.dumps(frozendict(final_key))
 

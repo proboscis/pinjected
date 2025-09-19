@@ -350,6 +350,7 @@ class AEditImageProtocol(Protocol):
         input_images: List[Image.Image],
         prompt: str,
         model: str,
+        temperature: float = 0.9,
     ) -> GenerationResult: ...
 
 
@@ -363,6 +364,7 @@ async def a_edit_image__genai(
     input_images: List[Image.Image],
     prompt: str,
     model: str,
+    temperature: float = 0.9,
 ) -> GenerationResult:
     """Edit/generate an image based on input images (can be empty or multiple) using Google Gen AI SDK."""
 
@@ -408,7 +410,7 @@ async def a_edit_image__genai(
 
         # Configure generation with image output
         config = types.GenerateContentConfig(
-            temperature=0.9,
+            temperature=temperature,
             max_output_tokens=8192,
             response_modalities=["TEXT", "IMAGE"],  # Enable image generation
         )
