@@ -235,17 +235,34 @@ async def a_edit_image__genai(
         for idx, img in enumerate(input_images):
             logger.info(f"Processing input image {idx + 1}")
 
-            # Convert PIL Image to bytes
+            image_format = (img.format or "PNG").upper()
+            processed_img = img
+            original_width, original_height = img.size
+            max_dimension = max(original_width, original_height)
+
+            if max_dimension > 1024:
+                scale_ratio = 1024 / max_dimension
+                new_width = max(1, int(original_width * scale_ratio))
+                new_height = max(1, int(original_height * scale_ratio))
+                processed_img = img.resize((new_width, new_height), Image.LANCZOS)
+                logger.warning(
+                    "Scaled input image %s from %sx%s to %sx%s to satisfy 1024px max dimension",
+                    idx + 1,
+                    original_width,
+                    original_height,
+                    new_width,
+                    new_height,
+                )
+
+            # Convert PIL Image to bytes after optional scaling
             img_byte_arr = BytesIO()
-            img.save(img_byte_arr, format=img.format if img.format else "PNG")
+            processed_img.save(img_byte_arr, format=image_format)
             image_bytes = img_byte_arr.getvalue()
 
             contents.append(
                 types.Part.from_bytes(
                     data=image_bytes,
-                    mime_type=f"image/{img.format.lower()}"
-                    if img.format
-                    else "image/png",
+                    mime_type=f"image/{image_format.lower()}",
                 )
             )
 
