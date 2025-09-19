@@ -437,6 +437,18 @@ async def a_edit_image__genai(
                             image_bytes = part.inline_data.data
                             mime_type = part.inline_data.mime_type
                             if image_bytes and not generated_image:  # Take first image
+                                if first_transform:
+                                    with Image.open(BytesIO(image_bytes)) as raw_image:
+                                        raw_width, raw_height = raw_image.size
+                                    if (
+                                        raw_width != first_transform.target_dim
+                                        or raw_height != first_transform.target_dim
+                                    ):
+                                        raise ValueError(
+                                            "GenAI response image dimensions"
+                                            f" {raw_width}x{raw_height} do not match"
+                                            f" expected {first_transform.target_dim}x{first_transform.target_dim}"
+                                        )
                                 processed_bytes = image_bytes
                                 if first_transform:
                                     processed_bytes = first_transform.restore(
