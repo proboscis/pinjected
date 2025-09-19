@@ -1,10 +1,12 @@
 import tempfile
+from io import BytesIO
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from google.auth.credentials import Credentials
 from google import genai
+from google.genai.types import GenerateContentResponseUsageMetadata
 from pinjected_genai.image_generation import (
     GeneratedImage,
     GenerationResult,
@@ -12,9 +14,16 @@ from pinjected_genai.image_generation import (
 
 from pinjected import design
 from pinjected.test import injected_pytest
+from PIL import Image as PILImage
 
 
 # Mock response data
+def _dummy_png_bytes(size=(1024, 1024), color=(255, 0, 0)) -> bytes:
+    buffer = BytesIO()
+    PILImage.new("RGB", size, color=color).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def create_mock_image_response(text_parts=None, image_count=1):
     """Create a mock response with text and/or images."""
     parts = []
@@ -31,7 +40,9 @@ def create_mock_image_response(text_parts=None, image_count=1):
         part.text = None
         part.inline_data = Mock()
         part.inline_data.mime_type = "image/png"
-        part.inline_data.data = b"fake_image_data_%d" % i
+        part.inline_data.data = _dummy_png_bytes(
+            color=(10 * i % 255, 20 * i % 255, 30 * i % 255)
+        )
         parts.append(part)
 
     # Create mock content
@@ -46,6 +57,12 @@ def create_mock_image_response(text_parts=None, image_count=1):
     response = Mock()
     response.candidates = [candidate]
     response.text = "\n".join(text_parts) if text_parts else None
+    response.usage_metadata = GenerateContentResponseUsageMetadata(
+        prompt_token_count=0,
+        candidates_token_count=0,
+        prompt_tokens_details=[],
+        candidates_tokens_details=[],
+    )
 
     return response
 
@@ -114,10 +131,14 @@ async def test_a_generate_image_single(
 
     # Verify result structure
     assert isinstance(result, GenerationResult)
-    assert result.image.image_data == b"fake_image_data_0"
+    assert len(result.image.image_data) > 0
     assert result.image.mime_type == "image/png"
     assert result.image.prompt_used == "A cute baby turtle"
     assert result.model_used == "gemini-2.5-flash-image-preview"
+
+    generated_image = result.image.to_pil_image()
+    assert generated_image.size == (1024, 1024)
+    generated_image.close()
 
 
 @injected_pytest(get_test_di())
@@ -140,7 +161,7 @@ async def test_a_generate_image_with_text(
     # Verify result contains both text and image
     assert isinstance(result, GenerationResult)
     assert result.text == "Here's your image:\nA beautiful mountain landscape"
-    assert result.image.image_data == b"fake_image_data_0"
+    assert len(result.image.image_data) > 0
 
 
 @injected_pytest(get_test_di())
@@ -196,6 +217,12 @@ async def test_a_describe_image(a_describe_image__genai, genai_client, logger, /
         # Setup mock response
         mock_response = Mock()
         mock_response.text = "This is a test image with geometric shapes"
+        mock_response.usage_metadata = GenerateContentResponseUsageMetadata(
+            prompt_token_count=0,
+            candidates_token_count=0,
+            prompt_tokens_details=[],
+            candidates_tokens_details=[],
+        )
         genai_client.aio.models.generate_content.return_value = mock_response
 
         # Call the describe function
@@ -234,6 +261,12 @@ async def test_a_describe_image_no_prompt(
         # Setup mock response
         mock_response = Mock()
         mock_response.text = "A simple geometric pattern"
+        mock_response.usage_metadata = GenerateContentResponseUsageMetadata(
+            prompt_token_count=0,
+            candidates_token_count=0,
+            prompt_tokens_details=[],
+            candidates_tokens_details=[],
+        )
         genai_client.aio.models.generate_content.return_value = mock_response
 
         # Call the describe function without custom prompt
@@ -301,10 +334,14 @@ async def test_a_edit_image(a_edit_image__genai, genai_client, logger, /):
 
     # Verify result
     assert isinstance(result, GenerationResult)
-    assert result.image.image_data == b"fake_image_data_0"
+    assert len(result.image.image_data) > 0
     assert result.image.mime_type == "image/png"
     assert "Edit:" in result.image.prompt_used
     assert result.model_used == "gemini-2.5-flash-image-preview"
+
+    edited_image = result.image.to_pil_image()
+    assert edited_image.size == img1.size
+    edited_image.close()
 
     # Test with empty input images list
     result = await a_edit_image__genai(
@@ -315,7 +352,11 @@ async def test_a_edit_image(a_edit_image__genai, genai_client, logger, /):
 
     # Verify result
     assert isinstance(result, GenerationResult)
-    assert result.image.image_data == b"fake_image_data_0"
+    assert len(result.image.image_data) > 0
+
+    regenerated_image = result.image.to_pil_image()
+    assert regenerated_image.size == (1024, 1024)
+    regenerated_image.close()
 
 
 @injected_pytest(get_test_di())

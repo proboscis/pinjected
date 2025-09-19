@@ -1,17 +1,162 @@
 import base64
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Optional, Protocol, Dict
+from typing import Dict, List, Optional, Protocol, Tuple
 
 from google import genai
 from google.genai import types
 from google.genai.types import MediaModality, GenerateContentResponseUsageMetadata
 from loguru import logger
 from PIL import Image
-
 from pinjected import injected
 
 from .genai_pricing import GenAIModelTable, GenAIState, log_generation_cost
+
+
+TARGET_EDIT_IMAGE_DIMENSION = 1024
+
+
+@dataclass
+class SquarePadTransform:
+    """Encapsulates how an image was resized and padded to fit a square canvas."""
+
+    original_size: Tuple[int, int]
+    scaled_size: Tuple[int, int]
+    offset: Tuple[int, int]
+    processing_mode: str
+    image_format: str
+    target_dim: int = TARGET_EDIT_IMAGE_DIMENSION
+
+    @classmethod
+    def prepare(
+        cls,
+        image: Image.Image,
+        *,
+        target_dim: int,
+        logger,
+        image_index: Optional[int] = None,
+    ) -> Tuple[Image.Image, "SquarePadTransform"]:
+        """Return a padded image plus the transform metadata used to produce it."""
+
+        original_width, original_height = image.size
+        scale_ratio = target_dim / max(original_width, original_height)
+        scaled_width = max(1, round(original_width * scale_ratio))
+        scaled_height = max(1, round(original_height * scale_ratio))
+        offset_x = max(0, (target_dim - scaled_width) // 2)
+        offset_y = max(0, (target_dim - scaled_height) // 2)
+
+        processing_mode, pad_color = cls._processing_mode_and_pad_color(image)
+        working_image = image.convert(processing_mode)
+        resized_image = working_image.resize(
+            (scaled_width, scaled_height), Image.LANCZOS
+        )
+        padded_image = Image.new(processing_mode, (target_dim, target_dim), pad_color)
+        padded_image.paste(resized_image, (offset_x, offset_y))
+
+        if (scaled_width, scaled_height) != (target_dim, target_dim):
+            image_number = image_index + 1 if image_index is not None else "?"
+            logger.warning(
+                "Scaled and padded input image %s from %sx%s to %sx%s with offsets (%s, %s)",
+                image_number,
+                original_width,
+                original_height,
+                scaled_width,
+                scaled_height,
+                offset_x,
+                offset_y,
+            )
+
+        transform = cls(
+            original_size=(original_width, original_height),
+            scaled_size=(scaled_width, scaled_height),
+            offset=(offset_x, offset_y),
+            processing_mode=processing_mode,
+            image_format=(image.format or "PNG").upper(),
+            target_dim=target_dim,
+        )
+        return padded_image, transform
+
+    @staticmethod
+    def _processing_mode_and_pad_color(image: Image.Image) -> Tuple[str, object]:
+        if image.mode in {"RGBA", "LA"} or (
+            image.mode == "P" and "transparency" in image.info
+        ):
+            return "RGBA", (0, 0, 0, 0)
+        if image.mode == "L":
+            return "L", 0
+        return "RGB", (0, 0, 0)
+
+    @property
+    def mime_type(self) -> str:
+        return f"image/{self.image_format.lower()}"
+
+    def to_bytes(self, padded_image: Image.Image) -> bytes:
+        save_image = padded_image
+        if self.image_format in {"JPEG", "JPG"} and save_image.mode == "RGBA":
+            save_image = save_image.convert("RGB")
+        buffer = BytesIO()
+        save_image.save(buffer, format=self.image_format)
+        return buffer.getvalue()
+
+    @staticmethod
+    def _format_from_mime_type(mime_type: Optional[str]) -> Optional[str]:
+        if mime_type and "/" in mime_type:
+            return mime_type.split("/")[-1].upper()
+        return None
+
+    def restore(self, image_bytes: bytes, mime_type: Optional[str], logger) -> bytes:
+        """Crop and resize the generated image back to the original dimensions."""
+
+        try:
+            with Image.open(BytesIO(image_bytes)) as edited_image:
+                width, height = edited_image.size
+                if width == 0 or height == 0:
+                    logger.warning(
+                        "Generated image had invalid dimensions: %sx%s", width, height
+                    )
+                    return image_bytes
+
+                offset_x, offset_y = self.offset
+                scaled_width, scaled_height = self.scaled_size
+
+                left = min(max(offset_x, 0), width)
+                top = min(max(offset_y, 0), height)
+                right = min(width, left + scaled_width)
+                bottom = min(height, top + scaled_height)
+
+                if right <= left or bottom <= top:
+                    logger.warning(
+                        "Skipping post-processing; computed crop box (%s, %s, %s, %s) is invalid for size %sx%s",
+                        left,
+                        top,
+                        right,
+                        bottom,
+                        width,
+                        height,
+                    )
+                    return image_bytes
+
+                cropped = edited_image.crop((left, top, right, bottom))
+                resized = cropped.resize(self.original_size, Image.LANCZOS)
+
+                target_format = (
+                    self._format_from_mime_type(mime_type) or self.image_format
+                )
+                output_image = resized
+                if target_format in {"JPEG", "JPG"} and output_image.mode in {
+                    "RGBA",
+                    "LA",
+                }:
+                    output_image = output_image.convert("RGB")
+
+                buffer = BytesIO()
+                output_image.save(buffer, format=target_format)
+                return buffer.getvalue()
+
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Failed to post-process generated image: %s", exc)
+
+        return image_bytes
 
 
 def extract_modality_specific_tokens(
@@ -102,7 +247,6 @@ class AGenerateImageProtocol(Protocol):
         self,
         prompt: str,
         model: str,
-        temperature: float = 0.9,
     ) -> GenerationResult: ...
 
 
@@ -115,7 +259,6 @@ async def a_generate_image__genai(
     /,
     prompt: str,
     model: str,
-    temperature: float = 0.9,
 ) -> GenerationResult:
     """Generate an image using Google Gen AI SDK with nano-banana model."""
 
@@ -124,7 +267,7 @@ async def a_generate_image__genai(
     try:
         # Configure generation with image output
         config = types.GenerateContentConfig(
-            temperature=temperature,
+            temperature=0.9,
             max_output_tokens=8192,
             response_modalities=["TEXT", "IMAGE"],  # Enable image generation
         )
@@ -230,39 +373,38 @@ async def a_edit_image__genai(
     try:
         # Build contents list with prompt and any input images
         contents = [prompt]
+        first_transform: Optional[SquarePadTransform] = None
 
         # Add each input image to the contents
         for idx, img in enumerate(input_images):
             logger.info(f"Processing input image {idx + 1}")
 
-            image_format = (img.format or "PNG").upper()
-            processed_img = img
             original_width, original_height = img.size
-            max_dimension = max(original_width, original_height)
 
-            if max_dimension > 1024:
-                scale_ratio = 1024 / max_dimension
-                new_width = max(1, int(original_width * scale_ratio))
-                new_height = max(1, int(original_height * scale_ratio))
-                processed_img = img.resize((new_width, new_height), Image.LANCZOS)
+            if original_width == 0 or original_height == 0:
                 logger.warning(
-                    "Scaled input image %s from %sx%s to %sx%s to satisfy 1024px max dimension",
+                    "Skipping input image %s due to zero dimension: %sx%s",
                     idx + 1,
                     original_width,
                     original_height,
-                    new_width,
-                    new_height,
                 )
+                continue
 
-            # Convert PIL Image to bytes after optional scaling
-            img_byte_arr = BytesIO()
-            processed_img.save(img_byte_arr, format=image_format)
-            image_bytes = img_byte_arr.getvalue()
+            padded_image, transform = SquarePadTransform.prepare(
+                img,
+                target_dim=TARGET_EDIT_IMAGE_DIMENSION,
+                logger=logger,
+                image_index=idx,
+            )
+            if first_transform is None:
+                first_transform = transform
+
+            image_bytes = transform.to_bytes(padded_image)
 
             contents.append(
                 types.Part.from_bytes(
                     data=image_bytes,
-                    mime_type=f"image/{image_format.lower()}",
+                    mime_type=transform.mime_type,
                 )
             )
 
@@ -295,8 +437,15 @@ async def a_edit_image__genai(
                             image_bytes = part.inline_data.data
                             mime_type = part.inline_data.mime_type
                             if image_bytes and not generated_image:  # Take first image
+                                processed_bytes = image_bytes
+                                if first_transform:
+                                    processed_bytes = first_transform.restore(
+                                        image_bytes=image_bytes,
+                                        mime_type=mime_type,
+                                        logger=logger,
+                                    )
                                 generated_image = GeneratedImage(
-                                    image_data=image_bytes,
+                                    image_data=processed_bytes,
                                     mime_type=mime_type or "image/png",
                                     prompt_used=f"Edit: {prompt}",
                                 )
@@ -342,7 +491,6 @@ class ADescribeImageProtocol(Protocol):
         image_path: str,
         prompt: Optional[str] = None,
         model: str = "gemini-2.5-flash",
-        temperature: float = 0.7,
     ) -> str: ...
 
 
@@ -356,7 +504,6 @@ async def a_describe_image__genai(
     image_path: str,
     prompt: Optional[str] = None,
     model: str = "gemini-2.5-flash",
-    temperature: float = 0.7,
 ) -> str:
     """Describe an image using Google Gen AI SDK."""
     logger.info(f"Describing image: {image_path}")
@@ -384,7 +531,7 @@ async def a_describe_image__genai(
 
         # Configure generation
         config = types.GenerateContentConfig(
-            temperature=temperature,
+            temperature=0.7,
             max_output_tokens=2048,
         )
 
