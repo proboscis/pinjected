@@ -636,7 +636,7 @@ class CustomKeyHasher:
         # Create the final cache key including the added_key
         final_key = {"added_key": added_key, "params": frozendict(encoded_dict)}
 
-        logger.debug(f"Final cache key structure: {final_key}")
+        logger.debug(f"Final cache key structure: {str(final_key)[:100]}")
 
         return cloudpickle.dumps(frozendict(final_key))
 
