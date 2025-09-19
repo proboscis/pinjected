@@ -1,17 +1,99 @@
 import base64
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Optional, Protocol, Dict
+from typing import Dict, List, Optional, Protocol, Tuple
 
 from google import genai
 from google.genai import types
 from google.genai.types import MediaModality, GenerateContentResponseUsageMetadata
 from loguru import logger
 from PIL import Image
-
 from pinjected import injected
 
 from .genai_pricing import GenAIModelTable, GenAIState, log_generation_cost
+
+
+TARGET_EDIT_IMAGE_DIMENSION = 1024
+
+
+def _processing_mode_and_pad_color(image: Image.Image) -> Tuple[str, object]:
+    """Return a mode/pad color tuple suitable for resizing/padding operations."""
+
+    if image.mode in {"RGBA", "LA"} or (
+        image.mode == "P" and "transparency" in image.info
+    ):
+        return "RGBA", (0, 0, 0, 0)
+    if image.mode == "L":
+        return "L", 0
+    return "RGB", (0, 0, 0)
+
+
+@dataclass
+class ImageTransform:
+    original_size: Tuple[int, int]
+    scaled_size: Tuple[int, int]
+    offset: Tuple[int, int]
+
+
+def _format_from_mime_type(mime_type: Optional[str]) -> str:
+    if mime_type and "/" in mime_type:
+        return mime_type.split("/")[-1].upper()
+    return "PNG"
+
+
+def _restore_original_dimensions(
+    image_bytes: bytes,
+    mime_type: Optional[str],
+    transform: ImageTransform,
+    logger,
+) -> bytes:
+    """Crop and resize the generated image back to the original dimensions."""
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as edited_image:
+            width, height = edited_image.size
+            if width == 0 or height == 0:
+                logger.warning(
+                    "Generated image had invalid dimensions: %sx%s", width, height
+                )
+                return image_bytes
+
+            offset_x, offset_y = transform.offset
+            scaled_width, scaled_height = transform.scaled_size
+
+            left = min(max(offset_x, 0), width)
+            top = min(max(offset_y, 0), height)
+            right = min(width, left + scaled_width)
+            bottom = min(height, top + scaled_height)
+
+            if right <= left or bottom <= top:
+                logger.warning(
+                    "Skipping post-processing; computed crop box (%s, %s, %s, %s) is invalid for size %sx%s",
+                    left,
+                    top,
+                    right,
+                    bottom,
+                    width,
+                    height,
+                )
+                return image_bytes
+
+            cropped = edited_image.crop((left, top, right, bottom))
+            resized = cropped.resize(transform.original_size, Image.LANCZOS)
+
+            target_format = _format_from_mime_type(mime_type)
+            output_image = resized
+            if target_format in {"JPEG", "JPG"} and output_image.mode in {"RGBA", "LA"}:
+                output_image = output_image.convert("RGB")
+
+            buffer = BytesIO()
+            output_image.save(buffer, format=target_format)
+            return buffer.getvalue()
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning("Failed to post-process generated image: %s", exc)
+
+    return image_bytes
 
 
 def extract_modality_specific_tokens(
@@ -226,22 +308,78 @@ async def a_edit_image__genai(
     try:
         # Build contents list with prompt and any input images
         contents = [prompt]
+        first_transform: Optional[ImageTransform] = None
 
         # Add each input image to the contents
         for idx, img in enumerate(input_images):
             logger.info(f"Processing input image {idx + 1}")
 
-            # Convert PIL Image to bytes
+            image_format = (img.format or "PNG").upper()
+            original_width, original_height = img.size
+
+            if original_width == 0 or original_height == 0:
+                logger.warning(
+                    "Skipping input image %s due to zero dimension: %sx%s",
+                    idx + 1,
+                    original_width,
+                    original_height,
+                )
+                continue
+
+            scale_ratio = TARGET_EDIT_IMAGE_DIMENSION / max(
+                original_width, original_height
+            )
+            scaled_width = max(1, round(original_width * scale_ratio))
+            scaled_height = max(1, round(original_height * scale_ratio))
+            offset_x = max(0, (TARGET_EDIT_IMAGE_DIMENSION - scaled_width) // 2)
+            offset_y = max(0, (TARGET_EDIT_IMAGE_DIMENSION - scaled_height) // 2)
+
+            processing_mode, pad_color = _processing_mode_and_pad_color(img)
+            working_image = img.convert(processing_mode)
+            resized_image = working_image.resize(
+                (scaled_width, scaled_height), Image.LANCZOS
+            )
+            padded_image = Image.new(
+                processing_mode,
+                (TARGET_EDIT_IMAGE_DIMENSION, TARGET_EDIT_IMAGE_DIMENSION),
+                pad_color,
+            )
+            padded_image.paste(resized_image, (offset_x, offset_y))
+
+            if (
+                scaled_width != TARGET_EDIT_IMAGE_DIMENSION
+                or scaled_height != TARGET_EDIT_IMAGE_DIMENSION
+            ):
+                logger.warning(
+                    "Scaled and padded input image %s from %sx%s to %sx%s with offsets (%s, %s)",
+                    idx + 1,
+                    original_width,
+                    original_height,
+                    scaled_width,
+                    scaled_height,
+                    offset_x,
+                    offset_y,
+                )
+
+            transform = ImageTransform(
+                original_size=(original_width, original_height),
+                scaled_size=(scaled_width, scaled_height),
+                offset=(offset_x, offset_y),
+            )
+            if first_transform is None:
+                first_transform = transform
+
             img_byte_arr = BytesIO()
-            img.save(img_byte_arr, format=img.format if img.format else "PNG")
+            save_image = padded_image
+            if image_format in {"JPEG", "JPG"} and save_image.mode == "RGBA":
+                save_image = save_image.convert("RGB")
+            save_image.save(img_byte_arr, format=image_format)
             image_bytes = img_byte_arr.getvalue()
 
             contents.append(
                 types.Part.from_bytes(
                     data=image_bytes,
-                    mime_type=f"image/{img.format.lower()}"
-                    if img.format
-                    else "image/png",
+                    mime_type=f"image/{image_format.lower()}",
                 )
             )
 
@@ -274,8 +412,16 @@ async def a_edit_image__genai(
                             image_bytes = part.inline_data.data
                             mime_type = part.inline_data.mime_type
                             if image_bytes and not generated_image:  # Take first image
+                                processed_bytes = image_bytes
+                                if first_transform:
+                                    processed_bytes = _restore_original_dimensions(
+                                        image_bytes=image_bytes,
+                                        mime_type=mime_type,
+                                        transform=first_transform,
+                                        logger=logger,
+                                    )
                                 generated_image = GeneratedImage(
-                                    image_data=image_bytes,
+                                    image_data=processed_bytes,
                                     mime_type=mime_type or "image/png",
                                     prompt_used=f"Edit: {prompt}",
                                 )

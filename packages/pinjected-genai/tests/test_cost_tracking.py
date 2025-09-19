@@ -2,6 +2,7 @@
 
 import pytest
 from dataclasses import dataclass
+from io import BytesIO
 from unittest.mock import Mock
 from pinjected_genai.genai_pricing import (
     GenAIModelTable,
@@ -13,6 +14,8 @@ from pinjected_genai.genai_pricing import (
 from pinjected import design
 from pinjected.test import injected_pytest
 from loguru import logger
+from PIL import Image as PILImage
+from google.genai.types import GenerateContentResponseUsageMetadata
 
 
 @dataclass
@@ -299,6 +302,12 @@ def test_log_generation_cost_periodic_breakdown(
     assert breakdown_logged, "Detailed breakdown should be logged on 10th request"
 
 
+def _dummy_png_bytes(size=(1024, 1024), color=(0, 255, 0)) -> bytes:
+    buffer = BytesIO()
+    PILImage.new("RGB", size, color=color).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def create_mock_image_response(text_parts=None, image_count=1):
     """Create a mock response for image generation."""
     response = Mock()
@@ -322,11 +331,20 @@ def create_mock_image_response(text_parts=None, image_count=1):
             part = Mock()
             part.text = None
             part.inline_data = Mock()
-            part.inline_data.data = f"fake_image_data_{i}".encode()
+            part.inline_data.data = _dummy_png_bytes(
+                color=(10 * i % 255, 40 * i % 255, 70 * i % 255)
+            )
             part.inline_data.mime_type = "image/png"
             candidate.content.parts.append(part)
 
         response.candidates.append(candidate)
+
+    response.usage_metadata = GenerateContentResponseUsageMetadata(
+        prompt_token_count=0,
+        candidates_token_count=0,
+        prompt_tokens_details=[],
+        candidates_tokens_details=[],
+    )
 
     return response
 
