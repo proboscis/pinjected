@@ -1,4 +1,4 @@
-from typing import overload
+from typing import overload, Protocol
 from pydantic import BaseModel
 from pinjected import IProxy
 
@@ -21,13 +21,21 @@ a_cached_structured_llm__gemini_flash_2_0: IProxy[StructuredLLM]
 a_cached_structured_llm__deepseek_chat: IProxy[StructuredLLM]
 a_cached_structured_llm__gemini_flash_thinking_2_0: IProxy[StructuredLLM]
 a_cached_structured_llm__claude_sonnet_3_5: IProxy[StructuredLLM]
+a_cached_structured_llm__gpt4o_mini: IProxy[StructuredLLM]
 a_cached_sllm_gpt4o__openrouter: IProxy
 a_cached_sllm_gpt4o_mini__openrouter: IProxy
 test_cached_sllm_gpt4o_mini: IProxy
 test_cached_sllm_gpt4o: IProxy
 test_gemini_flash_2_0_structured: IProxy
 
-class StructuredLLM: ...
+class StructuredLLM(Protocol):
+    async def __call__(
+        self,
+        text: str,
+        images=...,
+        response_format: type[BaseModel] | None = ...,
+    ) -> BaseModel: ...
+
 class NoEndpointsFoundError: ...
 
 # Additional symbols:

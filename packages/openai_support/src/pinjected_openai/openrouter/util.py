@@ -281,6 +281,47 @@ def openrouter_timeout_sec() -> float:
     return 120
 
 
+@dataclass
+class BaseCallArguments:
+    prompt: str
+    model: str
+    max_tokens: int
+    temperature: float
+    images: list[PIL.Image.Image] | None
+    include_reasoning: bool
+    reasoning: dict | None
+    provider: dict | None
+    extra_kwargs: dict[str, Any]
+
+    def as_kwargs(self, *, response_format: Any | None = None) -> dict[str, Any]:
+        kwargs = {
+            "prompt": self.prompt,
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "images": self.images,
+            "include_reasoning": self.include_reasoning,
+            "reasoning": self.reasoning,
+        }
+        if self.provider is not None:
+            kwargs["provider"] = self.provider
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+        kwargs.update(self.extra_kwargs)
+        return kwargs
+
+
+@dataclass
+class StructuredRequestContext:
+    model: str
+    response_format: type[BaseModel]
+    supports_json: bool
+    original_prompt: str
+    prepared_response_format: Any | None
+    json_call_args: BaseCallArguments
+    fallback_call_args: BaseCallArguments
+
+
 class LoggerProtocol(Protocol):
     """Protocol for logger interface."""
 
@@ -594,26 +635,19 @@ Please fix the following json object (Response) to match the schema:
 # Response
 {data}
 """
-                # a_structured_llm_for_json_fix is actually just a regular LLM that returns a string
-                # So we need to parse its response recursively
-                fixed_response = await a_structured_llm_for_json_fix(fix_prompt)
-                logger.debug(f"LLM fix response: {fixed_response[:200]}...")
-
-                # Extract JSON from the fixed response and parse it
-                try:
-                    json_data = extract_json_from_markdown(fixed_response)
-                    return response_format.model_validate_json(json_data)
-                except Exception as parse_err:
-                    logger.warning(f"Failed to parse LLM fix response: {parse_err}")
-                    # Last resort: try json_repair on the LLM's response
-                    try:
-                        data_dict = json_repair.loads(fixed_response)
-                        return response_format.model_validate(data_dict)
-                    except Exception:
-                        logger.error(
-                            f"Could not parse LLM fix response: {fixed_response[:500]}"
-                        )
-                        raise
+                fixed_response = await a_structured_llm_for_json_fix(
+                    fix_prompt, response_format=response_format
+                )
+                if isinstance(fixed_response, BaseModel):
+                    logger.debug(f"LLM fix response validated: {fixed_response}")
+                    return fixed_response
+                logger.error(
+                    "a_structured_llm_for_json_fix must return a BaseModel instance, "
+                    f"got {type(fixed_response)} instead"
+                )
+                raise TypeError(
+                    "a_structured_llm_for_json_fix must return a BaseModel instance"
+                )
             raise
 
 
@@ -1086,8 +1120,156 @@ class AOpenrouterChatCompletionProtocol(Protocol):
     ) -> Any: ...
 
 
+@injected
+async def a_build_structured_request_context(
+    openrouter_model_table: OpenRouterModelTable,
+    a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
+    logger: LoggerProtocol,
+    /,
+    prompt: str,
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    images: list[PIL.Image.Image] | None,
+    provider: dict | None,
+    include_reasoning: bool,
+    reasoning: dict | None,
+    response_format: type[BaseModel],
+    kwargs: dict[str, Any],
+) -> StructuredRequestContext:
+    validate_response_format(response_format, model)
+
+    supports_json = openrouter_model_table.supports_json_output(model)
+    logger.debug(f"Model {model} supports JSON: {supports_json}")
+
+    if model in _models_with_false_json_claims:
+        logger.warning(
+            f"Model {model} is known to falsely claim JSON support. "
+            f"Using fallback mechanism."
+        )
+        supports_json = False
+
+    json_config = prepare_json_provider_and_kwargs(
+        provider=provider,
+        kwargs=dict(kwargs),
+        response_format=response_format,
+        supports_json=supports_json,
+        logger=logger,
+        model=model,
+    )
+
+    schema_prompt = await a_cached_schema_example_provider(
+        response_format.model_json_schema()
+    )
+    enhanced_prompt = (
+        prompt
+        + f"\n\nThe response must follow the following json format example:{schema_prompt}"
+    )
+
+    prepared_response_format = None
+    json_extra_kwargs = dict(json_config.kwargs)
+    if supports_json:
+        prepared_response_format = json_extra_kwargs.pop("response_format", None)
+
+    json_call_args = BaseCallArguments(
+        prompt=enhanced_prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
+        provider=json_config.provider,
+        extra_kwargs=json_extra_kwargs,
+    )
+
+    fallback_call_args = BaseCallArguments(
+        prompt=enhanced_prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
+        provider=provider,
+        extra_kwargs=dict(kwargs),
+    )
+
+    return StructuredRequestContext(
+        model=model,
+        response_format=response_format,
+        supports_json=supports_json,
+        original_prompt=prompt,
+        prepared_response_format=prepared_response_format,
+        json_call_args=json_call_args,
+        fallback_call_args=fallback_call_args,
+    )
+
+
+async def _dispatch_structured_request(
+    a_openrouter_base_chat_completion: AOpenrouterBaseChatCompletionProtocol,
+    context: StructuredRequestContext,
+    logger: LoggerProtocol,
+) -> tuple[str, bool]:
+    if not context.supports_json:
+        response_text = await a_openrouter_base_chat_completion(
+            **context.fallback_call_args.as_kwargs()
+        )
+        return response_text, True
+
+    try:
+        response_text = await a_openrouter_base_chat_completion(
+            **context.json_call_args.as_kwargs(
+                response_format=context.prepared_response_format
+            )
+        )
+        return response_text, False
+    except RuntimeError as exc:
+        error_msg = str(exc)
+        if "404" in error_msg and "No endpoints found" in error_msg:
+            _models_with_false_json_claims.add(context.model)
+            logger.warning(
+                f"Model {context.model} claims JSON support but returns 404. "
+                f"Added to fallback cache. Retrying without structured output and using JSON extraction."
+            )
+            response_text = await a_openrouter_base_chat_completion(
+                **context.fallback_call_args.as_kwargs()
+            )
+            return response_text, True
+        raise
+
+
+@injected
+async def a_parse_structured_output(
+    a_structured_llm_for_json_fix: "StructuredLLM",
+    logger: LoggerProtocol,
+    /,
+    response_text: str,
+    context: StructuredRequestContext,
+    used_fallback: bool,
+) -> Any:
+    if context.supports_json and not used_fallback:
+        logger.debug(
+            f"Parsing response_text with parse_json_response: {response_text[:100]}..."
+        )
+    else:
+        logger.debug(
+            f"Model doesn't support JSON, using fallback parsing for: {response_text[:100]}..."
+        )
+
+    return await parse_json_response(
+        data=response_text,
+        response_format=context.response_format,
+        logger=logger,
+        a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+        prompt=context.original_prompt,
+    )
+
+
 @injected(protocol=AOpenrouterChatCompletionProtocol)
 async def a_openrouter_chat_completion(  # noqa: PINJ045
+    a_build_structured_request_context,
+    a_parse_structured_output,
     a_openrouter_base_chat_completion: AOpenrouterBaseChatCompletionProtocol,
     openrouter_model_table: OpenRouterModelTable,
     a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
@@ -1110,15 +1292,11 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
 
     This wraps a_openrouter_base_chat_completion and adds JSON handling on top.
     """
-    # Debug logging
     logger.debug(
         f"a_openrouter_chat_completion called with response_format: {response_format}"
     )
-    logger.debug(f"response_format type: {type(response_format)}")
 
-    # No structured format requested - just pass through to base
     if response_format is None:
-        logger.debug("response_format is None, using base completion")
         return await a_openrouter_base_chat_completion(
             prompt=prompt,
             model=model,
@@ -1132,15 +1310,9 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
             **kwargs,
         )
 
-    # Check if it's a BaseModel subclass
-    is_base_model = inspect.isclass(response_format) and issubclass(
-        response_format, BaseModel
-    )
-
-    if not is_base_model:
-        logger.debug(
-            f"response_format is not a BaseModel subclass, using base completion"
-        )
+    if not (
+        inspect.isclass(response_format) and issubclass(response_format, BaseModel)
+    ):
         return await a_openrouter_base_chat_completion(
             prompt=prompt,
             model=model,
@@ -1154,128 +1326,30 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
             **kwargs,
         )
 
-    # We have a BaseModel response_format, proceed with JSON handling
-    logger.debug(f"response_format is a BaseModel subclass: {response_format.__name__}")
-
-    # Validate compatibility using helper
-    validate_response_format(response_format, model)
-
-    # Check if model supports JSON
-    supports_json = openrouter_model_table.supports_json_output(model)
-    logger.debug(f"Model {model} supports JSON: {supports_json}")
-
-    # Check if this model is known to falsely claim JSON support
-    if model in _models_with_false_json_claims:
-        logger.warning(
-            f"Model {model} is known to falsely claim JSON support. "
-            f"Using fallback mechanism."
-        )
-        supports_json = False
-
-    # Prepare provider and kwargs for JSON
-    json_config = prepare_json_provider_and_kwargs(
-        provider=provider,
-        kwargs=kwargs,
-        response_format=response_format,
-        supports_json=supports_json,
-        logger=logger,
-        model=model,
-    )
-
-    # Add schema example to prompt
-    schema_prompt = await a_cached_schema_example_provider(
-        response_format.model_json_schema()
-    )
-    enhanced_prompt = (
-        prompt
-        + f"\n\nThe response must follow the following json format example:{schema_prompt}"
-    )
-
-    # Call base completion with enhanced settings
-    # Note: response_format is already in json_config.kwargs when supports_json is True
-    try:
-        response_text = await a_openrouter_base_chat_completion(
-            prompt=enhanced_prompt,
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            images=images,
-            provider=json_config.provider,
-            include_reasoning=include_reasoning,
-            reasoning=reasoning,
-            **json_config.kwargs,
-        )
-    except RuntimeError as e:
-        error_msg = str(e)
-        # Check if this is a 404 error for models that claim to support JSON
-        if "404" in error_msg and "No endpoints found" in error_msg and supports_json:
-            # Add this model to our cache of false claims for future requests
-            _models_with_false_json_claims.add(model)
-            logger.warning(
-                f"Model {model} claims JSON support but returns 404. Added to fallback cache. "
-                f"Retrying without structured output and using JSON extraction."
-            )
-
-            # Retry without response_format using fallback mechanism
-            response_text = await a_openrouter_base_chat_completion(
-                prompt=enhanced_prompt,
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                images=images,
-                provider=provider,  # Use original provider without JSON enhancement
-                include_reasoning=include_reasoning,
-                reasoning=reasoning,
-                **kwargs,  # Use original kwargs without response_format
-            )
-
-            # Use parse_json_response to handle the JSON extraction and parsing
-            logger.debug(
-                f"Using fallback JSON parsing for response: {response_text[:100]}..."
-            )
-            result = await parse_json_response(
-                data=response_text,
-                response_format=response_format,
-                logger=logger,
-                a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
-                prompt=prompt,
-            )
-            logger.debug(
-                f"Fallback parsed result type: {type(result)}, value: {result}"
-            )
-            return result
-        # Re-raise other errors as-is
-        raise
-
-    # Parse response with JSON fixing if needed
-    if not supports_json:
-        # Model doesn't support JSON, use parse_json_response for proper parsing
-        logger.debug(
-            f"Model doesn't support JSON, using fallback parsing for: {response_text[:100]}..."
-        )
-        result = await parse_json_response(
-            data=response_text,
-            response_format=response_format,
-            logger=logger,
-            a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
-            prompt=prompt,
-        )
-        logger.debug(f"Fallback parsed result type: {type(result)}, value: {result}")
-        return result
-
-    # Try normal parsing with fallback
-    logger.debug(
-        f"Parsing response_text with parse_json_response: {response_text[:100]}..."
-    )
-    result = await parse_json_response(
-        data=response_text,
-        response_format=response_format,
-        logger=logger,
-        a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
+    structured_context = await a_build_structured_request_context(
         prompt=prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        provider=provider,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
+        response_format=response_format,
+        kwargs=dict(kwargs),
     )
-    logger.debug(f"Parsed result type: {type(result)}, value: {result}")
-    return result
+
+    response_text, used_fallback = await _dispatch_structured_request(
+        a_openrouter_base_chat_completion=a_openrouter_base_chat_completion,
+        context=structured_context,
+        logger=logger,
+    )
+
+    return await a_parse_structured_output(
+        response_text=response_text,
+        context=structured_context,
+        used_fallback=used_fallback,
+    )
 
 
 # Removed - functionality merged into a_openrouter_chat_completion
@@ -1339,6 +1413,38 @@ async def a_llm__openrouter(  # noqa: PINJ045
             data = data.split("```")[1].strip()
         data = response_format.model_validate_json(data)
     return data
+
+
+@injected
+async def a_or_perform_chat_completion(
+    a_openrouter_chat_completion: AOpenrouterChatCompletionProtocol,
+    logger: LoggerProtocol,
+    /,
+    prompt: str,
+    model: str,
+    max_tokens: int = 8192,
+    temperature: float = 1,
+    images: list[PIL.Image.Image] | None = None,
+    response_format=None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    logger.debug("a_or_perform_chat_completion dispatching via OpenRouter")
+    result = await a_openrouter_chat_completion(
+        prompt=prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        response_format=response_format,
+        provider=provider,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
+        **kwargs,
+    )
+    return {"result": result, "reasoning": None}
 
 
 class Text(BaseModel):
@@ -1577,19 +1683,23 @@ test_reasoning_exclude: IProxy[Any] = a_openrouter_chat_completion(
     },
 )
 
+test_or_perform_chat_completion: IProxy[Any] = a_or_perform_chat_completion(
+    prompt="Ping", model="openai/gpt-4o-mini"
+)
+
 
 @instance
 def __debug_design():
     # from openrouter.instances import a_cached_sllm_gpt4o__openrouter
-    # from openrouter.instances import a_cached_sllm_gpt4o_mini__openrouter
+    # from openrouter.instances import a_cached_structured_llm__gpt4o_mini
     from pinjected_openai.openrouter.instances import (
         a_cached_sllm_gpt4o__openrouter,
-        a_cached_sllm_gpt4o_mini__openrouter,
+        a_cached_structured_llm__gpt4o_mini,
     )
 
     return design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
-        a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,
+        a_structured_llm_for_json_fix=a_cached_structured_llm__gpt4o_mini,
     )
 
 

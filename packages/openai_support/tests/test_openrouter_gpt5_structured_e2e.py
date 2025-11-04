@@ -1,7 +1,9 @@
 """End-to-end verification that GPT-5 models accept structured output via OpenRouter."""
 
 import json
+from unittest.mock import patch
 
+import httpx
 import pytest
 from httpx._client import (
     AsyncClient as RealAsyncClient,
@@ -11,6 +13,11 @@ from pinjected.test import injected_pytest
 from pydantic import BaseModel
 
 from packages.openai_support.conftest import apikey_skip_if_needed
+from pinjected_openai.openrouter.util import (
+    OpenRouterModelTable,
+    a_openrouter_chat_completion,
+    clear_false_json_claims_cache,
+)
 
 
 pytestmark = pytest.mark.e2e
@@ -128,6 +135,48 @@ async def test_openrouter_gpt5_structured_response(
         if not content.strip():
             pytest.fail("GPT-5 returned empty content for structured output")
 
-        parsed = SimpleResponse.model_validate_json(content)
-        assert "paris" in parsed.answer.lower(), parsed
-        assert parsed.confidence >= 0, parsed
+    parsed = SimpleResponse.model_validate_json(content)
+    assert "paris" in parsed.answer.lower(), parsed
+    assert parsed.confidence >= 0, parsed
+
+
+@pytest.mark.asyncio
+@injected_pytest(design(openrouter_api_key=injected("openrouter_api_key__personal")))
+async def test_openrouter_gpt5_structured_via_chat_completion(
+    a_openrouter_base_chat_completion,
+    a_cached_schema_example_provider,
+    a_structured_llm_for_json_fix,
+    logger,
+    openrouter_api_key,
+    /,
+) -> None:
+    """Exercise a_openrouter_chat_completion with live GPT-5 structured output."""
+    clear_false_json_claims_cache()
+
+    async with RealAsyncClient(timeout=60.0) as client:
+        models_resp = await client.get(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {openrouter_api_key}"},
+        )
+        models_resp.raise_for_status()
+        model_table = OpenRouterModelTable.model_validate(
+            {"data": models_resp.json().get("data", [])}
+        )
+
+    with patch.object(httpx, "AsyncClient", RealAsyncClient, create=True):
+        result = await a_openrouter_chat_completion.src_function(
+            a_openrouter_base_chat_completion,
+            model_table,
+            a_cached_schema_example_provider,
+            a_structured_llm_for_json_fix,
+            logger,
+            prompt="Respond in JSON with fields answer and confidence for the capital of France.",
+            model="openai/gpt-5",
+            response_format=SimpleResponse,
+            max_tokens=256,
+            temperature=0,
+        )
+
+    assert isinstance(result, SimpleResponse)
+    assert "paris" in result.answer.lower(), result
+    assert result.confidence >= 0, result

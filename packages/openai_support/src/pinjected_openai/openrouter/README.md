@@ -2,6 +2,17 @@
 
 This document tracks the availability of `providers` and `top_provider` fields across various models in the OpenRouter API.
 
+## Structured Output Observations (November 2025)
+
+Recent live tests against OpenRouter's `/chat/completions` endpoint with `response_format` enabled show the following behaviour:
+
+- ✅ `openai/gpt-4o` and `openai/gpt-4o-mini` return valid JSON payloads (e.g. `{"answer":"Paris","confidence":0.99}`) that can be parsed directly.
+- ✅ `google/gemini-2.0-flash-001` also returns well-formed JSON that satisfies our `SimpleResponse` schema.
+- ⚠️ `openai/gpt-5`, `openai/gpt-5-nano`, and `openai/gpt-5-mini` respond with an **empty string** for `choices[0].message.content`, even though the models advertise `response_format`/`structured_outputs` support. Downstream parsing therefore fails with a validation error.
+- ❌ `openai/gpt-4-turbo` currently rejects structured-output requests with `HTTP 400 Bad Request` when `response_format` is supplied.
+
+Until OpenRouter/OpenAI fix the GPT-5 and GPT-4-turbo behaviour, our e2e tests intentionally fail when they encounter these empty-string / error responses.
+
 ## Field Availability by Model
 
 | Model | has_providers | has_top_provider |
