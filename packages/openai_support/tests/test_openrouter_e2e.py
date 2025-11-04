@@ -5,7 +5,12 @@ Run with: pytest tests/test_openrouter_e2e.py -m e2e
 Skip with: pytest tests/ -m "not e2e"
 """
 
+import os
+
+os.environ.setdefault("PINJECTED_OPENROUTER_REAL", "1")
+
 import pytest
+from PIL import Image
 from pinjected import design, instance
 from pinjected.test import injected_pytest
 from pinjected_openai.openrouter.util import (
@@ -13,14 +18,16 @@ from pinjected_openai.openrouter.util import (
     OpenRouterModelTable,
     OpenRouterModel,
     a_openrouter_post,
+    a_openrouter_chat_completion,
+    a_or_perform_chat_completion,
 )
 from pydantic import BaseModel
 from typing import Literal, List, Any
 from loguru import logger
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock
 from packages.openai_support.conftest import apikey_skip_if_needed
+from packages.openai_support.tests.__pinjected__ import __design__ as base_test_design
 
 apikey_skip_if_needed()
 
@@ -102,6 +109,8 @@ async def test_e2e_basic_chat_completion(
         max_tokens=10,
         temperature=0,
     )
+
+    logger.info(f"Basic completion raw result: {result}")
 
     assert result is not None
     assert "result" in result
@@ -491,36 +500,55 @@ def e2e_openrouter_model_table() -> OpenRouterModelTable:
 
 @instance
 def e2e_a_structured_llm__3o():
-    """Mock structured LLM for schema example generation."""
+    """Deterministic structured LLM for schema example generation."""
 
     async def mock_llm(prompt: str) -> Any:
-        # Return a simple example based on the prompt
         if "json" in prompt.lower() and "example" in prompt.lower():
             return {"example": "data", "value": 123}
         return {"response": "test"}
 
-    return AsyncMock(side_effect=mock_llm)
+    async def wrapper(*args, **kwargs):
+        return await mock_llm(*args, **kwargs)
+
+    return wrapper
 
 
 @instance
 def e2e_a_structured_llm_for_json_fix():
-    """Mock structured LLM for JSON fixing."""
+    """Deterministic structured LLM for JSON fixing."""
 
     async def mock_fix(prompt: str, response_format: type[BaseModel]) -> Any:
-        # Try to create a valid instance of the response format
+        if response_format == SimpleResponse:
+            return SimpleResponse(answer="Paris", confidence=0.95)
+        if response_format == MathProblem:
+            return MathProblem(problem="5+3", solution=8, explanation="Addition")
         try:
-            # Simple heuristic: create a basic valid instance
-            if response_format == SimpleResponse:
-                return SimpleResponse(answer="Paris", confidence=0.95)
-            elif response_format == MathProblem:
-                return MathProblem(problem="5+3", solution=8, explanation="Addition")
-            else:
-                # Generic fallback - create with default values
-                return response_format.model_validate({})
+            return response_format.model_validate({})
         except Exception:
             return response_format.model_construct()
 
-    return AsyncMock(side_effect=mock_fix)
+    async def wrapper(*args, **kwargs):
+        return await mock_fix(*args, **kwargs)
+
+    return wrapper
+
+
+@instance
+def e2e_a_cached_schema_example_provider():
+    """Simple schema example provider without external calls."""
+
+    async def provider(model_schema: dict) -> dict:
+        return {"example": model_schema.get("title", "Sample")}
+
+    return provider
+
+
+@instance
+def e2e_a_resize_image_below_5mb():
+    async def identity(img: Image.Image) -> Image.Image:
+        return img
+
+    return identity
 
 
 # ============================================================================
@@ -533,6 +561,7 @@ def e2e_a_structured_llm_for_json_fix():
 # 3. Or passed when running tests via the test runner
 
 __design__ = design(
+    overrides=base_test_design,
     # API key - replace with your actual key or inject via command line
     openrouter_api_key=e2e_openrouter_api_key,
     openrouter_timeout_sec=30.0,
@@ -545,7 +574,8 @@ __design__ = design(
     a_structured_llm_for_json_fix=e2e_a_structured_llm_for_json_fix,
     # Use the real a_openrouter_post for actual API calls
     a_openrouter_post=a_openrouter_post,
-    # Mock the helper functions to avoid missing dependencies
-    a_cached_schema_example_provider=AsyncMock(return_value={"example": "data"}),
-    a_resize_image_below_5mb=AsyncMock(side_effect=lambda img: img),
+    a_openrouter_chat_completion=a_openrouter_chat_completion,
+    a_or_perform_chat_completion=a_or_perform_chat_completion,
+    a_cached_schema_example_provider=e2e_a_cached_schema_example_provider,
+    a_resize_image_below_5mb=e2e_a_resize_image_below_5mb,
 )

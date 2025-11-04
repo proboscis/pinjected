@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import os
+
 from pinjected import DesignSpec, design
 from pinjected.picklable_logger import PicklableLogger
 from packages.openai_support.conftest import (
@@ -7,6 +9,14 @@ from packages.openai_support.conftest import (
     _mock_openrouter_chat_completion,
     _model_table_fixture,
 )
+
+USE_REAL_OPENROUTER = bool(os.environ.get("PINJECTED_OPENROUTER_REAL"))
+
+if USE_REAL_OPENROUTER:
+    from pinjected_openai.openrouter.util import (
+        a_openrouter_post as real_a_openrouter_post,
+        a_openrouter_chat_completion as real_a_openrouter_chat_completion,
+    )
 
 
 class _MockOpenAIBetaChatCompletionsParse:
@@ -134,8 +144,14 @@ __design__ = design(
     cache_root_path=cache_root,
     openrouter_timeout_sec=120.0,
     openrouter_state=dict(),
-    a_openrouter_post=_mock_openrouter_post,
-    a_openrouter_chat_completion=_mock_openrouter_chat_completion,
+    a_openrouter_post=(
+        real_a_openrouter_post if USE_REAL_OPENROUTER else _mock_openrouter_post
+    ),
+    a_openrouter_chat_completion=(
+        real_a_openrouter_chat_completion
+        if USE_REAL_OPENROUTER
+        else _mock_openrouter_chat_completion
+    ),
     openrouter_model_table=_model_table_fixture(),
     test_openrouter_model_table=_a_test_openrouter_model_table,
     openai_config__personal={"api_key": "dummy", "organization": None},

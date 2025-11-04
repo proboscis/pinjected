@@ -1422,6 +1422,38 @@ async def a_llm__openrouter(  # noqa: PINJ045
     return data
 
 
+@injected
+async def a_or_perform_chat_completion(
+    a_openrouter_chat_completion: AOpenrouterChatCompletionProtocol,
+    logger: LoggerProtocol,
+    /,
+    prompt: str,
+    model: str,
+    max_tokens: int = 8192,
+    temperature: float = 1,
+    images: list[PIL.Image.Image] | None = None,
+    response_format=None,
+    provider: dict | None = None,
+    include_reasoning: bool = False,
+    reasoning: dict | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    logger.debug("a_or_perform_chat_completion dispatching via OpenRouter")
+    result = await a_openrouter_chat_completion(
+        prompt=prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        images=images,
+        response_format=response_format,
+        provider=provider,
+        include_reasoning=include_reasoning,
+        reasoning=reasoning,
+        **kwargs,
+    )
+    return {"result": result, "reasoning": None}
+
+
 class Text(BaseModel):
     text_lines: list[str]
 
@@ -1656,6 +1688,10 @@ test_reasoning_exclude: IProxy[Any] = a_openrouter_chat_completion(
         "effort": "medium",
         "exclude": True,  # Use reasoning internally but don't include in response
     },
+)
+
+test_or_perform_chat_completion: IProxy[Any] = a_or_perform_chat_completion(
+    prompt="Ping", model="openai/gpt-4o-mini"
 )
 
 
