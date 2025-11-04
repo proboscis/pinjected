@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1-beta (2025-11-04)
+
+### Added
+- Added end-to-end OpenRouter GPT-5 structured output tests covering both JSON schema metadata checks and BaseModel response_format usage.
+
 ## 0.3.0-beta (2025-06-25)
 
 ### Breaking Changes
