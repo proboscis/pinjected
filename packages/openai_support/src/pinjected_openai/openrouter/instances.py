@@ -20,8 +20,7 @@ class NoEndpointsFoundError(Exception):
 class StructuredLLM(Protocol):
     async def __call__(
         self, text: str, images=None, response_format: type[BaseModel] | None = None
-    ):
-        pass
+    ) -> BaseModel: ...
 
 
 class ASllmOpenrouterProtocol(Protocol):
@@ -98,6 +97,9 @@ a_cached_structured_llm__gemini_flash_thinking_2_0: IProxy[StructuredLLM] = (
 a_cached_structured_llm__claude_sonnet_3_5: IProxy[StructuredLLM] = async_cached(
     lzma_sqlite(injected("cache_root_path") / "claude_sonnet_3_5.sqlite")
 )(Injected.partial(a_sllm_openrouter, model="anthropic/claude-3.5-sonnet"))
+a_cached_structured_llm__gpt4o_mini: IProxy[StructuredLLM] = async_cached(
+    lzma_sqlite(injected("cache_root_path") / "gpt4o_mini_structured.sqlite")
+)(Injected.partial(a_sllm_openrouter, model="openai/gpt-4o-mini"))
 a_cached_sllm_gpt4o__openrouter: IProxy = async_cached(
     sqlite_dict(injected("cache_root_path") / "gpt4o.sqlite")
 )(Injected.partial(a_openrouter_base_chat_completion, model="openai/gpt-4o"))
@@ -120,7 +122,7 @@ test_gemini_flash_2_0_structured: IProxy = a_cached_structured_llm__gemini_flash
 __design__ = design(
     overrides=design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
-        a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,
+        a_structured_llm_for_json_fix=a_cached_structured_llm__gpt4o_mini,
         # openai_config=injected('openai_config__personal')
     )
 )

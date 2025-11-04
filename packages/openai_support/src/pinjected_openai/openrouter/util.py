@@ -635,26 +635,19 @@ Please fix the following json object (Response) to match the schema:
 # Response
 {data}
 """
-                # a_structured_llm_for_json_fix is actually just a regular LLM that returns a string
-                # So we need to parse its response recursively
-                fixed_response = await a_structured_llm_for_json_fix(fix_prompt)
-                logger.debug(f"LLM fix response: {fixed_response[:200]}...")
-
-                # Extract JSON from the fixed response and parse it
-                try:
-                    json_data = extract_json_from_markdown(fixed_response)
-                    return response_format.model_validate_json(json_data)
-                except Exception as parse_err:
-                    logger.warning(f"Failed to parse LLM fix response: {parse_err}")
-                    # Last resort: try json_repair on the LLM's response
-                    try:
-                        data_dict = json_repair.loads(fixed_response)
-                        return response_format.model_validate(data_dict)
-                    except Exception:
-                        logger.error(
-                            f"Could not parse LLM fix response: {fixed_response[:500]}"
-                        )
-                raise
+                fixed_response = await a_structured_llm_for_json_fix(
+                    fix_prompt, response_format=response_format
+                )
+                if isinstance(fixed_response, BaseModel):
+                    logger.debug(f"LLM fix response validated: {fixed_response}")
+                    return fixed_response
+                logger.error(
+                    "a_structured_llm_for_json_fix must return a BaseModel instance, "
+                    f"got {type(fixed_response)} instead"
+                )
+                raise TypeError(
+                    "a_structured_llm_for_json_fix must return a BaseModel instance"
+                )
             raise
 
 
@@ -1698,15 +1691,15 @@ test_or_perform_chat_completion: IProxy[Any] = a_or_perform_chat_completion(
 @instance
 def __debug_design():
     # from openrouter.instances import a_cached_sllm_gpt4o__openrouter
-    # from openrouter.instances import a_cached_sllm_gpt4o_mini__openrouter
+    # from openrouter.instances import a_cached_structured_llm__gpt4o_mini
     from pinjected_openai.openrouter.instances import (
         a_cached_sllm_gpt4o__openrouter,
-        a_cached_sllm_gpt4o_mini__openrouter,
+        a_cached_structured_llm__gpt4o_mini,
     )
 
     return design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
-        a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,
+        a_structured_llm_for_json_fix=a_cached_structured_llm__gpt4o_mini,
     )
 
 
