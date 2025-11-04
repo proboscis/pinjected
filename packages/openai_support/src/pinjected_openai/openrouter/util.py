@@ -1128,7 +1128,7 @@ class AOpenrouterChatCompletionProtocol(Protocol):
 
 
 @injected
-async def _build_structured_request_context(
+async def a_build_structured_request_context(
     openrouter_model_table: OpenRouterModelTable,
     a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
     logger: LoggerProtocol,
@@ -1247,7 +1247,7 @@ async def _dispatch_structured_request(
 
 
 @injected
-async def _parse_structured_output(
+async def a_parse_structured_output(
     a_structured_llm_for_json_fix: "StructuredLLM",
     logger: LoggerProtocol,
     /,
@@ -1275,8 +1275,8 @@ async def _parse_structured_output(
 
 @injected(protocol=AOpenrouterChatCompletionProtocol)
 async def a_openrouter_chat_completion(  # noqa: PINJ045
-    _build_structured_request_context,
-    _parse_structured_output,
+    a_build_structured_request_context,
+    a_parse_structured_output,
     a_openrouter_base_chat_completion: AOpenrouterBaseChatCompletionProtocol,
     openrouter_model_table: OpenRouterModelTable,
     a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
@@ -1333,7 +1333,7 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
             **kwargs,
         )
 
-    structured_context = await _build_structured_request_context(
+    structured_context = await a_build_structured_request_context(
         openrouter_model_table,
         a_cached_schema_example_provider,
         logger,
@@ -1355,7 +1355,7 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
         logger=logger,
     )
 
-    return await _parse_structured_output(
+    return await a_parse_structured_output(
         a_structured_llm_for_json_fix,
         logger,
         response_text=response_text,
