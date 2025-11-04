@@ -21,7 +21,6 @@ a_cached_structured_llm__gemini_flash_2_0: IProxy[StructuredLLM]
 a_cached_structured_llm__deepseek_chat: IProxy[StructuredLLM]
 a_cached_structured_llm__gemini_flash_thinking_2_0: IProxy[StructuredLLM]
 a_cached_structured_llm__claude_sonnet_3_5: IProxy[StructuredLLM]
-a_cached_structured_llm__gpt4o_mini: IProxy[StructuredLLM]
 a_cached_sllm_gpt4o__openrouter: IProxy
 a_cached_sllm_gpt4o_mini__openrouter: IProxy
 test_cached_sllm_gpt4o_mini: IProxy

@@ -8,9 +8,11 @@ from pinjected_openai.openrouter.util import (
     build_provider_filter,
     build_user_message,
     build_chat_payload,
+    a_openrouter_base_chat_completion,
     validate_response_format,
     prepare_json_provider_and_kwargs,
     JsonProviderConfig,
+    OpenRouterModelTable,
     OpenRouterRateLimitError,
     OpenRouterTransientError,
     OpenRouterOverloadedError,
@@ -37,6 +39,80 @@ class ComplexResponse(BaseModel):
     title: str
     content: str
     metadata: Optional[dict] = None
+
+
+@pytest.mark.asyncio
+async def test_base_chat_completion_returns_structured_model():
+    """Base chat completion should parse OpenRouter structured JSON payloads."""
+
+    async def fake_post(payload: dict) -> dict:
+        assert "response_format" in payload
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {
+                                "type": "output_json",
+                                "json": {"answer": "Yes", "confidence": 0.99},
+                            }
+                        ]
+                    }
+                }
+            ],
+            "provider": "mock-provider",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+
+    class DummyLogger:
+        def info(self, message: str) -> None: ...
+
+        def warning(self, message: str) -> None: ...
+
+        def error(self, message: str) -> None: ...
+
+        def success(self, message: str) -> None: ...
+
+    async def fake_resize(_logger, img):
+        return img
+
+    model_table = OpenRouterModelTable.model_validate(
+        {
+            "data": [
+                {
+                    "id": "openai/gpt-4o-mini",
+                    "name": "GPT-4o Mini",
+                    "created": 0,
+                    "description": "Test model",
+                    "context_length": 128000,
+                    "architecture": {
+                        "name": "gpt-4o",
+                        "modality": "text",
+                        "tokenizer": "test-tokenizer",
+                        "capabilities": {"json": True},
+                    },
+                    "pricing": {"prompt": "0.0", "completion": "0.0"},
+                }
+            ]
+        }
+    )
+
+    result = await a_openrouter_base_chat_completion.src_function(
+        fake_post,
+        DummyLogger(),
+        model_table,
+        {},
+        fake_resize,
+        prompt="Return answer and confidence",
+        model="openai/gpt-4o-mini",
+        response_format=SimpleResponse,
+        max_tokens=16,
+        temperature=0,
+    )
+
+    assert isinstance(result, SimpleResponse)
+    assert result.answer == "Yes"
+    assert result.confidence == pytest.approx(0.99)
 
 
 # Helper function tests (pure functions but still need @injected_pytest)
