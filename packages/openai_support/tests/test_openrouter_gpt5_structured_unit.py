@@ -96,9 +96,24 @@ async def test_gpt5_mini_structured_output_uses_fallback():
 
     logger = DummyLogger()
 
+    async def build_context(**kwargs):
+        return await openrouter_util.a_build_structured_request_context.src_function(
+            model_table,
+            fake_schema_example_provider,
+            logger,
+            **kwargs,
+        )
+
+    async def parse_output(**kwargs):
+        return await openrouter_util.a_parse_structured_output.src_function(
+            fake_json_fix,
+            logger,
+            **kwargs,
+        )
+
     result = await openrouter_util.a_openrouter_chat_completion.src_function(
-        openrouter_util.a_build_structured_request_context.src_function,
-        openrouter_util.a_parse_structured_output.src_function,
+        build_context,
+        parse_output,
         fake_base_chat_completion,
         model_table,
         fake_schema_example_provider,

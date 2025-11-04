@@ -1334,9 +1334,6 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
         )
 
     structured_context = await a_build_structured_request_context(
-        openrouter_model_table,
-        a_cached_schema_example_provider,
-        logger,
         prompt=prompt,
         model=model,
         max_tokens=max_tokens,
@@ -1356,8 +1353,6 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
     )
 
     return await a_parse_structured_output(
-        a_structured_llm_for_json_fix,
-        logger,
         response_text=response_text,
         context=structured_context,
         used_fallback=used_fallback,
