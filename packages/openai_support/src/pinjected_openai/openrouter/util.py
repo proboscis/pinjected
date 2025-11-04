@@ -521,10 +521,24 @@ async def a_openrouter_base_chat_completion(  # noqa: PINJ045
     reasoning: dict | None = None,
     **kwargs,
 ):
+    """Call OpenRouter chat completion and optionally parse structured output.
+
+    When `response_format` is a Pydantic model class, we attach the corresponding
+    JSON schema to the request and return the validated model instance directly.
+    Otherwise we behave like a plain text chat completion and return the raw content.
+    This helper remains intentionally lightweight to avoid dependency cycles.
     """
-    Base OpenRouter chat completion without JSON fixing.
-    This exists to break dependency cycles - JSON fixing depends on LLM functions.
-    """
+    response_model: type[BaseModel] | None = None
+    extra_kwargs = dict(kwargs)
+    if response_format is not None:
+        if inspect.isclass(response_format) and issubclass(response_format, BaseModel):
+            response_model = response_format
+            extra_kwargs["response_format"] = build_openrouter_response_format(
+                response_format
+            )
+        else:
+            extra_kwargs["response_format"] = response_format
+
     # Build payload using helper
     payload = build_chat_payload(
         model=model,
@@ -535,7 +549,7 @@ async def a_openrouter_base_chat_completion(  # noqa: PINJ045
         provider=provider,
         include_reasoning=include_reasoning,
         reasoning=reasoning,
-        **kwargs,
+        **extra_kwargs,
     )
 
     # Make API call
@@ -545,8 +559,51 @@ async def a_openrouter_base_chat_completion(  # noqa: PINJ045
     # Log costs using helper
     log_completion_cost(res, model, openrouter_model_table, openrouter_state, logger)
 
-    # Return raw response content (no JSON parsing)
-    return res["choices"][0]["message"]["content"]
+    message_content = res["choices"][0]["message"]["content"]
+
+    def _content_to_text(content: Any) -> str:
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict):
+                    if "text" in item:
+                        parts.append(str(item["text"]))
+                    elif "content" in item:
+                        parts.append(str(item["content"]))
+                elif isinstance(item, str):
+                    parts.append(item)
+            return "".join(parts)
+        return str(content)
+
+    if response_model is None:
+        return _content_to_text(message_content)
+
+    json_candidate: Any = None
+    if isinstance(message_content, list):
+        text_fallback: list[str] = []
+        for part in message_content:
+            if isinstance(part, dict):
+                if part.get("type") == "output_json" and "json" in part:
+                    json_candidate = part["json"]
+                    break
+                if "json" in part and json_candidate is None:
+                    json_candidate = part["json"]
+                if "text" in part:
+                    text_fallback.append(str(part["text"]))
+                elif "content" in part:
+                    text_fallback.append(str(part["content"]))
+            elif isinstance(part, str):
+                text_fallback.append(part)
+        if json_candidate is None:
+            json_candidate = "".join(text_fallback)
+    else:
+        json_candidate = message_content
+
+    if isinstance(json_candidate, dict):
+        return response_model.model_validate(json_candidate)
+
+    json_text = extract_json_from_markdown(str(json_candidate))
+    return response_model.model_validate_json(json_text)
 
 
 def handle_openrouter_error(res: dict, logger: LoggerProtocol):
@@ -1691,15 +1748,15 @@ test_or_perform_chat_completion: IProxy[Any] = a_or_perform_chat_completion(
 @instance
 def __debug_design():
     # from openrouter.instances import a_cached_sllm_gpt4o__openrouter
-    # from openrouter.instances import a_cached_structured_llm__gpt4o_mini
+    # from openrouter.instances import a_cached_sllm_gpt4o_mini__openrouter
     from pinjected_openai.openrouter.instances import (
         a_cached_sllm_gpt4o__openrouter,
-        a_cached_structured_llm__gpt4o_mini,
+        a_cached_sllm_gpt4o_mini__openrouter,
     )
 
     return design(
         a_llm_for_json_schema_example=a_cached_sllm_gpt4o__openrouter,
-        a_structured_llm_for_json_fix=a_cached_structured_llm__gpt4o_mini,
+        a_structured_llm_for_json_fix=a_cached_sllm_gpt4o_mini__openrouter,
     )
 
 
