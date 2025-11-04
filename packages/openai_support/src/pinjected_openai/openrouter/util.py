@@ -1127,11 +1127,12 @@ class AOpenrouterChatCompletionProtocol(Protocol):
     ) -> Any: ...
 
 
+@injected
 async def _build_structured_request_context(
-    *,
     openrouter_model_table: OpenRouterModelTable,
     a_cached_schema_example_provider: ACachedSchemaExampleProviderProtocol,
     logger: LoggerProtocol,
+    /,
     prompt: str,
     model: str,
     max_tokens: int,
@@ -1245,11 +1246,13 @@ async def _dispatch_structured_request(
         raise
 
 
+@injected
 async def _parse_structured_output(
+    a_structured_llm_for_json_fix: "StructuredLLM",
+    logger: LoggerProtocol,
+    /,
     response_text: str,
     context: StructuredRequestContext,
-    logger: LoggerProtocol,
-    a_structured_llm_for_json_fix: "StructuredLLM",
     used_fallback: bool,
 ) -> Any:
     if context.supports_json and not used_fallback:
@@ -1328,10 +1331,10 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
             **kwargs,
         )
 
-    structured_context = await _build_structured_request_context(
-        openrouter_model_table=openrouter_model_table,
-        a_cached_schema_example_provider=a_cached_schema_example_provider,
-        logger=logger,
+    structured_context = await _build_structured_request_context.src_function(
+        openrouter_model_table,
+        a_cached_schema_example_provider,
+        logger,
         prompt=prompt,
         model=model,
         max_tokens=max_tokens,
@@ -1350,11 +1353,11 @@ async def a_openrouter_chat_completion(  # noqa: PINJ045
         logger=logger,
     )
 
-    return await _parse_structured_output(
+    return await _parse_structured_output.src_function(
+        a_structured_llm_for_json_fix,
+        logger,
         response_text=response_text,
         context=structured_context,
-        logger=logger,
-        a_structured_llm_for_json_fix=a_structured_llm_for_json_fix,
         used_fallback=used_fallback,
     )
 
